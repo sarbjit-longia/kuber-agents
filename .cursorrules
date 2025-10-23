@@ -1,0 +1,542 @@
+# Cursor Rules for Trading Platform Project
+
+## Project Overview
+
+This is an agent-based trading pipeline platform where retail traders visually connect AI agents to create automated trading strategies. Think n8n but for algorithmic trading with AI agents.
+
+**Key Philosophy**: Agent-first architecture. All business logic lives in agents. Backend is orchestration. Agents are products (marketplace-ready).
+
+**Tech Stack**:
+- Backend: Python 3.11+, FastAPI, CrewAI, Celery, PostgreSQL, Redis
+- Frontend: Angular 17+, Angular Material, TypeScript
+- Infrastructure: AWS (ECS Fargate, RDS, ElastiCache), Terraform
+- LLM: OpenAI API (MVP), local models (future)
+
+## Core Architectural Principles
+
+1. **Agent-First**: All trading logic in agents, not backend services
+2. **Modular**: Agents are independent, reusable, testable
+3. **Cost-Aware**: Track tokens/API calls, optimize for cost
+4. **Type-Safe**: Use Pydantic (Python) and TypeScript strictly
+5. **Async-First**: Use async/await everywhere in Python
+6. **State Immutability**: Agents receive state, return new state (don't mutate)
+7. **Documentation**: Every agent, tool, and API endpoint must be documented
+
+## Python/Backend Guidelines
+
+### Code Style
+- Use **black** for formatting (line length: 100)
+- Use **pylint** for linting
+- Use **type hints** everywhere
+- Use **async/await** for all I/O operations
+- Use **Pydantic** for data validation
+
+### Project Structure
+```
+backend/app/
+├── agents/          # Agent implementations (one file per agent)
+├── tools/           # Agent tools (market data, broker, etc.)
+├── orchestration/   # CrewAI flows, Celery tasks
+├── api/             # REST endpoints (versioned: v1/)
+├── models/          # SQLAlchemy ORM models
+├── schemas/         # Pydantic schemas
+└── services/        # Business logic (thin layer)
+```
+
+### Agent Development
+
+**Every new agent MUST**:
+1. Inherit from `BaseAgent`
+2. Implement `get_metadata()` classmethod returning `AgentMetadata`
+3. Define `config_schema` using JSON Schema (for UI form generation)
+4. Implement `process(state: PipelineState) -> PipelineState`
+5. Declare `requires_timeframes` (e.g., ["1h", "4h"] or ["5m"])
+6. Include comprehensive docstrings
+7. Be registered in `AGENT_REGISTRY`
+8. Have unit tests with >80% coverage
+
+**Agent Template**:
+```python
+class MyAgent(BaseAgent):
+    """
+    Brief description of what this agent does.
+    
+    This agent [performs X task] by [doing Y].
+    """
+    
+    @classmethod
+    def get_metadata(cls) -> AgentMetadata:
+        return AgentMetadata(
+            agent_type="my_agent",
+            name="My Agent",
+            description="Detailed description for UI",
+            category="analysis",  # trigger, data, analysis, risk, execution, reporting
+            version="1.0.0",
+            icon="chart",
+            pricing_rate=0.05,  # $/hour, 0.0 for free
+            is_free=False,
+            requires_timeframes=["5m"],
+            config_schema=AgentConfigSchema(
+                type="object",
+                title="My Agent Configuration",
+                properties={
+                    "param1": {
+                        "type": "string",
+                        "title": "Parameter 1",
+                        "description": "What this parameter does",
+                        "default": "value"
+                    }
+                },
+                required=["param1"]
+            )
+        )
+    
+    def process(self, state: PipelineState) -> PipelineState:
+        """
+        Process the pipeline state and return updated state.
+        
+        Args:
+            state: Current pipeline state
+            
+        Returns:
+            Updated pipeline state with agent outputs
+            
+        Raises:
+            InsufficientDataError: If required data missing
+            AgentProcessingError: If agent logic fails
+        """
+        try:
+            # Validate inputs
+            if not self.validate_input(state):
+                raise InsufficientDataError("Missing required inputs")
+            
+            # Your agent logic here
+            result = self._do_work(state)
+            
+            # Update state
+            state.my_output = result
+            
+            return state
+            
+        except Exception as e:
+            state.errors.append(f"{self.agent_type}: {str(e)}")
+            logger.exception(f"Error in {self.agent_type}")
+            raise
+```
+
+### API Endpoints
+
+**Naming Convention**:
+- Use plural nouns: `/api/v1/pipelines`, `/api/v1/agents`
+- Use kebab-case: `/api/v1/pipeline-executions`
+- Version APIs: `/api/v1/...`
+
+**Structure**:
+```python
+@router.get("/pipelines", response_model=List[PipelineResponse])
+async def list_pipelines(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> List[PipelineResponse]:
+    """
+    List all pipelines for the current user.
+    
+    Returns:
+        List of pipeline objects
+    """
+    pipelines = await pipeline_service.list_user_pipelines(current_user.id, db)
+    return pipelines
+```
+
+### Database
+
+**Models**: Use SQLAlchemy ORM
+- Always include `created_at`, `updated_at` timestamps
+- Use UUIDs for primary keys
+- Use JSONB for flexible config storage
+- Add indexes on frequently queried columns
+
+**Migrations**: Use Alembic
+- Descriptive names: `20231023_add_pipeline_status_column`
+- Include both upgrade and downgrade
+- Test migrations before committing
+
+### Testing
+
+**Required for every agent/endpoint**:
+- Unit tests in `tests/` mirroring app structure
+- Use pytest fixtures
+- Mock external APIs (OpenAI, Finnhub, Alpaca)
+- Test happy path + error cases
+- Aim for >80% coverage
+
+**Example**:
+```python
+@pytest.fixture
+def mock_state():
+    return PipelineState(
+        pipeline_id="test",
+        execution_id="test-exec",
+        user_id="test-user",
+        symbol="AAPL",
+        market_data=MarketData(...)
+    )
+
+def test_strategy_agent_generates_buy_signal(mock_state):
+    agent = StrategyAgent(agent_id="test", config={"timeframe": "5m"})
+    result = agent.process(mock_state)
+    assert result.strategy.action == "BUY"
+```
+
+### Cost Tracking
+
+**ALWAYS track costs**:
+- Wrap LLM calls with `@track_llm_cost` decorator
+- Count tokens using `tiktoken`
+- Store in `cost_tracking` table
+- Check budget limits before expensive operations
+
+### Error Handling
+
+**Hierarchy**:
+```python
+AgentError (base)
+├── InsufficientDataError (retry after fetch)
+├── TriggerNotMetException (non-blocking wait)
+├── BudgetExceededException (user limit reached)
+└── AgentProcessingError (generic failure)
+```
+
+**Pattern**:
+```python
+try:
+    result = agent.process(state)
+except TriggerNotMetException:
+    # Schedule retry, don't fail pipeline
+    raise
+except BudgetExceededException:
+    # Pause pipeline, notify user
+    raise
+except Exception as e:
+    # Log, add to state.errors, retry up to max
+    state.errors.append(str(e))
+    logger.exception(f"Agent {agent.agent_type} failed")
+    raise
+```
+
+## Angular/Frontend Guidelines
+
+### Code Style
+- Use **prettier** for formatting
+- Use **ESLint** for linting
+- **Always create separate template files** (no inline templates in .ts files)
+- Use **TypeScript strict mode**
+- Use **RxJS** for reactive programming
+
+### Component Structure
+
+**IMPORTANT**: Always create `.component.html` files separate from `.component.ts`
+
+**Example**:
+```
+pipeline-builder/
+├── pipeline-builder.component.ts
+├── pipeline-builder.component.html    ← ALWAYS separate file
+├── pipeline-builder.component.scss
+└── pipeline-builder.component.spec.ts
+```
+
+**Component Template**:
+```typescript
+// pipeline-builder.component.ts
+import { Component, OnInit } from '@angular/core';
+
+@Component({
+  selector: 'app-pipeline-builder',
+  templateUrl: './pipeline-builder.component.html',  // ← Always use templateUrl
+  styleUrls: ['./pipeline-builder.component.scss']
+})
+export class PipelineBuilderComponent implements OnInit {
+  // Component logic
+}
+```
+
+### State Management
+
+Use **RxJS BehaviorSubject** for simple state, **NgRx** if complexity grows.
+
+```typescript
+// pipeline.service.ts
+export class PipelineService {
+  private pipelinesSubject = new BehaviorSubject<Pipeline[]>([]);
+  pipelines$ = this.pipelinesSubject.asObservable();
+  
+  updatePipelines(pipelines: Pipeline[]) {
+    this.pipelinesSubject.next(pipelines);
+  }
+}
+```
+
+### API Calls
+
+**Always use services**:
+```typescript
+// api.service.ts
+@Injectable({ providedIn: 'root' })
+export class ApiService {
+  private baseUrl = environment.apiUrl;
+  
+  getPipelines(): Observable<Pipeline[]> {
+    return this.http.get<Pipeline[]>(`${this.baseUrl}/api/v1/pipelines`);
+  }
+}
+```
+
+### WebSocket
+
+Use `WebSocketService` for real-time updates. Always implement polling fallback.
+
+### Error Handling
+
+```typescript
+this.apiService.createPipeline(data).subscribe({
+  next: (pipeline) => {
+    this.notificationService.success('Pipeline created');
+  },
+  error: (error) => {
+    this.notificationService.error('Failed to create pipeline');
+    console.error(error);
+  }
+});
+```
+
+## Deployment & Infrastructure
+
+### Docker
+
+**Development**: Use `docker-compose.yml` in root
+- Hot reload enabled
+- Mount volumes for code
+- Use development Dockerfile
+
+**Production**: Use `deploy/Dockerfile.prod`
+- Multi-stage build
+- Optimized image size
+- No development dependencies
+
+### Terraform
+
+- Modular structure: `modules/` for reusable components
+- Use variables for configuration
+- Output important values (endpoints, URLs)
+- Tag all resources with Environment and Project
+
+### CI/CD (GitHub Actions)
+
+- Run tests on every PR
+- Deploy to production on merge to `main`
+- Require approval for production deployments (future)
+- Rollback on health check failure
+
+## Cost Optimization Guidelines
+
+1. **Free Agents**: Time Trigger, Market Data (no LLM calls)
+2. **Cheap Agents**: Use GPT-3.5-turbo (Risk Manager, Reporting)
+3. **Expensive Agents**: Use GPT-4 only when needed (Bias, Strategy)
+4. **Future**: Migrate simple tasks to local models (Llama)
+5. **Caching**: Cache market data, agent responses when appropriate
+6. **Batch**: Batch API calls where possible
+
+## Multi-Timeframe Handling
+
+**Remember**: Different agents need different timeframes.
+
+- **Market Data Agent**: Fetches ALL required timeframes (1m, 5m, 1h, 4h, 1d)
+- **Bias Agent**: Analyzes multiple timeframes (1h, 4h, 1d)
+- **Strategy Agent**: Works on single timeframe (5m)
+- **State**: Stores all timeframes in `state.timeframes` dict
+- **Access**: `state.get_timeframe_data("1h")`
+
+## UI Form Generation
+
+**Never hardcode agent config forms**. Always use dynamic form generation.
+
+1. Agent defines `config_schema` (JSON Schema)
+2. Backend serves via `/api/v1/agents` endpoint
+3. Frontend uses `@ajsf/core` (Angular JSON Schema Form)
+4. Forms render automatically from schema
+
+**Example**:
+```typescript
+<json-schema-form
+  [schema]="agentMetadata.config_schema"
+  [data]="configData"
+  (onChanges)="onConfigChange($event)">
+</json-schema-form>
+```
+
+## Common Patterns
+
+### Pipeline Storage
+
+Store as JSON in PostgreSQL `config` JSONB column:
+```json
+{
+  "nodes": [{"id": "node-1", "agent_type": "...", "config": {...}}],
+  "edges": [{"from": "node-1", "to": "node-2"}]
+}
+```
+
+### Agent Registry
+
+Always register new agents:
+```python
+AGENT_REGISTRY = {
+    "time_trigger": TimeTriggerAgent,
+    "market_data_agent": MarketDataAgent,
+    "my_new_agent": MyNewAgent,  # ← Add here
+}
+```
+
+### CrewAI Integration
+
+Agents can be CrewAI crews internally:
+```python
+class BiasAgent(BaseAgent):
+    def process(self, state):
+        crew = Crew(
+            agents=[analyst1, analyst2],
+            tasks=[task1, task2]
+        )
+        result = crew.kickoff()
+        return state
+```
+
+## Documentation Requirements
+
+**Every file should have**:
+- Module docstring explaining purpose
+- Class docstrings with description
+- Function docstrings (Google style)
+- Type hints on all functions
+
+**Update docs/** when adding:
+- New agents (update design.md)
+- New requirements (update requirements.md)
+- Architecture changes (update design.md)
+- New features (update roadmap.md)
+
+## Security Best Practices
+
+1. **Never commit secrets** - Use environment variables
+2. **Validate all inputs** - Pydantic schemas
+3. **Sanitize user data** - SQL injection, XSS prevention
+4. **Encrypt broker credentials** - AWS KMS/Secrets Manager
+5. **Rate limit APIs** - Per user limits
+6. **JWT tokens** - Short expiration, refresh tokens
+7. **HTTPS only** - No HTTP in production
+
+## Git Workflow
+
+**Branch naming**:
+- `feature/agent-news-trigger`
+- `fix/pipeline-execution-retry`
+- `docs/update-readme`
+
+**Commit messages**:
+```
+feat: Add news-based trigger agent
+fix: Resolve timeframe data access bug
+docs: Update agent development guide
+refactor: Simplify state management
+test: Add tests for risk manager agent
+```
+
+**PR Guidelines**:
+- Link to issue/ticket
+- Describe what and why
+- Include screenshots for UI changes
+- Ensure tests pass
+- Update relevant documentation
+
+## Performance Guidelines
+
+1. **Async I/O**: Always use async/await for I/O
+2. **Database**: Add indexes, use pagination
+3. **Caching**: Cache expensive computations (Redis)
+4. **Lazy Loading**: Load data when needed
+5. **Batch Operations**: Batch DB writes, API calls
+
+## Monitoring & Logging
+
+**Logging levels**:
+- DEBUG: Development only
+- INFO: Important events (pipeline started, trade executed)
+- WARNING: Recoverable errors (retry after failure)
+- ERROR: Failures requiring attention
+- CRITICAL: System-wide failures
+
+**Always log**:
+- Agent execution start/end
+- LLM API calls (tokens, cost)
+- Trade executions
+- Errors with stack traces
+
+## When Adding New Features
+
+1. **Check requirements.md** - Is it in scope?
+2. **Update design.md** - Document architecture changes
+3. **Write tests first** - TDD where possible
+4. **Implement** - Follow patterns above
+5. **Update docs** - Keep documentation current
+6. **Create PR** - Clear description, link issues
+
+## User Preferences
+
+- ✅ **Always** create separate Angular template files (`.component.html`)
+- ✅ **Never** use inline templates in TypeScript files
+- ✅ Focus on clean, maintainable, enterprise-grade code
+- ✅ Prioritize type safety and validation
+- ✅ Cost optimization is critical (token tracking)
+
+## Quick Reference Commands
+
+### Local Development
+```bash
+# Start all services
+docker-compose up
+
+# Run migrations
+docker exec -it trading-backend alembic upgrade head
+
+# Run tests
+docker exec -it trading-backend pytest
+
+# View logs
+docker logs -f trading-backend
+docker logs -f trading-celery-worker
+```
+
+### Deployment
+```bash
+cd deploy
+./run.sh deploy      # Full deployment
+./run.sh logs api    # View logs
+./run.sh status      # Service status
+```
+
+## Resources
+
+- **Requirements**: `docs/requirements.md`
+- **Design**: `docs/design.md`
+- **Roadmap**: `docs/roadmap.md`
+- **Context**: `docs/context.md`
+- **API Docs**: http://localhost:8000/docs (local)
+- **Celery Monitor**: http://localhost:5555 (local)
+
+---
+
+**Remember**: Agent-first architecture. Keep backend thin. Test everything. Document changes. Optimize for cost.
+
+**When in doubt**: Check `docs/design.md` for patterns, `docs/context.md` for concepts, or ask clarifying questions before implementing.
+

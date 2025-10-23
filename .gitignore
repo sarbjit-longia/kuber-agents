@@ -1,0 +1,408 @@
+# Trading Platform .gitignore
+
+# ============================================
+# Environment Variables & Secrets
+# ============================================
+.env
+.env.*
+!.env.example
+*.env
+.env.local
+.env.production
+.env.development
+
+# AWS Credentials
+aws-credentials.json
+credentials
+
+# API Keys & Secrets
+secrets/
+*.key
+*.pem
+*.p12
+*.jks
+
+# ============================================
+# Python / Backend
+# ============================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.log
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# ============================================
+# Node.js / Angular / Frontend
+# ============================================
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Testing
+/coverage
+/frontend/coverage
+
+# Production builds
+/frontend/dist
+/frontend/tmp
+/frontend/out-tsc
+/frontend/.angular
+
+# Angular cache
+.angular/cache
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Docker
+# ============================================
+# Docker volumes
+docker-compose.override.yml
+.dockerignore
+
+# ============================================
+# Terraform
+# ============================================
+# Local .terraform directories
+**/.terraform/*
+.terraform/
+.terraform.lock.hcl
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which might contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Ignore override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# Terraform plan files
+tfplan
+*.tfplan
+
+# ============================================
+# Database
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+
+# PostgreSQL
+*.pgdata
+pg_data/
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ============================================
+# OS Files
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================
+# AWS
+# ============================================
+# CloudFormation
+*.template.json
+cloudformation/
+
+# Lambda
+*.zip
+lambda_packages/
+
+# CDK
+cdk.out/
+.cdk.staging/
+
+# ============================================
+# Certificates & Keys
+# ============================================
+*.cert
+*.crt
+*.der
+*.cer
+*.p7b
+*.p7c
+*.pfx
+*.key
+*.pem
+*.pub
+*.gpg
+
+# ============================================
+# Temporary Files
+# ============================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~.nib
+*.orig
+
+# ============================================
+# Build Artifacts
+# ============================================
+*.jar
+*.war
+*.ear
+*.class
+
+# ============================================
+# IDE Specific
+# ============================================
+# JetBrains (PyCharm, WebStorm, IntelliJ)
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+out/
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+.projectile
+
+# ============================================
+# Project Specific
+# ============================================
+# Local data directories
+data/
+local_data/
+test_data/
+
+# Reports
+reports/
+*.report
+
+# Backups
+backups/
+*.backup
+
+# Uploads
+uploads/
+media/
+
+# Cache
+.cache/
+*.cache
+
+# Testing
+.tox/
+.nox/
+
+# Documentation builds
+docs/_build/
+docs/_site/
+site/
+
+# ============================================
+# CI/CD
+# ============================================
+# GitHub Actions
+.github/actions-cache/
+
+# CircleCI
+.circleci/local/
+
+# ============================================
+# Misc
+# ============================================
+# Ignore MacOS finder files
+.localized
+
+# Ignore Python notebook checkpoints
+*.ipynb_checkpoints
+
+# Ignore local history (VS Code)
+.history/
+
+# Ignore local settings
+local_settings.py
+
+# Ignore Redis dump
+dump.rdb
+
+# Alembic version backup
+alembic/versions/*.pyc
+
+# Local scripts that shouldn't be committed
+scripts/local/
+local_scripts/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Profile data
+*.prof
+*.lprof
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Pycharm project files
+.idea/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Compiled Python files
+*.pyc
+
+# Backup files
+*~
+
+# Keep these template files
+!docs/env.development.template
+!docs/env.production.template
+!.env.example
+
