@@ -87,6 +87,41 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Demo pipelines use paper trading accounts
 - Demo data clearly marked in UI
 
+**FR-2.2.5**: Users shall be able to configure pipeline execution modes
+- **RUN_ONCE**: Pipeline runs once when manually started, then stops
+- **RUN_CONTINUOUS**: Pipeline runs indefinitely until manually stopped
+- **RUN_SCHEDULED**: Pipeline runs on a schedule (cron, intervals, market hours)
+- **RUN_ON_SIGNAL**: Pipeline runs continuously but waits for position to close before restarting
+- Default mode: RUN_ONCE (safest for new users)
+
+**FR-2.2.6**: Users shall be able to configure pipeline schedule settings
+- Define active trading days (e.g., Monday-Friday)
+- Set start time and end time for trading window (e.g., 9:35 AM - 3:30 PM)
+- Configure timezone for schedule (e.g., America/New_York)
+- Set schedule type: cron expression, market open + offset, or interval
+- Configure maximum trades per day
+- Configure maximum executions per day
+
+**FR-2.2.7**: System shall enforce trading time windows
+- Only execute pipeline during configured time window
+- Check time window before each pipeline restart
+- Stop pipeline automatically at end time if configured
+- Send notifications before and at end of trading window
+
+**FR-2.2.8**: System shall support end-of-day position management
+- Option to flatten (close) all positions at end of trading window
+- Close positions at market price regardless of P&L
+- Log all end-of-day closures for audit trail
+- Notify user when positions are auto-closed
+- Warning in UI when this feature is enabled
+
+**FR-2.2.9**: System shall support auto-stop conditions
+- Stop if daily loss exceeds configured amount
+- Stop if drawdown exceeds configured percentage
+- Stop after reaching max trades per day
+- Stop after reaching max executions per day
+- Notify user when auto-stop triggered
+
 ### 2.3 Agent Framework
 
 **FR-2.3.1**: System shall support standard agent interface
@@ -233,27 +268,59 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Show risk calculations (account risk, position risk)
 - Justify any adjustments to Strategy Agent's proposal
 
-#### 2.4.6 Trade Manager Agent
+#### 2.4.6 Trade Manager Agent (Enhanced)
 
-**FR-2.4.6.1**: Trade Manager Agent shall execute approved trades
-- Submit orders to connected broker
-- Support order types: Market, Limit
-- Handle order confirmations and fills
+**FR-2.4.6.1**: Trade Manager Agent shall manage complete trade lifecycle
+- Execute approved trades
+- Monitor open positions
+- Execute exit strategies (stop loss, targets)
+- Provide manual intervention controls
 
-**FR-2.4.6.2**: Trade Manager Agent shall support multiple brokers
-- MVP: At least one broker (Alpaca recommended)
+**FR-2.4.6.2**: Trade Manager Agent shall check for position conflicts before execution
+- Query broker for existing open positions
+- Check if position already exists for symbol
+- Reject trades that would create duplicate positions (configurable)
+- Prevent conflicting direction trades (long vs short)
+
+**FR-2.4.6.3**: Trade Manager Agent shall execute trades with exit orders
+- Submit main order to broker
+- Place bracket orders (stop loss + take profit) if broker supports
+- Place individual stop/target orders as fallback
+- Support configurable partial exits (e.g., 50% at T1, 50% at T2)
+
+**FR-2.4.6.4**: Trade Manager Agent shall monitor open positions
+- Check position status every 60 seconds
+- Monitor for stop loss hit
+- Monitor for target price hits
+- Execute partial exits when Target 1 reached
+- Move stop to breakeven after Target 1 (configurable)
+- Close remaining position when Target 2 reached
+
+**FR-2.4.6.5**: Trade Manager Agent shall support multiple brokers
+- MVP: Alpaca (supports bracket orders)
 - Architecture supports multiple broker integrations via tools
 - Users connect their own broker accounts
+- Prioritize brokers with bracket order support
 
-**FR-2.4.6.3**: Trade Manager Agent shall handle execution errors
+**FR-2.4.6.6**: Trade Manager Agent shall handle execution errors
 - Retry failed orders (configurable)
 - Log all execution attempts
+- Handle partial fills
 - Notify user of failures
 
-**FR-2.4.6.4**: Trade Manager Agent shall track execution details
+**FR-2.4.6.7**: Trade Manager Agent shall track execution details
 - Order ID, fill price, fill time
 - Slippage calculation
 - Commission/fees
+- Position monitoring status
+- Partial exit timestamps
+- Final P&L when position closed
+
+**FR-2.4.6.8**: Trade Manager Agent shall be configurable
+- Allow pyramiding (multiple positions same symbol): Yes/No
+- Partial exit split: Configurable percentage (default 50%/50%)
+- Move stop to breakeven: Yes/No
+- Monitoring frequency: Default 60 seconds
 
 #### 2.4.7 Reporting Agent
 
@@ -282,6 +349,109 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - List all reports by pipeline
 - Search/filter by date, symbol, outcome
 - Export reports (PDF, JSON)
+
+#### 2.4.8 Pipeline Manager Agent
+
+**FR-2.4.8.1**: Pipeline Manager Agent shall coordinate pipeline execution
+- One manager agent per pipeline (auto-injected)
+- Manages pipeline's budget allocation
+- Tracks pipeline's positions
+- Coordinates inter-agent communication
+- Makes intervention decisions
+
+**FR-2.4.8.2**: Pipeline Manager Agent shall track pipeline budget
+- Load pipeline's budget allocation from configuration
+- Track cumulative cost during execution
+- Check budget before pipeline starts
+- Monitor budget after each agent execution
+- Stop pipeline if budget exhausted
+
+**FR-2.4.8.3**: Pipeline Manager Agent shall receive cost reports from agents
+- All pipeline agents report costs to their Pipeline Manager
+- Manager accumulates costs in real-time
+- Compares cumulative cost against budget allocation
+- Triggers budget exhaustion protocol if limit reached
+
+**FR-2.4.8.4**: Pipeline Manager Agent shall manage positions
+- Track all positions opened by this pipeline
+- Receive position registrations from Trade Manager
+- Maintain position registry for this pipeline only
+- Command Trade Manager to close positions when needed
+
+**FR-2.4.8.5**: Pipeline Manager Agent shall handle budget exhaustion
+- Detect when pipeline budget is exhausted (daily or monthly)
+- Send emergency close command to Trade Manager
+- Trade Manager closes all positions at market price
+- Log all interventions in audit table
+- Stop pipeline execution
+- Notify user of budget exhaustion
+
+**FR-2.4.8.6**: Pipeline Manager Agent shall be a system agent
+- Auto-injected into every pipeline (first agent)
+- Not visible in pipeline builder UI
+- Free (no cost to user)
+- Cannot be removed or configured by user
+
+**FR-2.4.8.7**: Pipelines shall have budget allocations
+- Each pipeline configured with daily budget limit (optional)
+- Each pipeline configured with monthly budget limit (optional)
+- Budget allocation is subset of user's total budget
+- Multiple pipelines can have independent budget allocations
+
+#### 2.4.9 Stock Picker Agent
+
+**FR-2.4.9.1**: Stock Picker Agent shall select symbols from screener
+- Execute saved screener to find matching stocks
+- Apply user-defined filters (price, volume, sector, technical indicators)
+- Return ordered list of symbols based on screening criteria
+- Support top N selection (e.g., analyze top 10 stocks from screener)
+
+**FR-2.4.8.2**: Stock Picker Agent shall support multiple symbol sources
+- Saved screeners (user-created filters)
+- CSV import (from external tools like Finviz, TradingView)
+- Manual symbol lists
+- Watchlists
+
+**FR-2.4.8.3**: Stock Picker Agent shall add symbols to pipeline state
+- Populate `state.symbols` list for downstream agents
+- All subsequent agents shall analyze each symbol
+- Support parallel execution for multiple symbols
+
+**FR-2.4.8.4**: Stock Picker Agent shall be configurable
+- Screener selection (dropdown of saved screeners)
+- Top N symbols to analyze
+- Refresh on each run vs use cached results
+- Fallback to previous results if no symbols found
+
+**FR-2.4.8.5**: Stock Picker Agent shall be free (no cost)
+- Agent itself does not incur charges
+- Downstream agents charge per symbol analyzed (see FR-2.5.10)
+
+#### 2.4.10 Stock Screener System
+
+**FR-2.4.10.1**: System shall provide stock screener functionality
+- Create and save screening filters
+- Basic filters: price range, volume, market cap, sector
+- Technical filters: SMA crossovers, RSI levels, price vs moving averages
+- Performance filters: day change %, volume vs average
+
+**FR-2.4.10.2**: Screeners shall be reusable
+- Save screener configurations with name and description
+- Reference screeners by ID in Stock Picker Agent
+- Edit and delete saved screeners
+- Preview screener results before using in pipeline
+
+**FR-2.4.10.3**: System shall support screener result import
+- CSV file upload (symbol list)
+- Import from Finviz URL (future)
+- Import from TradingView export (future)
+- Validate symbols before adding to pipeline
+
+**FR-2.4.10.4**: Screener execution shall be efficient
+- Cache screener results (configurable TTL)
+- Execute on stock universe (S&P 500, Russell 2000, or all US stocks)
+- Return results with sorting options (volume, price, market cap, performance)
+- Limit max results (default 50)
 
 ### 2.5 Cost Tracking & Billing
 
@@ -313,6 +483,71 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Historical cost reports
 - Cost projections based on usage patterns
 
+**FR-2.5.6**: System shall provide pre-execution cost estimation
+- Calculate estimated cost per execution before starting pipeline
+- Estimate based on agent configuration and historical data
+- Show cost breakdown by agent (rental cost + LLM token cost)
+- Estimate daily and monthly costs based on execution mode and schedule
+- Display estimated execution duration
+
+**FR-2.5.7**: System shall compare estimates against user budget
+- Calculate percentage of budget that will be used
+- Show warnings if estimate exceeds 80% of budget
+- Show error if estimate exceeds 100% of budget
+- Allow user to adjust configuration to reduce costs
+
+**FR-2.5.8**: System shall display cost estimates in UI
+- Show estimate in pipeline builder before starting
+- Display cost breakdown per agent
+- Show daily and monthly cost ranges
+- Provide "View Detailed Breakdown" option
+- Update estimate dynamically as pipeline configuration changes
+
+**FR-2.5.9**: System shall track estimate accuracy
+- Compare estimated vs actual costs after execution
+- Store accuracy metrics for improving future estimates
+- Adjust estimates based on user's historical execution patterns
+- Display confidence level for estimates (low, medium, high)
+
+**FR-2.5.10**: System shall implement per-symbol pricing for multi-symbol pipelines
+- Each agent charges per symbol analyzed (hourly rate × runtime × number of symbols)
+- LLM token costs multiply by number of symbols
+- Stock Picker Agent itself is free
+- Display clear cost breakdown showing per-symbol multiplier in estimates
+
+**FR-2.5.11**: Pipeline Manager Agent shall enforce pipeline budget limits before execution
+- Check pipeline's budget allocation before starting
+- Calculate estimated cost for current execution
+- Block execution if estimated cost exceeds pipeline's remaining allocation
+- Notify user when pipeline is blocked due to budget
+
+**FR-2.5.12**: Pipeline Manager Agent shall stop pipeline when budget exhausted
+- Monitor cumulative spend during execution via cost reports from agents
+- Check pipeline budget after each agent completes
+- Detect when pipeline budget cap reached mid-execution
+- Stop pipeline execution immediately
+- Log budget exhaustion event with details
+
+**FR-2.5.13**: Pipeline Manager Agent shall close positions when budget exhausted
+- If pipeline budget exhausted, send emergency close command to Trade Manager
+- Trade Manager executes market orders to flatten all pipeline positions immediately
+- Pipeline Manager logs all interventions in `manual_interventions` table
+- Notify user of forced position closes with reason "pipeline_budget_exhausted"
+- Only close positions belonging to this pipeline (isolated)
+
+**FR-2.5.14**: Pipelines shall have individual budget allocations
+- Each pipeline configured with daily budget limit (optional)
+- Each pipeline configured with monthly budget limit (optional)
+- Pipeline budget is subset/allocation from user's total budget
+- Multiple pipelines can have independent allocations
+- Budget allocation configured in pipeline settings
+
+**FR-2.5.15**: System shall provide pipeline budget alerts
+- Alert at 80% of pipeline budget used
+- Per-pipeline budget tracking and reporting
+- Email and in-app notifications for pipeline-specific budget issues
+- Warning in UI if pipeline approaching budget limit
+
 ### 2.6 Monitoring & Observability
 
 **FR-2.6.1**: Users shall see real-time pipeline status
@@ -339,6 +574,22 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Calculate realized P&L
 - Link to detailed reports
 
+**FR-2.6.5**: System shall provide positions dashboard
+- List all currently open positions
+- Show position details: symbol, side, quantity, entry price
+- Display current P&L (unrealized)
+- Show stop loss and target prices
+- Display which pipeline created each position
+- Show position age (time held)
+- Update in real-time or near real-time
+
+**FR-2.6.6**: System shall provide manual intervention controls
+- Emergency close button per position (market order)
+- Emergency close all positions button
+- Confirmation dialog before closing
+- Manual close reasons logged for audit
+- Immediately stop position monitoring after manual close
+
 ### 2.7 Notification System
 
 **FR-2.7.1**: System shall send email notifications
@@ -354,6 +605,133 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Configurable notification preferences
 
 **FR-2.7.3**: Future: SMS notifications (post-MVP)
+
+### 2.8 Performance Analytics & Insights
+
+**FR-2.8.1**: System shall provide pipeline performance analytics
+- Calculate key metrics: Total P&L, win rate, average win/loss, win/loss ratio
+- Display advanced metrics: Sharpe ratio, max drawdown, profit factor
+- Show cost analysis: Total cost, net P&L, ROI (P&L / Cost)
+- Track trade statistics: Total trades, winning trades, losing trades, breakeven trades
+- Calculate average hold time per position
+- Identify largest win and largest loss with trade details
+
+**FR-2.8.2**: System shall provide time-based performance breakdowns
+- Analyze performance by symbol (P&L, win rate per symbol)
+- Analyze performance by day of week (Monday-Friday breakdown)
+- Analyze performance by time of day (market hour segments)
+- Generate equity curve showing cumulative P&L over time
+
+**FR-2.8.3**: System shall support configurable analysis periods
+- Last 7 days, 30 days, 90 days, or all time
+- Custom date range selection
+- Performance comparison across different periods
+
+**FR-2.8.4**: System shall enable pipeline comparison
+- Side-by-side comparison of multiple pipelines
+- Compare same metrics across pipelines
+- Identify best/worst performing pipelines
+- Support comparison within same time period
+
+**FR-2.8.5**: System shall provide aggregate user-level analytics
+- Total P&L across all user's pipelines
+- Total trades executed
+- Total cost incurred
+- Breakdown by individual pipeline
+
+**FR-2.8.6**: Performance dashboard shall display visual charts
+- Equity curve chart (cumulative P&L over time)
+- Win rate visualization
+- P&L breakdown by symbol (bar chart)
+- P&L breakdown by day/time (heatmap or bar chart)
+- Drawdown chart
+
+**FR-2.8.7**: System shall support performance report export
+- Export performance metrics as PDF
+- Export raw trade data as CSV
+- Include charts and visualizations in exports
+
+### 2.9 Testing & Dry Run Mode
+
+**FR-2.9.1**: System shall support multiple pipeline execution modes
+- **Live Mode**: Real trades executed through broker with real money
+- **Paper Trading Mode**: Real broker API but paper trading account (no real money)
+- **Simulation Mode**: Fully simulated trades, no broker API calls, instant execution
+- **Validation Mode**: Strategy validation only, no trade execution at all
+
+**FR-2.9.2**: Users shall be able to configure pipeline mode
+- Mode selection during pipeline creation
+- Ability to change mode (with confirmation for live mode)
+- Mode clearly displayed in UI at all times
+- Warning prompts when switching to live mode
+
+**FR-2.9.3**: Paper Trading Mode shall integrate with broker paper accounts
+- Use broker's paper trading API endpoints
+- Execute trades on paper account (Alpaca Paper, etc.)
+- Real market data but simulated fills
+- Track paper account balance and positions
+- Generate realistic trade reports with paper account data
+
+**FR-2.9.4**: Simulation Mode shall provide instant trade simulation
+- No broker API calls
+- Instant trade fills at current market price
+- Configurable slippage and commission simulation
+- Simulated account balance tracking
+- Generate trade reports identical to live mode
+
+**FR-2.9.5**: Validation Mode shall test strategy logic without execution
+- Run all agents except Trade Manager
+- Validate strategy signals and risk approvals
+- Generate "what would have happened" reports
+- Track hypothetical performance
+- No position opening or closing
+
+**FR-2.9.6**: System shall enforce strict mode isolation
+- Test mode pipelines cannot execute real trades
+- Live mode requires explicit broker connection
+- Clear visual indicators in UI for each mode
+- Audit log for mode changes
+- Confirmation dialogs for switching to live mode
+
+**FR-2.9.7**: System shall provide test data generation
+- Generate realistic market data for demos
+- Pre-configured demo pipelines for new users
+- Sample trade history for UI testing
+- Synthetic performance data for analytics testing
+
+**FR-2.9.8**: System shall track costs differently by mode
+- Live Mode: Full cost tracking (agent fees + LLM + broker fees)
+- Paper Trading Mode: Agent fees + LLM costs (no real broker fees)
+- Simulation Mode: Agent fees + LLM costs only
+- Validation Mode: Agent fees + LLM costs only
+- Clear cost breakdown by mode in billing
+
+**FR-2.9.9**: UI shall prominently display pipeline mode
+- Large visual indicator (banner/badge) showing current mode
+- Color coding: Green (Live), Blue (Paper), Yellow (Simulation), Gray (Validation)
+- Mode shown in pipeline list, detail view, and execution monitoring
+- Warning messages in test modes about non-real trades
+- Separate performance dashboards for test vs live pipelines
+
+**FR-2.9.10**: System shall provide mode-specific limitations
+- Test mode pipelines: No real broker connection required
+- Live mode pipelines: Require verified broker connection
+- Test modes: Can use higher frequency triggers for faster testing
+- Live mode: Enforce reasonable rate limits
+
+**FR-2.9.11**: System shall support safe testing workflow
+- New users start with simulation mode only
+- Unlock paper trading after completing demo
+- Unlock live mode after paper trading success + broker verification
+- Option to clone live pipeline as test pipeline for modification
+- Test changes before applying to live pipeline
+
+**FR-2.9.12**: System shall generate realistic test results
+- Simulation mode: Apply realistic slippage (0.1-0.5%)
+- Simulation mode: Apply commission costs (broker-specific)
+- Simulation mode: Simulate partial fills for large orders
+- Simulation mode: Simulate order rejections (buying power, market closed)
+- Paper trading mode: Use broker's realistic paper trading simulation
 
 ---
 

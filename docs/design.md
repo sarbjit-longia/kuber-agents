@@ -669,26 +669,116 @@ RiskDecision(
 )
 ```
 
-### 4.7 Trade Manager Agent
+### 4.7 Trade Manager Agent (Enhanced)
 
-**Purpose**: Execute approved trades via broker
+**Purpose**: Execute trades, manage positions, monitor exits, provide manual controls
 
 **Input Requirements**: `state.risk` (approved), `state.strategy`
 
 **Tools Used**:
-- BrokerTool: Submit orders to Alpaca/IBKR
+- BrokerTool (Enhanced): Submit orders, query positions, manage exits
+
+**Configuration**:
+```python
+{
+    "type": "trade_manager_agent",
+    "allow_pyramiding": False,  # Allow multiple positions same symbol
+    "partial_exit_split": [50, 50],  # [T1%, T2%]
+    "move_stop_to_breakeven": True,
+    "monitoring_enabled": True
+}
+```
 
 **Process**:
-1. Check if trade approved by risk manager
-2. Construct order payload
-3. Submit order to broker
-4. Poll for fill confirmation
-5. Calculate slippage
-6. Submit stop loss and target orders (bracket order or separate)
+1. **Pre-Trade Position Check**
+   - Query broker for existing open positions
+   - Check if position already exists for symbol
+   - Reject if conflict (configurable)
+   
+2. **Execute Trade**
+   - Check if trade approved by risk manager
+   - Construct order payload with stops/targets
+   - Submit bracket order (if broker supports)
+   - Or submit main order + stop/target orders separately
+   - Poll for fill confirmation
+   - Calculate slippage
 
-**LLM Usage**: None (order execution logic only)
+3. **Start Position Monitoring**
+   - Store position details in monitoring system
+   - Schedule periodic checks (every 60 seconds)
+   - Monitor for stop loss hit, target hits
 
-**Output**: Updates `state.trade`
+4. **Position Monitoring Loop** (Celery Task)
+   - Query broker for current position status
+   - Check current price vs stop/targets
+   - If stop hit: Close position, create report
+   - If Target 1 hit: Close partial (configurable %), move stop to breakeven
+   - If Target 2 hit: Close remaining position
+   - Schedule next check if position still open
+
+5. **Manual Controls**
+   - Expose emergency close via API
+   - Stop monitoring when manually closed
+   - Log manual intervention for audit
+
+**LLM Usage**: None (execution and monitoring logic only)
+
+**Output**: Updates `state.trade` with execution details
+
+**Example Flow**:
+```python
+# Approved trade from Risk Manager
+approved_trade = RiskDecision(
+    approved=True,
+    position_size=600,  # shares
+    ...
+)
+
+# Strategy details
+strategy = StrategySignal(
+    entry_price=150.50,
+    stop_loss=148.00,
+    target_1=154.25,
+    target_2=158.00
+)
+
+# Trade Manager checks broker
+existing_positions = broker_tool.get_open_positions()
+if "AAPL" in [p.symbol for p in existing_positions]:
+    return TradeExecution(status="REJECTED", reason="Position exists")
+
+# Execute
+order = broker_tool.place_bracket_order(
+    symbol="AAPL",
+    side="BUY",
+    quantity=600,
+    stop_loss=148.00,
+    take_profit_1=154.25,
+    take_profit_2=158.00
+)
+
+# Start monitoring
+monitor_position_task.apply_async(args=[position_data])
+```
+
+**Broker Tool Enhancement**:
+```python
+class BrokerTool:
+    def get_open_positions(self) -> List[Position]:
+        """Query broker for all open positions"""
+        
+    def place_bracket_order(self, ...):
+        """Place order with attached stop/targets"""
+        
+    def emergency_close_position(self, symbol: str):
+        """Immediately close at market"""
+        
+    def close_partial_position(self, symbol: str, quantity: int):
+        """Close partial position"""
+        
+    def modify_stop_loss(self, symbol: str, new_stop: float):
+        """Move stop to breakeven"""
+```
 
 ### 4.8 Reporting Agent
 
@@ -1081,9 +1171,2138 @@ export class WebSocketService {
 
 ---
 
-## 8. Database Design
+## 8. Pipeline Scheduling & Execution Modes
 
-### 5.1 PostgreSQL Schema
+### 8.1 Execution Modes
+
+Pipelines support four execution modes to handle different trading strategies:
+
+**1. RUN_ONCE** (Default - Safest)
+- Pipeline runs once when manually started
+- After completion, status = "completed", stops
+- User must manually start again
+- Use case: Test a strategy, one-time scan
+
+**2. RUN_CONTINUOUS**
+- Pipeline runs indefinitely until manually stopped
+- After completing one cycle, immediately restarts
+- Checks time windows and daily limits before restart
+- Use case: Day trading, continuous monitoring
+
+**3. RUN_SCHEDULED**
+- Pipeline runs on a schedule (cron, intervals, market hours)
+- Celery Beat manages scheduling
+- Use case: Daily analysis at market open, hourly scans
+
+**4. RUN_ON_SIGNAL**
+- Runs continuously but position-aware
+- Won't restart if position still open
+- Once position closes, automatically restarts
+- Use case: One position at a time, wait for exit before next entry
+
+### 8.2 Schedule Configuration Schema
+
+```python
+from enum import Enum
+from pydantic import BaseModel
+from typing import Optional, List
+
+class ExecutionMode(str, Enum):
+    RUN_ONCE = "run_once"
+    RUN_CONTINUOUS = "run_continuous"
+    RUN_SCHEDULED = "run_scheduled"
+    RUN_ON_SIGNAL = "run_on_signal"
+
+class ScheduleConfig(BaseModel):
+    """Complete schedule configuration for pipeline execution"""
+    
+    # Schedule type
+    schedule_type: str  # "cron", "market_open", "interval", "time_window"
+    
+    # For cron scheduling
+    cron_expression: Optional[str] = None  # "0 9 * * 1-5" (9 AM weekdays)
+    
+    # For market-based scheduling
+    market: Optional[str] = "US"
+    offset_minutes: Optional[int] = 5  # Start N minutes after market open
+    
+    # For interval scheduling
+    interval_minutes: Optional[int] = None  # Run every X minutes
+    active_during: Optional[str] = "market_hours"  # or "24/7"
+    
+    # Time window control (NEW)
+    start_time: Optional[str] = None  # "09:35" (HH:MM format)
+    end_time: Optional[str] = None    # "15:30" (HH:MM format)
+    timezone: str = "America/New_York"
+    
+    # Active days (0=Monday, 6=Sunday)
+    active_days: List[int] = [0, 1, 2, 3, 4]  # Default: weekdays
+    
+    # End-of-day position management (NEW)
+    flatten_positions_at_end: bool = False  # Auto-close at end_time
+    stop_pipeline_at_end: bool = True       # Stop pipeline at end_time
+    
+    # Trading limits
+    max_trades_per_day: Optional[int] = None
+    max_executions_per_day: Optional[int] = None
+    
+    # Auto-stop conditions
+    stop_on_daily_loss: Optional[float] = None  # Stop if lose $X
+    stop_on_drawdown: Optional[float] = None    # Stop if drawdown X%
+
+class PipelineConfig(BaseModel):
+    """Pipeline configuration including execution mode"""
+    id: str
+    name: str
+    symbol: str
+    nodes: List[Node]
+    edges: List[Edge]
+    
+    # Execution configuration
+    execution_mode: ExecutionMode = ExecutionMode.RUN_ONCE
+    schedule_config: Optional[ScheduleConfig] = None
+```
+
+### 8.3 Time Window Management
+
+```python
+# app/orchestration/time_window.py
+
+from datetime import datetime, time
+import pytz
+
+class TimeWindowChecker:
+    """Check if current time is within configured trading window"""
+    
+    def __init__(self, schedule_config: ScheduleConfig):
+        self.config = schedule_config
+        self.tz = pytz.timezone(schedule_config.timezone)
+    
+    def is_within_window(self) -> bool:
+        """Check if current time is within start_time and end_time"""
+        
+        if not self.config.start_time or not self.config.end_time:
+            return True  # No time restriction
+        
+        now = datetime.now(self.tz)
+        
+        # Check day of week
+        if now.weekday() not in self.config.active_days:
+            return False
+        
+        # Parse times
+        start = datetime.strptime(self.config.start_time, "%H:%M").time()
+        end = datetime.strptime(self.config.end_time, "%H:%M").time()
+        current = now.time()
+        
+        # Check if within window
+        if start <= end:
+            return start <= current <= end
+        else:
+            # Crosses midnight: 22:00 - 02:00
+            return current >= start or current <= end
+    
+    def is_past_end_time(self) -> bool:
+        """Check if current time is past end_time"""
+        if not self.config.end_time:
+            return False
+        
+        now = datetime.now(self.tz)
+        end = datetime.strptime(self.config.end_time, "%H:%M").time()
+        return now.time() > end
+    
+    def seconds_until_end(self) -> Optional[int]:
+        """Calculate seconds until end_time"""
+        if not self.config.end_time:
+            return None
+        
+        now = datetime.now(self.tz)
+        end_time = datetime.strptime(self.config.end_time, "%H:%M").time()
+        end_datetime = datetime.combine(now.date(), end_time, tzinfo=self.tz)
+        
+        if end_datetime < now:
+            return 0
+        
+        return int((end_datetime - now).total_seconds())
+```
+
+### 8.4 Pipeline Execution with Time Windows
+
+```python
+# app/orchestration/executor.py
+
+@celery_app.task
+def execute_pipeline(pipeline_id: str, user_id: str):
+    """
+    Main pipeline execution task with time window and mode handling
+    """
+    pipeline = load_pipeline(pipeline_id)
+    
+    # Check if within trading window
+    time_checker = TimeWindowChecker(pipeline.schedule_config)
+    
+    if not time_checker.is_within_window():
+        logger.info(f"Pipeline {pipeline_id} outside trading window")
+        
+        if time_checker.is_past_end_time():
+            handle_end_of_day(pipeline, user_id)
+        
+        return
+    
+    # Execute the pipeline flow
+    flow = TradingPipelineFlow(pipeline.config, user_id)
+    result = flow.run()
+    
+    # Determine if should restart based on execution mode
+    if should_restart_pipeline(pipeline, result):
+        seconds_until_end = time_checker.seconds_until_end()
+        
+        # Don't restart if less than 5 minutes until end time
+        if seconds_until_end and seconds_until_end < 300:
+            logger.info(f"Pipeline {pipeline_id} near end time, scheduling EOD")
+            schedule_end_of_day_task(pipeline_id, user_id, seconds_until_end)
+        else:
+            schedule_pipeline_restart(pipeline_id, user_id, pipeline.execution_mode)
+    else:
+        mark_pipeline_completed(pipeline_id)
+
+def should_restart_pipeline(pipeline: Pipeline, result: ExecutionResult) -> bool:
+    """Determine if pipeline should restart after execution"""
+    
+    mode = pipeline.execution_mode
+    
+    if mode == ExecutionMode.RUN_ONCE:
+        return False
+    
+    if mode == ExecutionMode.RUN_CONTINUOUS:
+        # Check trading limits
+        if exceeded_daily_limits(pipeline):
+            logger.info(f"Pipeline {pipeline.id} hit daily limit")
+            return False
+        return True
+    
+    if mode == ExecutionMode.RUN_ON_SIGNAL:
+        # Check if position is open
+        position = check_open_position(pipeline.user_id, pipeline.symbol)
+        if position:
+            # Wait for position to close
+            schedule_restart_after_position_close(pipeline.id, pipeline.symbol)
+            return False
+        return True
+    
+    if mode == ExecutionMode.RUN_SCHEDULED:
+        # Celery Beat handles scheduling
+        return False
+    
+    return False
+
+def exceeded_daily_limits(pipeline: Pipeline) -> bool:
+    """Check if pipeline has hit daily limits"""
+    
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0)
+    
+    # Check max trades
+    if pipeline.schedule_config.max_trades_per_day:
+        trades_today = count_trades_today(pipeline.id, today_start)
+        if trades_today >= pipeline.schedule_config.max_trades_per_day:
+            notify_user(pipeline.user_id, "Pipeline stopped: Max trades per day reached")
+            return True
+    
+    # Check max executions
+    if pipeline.schedule_config.max_executions_per_day:
+        executions_today = count_executions_today(pipeline.id, today_start)
+        if executions_today >= pipeline.schedule_config.max_executions_per_day:
+            return True
+    
+    # Check daily loss limit
+    if pipeline.schedule_config.stop_on_daily_loss:
+        daily_pnl = calculate_daily_pnl(pipeline.id, today_start)
+        if daily_pnl < -pipeline.schedule_config.stop_on_daily_loss:
+            logger.warning(f"Pipeline {pipeline.id} hit daily loss limit: ${daily_pnl}")
+            notify_user(
+                pipeline.user_id, 
+                f"Pipeline stopped: Daily loss limit of ${pipeline.schedule_config.stop_on_daily_loss} exceeded"
+            )
+            return True
+    
+    return False
+```
+
+### 8.5 End-of-Day Position Management
+
+```python
+def handle_end_of_day(pipeline: Pipeline, user_id: str):
+    """Handle end-of-day actions when pipeline reaches end_time"""
+    
+    logger.info(f"Pipeline {pipeline.id} reached end time")
+    
+    # Flatten positions if configured
+    if pipeline.schedule_config.flatten_positions_at_end:
+        logger.info(f"Flattening all positions for pipeline {pipeline.id}")
+        flatten_all_positions(user_id, pipeline.id, reason="End of trading window")
+    
+    # Stop pipeline if configured
+    if pipeline.schedule_config.stop_pipeline_at_end:
+        logger.info(f"Stopping pipeline {pipeline.id} at end of window")
+        update_pipeline_status(pipeline.id, "stopped")
+        
+        notify_user(
+            user_id,
+            f"Pipeline '{pipeline.name}' stopped at end of trading window ({pipeline.schedule_config.end_time})"
+        )
+
+@celery_app.task
+def flatten_all_positions(user_id: str, pipeline_id: str, reason: str):
+    """Close all open positions for a pipeline at market price"""
+    
+    broker_tool = BrokerTool(user_id=user_id)
+    positions = broker_tool.get_open_positions()
+    
+    if not positions:
+        logger.info(f"No positions to flatten for pipeline {pipeline_id}")
+        return
+    
+    closed_positions = []
+    failed_positions = []
+    total_pnl = 0.0
+    
+    for position in positions:
+        try:
+            # Check if position created by this pipeline
+            trade = get_trade_by_symbol_and_pipeline(user_id, position.symbol, pipeline_id)
+            if not trade:
+                continue
+            
+            logger.info(f"Closing position {position.symbol} for pipeline {pipeline_id}")
+            result = broker_tool.emergency_close_position(position.symbol)
+            
+            # Stop monitoring
+            stop_position_monitoring(user_id, position.symbol)
+            
+            # Log the flatten
+            log_position_flatten(
+                user_id=user_id,
+                pipeline_id=pipeline_id,
+                symbol=position.symbol,
+                reason=reason,
+                fill_price=result.fill_price,
+                pnl=position.unrealized_pnl
+            )
+            
+            closed_positions.append(position.symbol)
+            total_pnl += position.unrealized_pnl
+            
+        except Exception as e:
+            logger.error(f"Failed to close {position.symbol}: {e}")
+            failed_positions.append(position.symbol)
+    
+    # Log EOD action
+    log_eod_action(
+        pipeline_id=pipeline_id,
+        user_id=user_id,
+        positions_closed=len(closed_positions),
+        total_pnl=total_pnl,
+        reason=reason
+    )
+    
+    # Notify user
+    if closed_positions:
+        notify_user(
+            user_id,
+            f"Pipeline '{pipeline_id}' closed {len(closed_positions)} positions at end of trading window: {', '.join(closed_positions)}. Total P&L: ${total_pnl:.2f}"
+        )
+    
+    if failed_positions:
+        notify_user(
+            user_id,
+            f"Warning: Failed to close positions: {', '.join(failed_positions)}",
+            level="warning"
+        )
+    
+    return {
+        "closed": closed_positions,
+        "failed": failed_positions,
+        "total_pnl": total_pnl
+    }
+
+# Periodic task to check time windows (runs every minute)
+@celery_app.task
+def check_pipeline_time_windows():
+    """Check if any active pipelines have passed their end_time"""
+    
+    active_pipelines = get_active_pipelines_with_time_windows()
+    
+    for pipeline in active_pipelines:
+        time_checker = TimeWindowChecker(pipeline.schedule_config)
+        
+        if time_checker.is_past_end_time():
+            logger.info(f"Pipeline {pipeline.id} past end time, triggering EOD")
+            handle_end_of_day(pipeline, pipeline.user_id)
+```
+
+### 8.6 Celery Beat Scheduled Tasks
+
+```python
+# app/orchestration/beat_schedule.py
+
+@celery_app.on_after_configure.connect
+def setup_periodic_tasks(sender, **kwargs):
+    """Register scheduled pipelines with Celery Beat"""
+    
+    # Time window checker - runs every minute
+    sender.add_periodic_task(
+        60.0,
+        check_pipeline_time_windows.s(),
+        name='check-pipeline-time-windows'
+    )
+    
+    # Load all RUN_SCHEDULED pipelines
+    scheduled_pipelines = get_scheduled_pipelines()
+    
+    for pipeline in scheduled_pipelines:
+        schedule = create_schedule(pipeline.schedule_config)
+        
+        sender.add_periodic_task(
+            schedule,
+            execute_pipeline.s(pipeline.id, pipeline.user_id),
+            name=f'scheduled-pipeline-{pipeline.id}'
+        )
+
+def create_schedule(config: ScheduleConfig):
+    """Convert schedule config to Celery schedule"""
+    from celery.schedules import crontab
+    
+    if config.schedule_type == "cron":
+        return crontab(config.cron_expression)
+    
+    elif config.schedule_type == "interval":
+        return config.interval_minutes * 60  # seconds
+    
+    elif config.schedule_type == "market_open":
+        # Market open: 9:30 AM ET on weekdays
+        hour = 9
+        minute = 30 + config.offset_minutes
+        return crontab(hour=hour, minute=minute, day_of_week='1-5')
+    
+    elif config.schedule_type == "time_window":
+        # Uses start_time
+        start = datetime.strptime(config.start_time, "%H:%M")
+        return crontab(hour=start.hour, minute=start.minute, day_of_week='1-5')
+```
+
+### 8.7 Database Schema Updates
+
+```sql
+-- Add execution mode and schedule config to pipelines table
+ALTER TABLE pipelines ADD COLUMN execution_mode VARCHAR(50) DEFAULT 'run_once';
+ALTER TABLE pipelines ADD COLUMN schedule_config JSONB;
+ALTER TABLE pipelines ADD COLUMN current_status VARCHAR(50) DEFAULT 'stopped';
+ALTER TABLE pipelines ADD COLUMN last_execution_at TIMESTAMP;
+ALTER TABLE pipelines ADD COLUMN next_scheduled_at TIMESTAMP;
+
+-- Track daily pipeline statistics
+CREATE TABLE pipeline_daily_stats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pipeline_id UUID REFERENCES pipelines(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    executions_count INTEGER DEFAULT 0,
+    trades_count INTEGER DEFAULT 0,
+    daily_pnl DECIMAL(10, 2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(pipeline_id, date)
+);
+
+CREATE INDEX idx_pipeline_daily_stats ON pipeline_daily_stats(pipeline_id, date DESC);
+
+-- Track end-of-day actions
+CREATE TABLE eod_actions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pipeline_id UUID REFERENCES pipelines(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    action_date DATE NOT NULL,
+    action_time TIME NOT NULL,
+    positions_closed INTEGER DEFAULT 0,
+    total_pnl DECIMAL(10, 2),
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_eod_actions ON eod_actions(pipeline_id, action_date DESC);
+```
+
+---
+
+## 9. Cost Estimation System
+
+### 9.1 Pre-Execution Cost Estimation
+
+**Purpose**: Provide users with accurate cost estimates BEFORE starting pipeline to enable budget planning and cost optimization.
+
+### 9.2 Cost Estimator Service
+
+```python
+# app/services/cost_estimator.py
+
+from typing import Dict, List, Tuple
+from datetime import datetime, timedelta
+from pydantic import BaseModel
+
+class CostEstimate(BaseModel):
+    """Complete cost estimate for a pipeline"""
+    cost_per_execution: float
+    agent_costs: Dict[str, Dict]  # {agent_type: {rate, duration, cost}}
+    token_costs: Dict[str, Dict]  # {agent_type: {model, tokens, cost}}
+    total_agent_cost: float
+    total_token_cost: float
+    estimated_duration_minutes: float
+    daily_cost_range: Tuple[float, float]  # (min, max)
+    monthly_cost_range: Tuple[float, float]
+    daily_executions_range: Tuple[int, int]
+    confidence: str  # "low", "medium", "high"
+
+class BudgetComparison(BaseModel):
+    """Comparison of estimate against user budget"""
+    within_budget: bool
+    warnings: List[str]
+    daily_usage_pct: float = None
+    monthly_usage_pct: float = None
+
+class CostEstimator:
+    """Estimate pipeline execution costs before running"""
+    
+    # Agent hourly rates ($/hour)
+    AGENT_HOURLY_RATES = {
+        "time_trigger": 0.0,
+        "technical_trigger": 0.03,
+        "price_trigger": 0.02,
+        "news_trigger": 0.05,
+        "market_data_agent": 0.0,
+        "bias_agent": 0.08,
+        "strategy_agent": 0.10,
+        "risk_manager_agent": 0.05,
+        "trade_manager_agent": 0.0,
+        "reporting_agent": 0.0,
+    }
+    
+    # Average execution time per agent (minutes)
+    AGENT_AVG_DURATION = {
+        "time_trigger": 0.5,
+        "technical_trigger": 1.0,
+        "price_trigger": 0.5,
+        "news_trigger": 2.0,
+        "market_data_agent": 1.0,
+        "bias_agent": 6.0,  # Uses LLM, slower
+        "strategy_agent": 6.0,
+        "risk_manager_agent": 3.0,
+        "trade_manager_agent": 2.0,
+        "reporting_agent": 2.0,
+    }
+    
+    # Average token usage per agent
+    AGENT_AVG_TOKENS = {
+        "bias_agent": {
+            "model": "gpt-4",
+            "input": 2000,
+            "output": 500
+        },
+        "strategy_agent": {
+            "model": "gpt-4",
+            "input": 1500,
+            "output": 600
+        },
+        "risk_manager_agent": {
+            "model": "gpt-3.5-turbo",
+            "input": 1000,
+            "output": 300
+        },
+        "reporting_agent": {
+            "model": "gpt-3.5-turbo",
+            "input": 3000,
+            "output": 500
+        },
+    }
+    
+    # Token costs (per 1K tokens) - update these based on OpenAI pricing
+    TOKEN_COSTS = {
+        "gpt-4": {"input": 0.03, "output": 0.06},
+        "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+    }
+    
+    def estimate_pipeline_cost(
+        self, 
+        pipeline_config: Dict,
+        user_history: Dict = None
+    ) -> CostEstimate:
+        """
+        Estimate costs for a pipeline configuration
+        
+        Args:
+            pipeline_config: Pipeline configuration dict
+            user_history: Optional historical execution data for this user
+        
+        Returns:
+            Detailed cost breakdown and estimates
+        """
+        
+        # 1. Get agents in pipeline
+        agents = self._get_agents_in_pipeline(pipeline_config)
+        
+        # 2. Calculate agent rental costs
+        agent_costs = {}
+        total_agent_cost = 0.0
+        total_duration_minutes = 0.0
+        
+        for agent_type in agents:
+            hourly_rate = self.AGENT_HOURLY_RATES.get(agent_type, 0.0)
+            
+            # Use historical data if available
+            if user_history and agent_type in user_history:
+                duration_minutes = user_history[agent_type]["avg_duration"]
+            else:
+                duration_minutes = self.AGENT_AVG_DURATION.get(agent_type, 2.0)
+            
+            # Calculate cost: (hourly_rate / 60) * duration_minutes
+            agent_cost = (hourly_rate / 60) * duration_minutes
+            
+            agent_costs[agent_type] = {
+                "hourly_rate": hourly_rate,
+                "duration_minutes": duration_minutes,
+                "cost": agent_cost
+            }
+            
+            total_agent_cost += agent_cost
+            total_duration_minutes += duration_minutes
+        
+        # 3. Calculate LLM token costs
+        token_costs = {}
+        total_token_cost = 0.0
+        
+        for agent_type in agents:
+            if agent_type in self.AGENT_AVG_TOKENS:
+                token_info = self.AGENT_AVG_TOKENS[agent_type]
+                
+                # Use historical data if available
+                if user_history and agent_type in user_history:
+                    input_tokens = user_history[agent_type]["avg_input_tokens"]
+                    output_tokens = user_history[agent_type]["avg_output_tokens"]
+                else:
+                    input_tokens = token_info["input"]
+                    output_tokens = token_info["output"]
+                
+                model = token_info["model"]
+                
+                # Calculate cost
+                input_cost = (input_tokens / 1000) * self.TOKEN_COSTS[model]["input"]
+                output_cost = (output_tokens / 1000) * self.TOKEN_COSTS[model]["output"]
+                total_cost = input_cost + output_cost
+                
+                token_costs[agent_type] = {
+                    "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cost": total_cost
+                }
+                
+                total_token_cost += total_cost
+        
+        # 4. Calculate per-execution cost
+        cost_per_execution = total_agent_cost + total_token_cost
+        
+        # 5. Estimate daily/monthly costs based on schedule
+        schedule_config = pipeline_config.get("schedule_config", {})
+        execution_mode = pipeline_config.get("execution_mode", "run_once")
+        
+        daily_estimate = self._estimate_daily_executions(
+            execution_mode,
+            schedule_config
+        )
+        
+        cost_per_day_low = cost_per_execution * daily_estimate["executions_min"]
+        cost_per_day_high = cost_per_execution * daily_estimate["executions_max"]
+        
+        # 21 trading days per month average
+        cost_per_month_low = cost_per_day_low * 21
+        cost_per_month_high = cost_per_day_high * 21
+        
+        # 6. Determine confidence level
+        confidence = "medium"
+        if user_history:
+            confidence = "high"  # Have historical data
+        elif execution_mode == "run_once":
+            confidence = "high"  # Predictable
+        elif execution_mode == "run_continuous":
+            confidence = "low"  # Depends on trigger frequency
+        
+        return CostEstimate(
+            cost_per_execution=cost_per_execution,
+            agent_costs=agent_costs,
+            token_costs=token_costs,
+            total_agent_cost=total_agent_cost,
+            total_token_cost=total_token_cost,
+            estimated_duration_minutes=total_duration_minutes,
+            daily_cost_range=(cost_per_day_low, cost_per_day_high),
+            monthly_cost_range=(cost_per_month_low, cost_per_month_high),
+            daily_executions_range=(
+                daily_estimate["executions_min"],
+                daily_estimate["executions_max"]
+            ),
+            confidence=confidence
+        )
+    
+    def _get_agents_in_pipeline(self, pipeline_config: Dict) -> List[str]:
+        """Extract agent types from pipeline configuration"""
+        agents = []
+        for node in pipeline_config.get("nodes", []):
+            agent_type = node.get("agent_type")
+            if agent_type:
+                agents.append(agent_type)
+        return agents
+    
+    def _estimate_daily_executions(
+        self,
+        execution_mode: str,
+        schedule_config: Dict
+    ) -> Dict[str, int]:
+        """
+        Estimate how many times pipeline will execute per day
+        
+        Returns: {"executions_min": int, "executions_max": int}
+        """
+        
+        if execution_mode == "run_once":
+            return {"executions_min": 1, "executions_max": 1}
+        
+        elif execution_mode == "run_scheduled":
+            if schedule_config.get("schedule_type") == "interval":
+                interval_minutes = schedule_config.get("interval_minutes", 60)
+                
+                # Get trading window duration
+                start_time = schedule_config.get("start_time", "09:35")
+                end_time = schedule_config.get("end_time", "15:30")
+                
+                start_dt = datetime.strptime(start_time, "%H:%M")
+                end_dt = datetime.strptime(end_time, "%H:%M")
+                window_minutes = (end_dt - start_dt).seconds / 60
+                
+                executions = int(window_minutes / interval_minutes)
+                return {"executions_min": executions, "executions_max": executions}
+            
+            elif schedule_config.get("schedule_type") == "market_open":
+                return {"executions_min": 1, "executions_max": 1}
+        
+        elif execution_mode == "run_continuous":
+            # Depends on trigger frequency - estimate conservatively
+            start_time = schedule_config.get("start_time", "09:35")
+            end_time = schedule_config.get("end_time", "15:30")
+            
+            start_dt = datetime.strptime(start_time, "%H:%M")
+            end_dt = datetime.strptime(end_time, "%H:%M")
+            window_hours = (end_dt - start_dt).seconds / 3600
+            
+            # Conservative: 1 per hour, Aggressive: 2 per hour
+            executions_min = max(1, int(window_hours))
+            executions_max = int(window_hours * 2)
+            
+            # Cap by max_trades_per_day
+            max_trades = schedule_config.get("max_trades_per_day")
+            if max_trades:
+                executions_max = min(executions_max, max_trades)
+            
+            return {"executions_min": executions_min, "executions_max": executions_max}
+        
+        elif execution_mode == "run_on_signal":
+            max_trades = schedule_config.get("max_trades_per_day", 3)
+            return {"executions_min": 1, "executions_max": max_trades}
+        
+        return {"executions_min": 1, "executions_max": 5}
+    
+    def compare_budget(
+        self,
+        estimate: CostEstimate,
+        user_budget: Dict
+    ) -> BudgetComparison:
+        """
+        Compare estimated costs against user's budget
+        
+        Returns warnings if approaching or exceeding budget
+        """
+        
+        daily_budget = user_budget.get("daily_limit")
+        monthly_budget = user_budget.get("monthly_limit")
+        
+        warnings = []
+        daily_pct = None
+        monthly_pct = None
+        
+        # Check daily budget
+        if daily_budget:
+            daily_pct = (estimate.daily_cost_range[1] / daily_budget) * 100
+            
+            if estimate.daily_cost_range[1] > daily_budget:
+                warnings.append(
+                    f"Estimated daily cost (${estimate.daily_cost_range[1]:.2f}) "
+                    f"may exceed daily budget (${daily_budget:.2f})"
+                )
+            elif estimate.daily_cost_range[1] > daily_budget * 0.8:
+                warnings.append(
+                    f"Estimated daily cost will use ~{daily_pct:.0f}% of daily budget"
+                )
+        
+        # Check monthly budget
+        if monthly_budget:
+            monthly_pct = (estimate.monthly_cost_range[1] / monthly_budget) * 100
+            
+            if estimate.monthly_cost_range[1] > monthly_budget:
+                warnings.append(
+                    f"Estimated monthly cost (${estimate.monthly_cost_range[1]:.2f}) "
+                    f"may exceed monthly budget (${monthly_budget:.2f})"
+                )
+            elif estimate.monthly_cost_range[1] > monthly_budget * 0.8:
+                warnings.append(
+                    f"Estimated monthly cost will use ~{monthly_pct:.0f}% of budget"
+                )
+        
+        return BudgetComparison(
+            within_budget=len(warnings) == 0,
+            warnings=warnings,
+            daily_usage_pct=daily_pct,
+            monthly_usage_pct=monthly_pct
+        )
+```
+
+### 9.3 Cost Estimation API Endpoints
+
+```python
+# app/api/v1/cost.py
+
+from fastapi import APIRouter, Depends, HTTPException
+from app.models.user import User
+from app.dependencies import get_current_user
+from app.services.cost_estimator import CostEstimator
+
+router = APIRouter(prefix="/api/v1", tags=["cost"])
+
+@router.post("/pipelines/estimate-cost", response_model=CostEstimateResponse)
+async def estimate_pipeline_cost(
+    pipeline_config: Dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Estimate costs for a pipeline configuration before running
+    
+    Returns detailed cost breakdown and budget comparison
+    """
+    
+    estimator = CostEstimator()
+    
+    # Get user's historical execution data for more accurate estimates
+    user_history = await get_user_execution_history(current_user.id)
+    
+    # Get cost estimate
+    estimate = estimator.estimate_pipeline_cost(pipeline_config, user_history)
+    
+    # Get user's budget settings
+    user_budget = await get_user_budget(current_user.id)
+    
+    # Compare against budget
+    budget_comparison = estimator.compare_budget(estimate, user_budget)
+    
+    return CostEstimateResponse(
+        estimate=estimate,
+        budget_comparison=budget_comparison,
+        timestamp=datetime.utcnow()
+    )
+
+@router.get("/pipelines/{pipeline_id}/cost-estimate")
+async def get_pipeline_cost_estimate(
+    pipeline_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get cost estimate for an existing pipeline"""
+    
+    pipeline = await get_pipeline(pipeline_id, current_user.id)
+    if not pipeline:
+        raise HTTPException(404, "Pipeline not found")
+    
+    estimator = CostEstimator()
+    user_history = await get_user_execution_history(current_user.id)
+    estimate = estimator.estimate_pipeline_cost(pipeline.config, user_history)
+    
+    user_budget = await get_user_budget(current_user.id)
+    budget_comparison = estimator.compare_budget(estimate, user_budget)
+    
+    return CostEstimateResponse(
+        estimate=estimate,
+        budget_comparison=budget_comparison,
+        timestamp=datetime.utcnow()
+    )
+
+@router.get("/cost/historical-accuracy")
+async def get_estimation_accuracy(
+    current_user: User = Depends(get_current_user),
+    days: int = 30
+):
+    """
+    Get historical accuracy of cost estimates vs actual costs
+    
+    Helps users understand confidence level of estimates
+    """
+    
+    accuracy_data = await calculate_estimation_accuracy(
+        current_user.id,
+        days=days
+    )
+    
+    return {
+        "avg_accuracy_pct": accuracy_data["avg_accuracy"],
+        "total_estimated": accuracy_data["total_estimated"],
+        "total_actual": accuracy_data["total_actual"],
+        "sample_size": accuracy_data["executions_count"],
+        "confidence": accuracy_data["confidence_level"]
+    }
+```
+
+### 9.4 Database Schema for Estimate Tracking
+
+```sql
+-- Track estimate vs actual for improving accuracy
+CREATE TABLE cost_estimate_tracking (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_id UUID REFERENCES pipeline_executions(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    pipeline_id UUID REFERENCES pipelines(id) ON DELETE CASCADE,
+    
+    -- Estimates
+    estimated_cost DECIMAL(10, 4),
+    estimated_duration_minutes DECIMAL(10, 2),
+    confidence_level VARCHAR(20),
+    
+    -- Actuals
+    actual_cost DECIMAL(10, 4),
+    actual_duration_minutes DECIMAL(10, 2),
+    
+    -- Accuracy
+    cost_accuracy_pct DECIMAL(5, 2),  -- (actual/estimated * 100)
+    duration_accuracy_pct DECIMAL(5, 2),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_cost_estimate_tracking_user ON cost_estimate_tracking(user_id, created_at DESC);
+CREATE INDEX idx_cost_estimate_tracking_pipeline ON cost_estimate_tracking(pipeline_id, created_at DESC);
+```
+
+### 9.5 Frontend Cost Display Component
+
+```typescript
+// frontend/src/app/features/pipeline-builder/cost-estimator/cost-estimator.component.ts
+
+import { Component, OnInit, Input } from '@angular/core';
+import { CostEstimatorService } from './cost-estimator.service';
+
+@Component({
+  selector: 'app-cost-estimator',
+  templateUrl: './cost-estimator.component.html',
+  styleUrls: ['./cost-estimator.component.scss']
+})
+export class CostEstimatorComponent implements OnInit {
+  @Input() pipelineConfig: PipelineConfig;
+  
+  costEstimate: CostEstimate | null = null;
+  budgetComparison: BudgetComparison | null = null;
+  loading = false;
+  showDetailedBreakdown = false;
+  
+  constructor(
+    private costService: CostEstimatorService
+  ) {}
+  
+  ngOnInit() {
+    this.estimateCosts();
+  }
+  
+  ngOnChanges(changes: SimpleChanges) {
+    // Recalculate when pipeline config changes
+    if (changes['pipelineConfig']) {
+      this.estimateCosts();
+    }
+  }
+  
+  estimateCosts() {
+    this.loading = true;
+    
+    this.costService.estimatePipelineCost(this.pipelineConfig)
+      .subscribe({
+        next: (response) => {
+          this.costEstimate = response.estimate;
+          this.budgetComparison = response.budget_comparison;
+          this.loading = false;
+        },
+        error: (error) => {
+          console.error('Failed to estimate costs:', error);
+          this.loading = false;
+        }
+      });
+  }
+  
+  getBudgetStatus(): 'safe' | 'warning' | 'danger' {
+    if (!this.budgetComparison) return 'safe';
+    
+    const pct = this.budgetComparison.monthly_usage_pct || 0;
+    
+    if (pct > 100) return 'danger';
+    if (pct > 80) return 'warning';
+    return 'safe';
+  }
+  
+  getConfidenceColor(confidence: string): string {
+    switch (confidence) {
+      case 'high': return 'green';
+      case 'medium': return 'yellow';
+      case 'low': return 'orange';
+      default: return 'gray';
+    }
+  }
+  
+  toggleDetailedBreakdown() {
+    this.showDetailedBreakdown = !this.showDetailedBreakdown;
+  }
+}
+```
+
+---
+
+## 10. Position Management System
+
+### 10.1 Position Monitoring (Celery Task)
+
+```python
+# app/orchestration/executor.py
+
+@celery_app.task(name="monitor_position")
+def monitor_position_task(position_data: dict):
+    """
+    Periodic task to monitor open position for exit conditions
+    Runs every 60 seconds while position is open
+    """
+    broker_tool = BrokerTool(user_id=position_data['user_id'])
+    
+    # Get current position from broker (source of truth)
+    position = broker_tool.get_position(position_data['symbol'])
+    
+    if not position:
+        logger.info(f"Position {position_data['symbol']} already closed")
+        return  # Position closed, stop monitoring
+    
+    current_price = position.current_price
+    symbol = position_data['symbol']
+    side = position_data['side']
+    
+    # Check exit conditions based on side
+    if side == 'LONG':
+        # Check stop loss
+        if current_price <= position_data['stop_loss']:
+            logger.info(f"Stop loss hit for {symbol} at ${current_price}")
+            broker_tool.close_position(symbol, reason="Stop loss hit")
+            trigger_reporting_agent(position_data['execution_id'])
+            return
+        
+        # Check Target 2
+        if current_price >= position_data['target_2']:
+            logger.info(f"Target 2 hit for {symbol} at ${current_price}")
+            broker_tool.close_position(symbol, reason="Target 2 hit")
+            trigger_reporting_agent(position_data['execution_id'])
+            return
+        
+        # Check Target 1
+        if current_price >= position_data['target_1']:
+            # Check if we've already taken partial profit
+            if position.quantity == position_data['original_quantity']:
+                # First time hitting T1, take partial profit
+                partial_split = position_data.get('partial_exit_split', [50, 50])
+                partial_qty = int(position.quantity * partial_split[0] / 100)
+                
+                logger.info(f"Target 1 hit for {symbol}, closing {partial_qty} shares")
+                broker_tool.close_partial_position(symbol, partial_qty)
+                
+                # Move stop to breakeven if configured
+                if position_data.get('move_stop_to_breakeven', True):
+                    broker_tool.modify_stop_loss(symbol, position_data['entry_price'])
+                    logger.info(f"Moved stop to breakeven for {symbol}")
+    
+    elif side == 'SHORT':
+        # Check stop loss (inverse for short)
+        if current_price >= position_data['stop_loss']:
+            logger.info(f"Stop loss hit for SHORT {symbol} at ${current_price}")
+            broker_tool.close_position(symbol, reason="Stop loss hit")
+            trigger_reporting_agent(position_data['execution_id'])
+            return
+        
+        # Check Target 2 (inverse)
+        if current_price <= position_data['target_2']:
+            logger.info(f"Target 2 hit for SHORT {symbol} at ${current_price}")
+            broker_tool.close_position(symbol, reason="Target 2 hit")
+            trigger_reporting_agent(position_data['execution_id'])
+            return
+        
+        # Check Target 1 (inverse)
+        if current_price <= position_data['target_1']:
+            if position.quantity == position_data['original_quantity']:
+                partial_split = position_data.get('partial_exit_split', [50, 50])
+                partial_qty = int(position.quantity * partial_split[0] / 100)
+                
+                logger.info(f"Target 1 hit for SHORT {symbol}, closing {partial_qty} shares")
+                broker_tool.close_partial_position(symbol, partial_qty)
+                
+                if position_data.get('move_stop_to_breakeven', True):
+                    broker_tool.modify_stop_loss(symbol, position_data['entry_price'])
+    
+    # Position still open, schedule next check
+    monitor_position_task.apply_async(
+        args=[position_data],
+        countdown=60  # Check again in 60 seconds
+    )
+```
+
+### 10.2 Position Management API Endpoints
+
+```python
+# app/api/v1/positions.py
+
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from app.models.user import User
+from app.dependencies import get_current_user
+from app.tools.broker_tool import BrokerTool
+
+router = APIRouter(prefix="/api/v1/positions", tags=["positions"])
+
+@router.get("", response_model=List[PositionResponse])
+async def get_open_positions(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all open positions for the current user
+    
+    Queries the broker for real-time position data
+    """
+    broker_tool = BrokerTool(user_id=current_user.id)
+    positions = broker_tool.get_open_positions()
+    
+    # Enrich with pipeline information
+    for position in positions:
+        # Look up which pipeline created this position
+        trade = await get_trade_by_symbol(current_user.id, position.symbol)
+        if trade:
+            position.pipeline_id = trade.pipeline_id
+            position.pipeline_name = trade.pipeline_name
+            position.created_by_execution = trade.execution_id
+    
+    return positions
+
+@router.post("/{symbol}/close", response_model=ClosePositionResponse)
+async def emergency_close_position(
+    symbol: str,
+    reason: str = "Manual emergency close",
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Emergency close a specific position immediately at market price
+    
+    This stops all monitoring and closes the position
+    """
+    broker_tool = BrokerTool(user_id=current_user.id)
+    
+    # Verify position exists
+    position = broker_tool.get_position(symbol)
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+    
+    # Close at market
+    result = broker_tool.emergency_close_position(symbol)
+    
+    # Stop monitoring task
+    # Cancel any scheduled monitoring tasks for this position
+    stop_position_monitoring(current_user.id, symbol)
+    
+    # Log manual intervention for audit
+    await log_manual_intervention(
+        user_id=current_user.id,
+        symbol=symbol,
+        action="emergency_close",
+        reason=reason,
+        fill_price=result.fill_price
+    )
+    
+    logger.info(
+        f"Manual emergency close: {symbol} by user {current_user.id}",
+        extra={
+            "user_id": current_user.id, 
+            "symbol": symbol,
+            "reason": reason
+        }
+    )
+    
+    return ClosePositionResponse(
+        status="closed",
+        symbol=symbol,
+        closed_at=datetime.utcnow(),
+        fill_price=result.fill_price,
+        quantity=position.quantity
+    )
+
+@router.post("/close-all", response_model=List[ClosePositionResponse])
+async def emergency_close_all_positions(
+    reason: str = "Manual emergency close all",
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Emergency close ALL open positions immediately
+    
+    Use with caution - closes everything at market price
+    """
+    broker_tool = BrokerTool(user_id=current_user.id)
+    
+    # Get all positions
+    positions = broker_tool.get_open_positions()
+    
+    if not positions:
+        return []
+    
+    results = []
+    for position in positions:
+        try:
+            result = broker_tool.emergency_close_position(position.symbol)
+            stop_position_monitoring(current_user.id, position.symbol)
+            
+            results.append(ClosePositionResponse(
+                status="closed",
+                symbol=position.symbol,
+                closed_at=datetime.utcnow(),
+                fill_price=result.fill_price,
+                quantity=position.quantity
+            ))
+            
+        except Exception as e:
+            logger.error(f"Failed to close {position.symbol}: {e}")
+            results.append(ClosePositionResponse(
+                status="error",
+                symbol=position.symbol,
+                error=str(e)
+            ))
+    
+    # Log bulk close
+    await log_manual_intervention(
+        user_id=current_user.id,
+        action="emergency_close_all",
+        reason=reason,
+        positions_closed=len(results)
+    )
+    
+    return results
+
+@router.get("/{symbol}", response_model=PositionDetailResponse)
+async def get_position_detail(
+    symbol: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get detailed information about a specific position
+    
+    Including monitoring status, exit levels, history
+    """
+    broker_tool = BrokerTool(user_id=current_user.id)
+    
+    position = broker_tool.get_position(symbol)
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+    
+    # Get monitoring status
+    monitoring_active = is_position_being_monitored(current_user.id, symbol)
+    
+    # Get exit levels from monitoring data
+    exit_levels = get_exit_levels(current_user.id, symbol)
+    
+    return PositionDetailResponse(
+        **position.dict(),
+        monitoring_active=monitoring_active,
+        stop_loss=exit_levels.get('stop_loss'),
+        target_1=exit_levels.get('target_1'),
+        target_2=exit_levels.get('target_2')
+    )
+```
+
+### 10.3 Database Schema Updates
+
+```sql
+-- Add to trades table for monitoring status
+ALTER TABLE trades ADD COLUMN monitoring_active BOOLEAN DEFAULT true;
+ALTER TABLE trades ADD COLUMN partial_exit_at TIMESTAMP;
+ALTER TABLE trades ADD COLUMN partial_exit_quantity INTEGER;
+ALTER TABLE trades ADD COLUMN fully_closed_at TIMESTAMP;
+ALTER TABLE trades ADD COLUMN close_reason VARCHAR(100);  -- 'stop_hit', 'target_hit', 'manual'
+
+-- Manual interventions audit log
+CREATE TABLE manual_interventions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    symbol VARCHAR(20),
+    action VARCHAR(50),  -- 'emergency_close', 'emergency_close_all'
+    reason TEXT,
+    positions_affected INTEGER DEFAULT 1,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB
+);
+
+CREATE INDEX idx_manual_interventions_user ON manual_interventions(user_id, timestamp DESC);
+```
+
+---
+
+## 11. Multi-Symbol Support & Stock Picker Agent
+
+### 11.1 Stock Picker Agent
+
+**Purpose**: Select multiple symbols to analyze based on screening criteria, enabling portfolio strategies and stock scanning.
+
+```python
+# app/agents/stock_picker_agent.py
+
+from app.agents.base import BaseAgent, AgentMetadata, AgentConfigSchema
+from app.services.screener_service import ScreenerService
+from typing import List, Dict
+
+class StockPickerAgent(BaseAgent):
+    """
+    Stock Picker Agent
+    
+    Selects which stocks to analyze based on a saved screener.
+    Runs the screener and adds top N symbols to pipeline state.
+    
+    Position in Pipeline:
+      Trigger Agent → Stock Picker Agent → Market Data Agent → ...
+    
+    This agent is FREE (no cost) but downstream agents will charge
+    per symbol analyzed.
+    """
+    
+    @classmethod
+    def get_metadata(cls) -> AgentMetadata:
+        return AgentMetadata(
+            agent_type="stock_picker_agent",
+            name="Stock Picker Agent",
+            description=(
+                "Selects stocks to analyze using a saved screener. "
+                "Runs your screener filters and picks the top N stocks "
+                "that match your criteria. Subsequent agents will analyze "
+                "these stocks in parallel.\n\n"
+                "⚠️ Cost Multiplier: Analyzing N symbols will multiply "
+                "downstream agent costs by N."
+            ),
+            category="data",
+            version="1.0.0",
+            icon="filter_list",
+            pricing_rate=0.0,  # FREE - just runs filters
+            is_free=True,
+            requires_timeframes=[],  # Doesn't need timeframe data
+            config_schema=AgentConfigSchema(
+                type="object",
+                title="Stock Picker Configuration",
+                properties={
+                    "screener_id": {
+                        "type": "string",
+                        "title": "Screener",
+                        "description": "Select a saved screener to use",
+                        "format": "screener-select",  # Custom UI component
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "title": "Top N Stocks",
+                        "description": "How many stocks to pick from screener results",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
+                    "refresh_on_each_run": {
+                        "type": "boolean",
+                        "title": "Refresh Screener on Each Run",
+                        "description": (
+                            "If true, runs screener fresh each time. "
+                            "If false, uses cached results (faster but may be stale)."
+                        ),
+                        "default": True,
+                    },
+                    "fallback_to_previous": {
+                        "type": "boolean",
+                        "title": "Fallback to Previous Results",
+                        "description": (
+                            "If screener returns no results, use previous run's symbols"
+                        ),
+                        "default": False,
+                    },
+                },
+                required=["screener_id"],
+            ),
+        )
+    
+    def __init__(self, agent_id: str, config: Dict):
+        super().__init__(agent_id, config)
+        self.screener_service = ScreenerService()
+    
+    async def process(self, state: PipelineState) -> PipelineState:
+        """
+        Run screener and add selected symbols to state
+        
+        Args:
+            state: Current pipeline state
+            
+        Returns:
+            Updated state with symbols list populated
+            
+        Raises:
+            AgentProcessingError: If screener fails
+            BudgetExceededException: If multi-symbol execution would exceed budget
+        """
+        
+        screener_id = self.config.get("screener_id")
+        top_n = self.config.get("top_n", 10)
+        refresh = self.config.get("refresh_on_each_run", True)
+        
+        logger.info(f"Stock Picker: Running screener {screener_id} for top {top_n} symbols")
+        
+        try:
+            # Get screener configuration
+            screener = await self.get_screener(screener_id, state.user_id)
+            
+            if not screener:
+                raise AgentProcessingError(f"Screener {screener_id} not found")
+            
+            # Run screener (or get cached results)
+            if refresh:
+                screener_results = await self.screener_service.run_screener(screener)
+                # Cache results for 5 minutes
+                await self.cache_screener_results(screener_id, screener_results)
+            else:
+                screener_results = await self.get_cached_screener_results(screener_id)
+                if not screener_results:
+                    # Cache miss, run fresh
+                    screener_results = await self.screener_service.run_screener(screener)
+            
+            # Get top N symbols
+            symbols = screener_results.symbols[:top_n]
+            
+            if not symbols:
+                # No stocks matched screener
+                logger.warning("Stock Picker: No symbols found in screener")
+                
+                if self.config.get("fallback_to_previous"):
+                    # Try to get previous results
+                    symbols = await self.get_previous_symbols(state.pipeline_id)
+                
+                if not symbols:
+                    state.symbols = []
+                    state.stock_picker_output = {
+                        "screener_id": screener_id,
+                        "symbols_found": 0,
+                        "symbols_selected": [],
+                        "status": "no_results",
+                    }
+                    # This will cause downstream agents to skip
+                    return state
+            
+            # IMPORTANT: Check budget before proceeding with multi-symbol execution
+            await self.check_multi_symbol_budget(state, len(symbols))
+            
+            # Add to state
+            state.symbols = symbols
+            state.stock_picker_output = {
+                "screener_id": screener_id,
+                "screener_name": screener.name,
+                "total_matched": screener_results.total_matched,
+                "symbols_found": len(screener_results.symbols),
+                "symbols_selected": symbols,
+                "executed_at": screener_results.executed_at,
+                "status": "success",
+            }
+            
+            logger.info(
+                f"Stock Picker: Selected {len(symbols)} stocks from "
+                f"{screener_results.total_matched} total matches: {symbols}"
+            )
+            
+            return state
+            
+        except BudgetExceededException:
+            # Re-raise budget exceptions
+            raise
+        except Exception as e:
+            logger.exception(f"Stock Picker Agent failed: {str(e)}")
+            state.errors.append(f"stock_picker_agent: {str(e)}")
+            raise AgentProcessingError(f"Stock picker failed: {str(e)}")
+    
+    async def check_multi_symbol_budget(self, state: PipelineState, num_symbols: int):
+        """
+        Check if user has budget for analyzing N symbols
+        
+        Raises BudgetExceededException if insufficient budget
+        """
+        if num_symbols == 1:
+            return  # Normal single-symbol budget check will happen later
+        
+        # Estimate cost for analyzing N symbols
+        from app.services.cost_estimator import CostEstimator
+        
+        estimator = CostEstimator()
+        pipeline = await get_pipeline(state.pipeline_id)
+        
+        # Calculate estimated cost with multi-symbol multiplier
+        estimated_cost = await estimator.estimate_pipeline_cost_with_symbols(
+            pipeline.config,
+            num_symbols=num_symbols
+        )
+        
+        # Check user's remaining budget
+        user_budget = await get_user_budget(state.user_id)
+        daily_spend = await get_daily_spend(state.user_id)
+        remaining_budget = user_budget.daily_limit - daily_spend
+        
+        if estimated_cost.cost_per_execution > remaining_budget:
+            raise BudgetExceededException(
+                f"Analyzing {num_symbols} symbols would cost "
+                f"${estimated_cost.cost_per_execution:.2f}, but you only have "
+                f"${remaining_budget:.2f} remaining in your daily budget. "
+                f"Either reduce top_n in Stock Picker config or increase budget."
+            )
+        
+        logger.info(
+            f"Budget check passed: ${estimated_cost.cost_per_execution:.2f} "
+            f"cost for {num_symbols} symbols, ${remaining_budget:.2f} remaining"
+        )
+    
+    async def get_screener(self, screener_id: str, user_id: str):
+        """Fetch screener configuration from database"""
+        from app.models.screener import Screener
+        screener = await Screener.get(id=screener_id, user_id=user_id)
+        return screener
+    
+    async def cache_screener_results(self, screener_id: str, results):
+        """Cache screener results in Redis (5 minute TTL)"""
+        import json
+        cache_key = f"screener_results:{screener_id}"
+        await redis_client.setex(
+            cache_key,
+            300,  # 5 minutes
+            json.dumps(results.dict())
+        )
+    
+    async def get_cached_screener_results(self, screener_id: str):
+        """Get cached screener results"""
+        import json
+        cache_key = f"screener_results:{screener_id}"
+        cached = await redis_client.get(cache_key)
+        if cached:
+            from app.services.screener_service import ScreenerResult
+            return ScreenerResult(**json.loads(cached))
+        return None
+    
+    async def get_previous_symbols(self, pipeline_id: str) -> List[str]:
+        """Get symbols from previous successful execution"""
+        # Query database for last execution's symbols
+        last_execution = await get_last_successful_execution(pipeline_id)
+        if last_execution and last_execution.stock_picker_output:
+            return last_execution.stock_picker_output.get("symbols_selected", [])
+        return []
+```
+
+### 11.2 Updated PipelineState (Multi-Symbol)
+
+```python
+# app/models/state.py
+
+class PipelineState(BaseModel):
+    """
+    Enhanced pipeline state with multi-symbol support
+    """
+    
+    # Existing fields
+    pipeline_id: str
+    execution_id: str
+    user_id: str
+    
+    # Symbol selection (NEW - for multi-symbol support)
+    symbols: List[str] = []  # List of symbols to analyze (from Stock Picker)
+    symbol: str = None  # Deprecated - for backward compatibility with single-symbol
+    
+    # Stock Picker output
+    stock_picker_output: Dict = None  # Screener execution details
+    
+    # Market data (enhanced for multi-symbol)
+    market_data: MarketData = None  # Deprecated - single symbol
+    market_data_multi: Dict[str, MarketData] = {}  # {symbol: MarketData}
+    timeframes: Dict[str, TimeframeData] = {}  # For single symbol (backward compat)
+    timeframes_multi: Dict[str, Dict[str, TimeframeData]] = {}  # {symbol: {tf: data}}
+    
+    # Analysis results per symbol
+    bias_results: Dict[str, BiasOutput] = {}  # {symbol: BiasOutput}
+    strategy_signals: Dict[str, StrategyOutput] = {}  # {symbol: StrategyOutput}
+    risk_approvals: Dict[str, RiskOutput] = {}  # {symbol: RiskOutput}
+    
+    # Execution (can have multiple trades from multi-symbol)
+    trades: List[TradeExecution] = []  # All executed trades
+    
+    # Reporting
+    reports: Dict[str, Dict] = {}  # {symbol: report}
+    
+    # Errors and cost tracking
+    errors: List[str] = []
+    agent_costs: List[AgentCost] = []
+    total_cost: float = 0.0
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+### 11.3 Multi-Symbol Market Data Agent
+
+```python
+# app/agents/market_data_agent.py
+
+class MarketDataAgent(BaseAgent):
+    """
+    Enhanced Market Data Agent with multi-symbol support
+    
+    Fetches market data for all symbols in state.symbols.
+    Falls back to single symbol mode if state.symbol is set.
+    """
+    
+    async def process(self, state: PipelineState) -> PipelineState:
+        """Fetch market data for all symbols"""
+        
+        # Determine which symbols to fetch
+        if state.symbols:
+            # Multi-symbol mode (from Stock Picker Agent)
+            symbols_to_fetch = state.symbols
+            logger.info(f"Market Data: Multi-symbol mode - fetching {len(symbols_to_fetch)} symbols")
+        elif state.symbol:
+            # Single-symbol mode (backward compatibility)
+            symbols_to_fetch = [state.symbol]
+            logger.info(f"Market Data: Single-symbol mode - fetching {state.symbol}")
+        else:
+            raise InsufficientDataError("No symbols specified in state")
+        
+        timeframes = self.config.get("timeframes", ["5m"])
+        
+        # Fetch data for all symbols in parallel
+        tasks = [
+            self.fetch_symbol_data(symbol, timeframes)
+            for symbol in symbols_to_fetch
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Store in state
+        state.market_data_multi = {}
+        state.timeframes_multi = {}
+        
+        for symbol, result in zip(symbols_to_fetch, results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to fetch data for {symbol}: {result}")
+                state.errors.append(f"market_data: Failed to fetch {symbol}")
+                continue
+            
+            market_data, timeframe_data = result
+            state.market_data_multi[symbol] = market_data
+            state.timeframes_multi[symbol] = timeframe_data
+        
+        # Backward compatibility: If single symbol, also set state.market_data
+        if len(symbols_to_fetch) == 1 and symbols_to_fetch[0] in state.market_data_multi:
+            state.symbol = symbols_to_fetch[0]
+            state.market_data = state.market_data_multi[symbols_to_fetch[0]]
+            state.timeframes = state.timeframes_multi[symbols_to_fetch[0]]
+        
+        logger.info(
+            f"Market Data: Successfully fetched data for "
+            f"{len(state.market_data_multi)}/{len(symbols_to_fetch)} symbols"
+        )
+        
+        # Remove symbols that failed data fetch from state.symbols
+        state.symbols = list(state.market_data_multi.keys())
+        
+        return state
+    
+    async def fetch_symbol_data(
+        self,
+        symbol: str,
+        timeframes: List[str]
+    ) -> Tuple[MarketData, Dict[str, TimeframeData]]:
+        """Fetch market data for a single symbol"""
+        # Implementation (existing logic)
+        pass
+```
+
+### 11.4 Multi-Symbol Bias/Strategy Agents
+
+```python
+# app/agents/bias_agent.py
+
+class BiasAgent(BaseAgent):
+    """
+    Enhanced Bias Agent with multi-symbol support
+    
+    Analyzes bias for all symbols in state.market_data_multi.
+    Filters symbols based on minimum bias score.
+    """
+    
+    async def process(self, state: PipelineState) -> PipelineState:
+        """Analyze bias for all symbols"""
+        
+        if not state.market_data_multi:
+            raise InsufficientDataError("No market data available")
+        
+        logger.info(f"Bias Agent: Analyzing {len(state.market_data_multi)} symbols")
+        
+        # Analyze each symbol in parallel
+        tasks = [
+            self.analyze_symbol_bias(symbol, state.timeframes_multi[symbol])
+            for symbol in state.market_data_multi.keys()
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Store results
+        state.bias_results = {}
+        for symbol, result in zip(state.market_data_multi.keys(), results):
+            if isinstance(result, Exception):
+                logger.error(f"Bias analysis failed for {symbol}: {result}")
+                continue
+            state.bias_results[symbol] = result
+        
+        # Filter symbols by minimum bias score
+        min_bias_score = self.config.get("min_bias_score", 0.6)
+        
+        qualified_symbols = [
+            symbol for symbol, bias in state.bias_results.items()
+            if bias.bias_score >= min_bias_score
+        ]
+        
+        logger.info(
+            f"Bias Agent: {len(qualified_symbols)} of {len(state.bias_results)} "
+            f"symbols passed bias filter (score >= {min_bias_score})"
+        )
+        
+        # Update symbols list to only include qualified ones
+        # This reduces cost for downstream agents
+        state.symbols = qualified_symbols
+        
+        return state
+    
+    async def analyze_symbol_bias(
+        self,
+        symbol: str,
+        timeframe_data: Dict[str, TimeframeData]
+    ) -> BiasOutput:
+        """Analyze bias for a single symbol"""
+        # LLM call to analyze bias
+        # (Existing implementation, but now called per symbol)
+        pass
+```
+
+### 11.5 Pipeline Manager Agent (Coordinator)
+
+**Purpose**: One manager per pipeline that coordinates execution, tracks budget, monitors positions, and handles interventions.
+
+```python
+# app/agents/pipeline_manager_agent.py
+
+from typing import List, Dict, Tuple
+from datetime import datetime
+import asyncio
+
+class PipelineManagerAgent(BaseAgent):
+    """
+    Pipeline Manager Agent (One per pipeline)
+    
+    Coordinates a single pipeline:
+    - Tracks this pipeline's budget allocation
+    - Monitors this pipeline's positions
+    - Receives cost reports from pipeline agents
+    - Commands Trade Manager when needed
+    - Makes intervention decisions
+    
+    Auto-injected into every pipeline as first agent.
+    """
+    
+    @classmethod
+    def get_metadata(cls) -> AgentMetadata:
+        return AgentMetadata(
+            agent_type="pipeline_manager_agent",
+            name="Pipeline Manager Agent",
+            description="Coordinates pipeline execution, tracks budget, monitors positions",
+            category="system",
+            version="1.0.0",
+            icon="settings_applications",
+            pricing_rate=0.0,  # FREE system agent
+            is_free=True,
+            is_system_agent=True,  # Hidden from UI
+            requires_timeframes=[],
+            config_schema=None
+        )
+    
+    def __init__(self, agent_id: str, config: Dict):
+        super().__init__(agent_id, config)
+        
+        # Pipeline context
+        self.pipeline_id = None
+        self.user_id = None
+        self.execution_id = None
+        
+        # Budget tracking for THIS pipeline only
+        self.budget_allocated = {"daily_limit": None, "monthly_limit": None}
+        self.cumulative_cost = 0.0
+        self.budget_exhausted = False
+        
+        # Position tracking for THIS pipeline only
+        self.open_positions: List[Position] = []
+        
+        # Reference to Trade Manager (for commands)
+        self.trade_manager_agent = None
+    
+    async def process(self, state: PipelineState) -> PipelineState:
+        """
+        Runs at START of pipeline
+        
+        1. Initializes manager for this execution
+        2. Checks pipeline's budget allocation
+        3. Blocks if insufficient budget
+        """
+        
+        # Initialize
+        self.pipeline_id = state.pipeline_id
+        self.user_id = state.user_id
+        self.execution_id = state.execution_id
+        
+        # Load pipeline's budget allocation
+        pipeline = await get_pipeline(self.pipeline_id)
+        self.budget_allocated = pipeline.budget_allocation or {}
+        
+        # Find Trade Manager in pipeline
+        self.trade_manager_agent = await self.find_trade_manager_in_pipeline(pipeline)
+        
+        # Estimate cost
+        estimated_cost = await self.estimate_pipeline_cost(state)
+        
+        logger.info(
+            f"Pipeline Manager: Estimated cost ${estimated_cost:.4f} for pipeline "
+            f"{self.pipeline_id}"
+        )
+        
+        # Check pipeline's budget
+        allowed, reason = self.check_budget(estimated_cost)
+        
+        if not allowed:
+            logger.warning(f"Pipeline Manager: BLOCKED - {reason}")
+            raise BudgetExceededException(
+                f"Pipeline budget insufficient: {reason}\n"
+                f"Remaining: ${self.get_remaining_budget():.2f}\n"
+                f"Estimated cost: ${estimated_cost:.2f}"
+            )
+        
+        # Store manager reference in state (so agents can talk to it)
+        state.pipeline_manager = self
+        state.budget_info = {
+            "allocated_daily": self.budget_allocated.get("daily_limit"),
+            "estimated_cost": estimated_cost,
+            "cumulative_cost": 0.0
+        }
+        
+        logger.info("Pipeline Manager: ✅ Budget check passed")
+        
+        return state
+    
+    def check_budget(self, estimated_cost: float) -> Tuple[bool, str]:
+        """Check if pipeline has budget for this execution"""
+        
+        daily_spend = self.get_pipeline_daily_spend()
+        daily_limit = self.budget_allocated.get("daily_limit")
+        
+        if not daily_limit:
+            return (True, "No budget limits on this pipeline")
+        
+        remaining = daily_limit - daily_spend
+        if estimated_cost > remaining:
+            return (
+                False,
+                f"Daily allocation exhausted. Used ${daily_spend:.2f} of "
+                f"${daily_limit:.2f}. Need ${estimated_cost:.2f} more."
+            )
+        
+        return (True, "Within budget")
+    
+    async def report_cost(self, agent_type: str, cost: float, state: PipelineState):
+        """
+        Called by pipeline agents after execution
+        
+        Agents report their cost to Pipeline Manager
+        """
+        
+        self.cumulative_cost += cost
+        state.budget_info["cumulative_cost"] = self.cumulative_cost
+        
+        logger.info(
+            f"Pipeline Manager: Cost from {agent_type}: ${cost:.4f}. "
+            f"Cumulative: ${self.cumulative_cost:.4f}"
+        )
+        
+        # Check if budget exhausted
+        daily_spend = self.get_pipeline_daily_spend() + self.cumulative_cost
+        daily_limit = self.budget_allocated.get("daily_limit")
+        
+        if daily_limit and daily_spend >= daily_limit:
+            logger.critical(
+                f"Pipeline Manager: ⛔ BUDGET EXHAUSTED! "
+                f"${daily_spend:.2f} >= ${daily_limit:.2f}"
+            )
+            
+            self.budget_exhausted = True
+            
+            # Close all THIS pipeline's positions
+            await self.emergency_close_positions(
+                reason="pipeline_budget_exhausted",
+                state=state
+            )
+            
+            raise BudgetExceededException(
+                f"Pipeline budget exhausted. All positions closed."
+            )
+    
+    async def emergency_close_positions(self, reason: str, state: PipelineState):
+        """
+        Emergency close all positions for THIS pipeline
+        
+        Sends command to Trade Manager agent
+        """
+        
+        if not self.open_positions:
+            logger.info("Pipeline Manager: No positions to close")
+            return
+        
+        logger.warning(
+            f"Pipeline Manager: Emergency closing {len(self.open_positions)} positions"
+        )
+        
+        if not self.trade_manager_agent:
+            logger.error("Pipeline Manager: No Trade Manager found!")
+            return
+        
+        # Command Trade Manager to close positions
+        close_command = {
+            "type": "emergency_close",
+            "from": "pipeline_manager",
+            "positions": self.open_positions,
+            "reason": reason,
+            "priority": "critical"
+        }
+        
+        # Trade Manager executes
+        result = await self.trade_manager_agent.execute_command(close_command, state)
+        
+        # Log intervention
+        await self.log_intervention(
+            action="emergency_close_budget",
+            reason=reason,
+            positions_affected=len(self.open_positions),
+            result=result,
+            state=state
+        )
+        
+        logger.info(
+            f"Pipeline Manager: Closed {len(self.open_positions)} positions. "
+            f"P&L: ${result.get('total_pnl', 0):.2f}"
+        )
+        
+        self.open_positions = []
+    
+    async def register_position(self, position: Position):
+        """Trade Manager registers positions with Pipeline Manager"""
+        self.open_positions.append(position)
+        logger.info(f"Pipeline Manager: Registered position {position.symbol}")
+    
+    async def unregister_position(self, position_id: str):
+        """Trade Manager unregisters closed positions"""
+        self.open_positions = [p for p in self.open_positions if p.id != position_id]
+        logger.info(f"Pipeline Manager: Unregistered position {position_id}")
+    
+    # Helper methods
+    def get_pipeline_daily_spend(self) -> float:
+        """Get THIS pipeline's spend today (from database)"""
+        # Query for today's executions for THIS pipeline only
+        pass
+    
+    def get_remaining_budget(self) -> float:
+        """Get remaining budget for THIS pipeline"""
+        daily_spend = self.get_pipeline_daily_spend()
+        daily_limit = self.budget_allocated.get("daily_limit", 0)
+        return max(0, daily_limit - daily_spend)
+    
+    async def estimate_pipeline_cost(self, state: PipelineState) -> float:
+        """Estimate cost for this pipeline execution"""
+        # Call cost estimator
+        pass
+    
+    async def find_trade_manager_in_pipeline(self, pipeline) -> BaseAgent:
+        """Find Trade Manager agent in this pipeline"""
+        # Look through pipeline agents
+        pass
+    
+    async def log_intervention(self, action: str, reason: str, 
+                               positions_affected: int, result: Dict, 
+                               state: PipelineState):
+        """Log intervention to manual_interventions table"""
+        pass
+```
+
+### 11.6 Pipeline Orchestrator (Ultra-Thin)
+
+```python
+# app/orchestration/executor.py
+
+async def execute_pipeline(pipeline_id: str, execution_id: str):
+    """
+    Ultra-thin orchestrator - just calls agents in sequence
+    
+    Pipeline Manager Agent (first agent) handles all budget logic.
+    Other agents report costs to Pipeline Manager via state.pipeline_manager.
+    """
+    
+    pipeline = await get_pipeline(pipeline_id)
+    
+    # Initialize state
+    state = PipelineState(
+        pipeline_id=pipeline_id,
+        execution_id=execution_id,
+        user_id=pipeline.user_id
+    )
+    
+    try:
+        # Execute agents (Pipeline Manager is first, auto-injected)
+        for agent in pipeline.agents:
+            logger.info(f"Executing: {agent.agent_type}")
+            
+            # Execute agent
+            state = await agent.process(state)
+            
+            # If not Pipeline Manager, report cost
+            if agent.agent_type != "pipeline_manager_agent" and state.pipeline_manager:
+                agent_cost = calculate_agent_cost(agent, state)
+                
+                # Agent reports to Pipeline Manager
+                await state.pipeline_manager.report_cost(
+                    agent_type=agent.agent_type,
+                    cost=agent_cost,
+                    state=state
+                )
+                # Pipeline Manager will raise BudgetExceededException if exhausted
+        
+        # Pipeline completed successfully
+        logger.info(f"Pipeline {pipeline_id} completed. Cost: ${state.budget_info['cumulative_cost']:.4f}")
+        
+    except BudgetExceededException as e:
+        # Pipeline Manager blocked/stopped execution
+        logger.warning(f"Pipeline stopped: {e}")
+        await notify_user(state.user_id, "Pipeline Stopped", str(e))
+        await pause_pipeline(pipeline_id, "budget_exhausted")
+        
+    except TriggerNotMetException:
+        logger.info("Trigger not met, rescheduling")
+        raise
+        
+    except Exception as e:
+        logger.exception(f"Pipeline execution failed: {e}")
+        raise
+```
+
+### 11.7 Inter-Agent Communication Examples
+
+**Stock Picker Agent asks Pipeline Manager for budget approval**:
+
+```python
+class StockPickerAgent(BaseAgent):
+    async def process(self, state: PipelineState) -> PipelineState:
+        top_n = self.config.get("top_n", 10)
+        estimated_cost = await self.estimate_multi_symbol_cost(top_n)
+        
+        # Ask Pipeline Manager
+        if state.pipeline_manager:
+            allowed, reason = state.pipeline_manager.check_budget(estimated_cost)
+            
+            if not allowed:
+                raise BudgetExceededException(
+                    f"Pipeline Manager blocked: {reason}"
+                )
+        
+        # Approved - continue
+        ...
+```
+
+**Bias Agent reports cost to Pipeline Manager**:
+
+```python
+class BiasAgent(BaseAgent):
+    async def process(self, state: PipelineState) -> PipelineState:
+        result = await self.analyze_bias(state)
+        
+        # Cost already reported by orchestrator after agent completes
+        # (see execute_pipeline above)
+        
+        return state
+```
+
+**Trade Manager registers positions with Pipeline Manager**:
+
+```python
+class TradeManagerAgent(BaseAgent):
+    async def process(self, state: PipelineState) -> PipelineState:
+        for symbol, signal in state.strategy_signals.items():
+            position = await self.execute_trade(signal, state)
+            
+            # Register with Pipeline Manager
+            if state.pipeline_manager:
+                await state.pipeline_manager.register_position(position)
+        
+        return state
+    
+    async def execute_command(self, command: Dict, state: PipelineState):
+        """
+        Execute command from Pipeline Manager
+        
+        Pipeline Manager sends emergency close commands here
+        """
+        if command["type"] == "emergency_close":
+            logger.warning("Trade Manager: Executing emergency close")
+            
+            results = []
+            for position in command["positions"]:
+                result = await self.close_position_market(position, command["reason"])
+                results.append(result)
+                
+                # Unregister with Pipeline Manager
+                if state.pipeline_manager:
+                    await state.pipeline_manager.unregister_position(position.id)
+            
+            return {
+                "success": True,
+                "positions_closed": len(results),
+                "total_pnl": sum(r["pnl"] for r in results),
+                "results": results
+            }
+```
+
+---
+
+## 12. Database Design
+
+### 11.1 PostgreSQL Schema
 
 #### Users Table
 ```sql
@@ -1246,7 +3465,7 @@ CREATE TABLE agent_registry (
 CREATE INDEX idx_agent_registry_active ON agent_registry(is_active);
 ```
 
-### 5.2 Redis Data Structures
+### 11.2 Redis Data Structures
 
 **Pipeline State Cache**:
 ```
@@ -1280,9 +3499,9 @@ TTL: 1 hour
 
 ---
 
-## 6. Frontend Architecture
+## 12. Frontend Architecture
 
-### 6.1 Angular Module Structure
+### 12.1 Angular Module Structure
 
 ```
 frontend/
@@ -1348,7 +3567,7 @@ frontend/
 │   └── styles/
 ```
 
-### 6.2 Key Frontend Components
+### 12.2 Key Frontend Components
 
 **Pipeline Builder**
 - Library: Consider Angular-based flow library or integrate with ReactFlow via wrapper
@@ -1360,6 +3579,17 @@ frontend/
 - Display current agent, progress, logs
 - Update dashboard on state changes
 
+**Positions Dashboard** (NEW)
+- Real-time view of all open positions
+- Display: Symbol, Side (LONG/SHORT), Quantity, Entry Price, Current Price
+- Show unrealized P&L (live updates)
+- Display stop loss and target levels
+- Show which pipeline created position
+- Emergency close button per position (with confirmation)
+- Emergency close all button
+- Auto-refresh every 5-10 seconds or WebSocket updates
+- Color coding: Green (profit), Red (loss), Yellow (at risk near stop)
+
 **Cost Dashboard**
 - Real-time cost display during execution
 - Historical cost charts (Chart.js / ngx-charts)
@@ -1367,9 +3597,1759 @@ frontend/
 
 ---
 
-## 7. Infrastructure Design
+## 12.3 Performance Analytics Dashboard
 
-### 7.1 Local Development (Docker Compose)
+### Overview
+
+The Performance Analytics Dashboard provides comprehensive insights into pipeline trading performance, helping users understand profitability, identify patterns, and optimize their strategies.
+
+### Frontend Components
+
+**Component Structure**:
+```
+frontend/src/app/features/analytics/
+├── performance-dashboard/
+│   ├── performance-dashboard.component.ts
+│   ├── performance-dashboard.component.html
+│   ├── performance-dashboard.component.scss
+│   ├── performance-dashboard.component.spec.ts
+│   └── components/
+│       ├── metrics-card/
+│       │   ├── metrics-card.component.ts
+│       │   ├── metrics-card.component.html
+│       │   └── metrics-card.component.scss
+│       ├── equity-curve-chart/
+│       │   ├── equity-curve-chart.component.ts
+│       │   ├── equity-curve-chart.component.html
+│       │   └── equity-curve-chart.component.scss
+│       ├── breakdown-panel/
+│       │   ├── breakdown-panel.component.ts
+│       │   ├── breakdown-panel.component.html
+│       │   └── breakdown-panel.component.scss
+│       └── pipeline-comparison/
+│           ├── pipeline-comparison.component.ts
+│           ├── pipeline-comparison.component.html
+│           └── pipeline-comparison.component.scss
+├── services/
+│   └── analytics.service.ts
+└── models/
+    └── performance.model.ts
+```
+
+**TypeScript Models** (`performance.model.ts`):
+
+```typescript
+export interface PerformanceMetrics {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  breakeven_trades: number;
+  win_rate: number;
+  
+  total_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+  win_loss_ratio: number;
+  
+  largest_win: TradeDetail | null;
+  largest_loss: TradeDetail | null;
+  
+  avg_hold_time_hours: number;
+  
+  sharpe_ratio: number;
+  max_drawdown: number;
+  max_drawdown_pct: number;
+  profit_factor: number;
+  
+  total_cost: number;
+  net_pnl: number;
+  roi: number;
+}
+
+export interface TradeDetail {
+  symbol: string;
+  pnl: number;
+  date: string;
+  trade_id: string;
+}
+
+export interface SymbolPerformance {
+  total_pnl: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+}
+
+export interface TimePerformance {
+  total_pnl: number;
+  trades: number;
+  wins: number;
+  losses: number;
+}
+
+export interface EquityCurvePoint {
+  date: string;
+  cumulative_pnl: number;
+  trade_pnl: number;
+  symbol: string;
+}
+
+export interface PipelinePerformance {
+  pipeline_id: string;
+  period_start: string;
+  period_end: string;
+  metrics: PerformanceMetrics;
+  by_symbol: Record<string, SymbolPerformance>;
+  by_day_of_week: Record<string, TimePerformance>;
+  by_time_of_day: Record<string, TimePerformance>;
+  equity_curve: EquityCurvePoint[];
+}
+
+export interface PipelineComparison {
+  [pipelineId: string]: {
+    name: string;
+    performance: PipelinePerformance;
+  };
+}
+```
+
+**Analytics Service** (`analytics.service.ts`):
+
+```typescript
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '@environments/environment';
+import { PipelinePerformance, PipelineComparison } from '../models/performance.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AnalyticsService {
+  private baseUrl = `${environment.apiUrl}/api/v1/analytics`;
+
+  constructor(private http: HttpClient) {}
+
+  getPipelinePerformance(
+    pipelineId: string,
+    startDate?: string,
+    endDate?: string
+  ): Observable<PipelinePerformance> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('start_date', startDate);
+    if (endDate) params = params.set('end_date', endDate);
+
+    return this.http.get<PipelinePerformance>(
+      `${this.baseUrl}/pipelines/${pipelineId}/performance`,
+      { params }
+    );
+  }
+
+  comparePipelines(
+    pipelineIds: string[],
+    startDate?: string,
+    endDate?: string
+  ): Observable<PipelineComparison> {
+    let params = new HttpParams();
+    pipelineIds.forEach(id => {
+      params = params.append('pipeline_ids', id);
+    });
+    if (startDate) params = params.set('start_date', startDate);
+    if (endDate) params = params.set('end_date', endDate);
+
+    return this.http.get<PipelineComparison>(
+      `${this.baseUrl}/pipelines/compare`,
+      { params }
+    );
+  }
+
+  getUserPerformance(
+    startDate?: string,
+    endDate?: string
+  ): Observable<any> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('start_date', startDate);
+    if (endDate) params = params.set('end_date', endDate);
+
+    return this.http.get(`${this.baseUrl}/user/performance`, { params });
+  }
+}
+```
+
+**Performance Dashboard Component** (`performance-dashboard.component.ts`):
+
+```typescript
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
+import { AnalyticsService } from '../../services/analytics.service';
+import { PipelinePerformance } from '../../models/performance.model';
+
+@Component({
+  selector: 'app-performance-dashboard',
+  templateUrl: './performance-dashboard.component.html',
+  styleUrls: ['./performance-dashboard.component.scss']
+})
+export class PerformanceDashboardComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
+  
+  pipelineId: string;
+  performance: PipelinePerformance | null = null;
+  selectedPeriod: string = '30d';
+  loading = false;
+  error: string | null = null;
+
+  // Period options
+  periodOptions = [
+    { value: '7d', label: '7 Days' },
+    { value: '30d', label: '30 Days' },
+    { value: '90d', label: '90 Days' },
+    { value: 'all', label: 'All Time' }
+  ];
+
+  constructor(
+    private route: ActivatedRoute,
+    private analyticsService: AnalyticsService
+  ) {}
+
+  ngOnInit(): void {
+    this.pipelineId = this.route.snapshot.paramMap.get('id')!;
+    this.loadPerformance();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  loadPerformance(): void {
+    this.loading = true;
+    this.error = null;
+
+    const { startDate, endDate } = this.getDateRange(this.selectedPeriod);
+
+    this.analyticsService
+      .getPipelinePerformance(this.pipelineId, startDate, endDate)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          this.performance = data;
+          this.loading = false;
+        },
+        error: (err) => {
+          this.error = 'Failed to load performance data';
+          this.loading = false;
+          console.error(err);
+        }
+      });
+  }
+
+  onPeriodChange(period: string): void {
+    this.selectedPeriod = period;
+    this.loadPerformance();
+  }
+
+  getDateRange(period: string): { startDate?: string; endDate?: string } {
+    const now = new Date();
+    const endDate = now.toISOString();
+    let startDate: string | undefined;
+
+    switch (period) {
+      case '7d':
+        startDate = new Date(now.setDate(now.getDate() - 7)).toISOString();
+        break;
+      case '30d':
+        startDate = new Date(now.setDate(now.getDate() - 30)).toISOString();
+        break;
+      case '90d':
+        startDate = new Date(now.setDate(now.getDate() - 90)).toISOString();
+        break;
+      case 'all':
+        startDate = undefined;
+        break;
+    }
+
+    return { startDate, endDate };
+  }
+
+  exportReport(): void {
+    // TODO: Implement export functionality
+    console.log('Exporting report...');
+  }
+
+  getSymbolsArray(): Array<{ symbol: string; data: any }> {
+    if (!this.performance) return [];
+    return Object.entries(this.performance.by_symbol).map(([symbol, data]) => ({
+      symbol,
+      data
+    }));
+  }
+
+  getDaysArray(): Array<{ day: string; data: any }> {
+    if (!this.performance) return [];
+    return Object.entries(this.performance.by_day_of_week).map(([day, data]) => ({
+      day,
+      data
+    }));
+  }
+
+  getTimesArray(): Array<{ time: string; data: any }> {
+    if (!this.performance) return [];
+    return Object.entries(this.performance.by_time_of_day).map(([time, data]) => ({
+      time,
+      data
+    }));
+  }
+
+  formatCurrency(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(value);
+  }
+
+  formatPercent(value: number): string {
+    return `${value.toFixed(2)}%`;
+  }
+}
+```
+
+**Performance Dashboard Template** (`performance-dashboard.component.html`):
+
+```html
+<div class="performance-dashboard">
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h1>Performance Analytics</h1>
+    
+    <div class="header-controls">
+      <!-- Period Selector -->
+      <mat-button-toggle-group
+        [(value)]="selectedPeriod"
+        (change)="onPeriodChange($event.value)">
+        <mat-button-toggle *ngFor="let option of periodOptions" [value]="option.value">
+          {{ option.label }}
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+
+      <button mat-raised-button color="primary" (click)="exportReport()">
+        <mat-icon>file_download</mat-icon>
+        Export Report
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-container">
+    <mat-spinner></mat-spinner>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error-container">
+    <mat-icon color="warn">error</mat-icon>
+    <p>{{ error }}</p>
+    <button mat-raised-button (click)="loadPerformance()">Retry</button>
+  </div>
+
+  <!-- Performance Content -->
+  <div *ngIf="!loading && !error && performance" class="performance-content">
+    
+    <!-- Key Metrics Cards -->
+    <div class="metrics-grid">
+      <app-metrics-card
+        title="Total P&L"
+        [value]="formatCurrency(performance.metrics.total_pnl)"
+        [trend]="performance.metrics.total_pnl > 0 ? 'up' : 'down'"
+        icon="trending_up">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Win Rate"
+        [value]="formatPercent(performance.metrics.win_rate)"
+        [subtitle]="performance.metrics.winning_trades + 'W / ' + performance.metrics.losing_trades + 'L'"
+        icon="pie_chart">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Total Trades"
+        [value]="performance.metrics.total_trades.toString()"
+        icon="receipt_long">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Win/Loss Ratio"
+        [value]="performance.metrics.win_loss_ratio.toFixed(2)"
+        icon="balance">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Sharpe Ratio"
+        [value]="performance.metrics.sharpe_ratio.toFixed(2)"
+        [subtitle]="'Risk-adjusted return'"
+        icon="speed">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Max Drawdown"
+        [value]="formatCurrency(performance.metrics.max_drawdown)"
+        [subtitle]="'(' + formatPercent(performance.metrics.max_drawdown_pct) + ')'"
+        [trend]="'down'"
+        icon="trending_down">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="Net P&L"
+        [value]="formatCurrency(performance.metrics.net_pnl)"
+        [subtitle]="'After ' + formatCurrency(performance.metrics.total_cost) + ' costs'"
+        [trend]="performance.metrics.net_pnl > 0 ? 'up' : 'down'"
+        icon="account_balance">
+      </app-metrics-card>
+
+      <app-metrics-card
+        title="ROI"
+        [value]="performance.metrics.roi.toFixed(2) + 'x'"
+        [subtitle]="'Return on investment'"
+        icon="insights">
+      </app-metrics-card>
+    </div>
+
+    <!-- Equity Curve Chart -->
+    <mat-card class="equity-curve-card">
+      <mat-card-header>
+        <mat-card-title>Equity Curve</mat-card-title>
+        <mat-card-subtitle>Cumulative P&L Over Time</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <app-equity-curve-chart
+          [data]="performance.equity_curve">
+        </app-equity-curve-chart>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Breakdown Panels -->
+    <div class="breakdown-grid">
+      <!-- By Symbol -->
+      <mat-card class="breakdown-card">
+        <mat-card-header>
+          <mat-card-title>Performance by Symbol</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <app-breakdown-panel
+            [data]="getSymbolsArray()"
+            type="symbol">
+          </app-breakdown-panel>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- By Day of Week -->
+      <mat-card class="breakdown-card">
+        <mat-card-header>
+          <mat-card-title>Performance by Day</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <app-breakdown-panel
+            [data]="getDaysArray()"
+            type="day">
+          </app-breakdown-panel>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- By Time of Day -->
+      <mat-card class="breakdown-card">
+        <mat-card-header>
+          <mat-card-title>Performance by Time</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <app-breakdown-panel
+            [data]="getTimesArray()"
+            type="time">
+          </app-breakdown-panel>
+        </mat-card-content>
+      </mat-card>
+    </div>
+
+    <!-- Best/Worst Trades -->
+    <div class="trades-highlight">
+      <mat-card class="trade-card best-trade">
+        <mat-card-header>
+          <mat-card-title>Largest Win</mat-card-title>
+        </mat-card-header>
+        <mat-card-content *ngIf="performance.metrics.largest_win">
+          <div class="trade-details">
+            <span class="symbol">{{ performance.metrics.largest_win.symbol }}</span>
+            <span class="pnl positive">{{ formatCurrency(performance.metrics.largest_win.pnl) }}</span>
+            <span class="date">{{ performance.metrics.largest_win.date | date }}</span>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card class="trade-card worst-trade">
+        <mat-card-header>
+          <mat-card-title>Largest Loss</mat-card-title>
+        </mat-card-header>
+        <mat-card-content *ngIf="performance.metrics.largest_loss">
+          <div class="trade-details">
+            <span class="symbol">{{ performance.metrics.largest_loss.symbol }}</span>
+            <span class="pnl negative">{{ formatCurrency(performance.metrics.largest_loss.pnl) }}</span>
+            <span class="date">{{ performance.metrics.largest_loss.date | date }}</span>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </div>
+</div>
+```
+
+### Backend Implementation
+
+**Performance Analytics Service** (`app/services/performance_analytics.py`):
+
+```python
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
+import numpy as np
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+
+from app.models.trade import Trade
+from app.models.cost_tracking import CostTracking
+from app.schemas.performance import PipelinePerformance, PerformanceMetrics
+
+class PerformanceAnalytics:
+    """Calculate performance metrics for pipelines"""
+    
+    def __init__(self, db: Session):
+        self.db = db
+    
+    async def get_pipeline_performance(
+        self,
+        pipeline_id: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> PipelinePerformance:
+        """Calculate comprehensive performance metrics"""
+        
+        if not start_date:
+            start_date = datetime.utcnow() - timedelta(days=30)
+        if not end_date:
+            end_date = datetime.utcnow()
+        
+        # Get all closed trades for this pipeline in the period
+        trades = self.db.query(Trade).filter(
+            and_(
+                Trade.pipeline_id == pipeline_id,
+                Trade.status == "CLOSED",
+                Trade.close_time >= start_date,
+                Trade.close_time <= end_date
+            )
+        ).all()
+        
+        if not trades:
+            return PipelinePerformance(
+                pipeline_id=pipeline_id,
+                period_start=start_date,
+                period_end=end_date,
+                metrics=PerformanceMetrics(),
+                message="No trades in this period"
+            )
+        
+        # Calculate metrics
+        metrics = self._calculate_metrics(trades)
+        
+        # Get cost data
+        total_cost = await self._get_total_cost(pipeline_id, start_date, end_date)
+        metrics["total_cost"] = total_cost
+        metrics["net_pnl"] = metrics["total_pnl"] - total_cost
+        metrics["roi"] = (metrics["total_pnl"] / total_cost) if total_cost > 0 else 0
+        
+        # Calculate breakdowns
+        by_symbol = self._analyze_by_symbol(trades)
+        by_day_of_week = self._analyze_by_day_of_week(trades)
+        by_time_of_day = self._analyze_by_time_of_day(trades)
+        equity_curve = self._calculate_equity_curve(trades)
+        
+        return PipelinePerformance(
+            pipeline_id=pipeline_id,
+            period_start=start_date,
+            period_end=end_date,
+            metrics=metrics,
+            by_symbol=by_symbol,
+            by_day_of_week=by_day_of_week,
+            by_time_of_day=by_time_of_day,
+            equity_curve=equity_curve
+        )
+    
+    def _calculate_metrics(self, trades: List[Trade]) -> Dict:
+        """Calculate core performance metrics"""
+        
+        total_trades = len(trades)
+        winning_trades = [t for t in trades if t.pnl > 0]
+        losing_trades = [t for t in trades if t.pnl < 0]
+        breakeven_trades = [t for t in trades if t.pnl == 0]
+        
+        metrics = {
+            "total_trades": total_trades,
+            "winning_trades": len(winning_trades),
+            "losing_trades": len(losing_trades),
+            "breakeven_trades": len(breakeven_trades),
+            "win_rate": (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+        }
+        
+        # P&L metrics
+        total_pnl = sum(t.pnl for t in trades)
+        winning_pnl = sum(t.pnl for t in winning_trades)
+        losing_pnl = sum(t.pnl for t in losing_trades)
+        
+        metrics["total_pnl"] = round(total_pnl, 2)
+        metrics["avg_win"] = round(winning_pnl / len(winning_trades), 2) if winning_trades else 0
+        metrics["avg_loss"] = round(losing_pnl / len(losing_trades), 2) if losing_trades else 0
+        metrics["win_loss_ratio"] = abs(metrics["avg_win"] / metrics["avg_loss"]) if metrics["avg_loss"] != 0 else float('inf')
+        
+        # Best/Worst
+        metrics["largest_win"] = max(trades, key=lambda t: t.pnl) if trades else None
+        metrics["largest_loss"] = min(trades, key=lambda t: t.pnl) if trades else None
+        
+        # Hold time
+        hold_times = [(t.close_time - t.open_time).total_seconds() / 3600 
+                      for t in trades if t.close_time]
+        metrics["avg_hold_time_hours"] = round(np.mean(hold_times), 2) if hold_times else 0
+        
+        # Advanced metrics
+        metrics["sharpe_ratio"] = self._calculate_sharpe_ratio(trades)
+        drawdown_amt, drawdown_pct = self._calculate_max_drawdown(trades)
+        metrics["max_drawdown"] = drawdown_amt
+        metrics["max_drawdown_pct"] = drawdown_pct
+        metrics["profit_factor"] = abs(winning_pnl / losing_pnl) if losing_pnl != 0 else float('inf')
+        
+        return metrics
+    
+    def _calculate_sharpe_ratio(self, trades: List[Trade]) -> float:
+        """Calculate Sharpe Ratio"""
+        if len(trades) < 2:
+            return 0.0
+        
+        returns = [t.pnl for t in trades]
+        avg_return = np.mean(returns)
+        std_return = np.std(returns)
+        
+        if std_return == 0:
+            return 0.0
+        
+        # Annualize (assuming ~252 trading days)
+        sharpe = (avg_return / std_return) * np.sqrt(252)
+        return round(sharpe, 2)
+    
+    def _calculate_max_drawdown(self, trades: List[Trade]) -> Tuple[float, float]:
+        """Calculate maximum drawdown"""
+        sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
+        
+        cumulative_pnl = []
+        total = 0.0
+        for trade in sorted_trades:
+            total += trade.pnl
+            cumulative_pnl.append(total)
+        
+        peak = cumulative_pnl[0]
+        max_dd = 0.0
+        max_dd_pct = 0.0
+        
+        for pnl in cumulative_pnl:
+            if pnl > peak:
+                peak = pnl
+            
+            drawdown = peak - pnl
+            if drawdown > max_dd:
+                max_dd = drawdown
+                max_dd_pct = (drawdown / peak * 100) if peak > 0 else 0.0
+        
+        return (round(max_dd, 2), round(max_dd_pct, 2))
+    
+    def _analyze_by_symbol(self, trades: List[Trade]) -> Dict:
+        """Analyze performance by symbol"""
+        by_symbol = {}
+        
+        for trade in trades:
+            symbol = trade.symbol
+            if symbol not in by_symbol:
+                by_symbol[symbol] = {
+                    "total_pnl": 0.0,
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "win_rate": 0.0
+                }
+            
+            by_symbol[symbol]["total_pnl"] += trade.pnl
+            by_symbol[symbol]["trades"] += 1
+            
+            if trade.pnl > 0:
+                by_symbol[symbol]["wins"] += 1
+            elif trade.pnl < 0:
+                by_symbol[symbol]["losses"] += 1
+        
+        # Calculate win rate and round
+        for symbol, stats in by_symbol.items():
+            if stats["trades"] > 0:
+                stats["win_rate"] = round((stats["wins"] / stats["trades"]) * 100, 2)
+            stats["total_pnl"] = round(stats["total_pnl"], 2)
+        
+        # Sort by P&L descending
+        return dict(sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True))
+    
+    def _analyze_by_day_of_week(self, trades: List[Trade]) -> Dict:
+        """Analyze performance by day of week"""
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        by_day = {day: {"total_pnl": 0.0, "trades": 0, "wins": 0, "losses": 0} for day in days}
+        
+        for trade in trades:
+            day_name = trade.open_time.strftime("%A")
+            if day_name in by_day:
+                by_day[day_name]["total_pnl"] += trade.pnl
+                by_day[day_name]["trades"] += 1
+                if trade.pnl > 0:
+                    by_day[day_name]["wins"] += 1
+                elif trade.pnl < 0:
+                    by_day[day_name]["losses"] += 1
+        
+        # Round P&L
+        for day in by_day:
+            by_day[day]["total_pnl"] = round(by_day[day]["total_pnl"], 2)
+        
+        return by_day
+    
+    def _analyze_by_time_of_day(self, trades: List[Trade]) -> Dict:
+        """Analyze performance by time of day"""
+        time_buckets = {
+            "9:30-11:00": {"total_pnl": 0.0, "trades": 0, "wins": 0, "losses": 0},
+            "11:00-13:00": {"total_pnl": 0.0, "trades": 0, "wins": 0, "losses": 0},
+            "13:00-15:00": {"total_pnl": 0.0, "trades": 0, "wins": 0, "losses": 0},
+            "15:00-16:00": {"total_pnl": 0.0, "trades": 0, "wins": 0, "losses": 0},
+        }
+        
+        for trade in trades:
+            hour = trade.open_time.hour
+            minute = trade.open_time.minute
+            time_decimal = hour + minute / 60.0
+            
+            if 9.5 <= time_decimal < 11.0:
+                bucket = "9:30-11:00"
+            elif 11.0 <= time_decimal < 13.0:
+                bucket = "11:00-13:00"
+            elif 13.0 <= time_decimal < 15.0:
+                bucket = "13:00-15:00"
+            elif 15.0 <= time_decimal < 16.0:
+                bucket = "15:00-16:00"
+            else:
+                continue
+            
+            time_buckets[bucket]["total_pnl"] += trade.pnl
+            time_buckets[bucket]["trades"] += 1
+            if trade.pnl > 0:
+                time_buckets[bucket]["wins"] += 1
+            elif trade.pnl < 0:
+                time_buckets[bucket]["losses"] += 1
+        
+        # Round P&L
+        for bucket in time_buckets:
+            time_buckets[bucket]["total_pnl"] = round(time_buckets[bucket]["total_pnl"], 2)
+        
+        return time_buckets
+    
+    def _calculate_equity_curve(self, trades: List[Trade]) -> List[Dict]:
+        """Calculate equity curve over time"""
+        sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
+        
+        equity_curve = []
+        cumulative_pnl = 0.0
+        
+        for trade in sorted_trades:
+            cumulative_pnl += trade.pnl
+            equity_curve.append({
+                "date": (trade.close_time or trade.open_time).isoformat(),
+                "cumulative_pnl": round(cumulative_pnl, 2),
+                "trade_pnl": round(trade.pnl, 2),
+                "symbol": trade.symbol
+            })
+        
+        return equity_curve
+    
+    async def _get_total_cost(
+        self,
+        pipeline_id: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> float:
+        """Get total cost for pipeline in period"""
+        result = self.db.query(
+            func.sum(CostTracking.total_cost)
+        ).filter(
+            and_(
+                CostTracking.pipeline_id == pipeline_id,
+                CostTracking.timestamp >= start_date,
+                CostTracking.timestamp <= end_date
+            )
+        ).scalar()
+        
+        return round(result or 0.0, 2)
+```
+
+**API Endpoints** (`app/api/v1/analytics.py`):
+
+```python
+from fastapi import APIRouter, Depends, Query, HTTPException
+from datetime import datetime
+from typing import List, Optional
+from sqlalchemy.orm import Session
+
+from app.dependencies import get_db, get_current_user
+from app.models.user import User
+from app.services.performance_analytics import PerformanceAnalytics
+from app.schemas.performance import PipelinePerformance, PipelineComparison
+
+router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
+
+@router.get("/pipelines/{pipeline_id}/performance", response_model=PipelinePerformance)
+async def get_pipeline_performance(
+    pipeline_id: str,
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get performance analytics for a pipeline"""
+    
+    # Verify user owns this pipeline
+    pipeline = await get_pipeline(pipeline_id, db)
+    if pipeline.user_id != current_user.id:
+        raise HTTPException(403, "Access denied")
+    
+    analytics = PerformanceAnalytics(db)
+    performance = await analytics.get_pipeline_performance(
+        pipeline_id=pipeline_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    return performance
+
+@router.get("/pipelines/compare", response_model=PipelineComparison)
+async def compare_pipelines(
+    pipeline_ids: List[str] = Query(...),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Compare performance of multiple pipelines"""
+    
+    # Verify user owns all pipelines
+    for pid in pipeline_ids:
+        pipeline = await get_pipeline(pid, db)
+        if pipeline.user_id != current_user.id:
+            raise HTTPException(403, f"Access denied to pipeline {pid}")
+    
+    analytics = PerformanceAnalytics(db)
+    
+    comparisons = {}
+    for pid in pipeline_ids:
+        perf = await analytics.get_pipeline_performance(pid, start_date, end_date)
+        pipeline = await get_pipeline(pid, db)
+        comparisons[pid] = {
+            "name": pipeline.name,
+            "performance": perf
+        }
+    
+    return comparisons
+
+@router.get("/user/performance")
+async def get_user_performance(
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get aggregate performance across all user's pipelines"""
+    
+    # Get all user's pipelines
+    pipelines = await get_user_pipelines(current_user.id, db)
+    pipeline_ids = [p.id for p in pipelines]
+    
+    analytics = PerformanceAnalytics(db)
+    
+    # Get individual performance
+    performances = {}
+    for pid in pipeline_ids:
+        perf = await analytics.get_pipeline_performance(pid, start_date, end_date)
+        performances[pid] = perf
+    
+    # Aggregate metrics
+    aggregate = {
+        "total_pnl": sum(p.metrics["total_pnl"] for p in performances.values()),
+        "total_trades": sum(p.metrics["total_trades"] for p in performances.values()),
+        "total_cost": sum(p.metrics["total_cost"] for p in performances.values()),
+        "pipelines": performances
+    }
+    
+    return aggregate
+```
+
+### Key Features
+
+1. **Comprehensive Metrics**: Total P&L, win rate, Sharpe ratio, max drawdown, profit factor, ROI
+2. **Multi-Dimensional Analysis**: By symbol, day of week, time of day
+3. **Visual Charts**: Equity curve, breakdowns with bar charts
+4. **Period Selection**: 7D, 30D, 90D, All Time
+5. **Pipeline Comparison**: Compare multiple pipelines side-by-side
+6. **Export Functionality**: Export reports as PDF/CSV
+7. **Real-time Updates**: Metrics update as new trades close
+
+### UI Libraries
+
+- **Angular Material**: UI components (cards, buttons, toggles)
+- **Chart.js** or **ngx-charts**: For equity curve and breakdown charts
+- **Angular CDK**: For responsive layouts
+
+---
+
+## 12.4 Testing & Dry Run Mode
+
+### Overview
+
+Testing & Dry Run Mode allows users to safely test their trading strategies without risking real money. The system supports four execution modes with clear visual indicators and strict isolation to prevent accidental real trades.
+
+### Execution Modes
+
+#### 1. Live Mode 🟢
+- **Purpose**: Real trading with real money
+- **Behavior**: Executes actual trades through broker API
+- **Requirements**: Verified broker connection, sufficient account balance
+- **Costs**: Full tracking (agent fees + LLM + broker commissions)
+- **Risk**: HIGH - real money at stake
+
+#### 2. Paper Trading Mode 🔵
+- **Purpose**: Realistic testing with broker's paper account
+- **Behavior**: Uses broker's paper trading API (Alpaca Paper, etc.)
+- **Requirements**: Broker paper account connection
+- **Costs**: Agent fees + LLM (no real broker fees)
+- **Risk**: LOW - no real money, but realistic simulation
+
+#### 3. Simulation Mode 🟡
+- **Purpose**: Fast testing without broker API calls
+- **Behavior**: Fully simulated trades with configurable parameters
+- **Requirements**: None (no broker needed)
+- **Costs**: Agent fees + LLM only
+- **Risk**: NONE - completely simulated
+
+#### 4. Validation Mode ⚪
+- **Purpose**: Strategy logic testing only
+- **Behavior**: Runs all agents except Trade Manager
+- **Requirements**: None
+- **Costs**: Agent fees + LLM only
+- **Risk**: NONE - no trades executed
+
+---
+
+### Database Schema Updates
+
+**Pipeline Model** (`app/models/pipeline.py`):
+
+```python
+from enum import Enum
+from sqlalchemy import Column, String, Enum as SQLEnum, JSON, DateTime
+
+class ExecutionMode(str, Enum):
+    LIVE = "LIVE"
+    PAPER = "PAPER"
+    SIMULATION = "SIMULATION"
+    VALIDATION = "VALIDATION"
+
+class Pipeline(Base):
+    __tablename__ = "pipelines"
+    
+    id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    
+    # Execution mode
+    execution_mode = Column(SQLEnum(ExecutionMode), nullable=False, default=ExecutionMode.SIMULATION)
+    
+    # Mode-specific config
+    mode_config = Column(JSON, nullable=True)  # Slippage, commission, etc.
+    
+    # Broker connection (required for LIVE and PAPER modes)
+    broker_connection_id = Column(String, nullable=True)
+    
+    # Audit trail
+    mode_changed_at = Column(DateTime, nullable=True)
+    mode_changed_by = Column(String, nullable=True)
+    mode_change_reason = Column(String, nullable=True)
+    
+    # ... other fields
+```
+
+**Mode Config Schema**:
+
+```python
+# For SIMULATION mode
+{
+    "slippage_pct": 0.1,          # 0.1% slippage
+    "commission_per_share": 0.005, # $0.005 per share
+    "simulate_partial_fills": True,
+    "simulate_rejections": True,
+    "initial_balance": 100000.0    # Starting balance for simulation
+}
+
+# For PAPER mode
+{
+    "paper_account_id": "alpaca_paper_123",
+    "initial_balance": 100000.0
+}
+```
+
+**Trade Model Updates** (`app/models/trade.py`):
+
+```python
+class Trade(Base):
+    __tablename__ = "trades"
+    
+    # ... existing fields
+    
+    # Mode tracking
+    execution_mode = Column(SQLEnum(ExecutionMode), nullable=False)
+    
+    # Simulation-specific fields
+    simulated_slippage = Column(Float, nullable=True)
+    simulated_commission = Column(Float, nullable=True)
+    
+    # Paper trading fields
+    paper_account_id = Column(String, nullable=True)
+    paper_order_id = Column(String, nullable=True)
+```
+
+---
+
+### Backend Implementation
+
+#### Trade Manager Agent - Mode-Aware Execution
+
+**Updated Trade Manager** (`app/agents/trade_manager_agent.py`):
+
+```python
+class TradeManagerAgent(BaseAgent):
+    """
+    Trade Manager with multi-mode support
+    """
+    
+    def __init__(self, agent_id: str, config: Dict, pipeline: Pipeline):
+        super().__init__(agent_id, config)
+        self.pipeline = pipeline
+        self.execution_mode = pipeline.execution_mode
+        self.mode_config = pipeline.mode_config or {}
+        
+        # Initialize appropriate executor
+        if self.execution_mode == ExecutionMode.LIVE:
+            self.executor = LiveTradeExecutor(pipeline.broker_connection_id)
+        elif self.execution_mode == ExecutionMode.PAPER:
+            self.executor = PaperTradeExecutor(pipeline.broker_connection_id)
+        elif self.execution_mode == ExecutionMode.SIMULATION:
+            self.executor = SimulatedTradeExecutor(self.mode_config)
+        elif self.execution_mode == ExecutionMode.VALIDATION:
+            self.executor = ValidationExecutor()  # No-op executor
+    
+    def process(self, state: PipelineState) -> PipelineState:
+        """Execute trade based on pipeline mode"""
+        
+        # Get trade signal
+        signal = state.strategy_signal
+        risk_approval = state.risk_approval
+        
+        if not risk_approval.approved:
+            logger.info(f"Trade rejected by risk manager: {risk_approval.reason}")
+            return state
+        
+        # Validation mode: Skip execution
+        if self.execution_mode == ExecutionMode.VALIDATION:
+            logger.info(f"[VALIDATION MODE] Would execute: {signal.action} {signal.quantity} {signal.symbol}")
+            state.validation_result = {
+                "signal": signal.dict(),
+                "would_execute": True,
+                "estimated_entry": signal.entry_price,
+                "estimated_stop": signal.stop_loss,
+                "estimated_target": signal.take_profit
+            }
+            return state
+        
+        # Execute trade via appropriate executor
+        try:
+            execution_result = self.executor.execute_trade(
+                symbol=signal.symbol,
+                action=signal.action,
+                quantity=signal.quantity,
+                order_type=signal.order_type,
+                price=signal.entry_price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit
+            )
+            
+            # Store execution result
+            trade = Trade(
+                id=str(uuid.uuid4()),
+                pipeline_id=self.pipeline.id,
+                execution_id=state.execution_id,
+                symbol=signal.symbol,
+                action=signal.action,
+                quantity=signal.quantity,
+                entry_price=execution_result.fill_price,
+                status="OPEN",
+                execution_mode=self.execution_mode,
+                open_time=datetime.utcnow(),
+                # Mode-specific fields
+                simulated_slippage=execution_result.slippage if hasattr(execution_result, 'slippage') else None,
+                simulated_commission=execution_result.commission if hasattr(execution_result, 'commission') else None,
+                paper_account_id=execution_result.paper_account_id if hasattr(execution_result, 'paper_account_id') else None
+            )
+            
+            db.add(trade)
+            db.commit()
+            
+            state.trade = trade
+            
+            # Log with mode indicator
+            logger.info(f"[{self.execution_mode.value}] Trade executed: {trade.id}")
+            
+        except Exception as e:
+            logger.exception(f"[{self.execution_mode.value}] Trade execution failed")
+            state.errors.append(f"Trade execution failed: {str(e)}")
+        
+        return state
+```
+
+#### Trade Executors
+
+**Live Trade Executor** (`app/services/executors/live_executor.py`):
+
+```python
+class LiveTradeExecutor:
+    """Execute real trades through broker API"""
+    
+    def __init__(self, broker_connection_id: str):
+        self.broker = get_broker_client(broker_connection_id)
+    
+    def execute_trade(self, symbol, action, quantity, order_type, price, stop_loss, take_profit):
+        """Execute real trade"""
+        
+        # Validate buying power
+        account = self.broker.get_account()
+        if account.buying_power < (price * quantity):
+            raise InsufficientFundsError("Insufficient buying power")
+        
+        # Place bracket order
+        order = self.broker.place_bracket_order(
+            symbol=symbol,
+            qty=quantity,
+            side=action,
+            limit_price=price,
+            stop_loss=stop_loss,
+            take_profit=take_profit
+        )
+        
+        # Wait for fill (with timeout)
+        filled_order = self.broker.wait_for_fill(order.id, timeout=30)
+        
+        return ExecutionResult(
+            order_id=filled_order.id,
+            fill_price=filled_order.filled_avg_price,
+            filled_qty=filled_order.filled_qty,
+            commission=filled_order.commission,
+            status="FILLED"
+        )
+```
+
+**Paper Trade Executor** (`app/services/executors/paper_executor.py`):
+
+```python
+class PaperTradeExecutor:
+    """Execute paper trades through broker's paper trading API"""
+    
+    def __init__(self, broker_connection_id: str):
+        # Use paper trading endpoint
+        self.broker = get_broker_client(broker_connection_id, paper=True)
+    
+    def execute_trade(self, symbol, action, quantity, order_type, price, stop_loss, take_profit):
+        """Execute paper trade"""
+        
+        # Similar to live but uses paper account
+        order = self.broker.place_bracket_order(
+            symbol=symbol,
+            qty=quantity,
+            side=action,
+            limit_price=price,
+            stop_loss=stop_loss,
+            take_profit=take_profit
+        )
+        
+        filled_order = self.broker.wait_for_fill(order.id, timeout=30)
+        
+        return ExecutionResult(
+            order_id=filled_order.id,
+            fill_price=filled_order.filled_avg_price,
+            filled_qty=filled_order.filled_qty,
+            commission=0.0,  # No real commission in paper trading
+            paper_account_id=filled_order.account_id,
+            status="FILLED"
+        )
+```
+
+**Simulated Trade Executor** (`app/services/executors/simulated_executor.py`):
+
+```python
+class SimulatedTradeExecutor:
+    """Simulate trade execution without broker API"""
+    
+    def __init__(self, mode_config: Dict):
+        self.slippage_pct = mode_config.get("slippage_pct", 0.1)
+        self.commission_per_share = mode_config.get("commission_per_share", 0.005)
+        self.simulate_partial_fills = mode_config.get("simulate_partial_fills", True)
+        self.simulate_rejections = mode_config.get("simulate_rejections", True)
+    
+    def execute_trade(self, symbol, action, quantity, order_type, price, stop_loss, take_profit):
+        """Simulate instant trade execution"""
+        
+        # Simulate rejection (5% chance)
+        if self.simulate_rejections and random.random() < 0.05:
+            rejection_reasons = [
+                "Insufficient buying power",
+                "Market closed",
+                "Symbol not tradable",
+                "Order size too large"
+            ]
+            raise TradeRejectionError(random.choice(rejection_reasons))
+        
+        # Apply slippage
+        slippage = price * (self.slippage_pct / 100)
+        if action in ["BUY", "COVER"]:
+            fill_price = price + slippage  # Buy at higher price
+        else:
+            fill_price = price - slippage  # Sell at lower price
+        
+        # Simulate partial fill (20% chance)
+        filled_qty = quantity
+        if self.simulate_partial_fills and random.random() < 0.2:
+            filled_qty = int(quantity * random.uniform(0.7, 0.95))
+        
+        # Calculate commission
+        commission = filled_qty * self.commission_per_share
+        
+        # Instant "fill"
+        return ExecutionResult(
+            order_id=f"SIM_{uuid.uuid4().hex[:8]}",
+            fill_price=round(fill_price, 2),
+            filled_qty=filled_qty,
+            commission=round(commission, 2),
+            slippage=round(slippage, 2),
+            status="FILLED"
+        )
+```
+
+**Validation Executor** (`app/services/executors/validation_executor.py`):
+
+```python
+class ValidationExecutor:
+    """No-op executor for validation mode"""
+    
+    def execute_trade(self, *args, **kwargs):
+        """Don't execute, just validate"""
+        
+        # Return hypothetical execution result
+        return ExecutionResult(
+            order_id=f"VAL_{uuid.uuid4().hex[:8]}",
+            fill_price=kwargs.get('price'),
+            filled_qty=kwargs.get('quantity'),
+            commission=0.0,
+            status="VALIDATED"
+        )
+```
+
+---
+
+### Frontend Implementation
+
+#### Mode Selection Component
+
+**Pipeline Create/Edit Form** (`pipeline-form.component.ts`):
+
+```typescript
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+export enum ExecutionMode {
+  LIVE = 'LIVE',
+  PAPER = 'PAPER',
+  SIMULATION = 'SIMULATION',
+  VALIDATION = 'VALIDATION'
+}
+
+@Component({
+  selector: 'app-pipeline-form',
+  templateUrl: './pipeline-form.component.html',
+  styleUrls: ['./pipeline-form.component.scss']
+})
+export class PipelineFormComponent implements OnInit {
+  pipelineForm: FormGroup;
+  ExecutionMode = ExecutionMode;
+  
+  modeOptions = [
+    {
+      value: ExecutionMode.SIMULATION,
+      label: 'Simulation',
+      description: 'Fast testing, no broker needed',
+      icon: 'science',
+      color: 'accent',
+      requiresBroker: false
+    },
+    {
+      value: ExecutionMode.VALIDATION,
+      label: 'Validation',
+      description: 'Test logic only, no trades',
+      icon: 'check_circle',
+      color: 'basic',
+      requiresBroker: false
+    },
+    {
+      value: ExecutionMode.PAPER,
+      label: 'Paper Trading',
+      description: 'Realistic testing with paper account',
+      icon: 'description',
+      color: 'primary',
+      requiresBroker: true
+    },
+    {
+      value: ExecutionMode.LIVE,
+      label: 'Live Trading',
+      description: 'Real trades with real money',
+      icon: 'attach_money',
+      color: 'warn',
+      requiresBroker: true,
+      requiresConfirmation: true
+    }
+  ];
+
+  constructor(
+    private fb: FormBuilder,
+    private pipelineService: PipelineService,
+    private dialog: MatDialog
+  ) {}
+
+  ngOnInit(): void {
+    this.pipelineForm = this.fb.group({
+      name: ['', Validators.required],
+      execution_mode: [ExecutionMode.SIMULATION, Validators.required],
+      broker_connection_id: [null],
+      mode_config: this.fb.group({
+        slippage_pct: [0.1],
+        commission_per_share: [0.005],
+        simulate_partial_fills: [true],
+        simulate_rejections: [true],
+        initial_balance: [100000]
+      })
+    });
+
+    // Watch mode changes
+    this.pipelineForm.get('execution_mode').valueChanges.subscribe(mode => {
+      this.onModeChange(mode);
+    });
+  }
+
+  onModeChange(mode: ExecutionMode): void {
+    const brokerField = this.pipelineForm.get('broker_connection_id');
+    
+    if (mode === ExecutionMode.LIVE || mode === ExecutionMode.PAPER) {
+      brokerField.setValidators([Validators.required]);
+      brokerField.updateValueAndValidity();
+    } else {
+      brokerField.clearValidators();
+      brokerField.updateValueAndValidity();
+    }
+
+    // Show warning for live mode
+    if (mode === ExecutionMode.LIVE) {
+      this.showLiveModeWarning();
+    }
+  }
+
+  showLiveModeWarning(): void {
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: '⚠️ Live Trading Mode',
+        message: 'You are about to enable LIVE TRADING with REAL MONEY. Are you sure?',
+        confirmText: 'Yes, I understand the risks',
+        cancelText: 'No, go back to test mode',
+        dangerous: true
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(confirmed => {
+      if (!confirmed) {
+        this.pipelineForm.patchValue({ execution_mode: ExecutionMode.SIMULATION });
+      }
+    });
+  }
+
+  save(): void {
+    if (this.pipelineForm.valid) {
+      this.pipelineService.createPipeline(this.pipelineForm.value).subscribe({
+        next: (pipeline) => {
+          this.notificationService.success('Pipeline created successfully');
+          this.router.navigate(['/pipelines', pipeline.id]);
+        },
+        error: (error) => {
+          this.notificationService.error('Failed to create pipeline');
+        }
+      });
+    }
+  }
+}
+```
+
+**Pipeline Form Template** (`pipeline-form.component.html`):
+
+```html
+<form [formGroup]="pipelineForm" (ngSubmit)="save()">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Pipeline Configuration</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Pipeline Name -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Pipeline Name</mat-label>
+        <input matInput formControlName="name" placeholder="My Trading Strategy">
+      </mat-form-field>
+
+      <!-- Execution Mode Selection -->
+      <div class="mode-selection">
+        <h3>Execution Mode</h3>
+        <p class="hint">Choose how this pipeline will execute trades</p>
+
+        <mat-radio-group formControlName="execution_mode" class="mode-radio-group">
+          <mat-card 
+            *ngFor="let mode of modeOptions" 
+            class="mode-option"
+            [class.selected]="pipelineForm.get('execution_mode').value === mode.value"
+            [class.live-mode]="mode.value === ExecutionMode.LIVE">
+            
+            <mat-radio-button [value]="mode.value">
+              <div class="mode-content">
+                <div class="mode-header">
+                  <mat-icon [color]="mode.color">{{ mode.icon }}</mat-icon>
+                  <span class="mode-label">{{ mode.label }}</span>
+                  <mat-chip 
+                    *ngIf="mode.requiresBroker" 
+                    class="broker-chip">
+                    Requires Broker
+                  </mat-chip>
+                </div>
+                <p class="mode-description">{{ mode.description }}</p>
+              </div>
+            </mat-radio-button>
+          </mat-card>
+        </mat-radio-group>
+      </div>
+
+      <!-- Broker Connection (conditional) -->
+      <mat-form-field 
+        *ngIf="pipelineForm.get('execution_mode').value === ExecutionMode.LIVE || 
+               pipelineForm.get('execution_mode').value === ExecutionMode.PAPER"
+        appearance="outline" 
+        class="full-width">
+        <mat-label>Broker Connection</mat-label>
+        <mat-select formControlName="broker_connection_id">
+          <mat-option *ngFor="let broker of userBrokers" [value]="broker.id">
+            {{ broker.name }} ({{ broker.type }})
+          </mat-option>
+        </mat-select>
+        <mat-hint>Select your {{ pipelineForm.get('execution_mode').value === ExecutionMode.LIVE ? 'live' : 'paper' }} broker account</mat-hint>
+      </mat-form-field>
+
+      <!-- Simulation Config (conditional) -->
+      <div *ngIf="pipelineForm.get('execution_mode').value === ExecutionMode.SIMULATION" 
+           formGroupName="mode_config"
+           class="simulation-config">
+        <h4>Simulation Settings</h4>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Slippage %</mat-label>
+          <input matInput type="number" formControlName="slippage_pct" step="0.05">
+          <mat-hint>Simulated price slippage (default: 0.1%)</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Commission per Share ($)</mat-label>
+          <input matInput type="number" formControlName="commission_per_share" step="0.001">
+          <mat-hint>Simulated commission cost (default: $0.005)</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Initial Balance ($)</mat-label>
+          <input matInput type="number" formControlName="initial_balance">
+          <mat-hint>Starting balance for simulation (default: $100,000)</mat-hint>
+        </mat-form-field>
+
+        <mat-checkbox formControlName="simulate_partial_fills">
+          Simulate partial fills
+        </mat-checkbox>
+
+        <mat-checkbox formControlName="simulate_rejections">
+          Simulate order rejections
+        </mat-checkbox>
+      </div>
+
+      <!-- Warning Banner for Live Mode -->
+      <mat-card 
+        *ngIf="pipelineForm.get('execution_mode').value === ExecutionMode.LIVE" 
+        class="warning-banner live-mode-warning">
+        <mat-icon color="warn">warning</mat-icon>
+        <div>
+          <strong>Live Trading Enabled</strong>
+          <p>This pipeline will execute REAL TRADES with REAL MONEY. Ensure you have tested your strategy thoroughly in simulation and paper trading modes first.</p>
+        </div>
+      </mat-card>
+
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button mat-raised-button color="primary" type="submit" [disabled]="!pipelineForm.valid">
+        Create Pipeline
+      </button>
+      <button mat-button type="button" (click)="cancel()">
+        Cancel
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</form>
+```
+
+#### Mode Indicator Component
+
+**Mode Badge Component** (`mode-badge.component.ts`):
+
+```typescript
+import { Component, Input } from '@angular/core';
+
+@Component({
+  selector: 'app-mode-badge',
+  templateUrl: './mode-badge.component.html',
+  styleUrls: ['./mode-badge.component.scss']
+})
+export class ModeBadgeComponent {
+  @Input() mode: string;
+  @Input() size: 'small' | 'medium' | 'large' = 'medium';
+
+  getModeConfig() {
+    const configs = {
+      'LIVE': {
+        label: 'LIVE',
+        icon: 'radio_button_checked',
+        color: '#4caf50',
+        bgColor: '#e8f5e9',
+        description: 'Real money trading'
+      },
+      'PAPER': {
+        label: 'PAPER',
+        icon: 'description',
+        color: '#2196f3',
+        bgColor: '#e3f2fd',
+        description: 'Paper trading account'
+      },
+      'SIMULATION': {
+        label: 'SIMULATION',
+        icon: 'science',
+        color: '#ff9800',
+        bgColor: '#fff3e0',
+        description: 'Simulated trades'
+      },
+      'VALIDATION': {
+        label: 'VALIDATION',
+        icon: 'check_circle',
+        color: '#9e9e9e',
+        bgColor: '#f5f5f5',
+        description: 'Logic validation only'
+      }
+    };
+
+    return configs[this.mode] || configs['SIMULATION'];
+  }
+}
+```
+
+**Mode Badge Template** (`mode-badge.component.html`):
+
+```html
+<div class="mode-badge" 
+     [class.size-small]="size === 'small'"
+     [class.size-medium]="size === 'medium'"
+     [class.size-large]="size === 'large'"
+     [style.background-color]="getModeConfig().bgColor"
+     [style.color]="getModeConfig().color"
+     [matTooltip]="getModeConfig().description">
+  <mat-icon [style.color]="getModeConfig().color">{{ getModeConfig().icon }}</mat-icon>
+  <span class="mode-label">{{ getModeConfig().label }}</span>
+</div>
+```
+
+#### Pipeline List with Mode Indicators
+
+**Updated Pipeline List** (`pipeline-list.component.html`):
+
+```html
+<mat-card *ngFor="let pipeline of pipelines" class="pipeline-card">
+  <mat-card-header>
+    <div class="header-content">
+      <mat-card-title>{{ pipeline.name }}</mat-card-title>
+      <app-mode-badge [mode]="pipeline.execution_mode" size="medium"></app-mode-badge>
+    </div>
+  </mat-card-header>
+
+  <mat-card-content>
+    <p>{{ pipeline.description }}</p>
+    
+    <div class="pipeline-stats">
+      <span>Status: {{ pipeline.status }}</span>
+      <span>Trades: {{ pipeline.trade_count }}</span>
+      <span>P&L: {{ formatCurrency(pipeline.total_pnl) }}</span>
+    </div>
+
+    <!-- Warning for test modes -->
+    <mat-chip-list *ngIf="pipeline.execution_mode !== 'LIVE'">
+      <mat-chip class="test-mode-chip">
+        <mat-icon>info</mat-icon>
+        Test mode - Not using real money
+      </mat-chip>
+    </mat-chip-list>
+  </mat-card-content>
+
+  <mat-card-actions>
+    <button mat-button (click)="viewPipeline(pipeline.id)">View</button>
+    <button mat-button (click)="editPipeline(pipeline.id)">Edit</button>
+    <button mat-button *ngIf="pipeline.execution_mode !== 'LIVE'" (click)="cloneAsLive(pipeline.id)">
+      Clone as Live
+    </button>
+  </mat-card-actions>
+</mat-card>
+```
+
+---
+
+### Mode Transition Workflow
+
+**Safe Testing Progression**:
+
+```
+New User
+   │
+   ├─> SIMULATION Mode (unlocked by default)
+   │      │
+   │      ├─> Complete demo pipeline
+   │      ├─> 10+ successful simulated trades
+   │      │
+   │      └─> ✅ Unlock PAPER TRADING
+   │
+   ├─> PAPER TRADING Mode
+   │      │
+   │      ├─> Connect broker paper account
+   │      ├─> 25+ successful paper trades
+   │      ├─> Positive cumulative P&L
+   │      │
+   │      └─> ✅ Unlock LIVE TRADING
+   │
+   └─> LIVE TRADING Mode
+          │
+          ├─> Verify broker connection
+          ├─> Confirm understanding of risks
+          ├─> Set budget limits
+          │
+          └─> 🟢 Real trading enabled
+```
+
+---
+
+### API Endpoints
+
+**Mode Management** (`app/api/v1/pipelines.py`):
+
+```python
+@router.patch("/pipelines/{pipeline_id}/mode")
+async def change_pipeline_mode(
+    pipeline_id: str,
+    mode_change: PipelineModeChange,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Change pipeline execution mode
+    
+    Requires confirmation for live mode
+    """
+    
+    pipeline = await get_pipeline(pipeline_id, db)
+    
+    if pipeline.user_id != current_user.id:
+        raise HTTPException(403, "Access denied")
+    
+    # Validate mode transition
+    if mode_change.new_mode == ExecutionMode.LIVE:
+        # Check prerequisites
+        if not await user_can_enable_live_mode(current_user.id, db):
+            raise HTTPException(400, "Prerequisites not met for live trading")
+        
+        # Require confirmation
+        if not mode_change.confirmed:
+            raise HTTPException(400, "Confirmation required for live mode")
+        
+        # Validate broker connection
+        if not pipeline.broker_connection_id:
+            raise HTTPException(400, "Broker connection required for live mode")
+    
+    # Update mode
+    pipeline.execution_mode = mode_change.new_mode
+    pipeline.mode_changed_at = datetime.utcnow()
+    pipeline.mode_changed_by = current_user.id
+    pipeline.mode_change_reason = mode_change.reason
+    
+    db.commit()
+    
+    # Audit log
+    await log_mode_change(
+        pipeline_id=pipeline_id,
+        user_id=current_user.id,
+        old_mode=pipeline.execution_mode,
+        new_mode=mode_change.new_mode,
+        reason=mode_change.reason
+    )
+    
+    return pipeline
+```
+
+---
+
+### Key Safety Features
+
+1. **Visual Indicators**: Large, prominent mode badges everywhere
+2. **Confirmation Dialogs**: Required for switching to live mode
+3. **Broker Validation**: Live mode requires verified broker connection
+4. **Audit Trail**: All mode changes logged
+5. **Progressive Unlock**: Users must progress through test modes first
+6. **Cost Isolation**: Test modes have different cost structures
+7. **Performance Separation**: Separate dashboards for test vs live
+8. **Clone Feature**: Clone live pipelines as test for safe modification
+
+---
+
+## 13. Infrastructure Design
+
+### 13.1 Local Development (Docker Compose)
 
 ```yaml
 version: '3.8'
@@ -1439,7 +5419,7 @@ volumes:
   postgres_data:
 ```
 
-### 7.2 AWS Production Architecture
+### 13.2 AWS Production Architecture
 
 **Compute**:
 - **ECS Fargate**: Run backend API and Celery workers
@@ -1474,7 +5454,7 @@ volumes:
 - **CloudWatch**: Logs, metrics, alarms
 - **X-Ray**: Distributed tracing (future)
 
-### 7.3 CI/CD Pipeline (GitHub Actions)
+### 13.3 CI/CD Pipeline (GitHub Actions)
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -1520,9 +5500,9 @@ jobs:
 
 ---
 
-## 8. Cost Tracking & Billing Design
+## 14. Cost Tracking & Billing Design
 
-### 8.1 Cost Metering Architecture
+### 14.1 Cost Metering Architecture
 
 **Token Counting Middleware**:
 ```python
@@ -1559,7 +5539,7 @@ def track_llm_cost(func):
     return wrapper
 ```
 
-### 8.2 Budget Enforcement
+### 14.2 Budget Enforcement
 
 ```python
 async def check_budget(user_id: str, estimated_cost: float):
@@ -1582,9 +5562,9 @@ async def check_budget(user_id: str, estimated_cost: float):
 
 ---
 
-## 9. Security Design
+## 15. Security Design
 
-### 9.1 Authentication Flow
+### 15.1 Authentication Flow
 
 1. User submits email/password
 2. Backend validates credentials
@@ -1593,7 +5573,7 @@ async def check_budget(user_id: str, estimated_cost: float):
 5. Include token in Authorization header for API requests
 6. Backend validates JWT on each request
 
-### 9.2 Broker Credential Encryption
+### 15.2 Broker Credential Encryption
 
 ```python
 from cryptography.fernet import Fernet
@@ -1619,7 +5599,7 @@ def decrypt_api_key(encrypted_key: str, user_id: str) -> str:
     pass
 ```
 
-### 9.3 Rate Limiting
+### 15.3 Rate Limiting
 
 ```python
 from fastapi import Request
@@ -1636,9 +5616,9 @@ async def create_pipeline(request: Request, ...):
 
 ---
 
-## 10. Key Design Decisions
+## 16. Key Design Decisions
 
-### 10.1 Why CrewAI?
+### 16.1 Why CrewAI?
 
 - Multi-agent orchestration built-in
 - Flow-based execution model
@@ -1646,7 +5626,7 @@ async def create_pipeline(request: Request, ...):
 - Supports state passing between agents
 - Active community and development
 
-### 10.2 Why Celery?
+### 16.2 Why Celery?
 
 - Mature, battle-tested task queue
 - Supports async, retries, scheduling
@@ -1654,14 +5634,13 @@ async def create_pipeline(request: Request, ...):
 - Flower UI for monitoring
 - Easy to scale workers
 
-### 10.3 Why PostgreSQL?
-
+### 16.3 Why PostgreSQL?
 - JSONB for flexible config/state storage
 - ACID compliance for financial data
 - Excellent performance for relational queries
 - TimescaleDB extension option for time-series
 
-### 10.4 Agent-First Architecture
+### 16.4 Agent-First Architecture
 
 - All business logic in agents (portable, testable)
 - Backend is thin orchestration layer

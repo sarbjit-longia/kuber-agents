@@ -130,7 +130,155 @@ Each agent:
 - Each agent accesses its required timeframe(s)
 - `state.primary_timeframe` defines execution timeframe
 
-### 5. Agent Configuration & UI Generation
+### 5. Position Management & Exit Strategy
+
+**Problem**: Who tracks positions and executes stop loss / targets after trade is placed?
+
+**Solution**: Enhanced Trade Manager Agent
+
+**Trade Manager** is not just an execution agent - it's the complete position lifecycle manager:
+
+1. **Pre-Trade Position Check**
+   - Queries broker for existing positions
+   - Prevents duplicate positions (configurable)
+   - Rejects conflicting trades
+
+2. **Trade Execution with Exits**
+   - Places bracket orders (stop + targets) if broker supports
+   - Falls back to individual orders
+
+3. **Position Monitoring** (Celery Task every 60 seconds)
+   - Monitors for stop loss hit → closes position
+   - Monitors for Target 1 hit → closes partial (50%), moves stop to breakeven
+   - Monitors for Target 2 hit → closes remaining position
+
+4. **Manual Intervention**
+   - Emergency close position API endpoint
+   - Emergency close all positions
+   - Stops monitoring on manual close
+   - Audit log of manual interventions
+
+**Broker as Source of Truth**: No separate position tracking database. Trade Manager queries broker directly for current positions.
+
+**Example**:
+```python
+# Strategy Agent outputs complete trade plan
+strategy = StrategySignal(
+    entry=150.50,
+    stop_loss=148.00,    # Downside protection
+    target_1=154.25,     # First profit take (50%)
+    target_2=158.00      # Final profit take (50%)
+)
+
+# Trade Manager
+1. Checks broker: "Do we already have AAPL position?" → No
+2. Executes: Places bracket order
+3. Monitors: Every 60s checks if stop/targets hit
+4. Exits: Automatically closes when levels reached
+```
+
+### 6. Pipeline Scheduling & Execution Modes
+
+**Problem**: Should pipeline run once or continuously? How to prevent overnight positions for day traders?
+
+**Solution**: Four execution modes + time window controls
+
+**Execution Modes**:
+1. **RUN_ONCE**: Run once when started, then stop (safest, default)
+2. **RUN_CONTINUOUS**: Keep running until manually stopped
+3. **RUN_SCHEDULED**: Run on schedule (cron, intervals, market hours)
+4. **RUN_ON_SIGNAL**: Run continuously but wait for position to close before restart
+
+**Time Window Controls**:
+- Set trading hours: 9:35 AM - 3:30 PM EST
+- Active days: Monday-Friday
+- **Auto-flatten positions at end time** (for day traders - no overnight positions)
+- Auto-stop pipeline at end time
+- Grace period: Don't start new trade if < 5 min until end
+
+**Daily Limits**:
+- Max trades per day
+- Max executions per day
+- Stop on daily loss (e.g., stop if lose $500)
+- Stop on drawdown percentage
+
+**Example - Day Trading Setup**:
+```python
+{
+    "execution_mode": "run_continuous",
+    "start_time": "09:35",
+    "end_time": "15:30",
+    "flatten_positions_at_end": True,  # Close all at 3:30 PM
+    "max_trades_per_day": 3
+}
+```
+
+**What Happens**:
+- 9:35 AM: Pipeline starts
+- Throughout day: Takes up to 3 trades
+- 3:30 PM: **Automatically closes all positions at market price**
+- 3:30 PM: Pipeline stops, won't restart until tomorrow
+
+### 7. Cost Estimation & Transparency
+
+**Problem**: Users don't know how much pipeline will cost until AFTER running. This leads to unexpected bills and budget overruns.
+
+**Solution**: Pre-execution cost estimation + real-time tracking
+
+**Cost Estimation Components**:
+
+1. **Agent Rental Costs**: Based on hourly rate × estimated duration
+   - Time Trigger: $0.00/hour (free)
+   - Market Data: $0.00/hour (free)
+   - Bias Agent: $0.08/hour (~6 min avg)
+   - Strategy Agent: $0.10/hour (~6 min avg)
+   - Risk Manager: $0.05/hour (~3 min avg)
+
+2. **LLM Token Costs**: Based on model and estimated tokens
+   - Bias Agent: GPT-4, ~2K input, ~500 output → ~$0.008
+   - Strategy Agent: GPT-4, ~1.5K input, ~600 output → ~$0.005
+   - Risk Manager: GPT-3.5-turbo, ~1K input, ~300 output → ~$0.002
+
+3. **Daily/Monthly Projections**: Based on execution mode and schedule
+   - Run Continuous (6 hr window): Estimated 6-12 executions/day
+   - Run Scheduled (every 30 min): Exact count known
+   - Compare against user's budget limits
+
+**Before Starting Pipeline**:
+```
+┌─ Estimated Costs ─────────────────────────────┐
+│                                                │
+│  Cost per Execution: $0.23                    │
+│                                                │
+│  Daily Estimate:                               │
+│    8-12 executions → $1.84 - $2.76 / day      │
+│                                                │
+│  Monthly Estimate (21 trading days):          │
+│    $55.20 - $82.80 / month                    │
+│                                                │
+│  Your budget: $100/month                       │
+│  ✓ Estimated usage: 55-83% of budget          │
+│                                                │
+│  Confidence: Medium ⚠️                         │
+│    (Based on average execution times)          │
+└────────────────────────────────────────────────┘
+```
+
+**Features**:
+- **Pre-execution estimates**: See cost before starting
+- **Budget comparison**: Warnings if > 80% of budget
+- **Detailed breakdown**: Cost per agent, LLM tokens, duration
+- **Real-time tracking**: Actual vs estimated during execution
+- **Historical accuracy**: System learns from user's patterns
+- **Confidence levels**: High (historical data), Medium (averages), Low (variable triggers)
+
+**Improves Over Time**:
+- Tracks estimated vs actual costs per execution
+- Learns user's specific agent execution patterns
+- Adjusts estimates based on historical data
+- Shows accuracy percentage (e.g., "Our estimates are typically within ±15%")
+
+### 8. Agent Configuration & UI Generation
 
 **Problem**: How to create UI forms for agent config without coupling UI to each agent?
 
@@ -160,7 +308,156 @@ config_schema=AgentConfigSchema(
 4. User fills form → values stored in pipeline config JSON
 5. **Result**: Add new agents without touching frontend code
 
-### 6. Cost Tracking
+### 9. Multi-Symbol Support & Stock Picker Agent
+
+**Problem**: Pipelines are limited to one symbol. Users can't scan multiple stocks or run portfolio strategies.
+
+**Solution**: Stock Picker Agent + Multi-Symbol Pipeline Execution
+
+**Pipeline Flow**:
+```
+Trigger → Stock Picker → Market Data → Bias → Strategy → Risk → Trade
+          (Picks N symbols) (Fetches all)  (Filters)  (Generates signals)
+```
+
+**Stock Picker Agent**:
+1. Runs saved screener (user-defined filters: price, volume, sector, technicals)
+2. Returns top N symbols (e.g., top 10 from 50 matches)
+3. Adds symbols to `state.symbols` list
+4. **FREE** - no cost for Stock Picker itself
+
+**Multi-Symbol Execution**:
+- Market Data Agent fetches data for ALL symbols in parallel
+- Bias Agent analyzes ALL symbols, filters by score
+- Strategy Agent generates signals for qualified symbols
+- Trade Manager executes trades for all valid signals
+
+**Cost Model - Per-Symbol Pricing**:
+```
+Single Symbol Pipeline:
+  Bias Agent: $0.08/hr × 6 min × 1 symbol = $0.008
+  Total: $0.02
+
+10 Symbol Pipeline:
+  Stock Picker: $0.00 (free)
+  Bias Agent: $0.08/hr × 6 min × 10 symbols = $0.08
+  Total: $0.20 (10x multiplier)
+```
+
+**Budget Protection**:
+- Stock Picker checks budget BEFORE analyzing N symbols
+- Blocks execution if cost would exceed remaining budget
+- Transparent per-symbol cost breakdown in estimates
+
+### 10. Pipeline Manager Agent (The Brain)
+
+**Problem**: Need coordinator for budget, positions, and inter-agent communication. Business logic should be in agents, not backend services.
+
+**Solution**: Pipeline Manager Agent - one per pipeline, auto-injected, handles everything
+
+**Architecture**:
+```
+Pipeline 1 (AAPL Day Trading):
+┌──────────────────────────────────────┐
+│ Pipeline Manager Agent (Pipeline 1)  │ ← Owns $5/day budget
+│  • Tracks this pipeline's budget     │
+│  • Monitors this pipeline's positions│
+│  • Coordinates pipeline agents       │
+└──────────────────────────────────────┘
+         ↓ manages
+  Trigger → Market Data → Bias → Strategy → Trade Manager
+```
+
+**Pipeline Manager Agent** (Auto-injected as first agent):
+
+1. **Budget Tracking** (for THIS pipeline only):
+   - Loads pipeline's budget allocation ($5/day, $100/month)
+   - Checks budget before pipeline starts
+   - Receives cost reports from all agents after execution
+   - Accumulates cumulative cost
+   - Detects budget exhaustion
+
+2. **Position Registry** (for THIS pipeline only):
+   - Trade Manager registers positions with Pipeline Manager
+   - Tracks open positions: `manager.open_positions`
+   - Unregisters when positions close
+
+3. **Inter-Agent Communication**:
+   - Agents access manager via `state.pipeline_manager`
+   - Stock Picker asks: "Can I analyze 10 symbols?"
+   - Agents report: "I cost $0.08"
+   - Manager commands Trade Manager: "Emergency close all positions"
+
+4. **Intervention Logic**:
+   - If budget exhausted → send close command to Trade Manager
+   - Trade Manager closes all positions at market
+   - Manager logs intervention
+   - Raises `BudgetExceededException` to stop pipeline
+
+**Budget Exhaustion Flow**:
+```
+1. Bias Agent completes → reports $0.08 cost to Manager
+2. Manager: cumulative = $4.95 + $0.08 = $5.03
+3. Manager: $5.03 >= $5.00 daily limit → EXHAUSTED
+4. Manager → Trade Manager: "Emergency close positions"
+5. Trade Manager closes 2 positions at market
+6. Manager logs intervention, raises exception
+7. Pipeline stops
+8. User notified: "Budget exhausted, 2 positions closed"
+```
+
+**Pipeline Budget Allocation**:
+```
+User total budget: $50/day
+
+Pipeline allocations:
+  Pipeline 1 (AAPL Day):   $5/day
+  Pipeline 2 (Tech Scan):  $10/day
+  Pipeline 3 (Swing):      $20/day
+  ────────────────────────────────
+  Total allocated: $35/day
+  Unallocated:     $15/day
+```
+
+**Example - Inter-Agent Communication**:
+```python
+# Stock Picker asks Pipeline Manager
+class StockPickerAgent:
+    async def process(self, state):
+        estimated_cost = 0.25  # For 10 symbols
+        
+        # Ask Pipeline Manager
+        allowed, reason = state.pipeline_manager.check_budget(estimated_cost)
+        
+        if not allowed:
+            raise BudgetExceededException(f"Manager blocked: {reason}")
+        
+        # Approved - continue
+
+# Bias Agent (cost reported by orchestrator automatically)
+class BiasAgent:
+    async def process(self, state):
+        result = self.analyze()
+        return state
+        # Orchestrator reports cost to manager after this
+
+# Trade Manager registers positions
+class TradeManagerAgent:
+    async def process(self, state):
+        position = self.execute_trade()
+        
+        # Register with Pipeline Manager
+        await state.pipeline_manager.register_position(position)
+```
+
+**Key Benefits**:
+- ✅ **Agent-first** - All logic in Pipeline Manager Agent, not services
+- ✅ **Isolated budgets** - Each pipeline has own allocation
+- ✅ **Inter-agent communication** - Agents coordinate via manager
+- ✅ **Thin orchestrator** - Just calls agents, no business logic
+- ✅ **System agent** - Auto-injected, hidden from UI, free
+
+### 11. Cost Tracking
 
 **Why**: Control OpenAI costs and bill users fairly.
 
@@ -181,6 +478,162 @@ config_schema=AgentConfigSchema(
 - Simple agents use GPT-3.5-turbo (Risk Manager, Reporting)
 - Complex agents use GPT-4 (Bias, Strategy)
 - Future: Migrate simple tasks to local models (Llama)
+
+---
+
+### 12. Performance Analytics
+
+**Why**: Users need to see if their strategies are working and where to optimize.
+
+**What we provide**:
+- **Key Metrics**: Total P&L, Win Rate, Win/Loss Ratio, Sharpe Ratio, Max Drawdown, Profit Factor, ROI
+- **Multi-Dimensional Analysis**: Performance breakdown by symbol, day of week, time of day
+- **Visual Charts**: Equity curve showing cumulative P&L over time
+- **Period Selection**: Analyze last 7/30/90 days or all time
+- **Pipeline Comparison**: Side-by-side comparison of multiple pipelines
+- **Best/Worst Tracking**: Largest win and largest loss with details
+
+**Implementation**:
+
+**Backend** (`app/services/performance_analytics.py`):
+```python
+class PerformanceAnalytics:
+    async def get_pipeline_performance(pipeline_id, start_date, end_date):
+        # Fetch all closed trades in period
+        # Calculate metrics (P&L, win rate, Sharpe, drawdown)
+        # Analyze by symbol/day/time
+        # Generate equity curve
+        # Return comprehensive performance report
+```
+
+**Frontend** (`analytics/performance-dashboard.component.ts`):
+- Angular Material cards for metrics
+- Chart.js/ngx-charts for equity curve and breakdowns
+- Period selector (7D, 30D, 90D, All)
+- Export functionality (PDF/CSV)
+
+**Key Calculations**:
+- **Sharpe Ratio**: Risk-adjusted return = (avg_return / std_return) * sqrt(252)
+- **Max Drawdown**: Peak-to-trough decline in cumulative P&L
+- **Profit Factor**: Gross profit / Gross loss
+- **Win Rate**: (Winning trades / Total trades) * 100
+- **ROI**: (Total P&L / Total cost) - includes agent fees and LLM costs
+
+**User Benefits**:
+1. **See what works**: Identify best-performing symbols, days, times
+2. **Optimize strategies**: Adjust pipeline based on patterns
+3. **Compare pipelines**: Allocate budget to winners
+4. **Track improvement**: Monitor performance over time
+5. **Cost awareness**: Net P&L includes all costs (agents + LLM)
+
+**Example Insights**:
+> "Your pipeline has 62.5% win rate on NVDA vs 45% on TSLA → Focus on NVDA"
+> 
+> "You perform better on Thursdays (9:30-11:00 AM) → Adjust schedule"
+> 
+> "Pipeline A: 2.1x ROI, Pipeline B: 0.8x ROI → Pause Pipeline B"
+
+---
+
+### 13. Testing & Dry Run Mode
+
+**Why**: Allow users to safely test strategies before risking real money.
+
+**Four Execution Modes**:
+
+1. **🟢 Live Mode** - Real trades, real money
+   - Uses live broker API
+   - Requires verified broker connection
+   - Full cost tracking (agent + LLM + broker fees)
+   - **Risk: HIGH**
+
+2. **🔵 Paper Trading Mode** - Realistic testing
+   - Uses broker's paper trading API (Alpaca Paper, etc.)
+   - Real market data, simulated fills
+   - Requires broker paper account
+   - **Risk: LOW (no real money)**
+
+3. **🟡 Simulation Mode** - Fast testing
+   - Fully simulated, no broker API calls
+   - Instant fills with configurable slippage/commission
+   - No broker connection needed
+   - **Risk: NONE**
+
+4. **⚪ Validation Mode** - Logic testing only
+   - Runs all agents except Trade Manager
+   - No trades executed
+   - Generates "what would have happened" reports
+   - **Risk: NONE**
+
+**Implementation**:
+
+**Backend** - Mode-Aware Trade Executors:
+```python
+class TradeManagerAgent:
+    def __init__(self, pipeline):
+        if pipeline.execution_mode == ExecutionMode.LIVE:
+            self.executor = LiveTradeExecutor()
+        elif pipeline.execution_mode == ExecutionMode.PAPER:
+            self.executor = PaperTradeExecutor()
+        elif pipeline.execution_mode == ExecutionMode.SIMULATION:
+            self.executor = SimulatedTradeExecutor()
+        else:  # VALIDATION
+            self.executor = ValidationExecutor()  # No-op
+```
+
+**Frontend** - Mode Selection & Indicators:
+- Mode selection during pipeline creation
+- Large visual badges everywhere (color-coded)
+- Confirmation dialogs for live mode
+- Warning banners in test modes
+- "Clone as Live" button for tested pipelines
+
+**Simulation Features**:
+- Configurable slippage (default 0.1%)
+- Configurable commission (default $0.005/share)
+- Simulate partial fills (20% chance)
+- Simulate rejections (5% chance)
+- Initial balance setting (default $100k)
+
+**Safe Testing Workflow**:
+```
+New User → SIMULATION (unlocked)
+            │
+            ├─> 10+ successful trades
+            └─> ✅ Unlock PAPER TRADING
+                     │
+                     ├─> 25+ paper trades
+                     ├─> Positive P&L
+                     └─> ✅ Unlock LIVE TRADING
+                              │
+                              ├─> Verify broker
+                              ├─> Confirm risks
+                              └─> 🟢 Real trading enabled
+```
+
+**Safety Features**:
+1. **Visual Indicators**: Color-coded badges everywhere (Green/Blue/Yellow/Gray)
+2. **Confirmation Dialogs**: Required for live mode activation
+3. **Broker Validation**: Live mode requires verified connection
+4. **Audit Trail**: All mode changes logged with reason
+5. **Progressive Unlock**: Must succeed in test modes first
+6. **Cost Isolation**: Different cost tracking per mode
+7. **Performance Separation**: Separate analytics for test vs live
+8. **Clone Feature**: Clone and test before modifying live pipelines
+
+**User Benefits**:
+- **Risk-Free Testing**: Try strategies without risking money
+- **Fast Iteration**: Simulation mode for rapid testing
+- **Realistic Validation**: Paper trading with real market data
+- **Confidence Building**: Progress through modes builds competence
+- **Safe Experimentation**: Clone live pipelines to test modifications
+
+**Example Flow**:
+> Day 1-3: Build strategy in SIMULATION → 15 wins, 5 losses (75% win rate)
+> 
+> Day 4-14: Test in PAPER TRADING → 30 trades, +$1,200 paper P&L
+> 
+> Day 15+: Deploy to LIVE → Confident, tested, ready for real trading
 
 ---
 
