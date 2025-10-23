@@ -22,6 +22,43 @@ This is an agent-based trading pipeline platform where retail traders visually c
 6. **State Immutability**: Agents receive state, return new state (don't mutate)
 7. **Documentation**: Every agent, tool, and API endpoint must be documented
 
+## Development Workflow Rules
+
+**IMPORTANT WORKFLOW GUIDELINES**:
+
+1. **No Unnecessary Scripts**: Use the terminal window in chat for commands. Don't create temporary scripts for one-off tasks.
+
+2. **No Temporary Documentation**: Only create `.md` files in the `docs/` folder. Don't create temporary markdown files for discussions, notes, or scratch work.
+
+3. **Read Docs First**: If you're new to this project or implementing a new feature, **ALWAYS read all files in the `docs/` folder first** to understand:
+   - `docs/requirements.md` - What needs to be built
+   - `docs/design.md` - How it should be built
+   - `docs/context.md` - Key concepts and patterns
+   - `docs/roadmap.md` - Current phase and priorities
+   - `docs/scorecard.md` - Assessment and gaps
+
+4. **Reuse, Don't Duplicate**: Before implementing new functionality:
+   - Search for existing implementations
+   - Check for similar patterns in the codebase
+   - Reuse existing services, utilities, and components
+   - Refactor common code into shared modules
+
+5. **Always Create TODO Lists**: When working on code implementation:
+   - Create a TODO list breaking down the work
+   - Include specific, actionable items
+   - **ALWAYS include testing as one of the steps**
+   - Mark items as completed as you progress
+   - Example:
+     ```
+     TODO:
+     - [ ] Create database model
+     - [ ] Implement service layer
+     - [ ] Add API endpoints
+     - [ ] Write unit tests
+     - [ ] Test the implementation manually
+     - [ ] Update documentation
+     ```
+
 ## Python/Backend Guidelines
 
 ### Code Style
