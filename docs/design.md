@@ -3499,6 +3499,772 @@ TTL: 1 hour
 
 ---
 
+## 11.8 Custom Strategy Agent (LLM-Generated User Strategies)
+
+### Overview
+
+The Custom Strategy Agent allows users to define their own trading strategies in plain English. The system uses LLM to generate Python code, performs multi-layered security review, requires admin approval (MVP), and executes in a sandboxed environment.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Creates Strategy                   │
+│  "Buy when 9-EMA crosses above 21-EMA, sell when it crosses │
+│   back below. Only trade if volume > 1M shares."            │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+         ┌─────────────▼─────────────┐
+         │   LLM #1: Code Generator   │
+         │   (GPT-4 / GPT-3.5-turbo)  │
+         └─────────────┬─────────────┘
+                       │
+                       ▼
+         ┌──────────────────────────────┐
+         │   Generated Python Code      │
+         │                              │
+         │ # EMA Crossover Strategy     │
+         │ fast_ema = indicators['ema_9']│
+         │ slow_ema = indicators['ema_21']│
+         │ volume = data['volume'][-1]  │
+         │                              │
+         │ if volume > 1_000_000:       │
+         │   if fast_ema[-1] > slow_ema[-1] and \│
+         │      fast_ema[-2] <= slow_ema[-2]:│
+         │     signal = "BUY"           │
+         │   elif fast_ema[-1] < slow_ema[-1] and \│
+         │        fast_ema[-2] >= slow_ema[-2]:│
+         │     signal = "SELL"          │
+         │ else:                        │
+         │   signal = "HOLD"            │
+         └─────────────┬────────────────┘
+                       │
+         ┌─────────────▼─────────────┐
+         │  Security Review (Multi-Layer) │
+         │                           │
+         │  Layer 1: LLM #2 Review   │
+         │  Layer 2: Static Analysis │
+         │  Layer 3: Sandbox Config  │
+         └─────────────┬─────────────┘
+                       │
+                       ▼
+                   Pass/Fail?
+                       │
+           ┌───────────┴───────────┐
+           │                       │
+          Pass                   Fail
+           │                       │
+           ▼                       ▼
+  ┌────────────────┐      ┌──────────────┐
+  │ PENDING_REVIEW │      │   REJECTED   │
+  │ (Admin Queue)  │      │ (User Notified)│
+  └───────┬────────┘      └──────────────┘
+          │
+    Admin Reviews
+          │
+    ┌─────┴─────┐
+    │           │
+  Approve     Reject
+    │           │
+    ▼           ▼
+┌────────┐  ┌──────────┐
+│ ACTIVE │  │ REJECTED │
+└───┬────┘  └──────────┘
+    │
+    │ User adds to pipeline
+    │
+    ▼
+┌──────────────────────┐
+│  Sandboxed Execution │
+│  - RestrictedPython  │
+│  - 5 sec timeout     │
+│  - 100MB memory      │
+│  - No I/O access     │
+└──────────────────────┘
+```
+
+### Database Schema
+
+**custom_strategy_agents table**:
+
+```sql
+CREATE TABLE custom_strategy_agents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    name VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,  -- Plain English strategy description
+    
+    -- Generated code
+    generated_code TEXT NOT NULL,
+    code_hash VARCHAR(64) NOT NULL,  -- SHA256 of code for version tracking
+    
+    -- Security review results
+    llm_security_review JSONB,  -- {approved, issues, risk_level, explanation}
+    static_analysis_result JSONB,  -- {passed, issues}
+    
+    -- Status workflow
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+        -- DRAFT, PENDING_REVIEW, ACTIVE, REJECTED, ARCHIVED
+    
+    -- Admin approval
+    reviewed_by UUID REFERENCES users(id),  -- Admin who reviewed
+    reviewed_at TIMESTAMP,
+    review_comments TEXT,
+    
+    -- Metadata
+    version INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMP,
+    
+    -- Usage tracking
+    usage_count INT DEFAULT 0,
+    success_count INT DEFAULT 0,
+    error_count INT DEFAULT 0,
+    
+    -- Performance tracking
+    total_trades INT DEFAULT 0,
+    total_pnl DECIMAL(15, 2) DEFAULT 0.00,
+    
+    CONSTRAINT check_status CHECK (status IN ('DRAFT', 'PENDING_REVIEW', 'ACTIVE', 'REJECTED', 'ARCHIVED'))
+);
+
+CREATE INDEX idx_custom_agents_user ON custom_strategy_agents(user_id);
+CREATE INDEX idx_custom_agents_status ON custom_strategy_agents(status);
+CREATE INDEX idx_custom_agents_pending ON custom_strategy_agents(status) WHERE status = 'PENDING_REVIEW';
+```
+
+**custom_agent_execution_audit table**:
+
+```sql
+CREATE TABLE custom_agent_execution_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    custom_agent_id UUID NOT NULL REFERENCES custom_strategy_agents(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    pipeline_id UUID NOT NULL REFERENCES pipelines(id),
+    execution_id UUID NOT NULL REFERENCES pipeline_executions(id),
+    
+    -- Execution details
+    code_hash VARCHAR(64) NOT NULL,
+    code_snippet TEXT,  -- First 500 chars for review
+    execution_time_ms INT,
+    memory_used_bytes BIGINT,
+    
+    -- Result
+    result VARCHAR(10),  -- BUY, SELL, HOLD
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    
+    -- Anomaly flags
+    is_anomaly BOOLEAN DEFAULT FALSE,
+    anomaly_reason TEXT,
+    
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_custom_agent ON custom_agent_execution_audit(custom_agent_id);
+CREATE INDEX idx_audit_anomaly ON custom_agent_execution_audit(is_anomaly) WHERE is_anomaly = TRUE;
+```
+
+### Backend Implementation
+
+**CustomStrategyAgent Class** (`app/agents/custom_strategy_agent.py`):
+
+```python
+from typing import Dict, Any
+import hashlib
+import ast
+from RestrictedPython import compile_restricted, safe_builtins
+import signal
+from contextlib import contextmanager
+
+from app.agents.base_agent import BaseAgent, AgentMetadata
+from app.schemas.pipeline_state import PipelineState
+from app.schemas.strategy import StrategyOutput
+from app.services.llm_service import OpenAIService
+from app.services.security_service import SecurityReviewService
+
+class CustomStrategyAgent(BaseAgent):
+    """
+    User-defined strategy agent with LLM code generation and sandboxed execution
+    """
+    
+    @classmethod
+    def get_metadata(cls) -> AgentMetadata:
+        return AgentMetadata(
+            agent_type="custom_strategy",
+            name="Custom Strategy",
+            description="Define your own strategy in plain English",
+            category="analysis",
+            version="1.0.0",
+            icon="code",
+            pricing_rate=0.20,  # Premium pricing (dual LLM calls)
+            is_free=False,
+            requires_timeframes=[],  # User specifies in description
+            config_schema={
+                "type": "object",
+                "title": "Custom Strategy Configuration",
+                "properties": {
+                    "custom_agent_id": {
+                        "type": "string",
+                        "title": "Custom Agent ID",
+                        "description": "ID of approved custom strategy agent",
+                        "format": "uuid"
+                    },
+                    "strategy_description": {
+                        "type": "string",
+                        "title": "Strategy Description (Read-Only)",
+                        "description": "Plain English description of strategy",
+                        "readOnly": True
+                    },
+                    "generated_code": {
+                        "type": "string",
+                        "title": "Generated Code (Read-Only)",
+                        "description": "Python code generated from description",
+                        "format": "textarea",
+                        "readOnly": True
+                    }
+                },
+                "required": ["custom_agent_id"]
+            }
+        )
+    
+    async def process(self, state: PipelineState) -> PipelineState:
+        """
+        Execute custom user-defined strategy
+        
+        Steps:
+        1. Load custom agent from database
+        2. Verify it's approved (ACTIVE status)
+        3. Execute in sandbox
+        4. Audit log
+        """
+        
+        custom_agent_id = self.config['custom_agent_id']
+        
+        # Load custom agent
+        custom_agent = await self.load_custom_agent(custom_agent_id, state.user_id)
+        
+        if custom_agent.status != 'ACTIVE':
+            raise AgentProcessingError(
+                f"Custom agent not active. Status: {custom_agent.status}"
+            )
+        
+        # Execute in sandbox
+        try:
+            result = await self.execute_in_sandbox(
+                code=custom_agent.generated_code,
+                context={
+                    'data': state.market_data,
+                    'indicators': self.calculate_indicators(state.market_data),
+                    'timeframe_data': state.timeframes
+                }
+            )
+            
+            signal = result.get('signal', 'HOLD')
+            confidence = result.get('confidence', 80)
+            reasoning = result.get('reasoning', custom_agent.description[:200])
+            
+            # Update usage stats
+            await self.update_usage_stats(custom_agent.id, success=True)
+            
+            # Audit log
+            await self.audit_execution(
+                custom_agent_id=custom_agent.id,
+                state=state,
+                code_hash=custom_agent.code_hash,
+                result=signal,
+                success=True,
+                execution_time_ms=result.get('execution_time_ms', 0)
+            )
+            
+            # Update state
+            state.strategy_signal = StrategyOutput(
+                action=signal,
+                confidence=confidence,
+                reasoning=f"Custom Strategy: {reasoning}",
+                entry_price=state.market_data.close,
+                # Additional fields can be set by custom code
+            )
+            
+        except TimeoutError:
+            logger.error(f"Custom agent {custom_agent_id} execution timeout")
+            await self.update_usage_stats(custom_agent.id, success=False)
+            raise AgentProcessingError("Strategy execution timeout (max 5 seconds)")
+            
+        except Exception as e:
+            logger.exception(f"Custom agent {custom_agent_id} execution failed")
+            await self.update_usage_stats(custom_agent.id, success=False)
+            await self.audit_execution(
+                custom_agent_id=custom_agent.id,
+                state=state,
+                code_hash=custom_agent.code_hash,
+                result=None,
+                success=False,
+                error_message=str(e)
+            )
+            raise AgentProcessingError(f"Strategy execution failed: {str(e)}")
+        
+        return state
+    
+    async def execute_in_sandbox(self, code: str, context: Dict[str, Any]) -> Dict:
+        """
+        Execute user code in restricted sandbox
+        
+        Uses RestrictedPython for safety
+        """
+        import time
+        start_time = time.time()
+        
+        # Compile with restrictions
+        byte_code = compile_restricted(
+            code,
+            filename='<custom_strategy>',
+            mode='exec'
+        )
+        
+        # Create restricted globals
+        restricted_globals = {
+            '__builtins__': safe_builtins,
+            # Math functions
+            'abs': abs,
+            'min': min,
+            'max': max,
+            'round': round,
+            'len': len,
+            'sum': sum,
+            # Context
+            'data': context['data'],
+            'indicators': context['indicators'],
+            'timeframe_data': context.get('timeframe_data', {}),
+            # Required output variables
+            'signal': 'HOLD',
+            'confidence': 80,
+            'reasoning': '',
+        }
+        
+        # Execute with timeout
+        with self.timeout(seconds=5):
+            exec(byte_code, restricted_globals)
+        
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        
+        return {
+            'signal': restricted_globals.get('signal', 'HOLD'),
+            'confidence': restricted_globals.get('confidence', 80),
+            'reasoning': restricted_globals.get('reasoning', ''),
+            'execution_time_ms': execution_time_ms
+        }
+    
+    @contextmanager
+    def timeout(self, seconds: int):
+        """Execution timeout context manager"""
+        def handler(signum, frame):
+            raise TimeoutError("Execution exceeded time limit")
+        
+        # Set alarm
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)  # Cancel alarm
+    
+    def calculate_indicators(self, market_data) -> Dict:
+        """Pre-calculate common indicators for user code"""
+        # This would use a technical indicators library
+        # Return dict of indicator names -> values
+        return {
+            'ema_9': self.calc_ema(market_data.close, 9),
+            'ema_21': self.calc_ema(market_data.close, 21),
+            'rsi_14': self.calc_rsi(market_data.close, 14),
+            'macd': self.calc_macd(market_data.close),
+            # ... more indicators
+        }
+```
+
+**Security Review Service** (`app/services/security_service.py`):
+
+```python
+class SecurityReviewService:
+    """
+    Multi-layered security review for custom code
+    """
+    
+    async def review_code(self, code: str, description: str) -> SecurityReviewResult:
+        """
+        Perform comprehensive security review
+        
+        Returns: SecurityReviewResult with approval decision
+        """
+        
+        # Layer 1: LLM Security Review
+        llm_review = await self.llm_security_review(code, description)
+        
+        if llm_review.risk_level in ['high', 'critical']:
+            return SecurityReviewResult(
+                approved=False,
+                reason=f"LLM identified {llm_review.risk_level} risk",
+                llm_review=llm_review,
+                static_analysis=None
+            )
+        
+        # Layer 2: Static Analysis
+        static_result = self.static_analysis(code)
+        
+        if not static_result.passed:
+            return SecurityReviewResult(
+                approved=False,
+                reason=f"Static analysis failed: {static_result.reason}",
+                llm_review=llm_review,
+                static_analysis=static_result
+            )
+        
+        # Both layers passed
+        return SecurityReviewResult(
+            approved=True,
+            reason="Passed all security checks",
+            llm_review=llm_review,
+            static_analysis=static_result
+        )
+    
+    async def llm_security_review(self, code: str, description: str) -> LLMSecurityReview:
+        """LLM-based security analysis"""
+        
+        prompt = f"""
+        You are a security expert reviewing trading strategy code for a sandboxed execution environment.
+        
+        Strategy Description: {description}
+        
+        Code to Review:
+        ```python
+        {code}
+        ```
+        
+        Analyze for security issues:
+        1. File system access (open, read, write, os.path)
+        2. Network access (requests, urllib, socket, http)
+        3. OS commands (os.system, subprocess, exec, eval)
+        4. Dangerous imports (pickle, marshal, ctypes, sys, __import__)
+        5. Resource exhaustion (infinite loops, recursion)
+        6. Data exfiltration attempts
+        7. Code injection (eval, exec, compile)
+        
+        Respond in JSON format:
+        {{
+            "approved": true/false,
+            "risk_level": "none" | "low" | "medium" | "high" | "critical",
+            "issues": ["list of specific issues found"],
+            "explanation": "detailed explanation of decision"
+        }}
+        """
+        
+        response = await openai_service.call(prompt, model="gpt-4", response_format="json")
+        return LLMSecurityReview(**json.loads(response))
+    
+    def static_analysis(self, code: str) -> StaticAnalysisResult:
+        """Programmatic security checks using AST"""
+        
+        FORBIDDEN_IMPORTS = {
+            'os', 'sys', 'subprocess', 'socket', 'urllib', 'requests',
+            'http', 'pickle', 'marshal', 'ctypes', '__import__', 'importlib'
+        }
+        
+        FORBIDDEN_BUILTINS = {
+            'eval', 'exec', 'compile', '__import__', 'open',
+            'input', 'raw_input', 'file', 'execfile'
+        }
+        
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            return StaticAnalysisResult(
+                passed=False,
+                reason=f"Syntax error: {str(e)}"
+            )
+        
+        # Check for forbidden imports
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                module = node.module if isinstance(node, ast.ImportFrom) else node.names[0].name
+                if module and module.split('.')[0] in FORBIDDEN_IMPORTS:
+                    return StaticAnalysisResult(
+                        passed=False,
+                        reason=f"Forbidden import: {module}"
+                    )
+            
+            # Check for forbidden function calls
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_BUILTINS:
+                    return StaticAnalysisResult(
+                        passed=False,
+                        reason=f"Forbidden function: {node.func.id}"
+                    )
+        
+        return StaticAnalysisResult(passed=True)
+```
+
+**Admin Approval Workflow** (`app/api/v1/admin/custom_agents.py`):
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from app.dependencies import get_current_admin_user
+
+router = APIRouter(prefix="/api/v1/admin/custom-agents", tags=["admin"])
+
+@router.get("/pending")
+async def list_pending_agents(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """List all custom agents pending review"""
+    
+    agents = await db.execute(
+        """
+        SELECT ca.*, u.email as user_email, u.name as user_name
+        FROM custom_strategy_agents ca
+        JOIN users u ON ca.user_id = u.id
+        WHERE ca.status = 'PENDING_REVIEW'
+        ORDER BY ca.created_at ASC
+        """
+    )
+    
+    return agents.fetchall()
+
+@router.post("/{agent_id}/approve")
+async def approve_custom_agent(
+    agent_id: str,
+    review_comments: str = None,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Approve a custom strategy agent"""
+    
+    agent = await db.fetch_one(
+        "SELECT * FROM custom_strategy_agents WHERE id = $1",
+        agent_id
+    )
+    
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    if agent.status != 'PENDING_REVIEW':
+        raise HTTPException(400, f"Agent not pending review. Current status: {agent.status}")
+    
+    # Update status
+    await db.execute(
+        """
+        UPDATE custom_strategy_agents
+        SET status = 'ACTIVE',
+            reviewed_by = $1,
+            reviewed_at = NOW(),
+            review_comments = $2,
+            updated_at = NOW()
+        WHERE id = $3
+        """,
+        admin_user.id, review_comments, agent_id
+    )
+    
+    # Notify user
+    await notification_service.send(
+        user_id=agent.user_id,
+        type="CUSTOM_AGENT_APPROVED",
+        title="Custom Strategy Approved",
+        message=f"Your custom strategy '{agent.name}' has been approved and is ready to use!",
+        data={"agent_id": agent_id, "comments": review_comments}
+    )
+    
+    return {"status": "approved"}
+
+@router.post("/{agent_id}/reject")
+async def reject_custom_agent(
+    agent_id: str,
+    review_comments: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Reject a custom strategy agent"""
+    
+    agent = await db.fetch_one(
+        "SELECT * FROM custom_strategy_agents WHERE id = $1",
+        agent_id
+    )
+    
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Update status
+    await db.execute(
+        """
+        UPDATE custom_strategy_agents
+        SET status = 'REJECTED',
+            reviewed_by = $1,
+            reviewed_at = NOW(),
+            review_comments = $2,
+            updated_at = NOW()
+        WHERE id = $3
+        """,
+        admin_user.id, review_comments, agent_id
+    )
+    
+    # Notify user
+    await notification_service.send(
+        user_id=agent.user_id,
+        type="CUSTOM_AGENT_REJECTED",
+        title="Custom Strategy Needs Revision",
+        message=f"Your custom strategy '{agent.name}' needs revision. Reason: {review_comments}",
+        data={"agent_id": agent_id, "comments": review_comments}
+    )
+    
+    return {"status": "rejected"}
+```
+
+### Frontend Implementation
+
+**Custom Agent Creation Form** (`custom-agent-form.component.html`):
+
+```html
+<form [formGroup]="customAgentForm" (ngSubmit)="createAgent()">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Create Custom Strategy</mat-card-title>
+      <mat-card-subtitle>Describe your strategy in plain English</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Agent Name -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Strategy Name</mat-label>
+        <input matInput formControlName="name" placeholder="My EMA Crossover Strategy">
+      </mat-form-field>
+
+      <!-- Strategy Description -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Strategy Description</mat-label>
+        <textarea 
+          matInput 
+          formControlName="description" 
+          rows="8"
+          placeholder="Describe your strategy... 
+
+Example: Buy when the 9-period EMA crosses above the 21-period EMA on the 5-minute chart. Sell when it crosses back below. Only trade if volume is above 1 million shares.">
+        </textarea>
+        <mat-hint>Be as specific as possible. Include entry rules, exit rules, and any conditions.</mat-hint>
+      </mat-form-field>
+
+      <!-- Generate Code Button -->
+      <button 
+        mat-raised-button 
+        color="primary" 
+        type="button"
+        (click)="generateCode()"
+        [disabled]="generating || !customAgentForm.get('description').value">
+        <mat-icon *ngIf="generating">hourglass_empty</mat-icon>
+        <mat-icon *ngIf="!generating">code</mat-icon>
+        {{ generating ? 'Generating Code...' : 'Generate Strategy Code' }}
+      </button>
+
+      <!-- Generated Code Display -->
+      <div *ngIf="generatedCode" class="code-preview">
+        <h3>Generated Code</h3>
+        <mat-card class="code-card">
+          <mat-card-content>
+            <pre><code [highlight]="generatedCode" [languages]="['python']"></code></pre>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Security Review Results -->
+        <mat-card *ngIf="securityReview" class="security-review">
+          <mat-card-header>
+            <mat-icon [color]="securityReview.approved ? 'primary' : 'warn'">
+              {{ securityReview.approved ? 'verified' : 'warning' }}
+            </mat-icon>
+            <mat-card-title>
+              Security Review: {{ securityReview.approved ? 'Passed' : 'Failed' }}
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p>Risk Level: <strong>{{ securityReview.risk_level }}</strong></p>
+            <p>{{ securityReview.explanation }}</p>
+            <div *ngIf="securityReview.issues.length > 0">
+              <p><strong>Issues Found:</strong></p>
+              <ul>
+                <li *ngFor="let issue of securityReview.issues">{{ issue }}</li>
+              </ul>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Test in Simulation Button -->
+        <button 
+          mat-raised-button 
+          color="accent"
+          type="button"
+          (click)="testInSimulation()"
+          [disabled]="!securityReview?.approved">
+          <mat-icon>science</mat-icon>
+          Test in Simulation
+        </button>
+      </div>
+
+      <!-- Approval Notice -->
+      <mat-card *ngIf="generatedCode && securityReview?.approved" class="approval-notice">
+        <mat-card-content>
+          <mat-icon color="primary">info</mat-icon>
+          <p>
+            <strong>Manual Approval Required</strong><br>
+            Your custom strategy will be reviewed by our team before you can use it in a pipeline.
+            This typically takes 24-48 hours. You'll receive an email notification once it's approved.
+          </p>
+        </mat-card-content>
+      </mat-card>
+
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button 
+        mat-raised-button 
+        color="primary" 
+        type="submit"
+        [disabled]="!customAgentForm.valid || !securityReview?.approved">
+        Submit for Review
+      </button>
+      <button mat-button type="button" (click)="cancel()">
+        Cancel
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</form>
+```
+
+### Key Safety Features
+
+1. **Multi-Layered Security**:
+   - LLM security review (GPT-4)
+   - Static code analysis (AST parsing)
+   - Sandboxed execution (RestrictedPython)
+   - Resource limits (time, memory)
+
+2. **Admin Approval Workflow** (MVP):
+   - All custom agents reviewed manually
+   - Admin can test before approving
+   - User notified of approval/rejection
+   - Comments provided for rejected agents
+
+3. **Audit Trail**:
+   - Every execution logged
+   - Code hash tracked
+   - Performance metrics collected
+   - Anomaly detection
+
+4. **Progressive Enhancement** (Future):
+   - Transition to AI-only approval
+   - Confidence thresholds
+   - Continuous learning from approvals
+   - Community library and marketplace
+
+---
+
 ## 12. Frontend Architecture
 
 ### 12.1 Angular Module Structure

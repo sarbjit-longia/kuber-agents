@@ -453,6 +453,132 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Return results with sorting options (volume, price, market cap, performance)
 - Limit max results (default 50)
 
+#### 2.4.11 Custom Strategy Agent (User-Defined Strategies)
+
+**FR-2.4.11.1**: System shall allow users to create custom strategy agents
+- User describes strategy in plain English (free-form text input)
+- System generates Python code from description using LLM
+- Generated code shown to user for review
+- User can save custom strategy agent for reuse
+
+**FR-2.4.11.2**: System shall perform multi-layered security review
+- **Layer 1 - LLM Security Review**: Use LLM to analyze generated code for security issues
+  - Check for file system access, network access, OS commands
+  - Check for dangerous imports (os, sys, subprocess, socket, etc.)
+  - Check for code injection risks (eval, exec, compile)
+  - Check for resource exhaustion patterns (infinite loops)
+  - Provide risk assessment (none/low/medium/high/critical)
+- **Layer 2 - Static Analysis**: Programmatic validation using AST parsing
+  - Whitelist of allowed imports (none for MVP)
+  - Blacklist of forbidden functions (eval, exec, open, __import__)
+  - Check for syntax errors
+  - Validate code structure
+- **Layer 3 - Sandbox Execution**: Execute in restricted environment
+  - Use RestrictedPython or similar sandboxing library
+  - Limit execution time (max 5 seconds)
+  - Limit memory usage (max 100MB)
+  - No file system or network access
+  - Only allow access to provided context (market data, indicators)
+
+**FR-2.4.11.3**: System shall require admin approval for custom strategies (MVP)
+- Custom strategy agent enters "PENDING_REVIEW" status after creation
+- User cannot use agent in pipeline until approved
+- Admin dashboard shows all pending custom agents
+- Admin can:
+  - Review strategy description
+  - Review generated code
+  - Review security analysis results
+  - Test agent in simulation mode
+  - Approve or reject with comments
+- User notified of approval/rejection via email and in-app
+- Approved agents enter "ACTIVE" status
+- Rejected agents enter "REJECTED" status with reason
+
+**FR-2.4.11.4**: System shall support custom agent lifecycle management
+- **States**: DRAFT, PENDING_REVIEW, ACTIVE, REJECTED, ARCHIVED
+- User can edit DRAFT or REJECTED agents (triggers new review)
+- User can archive ACTIVE agents (soft delete)
+- User can duplicate existing custom agents
+- User can export/import custom agents (JSON format)
+- Version history tracked for each custom agent
+
+**FR-2.4.11.5**: Custom Strategy Agent execution shall be sandboxed
+- Execute in isolated environment per execution
+- Provide context object with:
+  - `data`: Current OHLCV market data
+  - `indicators`: Pre-calculated indicators (EMA, RSI, MACD, BB, etc.)
+  - `timeframe_data`: Multi-timeframe data if requested
+- Code must set `signal` variable to "BUY", "SELL", or "HOLD"
+- Code can optionally set `confidence` (0-100) and `reasoning` (string)
+- Execution failures logged and shown to user with plain English explanation
+
+**FR-2.4.11.6**: System shall store generated code permanently in database
+- Code generated **once** during custom agent creation
+- Generated code stored in `custom_strategy_agents.generated_code` column
+- Code **never regenerated** at runtime
+- At runtime, code loaded from database record and executed directly
+- Pipeline configuration stores only reference to custom agent (`custom_agent_id`)
+- No LLM calls during pipeline execution
+
+**FR-2.4.11.7**: System shall track code integrity via hash
+- SHA256 hash of generated code stored in `code_hash` column
+- Hash computed at creation time and stored with code
+- Hash verified at runtime before execution to detect tampering
+- If hash mismatch detected (code modified outside system), reject execution and alert admin
+- Hash used for audit trail (identify which code version was executed)
+- Hash used for duplicate detection (prevent users from creating identical strategies)
+
+**FR-2.4.11.8**: System shall support custom agent modification workflow
+- User cannot directly edit ACTIVE custom agents
+- To modify strategy, user must:
+  - **Option 1**: Duplicate existing agent → Creates new DRAFT → Edit description → Regenerate code → New review cycle
+  - **Option 2**: Archive old agent → Create new agent from scratch
+- Each modification creates new `custom_agent_id`
+- Original approved agent remains unchanged
+- Pipeline using old agent continues working
+- User can update pipeline to use new agent once approved
+
+**FR-2.4.11.9**: System shall provide testing interface for custom strategies
+- "Test in Simulation" button shows what code would do on recent data
+- Historical test view (last 10 executions worth of data)
+- Show inputs and outputs for debugging
+- Show execution time and resource usage
+- Clear error messages if code fails
+
+**FR-2.4.11.10**: System shall track custom agent usage and performance
+- Number of times agent used
+- Success rate (executions without errors)
+- Average execution time
+- Trades generated by this agent
+- P&L attributed to this agent
+- User can see performance metrics before using
+
+**FR-2.4.11.11**: Custom Strategy Agent shall have premium pricing
+- Higher hourly rate than standard agents (0.15-0.20/hour)
+- Accounts for dual LLM calls (generation + security review)
+- Accounts for additional risk and monitoring costs
+- Clear cost displayed before user creates custom agent
+
+**FR-2.4.11.12**: System shall audit all custom code executions
+- Log all executions to audit table
+- Include: user_id, pipeline_id, code_hash, timestamp, result, execution_time
+- Store code snippet (first 500 chars) for review
+- Flag anomalies (unusually long execution, errors, suspicious patterns)
+- Admin dashboard for monitoring custom agent usage
+
+**FR-2.4.11.13**: Future: System shall transition to AI-only approval (post-MVP)
+- Once confidence in AI security review is high, remove manual approval
+- Implement confidence threshold (e.g., 95% confidence = auto-approve)
+- Medium/High risk agents still require manual review
+- Low/None risk agents approved automatically
+- Continuous monitoring and feedback loop to improve AI reviewer
+
+**FR-2.4.11.14**: System shall provide agent library for sharing (future)
+- Users can publish approved custom agents to community library
+- Other users can clone and use published agents
+- Rating and review system
+- Agent marketplace (buy/sell agents) in future phase
+
 ### 2.5 Cost Tracking & Billing
 
 **FR-2.5.1**: System shall track LLM token usage
