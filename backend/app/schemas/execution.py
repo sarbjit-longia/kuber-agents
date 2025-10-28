@@ -17,6 +17,7 @@ class ExecutionBase(BaseModel):
 class ExecutionCreate(ExecutionBase):
     """Schema for creating a new execution."""
     pipeline_id: UUID
+    mode: Optional[str] = "paper"  # "live", "paper", "simulation", "validation"
 
 
 class ExecutionUpdate(BaseModel):

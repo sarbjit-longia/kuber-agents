@@ -6,15 +6,28 @@ async support and connection pooling.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import settings
 
-# Convert postgresql:// to postgresql+asyncpg://
-DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+# Convert postgresql:// to postgresql+asyncpg:// for async
+ASYNC_DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+# Sync database URL (for Celery and background tasks)
+SYNC_DATABASE_URL = settings.DATABASE_URL
 
 # Create async engine
 engine = create_async_engine(
-    DATABASE_URL,
+    ASYNC_DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+)
+
+# Create sync engine (for Celery tasks)
+sync_engine = create_engine(
+    SYNC_DATABASE_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
     pool_size=5,
@@ -26,6 +39,14 @@ AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
+)
+
+# Create sync session factory (for Celery tasks)
+SessionLocal = sessionmaker(
+    sync_engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False
 )
 
 # Base class for models

@@ -39,8 +39,9 @@ class Pipeline(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    user = relationship("User", backref="pipelines")
+    user = relationship("User", back_populates="pipelines")
     executions = relationship("Execution", back_populates="pipeline", cascade="all, delete-orphan")
+    cost_tracking = relationship("CostTracking", back_populates="pipeline")
 
     def __repr__(self):
         return f"<Pipeline(id={self.id}, name={self.name}, user_id={self.user_id})>"

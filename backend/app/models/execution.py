@@ -18,6 +18,7 @@ class ExecutionStatus(str, PyEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    SKIPPED = "skipped"  # When trigger not met or budget exceeded
 
 
 class Execution(Base):
@@ -53,7 +54,8 @@ class Execution(Base):
 
     # Relationships
     pipeline = relationship("Pipeline", back_populates="executions")
-    user = relationship("User", backref="executions")
+    user = relationship("User", back_populates="executions")
+    cost_tracking = relationship("CostTracking", back_populates="execution")
 
     def __repr__(self):
         return f"<Execution(id={self.id}, pipeline_id={self.pipeline_id}, status={self.status})>"
