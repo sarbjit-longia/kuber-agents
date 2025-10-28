@@ -561,6 +561,11 @@ cd deploy
 ./run.sh logs api    # View logs
 ./run.sh status      # Service status
 ```
+### Things to keep in mind
+- Never create unnecessary docs about the recent tasks etc but prefer to use docs in folder /docs
+- Never run frontend in chat windows but let me run it in terminal
+- Always use virtual env .venv in case you are runnign backend locally without docker
+
 
 ## Resources
 

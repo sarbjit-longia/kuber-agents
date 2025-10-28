@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 import structlog
 
 from app.config import settings
-from app.api.v1 import health
+from app.api import v1
 
 # Configure structured logging
 structlog.configure(
@@ -79,7 +79,7 @@ async def root():
 
 
 # Include routers
-app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(v1.router, prefix="/api/v1")
 
 
 # Global exception handler

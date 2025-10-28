@@ -3,6 +3,7 @@ fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 pydantic>=2.4.2
 pydantic-settings>=2.0.3
+email-validator>=2.1.0
 
 # Database
 sqlalchemy>=2.0.23
@@ -25,7 +26,8 @@ tiktoken>=0.5.1
 
 # Authentication
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
 python-multipart>=0.0.6
 
 # External APIs
