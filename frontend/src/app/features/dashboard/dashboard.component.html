@@ -1,0 +1,48 @@
+<div class="dashboard-container">
+  <header class="dashboard-header">
+    <h1>Trading Platform Dashboard</h1>
+    <p class="subtitle">AI Agent-Based Trading Pipeline Platform</p>
+  </header>
+
+  <div class="dashboard-content">
+    <div class="welcome-card">
+      <h2>🚀 Welcome to Trading Platform</h2>
+      <p>Your development environment is ready!</p>
+      
+      <div class="status-section" *ngIf="!loading">
+        <h3>Backend Status</h3>
+        <div class="status-item" *ngIf="healthStatus">
+          <span class="status-label">Status:</span>
+          <span class="status-value success">{{ healthStatus.status }}</span>
+        </div>
+        <div class="status-item" *ngIf="healthStatus">
+          <span class="status-label">Environment:</span>
+          <span class="status-value">{{ healthStatus.environment }}</span>
+        </div>
+        <div class="status-item" *ngIf="healthStatus">
+          <span class="status-label">Version:</span>
+          <span class="status-value">{{ healthStatus.version }}</span>
+        </div>
+        <div class="status-item" *ngIf="healthStatus">
+          <span class="status-label">Timestamp:</span>
+          <span class="status-value">{{ healthStatus.timestamp | date:'medium' }}</span>
+        </div>
+      </div>
+
+      <div class="loading-section" *ngIf="loading">
+        <p>Connecting to backend...</p>
+      </div>
+
+      <div class="next-steps">
+        <h3>Next Steps</h3>
+        <ul>
+          <li>✅ Backend API is running</li>
+          <li>✅ Frontend is connected</li>
+          <li>⏳ Ready to implement authentication</li>
+          <li>⏳ Ready to build pipeline builder</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+

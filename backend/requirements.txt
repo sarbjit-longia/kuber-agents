@@ -1,0 +1,47 @@
+# Core Framework
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.2
+pydantic-settings>=2.0.3
+
+# Database
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+
+# Redis & Caching
+redis>=5.0.1
+hiredis>=2.2.3
+
+# Celery & Task Queue
+celery>=5.3.4
+flower>=2.0.1
+
+# AI & LLM
+crewai>=1.2.1
+openai>=1.13.3
+tiktoken>=0.5.1
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# External APIs
+finnhub-python>=2.4.19
+alpaca-py>=0.43.0
+
+# Utilities
+python-dotenv>=1.0.0
+httpx>=0.25.1
+aiofiles>=23.2.1
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Logging & Monitoring
+structlog>=23.2.0
+sentry-sdk>=1.38.0
+
+# Websockets
+websockets>=12.0
