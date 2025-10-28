@@ -1,17 +1,36 @@
 """
 Agents Package
 
-This package contains all agent implementations.
-Each agent inherits from BaseAgent and implements the agent interface.
+This package contains all agent implementations and the agent registry.
 """
+from app.agents.registry import registry, get_registry
+from app.agents.base import BaseAgent, AgentError, InsufficientDataError, TriggerNotMetException
+from app.agents.time_trigger import TimeTriggerAgent
+from app.agents.market_data_agent import MarketDataAgent
+from app.agents.bias_agent import BiasAgent
+from app.agents.strategy_agent import StrategyAgent
+from app.agents.risk_manager_agent import RiskManagerAgent
+from app.agents.trade_manager_agent import TradeManagerAgent
 
-# Agent Registry - All agents must be registered here
-AGENT_REGISTRY = {}
+# Register all agents
+registry.register(TimeTriggerAgent)
+registry.register(MarketDataAgent)
+registry.register(BiasAgent)
+registry.register(StrategyAgent)
+registry.register(RiskManagerAgent)
+registry.register(TradeManagerAgent)
 
-# Import agents here as they are created
-# from app.agents.time_trigger_agent import TimeTriggerAgent
-# from app.agents.market_data_agent import MarketDataAgent
-# etc.
-
-__all__ = ["AGENT_REGISTRY"]
-
+__all__ = [
+    "registry",
+    "get_registry",
+    "BaseAgent",
+    "AgentError",
+    "InsufficientDataError",
+    "TriggerNotMetException",
+    "TimeTriggerAgent",
+    "MarketDataAgent",
+    "BiasAgent",
+    "StrategyAgent",
+    "RiskManagerAgent",
+    "TradeManagerAgent",
+]

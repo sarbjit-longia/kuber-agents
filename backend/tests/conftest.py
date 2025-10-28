@@ -21,6 +21,9 @@ TEST_DATABASE_URL = settings.DATABASE_URL
 if TEST_DATABASE_URL:
     # Replace the database name with a test database
     TEST_DATABASE_URL = TEST_DATABASE_URL.replace("/trading_platform", "/trading_platform_test")
+    # Replace psycopg2 with asyncpg for async support
+    if "postgresql://" in TEST_DATABASE_URL and "postgresql+asyncpg://" not in TEST_DATABASE_URL:
+        TEST_DATABASE_URL = TEST_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
