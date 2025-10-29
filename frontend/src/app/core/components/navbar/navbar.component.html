@@ -1,0 +1,63 @@
+<mat-toolbar class="navbar">
+  <div class="navbar-content">
+    <!-- Logo/Brand -->
+    <div class="navbar-brand">
+      <a routerLink="/" class="brand-link">
+        <mat-icon class="brand-icon">show_chart</mat-icon>
+        <span class="brand-name">TradingPipeline</span>
+      </a>
+    </div>
+
+    <!-- Navigation Links -->
+    <div class="navbar-links">
+      <a routerLink="/" class="nav-link" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
+        Home
+      </a>
+      
+      <ng-container *ngIf="isAuthenticated">
+        <a routerLink="/dashboard" class="nav-link" routerLinkActive="active">
+          Dashboard
+        </a>
+        <a routerLink="/pipeline-builder" class="nav-link" routerLinkActive="active">
+          Pipeline Builder
+        </a>
+      </ng-container>
+    </div>
+
+    <!-- Auth Buttons -->
+    <div class="navbar-actions">
+      <ng-container *ngIf="!isAuthenticated">
+        <button mat-button routerLink="/login" class="login-button">
+          <mat-icon>login</mat-icon>
+          Login
+        </button>
+        <button mat-raised-button color="primary" routerLink="/register" class="register-button">
+          <mat-icon>person_add</mat-icon>
+          Sign Up
+        </button>
+      </ng-container>
+
+      <ng-container *ngIf="isAuthenticated">
+        <button mat-icon-button [matMenuTriggerFor]="userMenu" class="user-menu-button">
+          <mat-icon>account_circle</mat-icon>
+        </button>
+        <mat-menu #userMenu="matMenu">
+          <button mat-menu-item routerLink="/dashboard">
+            <mat-icon>dashboard</mat-icon>
+            <span>Dashboard</span>
+          </button>
+          <button mat-menu-item routerLink="/pipeline-builder">
+            <mat-icon>account_tree</mat-icon>
+            <span>Pipelines</span>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="logout()">
+            <mat-icon>logout</mat-icon>
+            <span>Logout</span>
+          </button>
+        </mat-menu>
+      </ng-container>
+    </div>
+  </div>
+</mat-toolbar>
+

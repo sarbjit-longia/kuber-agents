@@ -1,0 +1,137 @@
+<div class="landing-page">
+  <!-- Navigation Bar -->
+  <app-navbar></app-navbar>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <div class="hero-text">
+        <h1 class="hero-title">
+          Build Trading Strategies <br>
+          <span class="gradient-text">with AI Agents</span>
+        </h1>
+        <p class="hero-subtitle">
+          Visual pipeline builder for algorithmic trading. Connect AI agents to create 
+          sophisticated trading strategies without writing code.
+        </p>
+        <div class="hero-actions">
+          <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
+            <mat-icon>rocket_launch</mat-icon>
+            Start Building Free
+          </button>
+          <button mat-stroked-button class="secondary-button" routerLink="/login">
+            <mat-icon>login</mat-icon>
+            Sign In
+          </button>
+        </div>
+        <div class="hero-stats">
+          <div class="stat">
+            <div class="stat-number">6</div>
+            <div class="stat-label">AI Agents</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number">24/7</div>
+            <div class="stat-label">Automated</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number">$10</div>
+            <div class="stat-label">Free Credits</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="pipeline-preview">
+          <div class="preview-card agent-card">
+            <mat-icon>schedule</mat-icon>
+            <span>Time Trigger</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="preview-card agent-card">
+            <mat-icon>show_chart</mat-icon>
+            <span>Market Data</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="preview-card agent-card ai">
+            <mat-icon>psychology</mat-icon>
+            <span>AI Strategy</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="preview-card agent-card">
+            <mat-icon>trending_up</mat-icon>
+            <span>Execute Trade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <div class="section-header">
+      <h2>Everything You Need to Succeed</h2>
+      <p>Powerful features designed for both beginners and experienced traders</p>
+    </div>
+    <div class="features-grid">
+      <mat-card class="feature-card" *ngFor="let feature of features">
+        <div class="feature-icon">
+          <mat-icon>{{ feature.icon }}</mat-icon>
+        </div>
+        <h3>{{ feature.title }}</h3>
+        <p>{{ feature.description }}</p>
+      </mat-card>
+    </div>
+  </section>
+
+  <!-- Agents Section -->
+  <section class="agents-section">
+    <div class="section-header">
+      <h2>Pre-Built AI Agents</h2>
+      <p>Drag and drop agents to build your custom trading pipeline</p>
+    </div>
+    <div class="agents-grid">
+      <div class="agent-item" *ngFor="let agent of agents">
+        <div class="agent-icon">
+          <mat-icon>smart_toy</mat-icon>
+        </div>
+        <div class="agent-info">
+          <h4>{{ agent.name }}</h4>
+          <span class="agent-type">{{ agent.type }}</span>
+        </div>
+        <span class="agent-badge" [class.free]="agent.free">
+          {{ agent.free ? 'FREE' : 'PREMIUM' }}
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="cta-content">
+      <h2>Ready to Automate Your Trading?</h2>
+      <p>Join traders who are already building AI-powered strategies</p>
+      <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
+        <mat-icon>arrow_forward</mat-icon>
+        Get Started Now
+      </button>
+      <p class="cta-note">No credit card required • $10 free credits included</p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <h3>TradingPipeline</h3>
+        <p>Agent-based algorithmic trading platform</p>
+      </div>
+      <div class="footer-links">
+        <a routerLink="/login">Login</a>
+        <a routerLink="/register">Sign Up</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2025 TradingPipeline. All rights reserved.</p>
+    </div>
+  </footer>
+</div>
+

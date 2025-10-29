@@ -1,37 +1,85 @@
-/* Global Styles */
+/* You can add global styles to this file, and also import other style files */
+@use '@angular/material' as mat;
 
+// Include the common styles for Angular Material
+@include mat.core();
+
+// Define a custom theme
+$custom-primary: mat.define-palette(mat.$indigo-palette);
+$custom-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
+$custom-warn: mat.define-palette(mat.$red-palette);
+
+$custom-theme: mat.define-light-theme((
+  color: (
+    primary: $custom-primary,
+    accent: $custom-accent,
+    warn: $custom-warn,
+  ),
+  typography: mat.define-typography-config(),
+  density: 0,
+));
+
+// Include theme styles for core and each component used in your app
+@include mat.all-component-themes($custom-theme);
+
+// Global styles
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f7fafc;
-  color: #2d3748;
-  line-height: 1.6;
-}
-
 html, body {
   height: 100%;
+  margin: 0;
+  font-family: Roboto, "Helvetica Neue", sans-serif;
 }
 
-.app-container {
-  min-height: 100vh;
+body {
+  background: #f5f5f5;
 }
 
-/* Utility Classes */
-.text-center {
-  text-align: center;
+// Fix Material form field alignment issues
+.mat-mdc-form-field {
+  width: 100%;
+  
+  .mat-mdc-text-field-wrapper {
+    padding-bottom: 0;
+  }
+  
+  .mat-mdc-form-field-subscript-wrapper {
+    display: block;
+    height: auto;
+    margin-top: 0.5rem;
+  }
+  
+  .mat-mdc-form-field-error-wrapper {
+    padding: 0;
+  }
 }
 
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mt-3 { margin-top: 1.5rem; }
-.mt-4 { margin-top: 2rem; }
+// Ensure proper label positioning
+.mat-mdc-form-field-has-label .mat-mdc-text-field-wrapper {
+  padding-top: 0;
+}
 
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.mb-3 { margin-bottom: 1.5rem; }
-.mb-4 { margin-bottom: 2rem; }
+// Fix outline appearance
+.mat-mdc-form-field-appearance-outline {
+  .mat-mdc-text-field-wrapper {
+    margin: 0;
+    padding: 0;
+  }
+  
+  .mdc-notched-outline {
+    .mdc-notched-outline__leading,
+    .mdc-notched-outline__notch,
+    .mdc-notched-outline__trailing {
+      border-width: 1px;
+    }
+  }
+}
+
+// Loading spinner centering
+mat-spinner {
+  display: inline-block;
+}

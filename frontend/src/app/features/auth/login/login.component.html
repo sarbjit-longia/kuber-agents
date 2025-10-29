@@ -1,4 +1,6 @@
 <div class="login-container">
+  <app-navbar></app-navbar>
+  <div class="login-content">
   <mat-card class="login-card">
     <mat-card-header>
       <mat-card-title>Login</mat-card-title>
@@ -7,7 +9,7 @@
     
     <mat-card-content>
       <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="outline" class="full-width">
+        <mat-form-field appearance="fill" class="full-width">
           <mat-label>Email</mat-label>
           <input matInput type="email" formControlName="email" required>
           <mat-error *ngIf="loginForm.get('email')?.hasError('required')">
@@ -18,7 +20,7 @@
           </mat-error>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="full-width">
+        <mat-form-field appearance="fill" class="full-width">
           <mat-label>Password</mat-label>
           <input matInput type="password" formControlName="password" required>
           <mat-error *ngIf="loginForm.get('password')?.hasError('required')">
@@ -37,7 +39,7 @@
           mat-raised-button 
           color="primary" 
           type="submit" 
-          class="full-width"
+          class="full-width submit-button"
           [disabled]="loading || loginForm.invalid">
           <span *ngIf="!loading">Login</span>
           <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
@@ -49,5 +51,6 @@
       </div>
     </mat-card-content>
   </mat-card>
+  </div>
 </div>
 

@@ -13,6 +13,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { AuthService } from '../../../core/services/auth.service';
+import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
 
 @Component({
   selector: 'app-register',
@@ -25,7 +26,8 @@ import { AuthService } from '../../../core/services/auth.service';
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    NavbarComponent
   ],
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss']

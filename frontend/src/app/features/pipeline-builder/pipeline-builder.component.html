@@ -1,0 +1,92 @@
+<!-- Pipeline Builder Layout -->
+<div class="pipeline-builder">
+  <!-- Toolbar -->
+  <mat-toolbar color="primary" class="builder-toolbar">
+    <button mat-icon-button (click)="toggleSidenav()">
+      <mat-icon>menu</mat-icon>
+    </button>
+    
+    <span class="toolbar-title">
+      {{ pipeline?.name || 'New Pipeline' }}
+    </span>
+    
+    <span class="toolbar-spacer"></span>
+    
+    <button mat-raised-button color="accent" (click)="savePipeline()" [disabled]="saving || !pipeline">
+      <mat-icon>save</mat-icon>
+      {{ saving ? 'Saving...' : 'Save' }}
+    </button>
+    
+    <button mat-raised-button color="warn" (click)="executePipeline()" [disabled]="!pipeline || nodes.length === 0">
+      <mat-icon>play_arrow</mat-icon>
+      Execute
+    </button>
+  </mat-toolbar>
+
+  <!-- Main Content -->
+  <mat-sidenav-container class="builder-container">
+    <!-- Agent Palette Sidebar -->
+    <mat-sidenav 
+      #sidenav 
+      mode="side" 
+      [opened]="sidenavOpened" 
+      class="agent-palette">
+      <h3 class="palette-title">Available Agents</h3>
+      
+      <div class="agent-list">
+        <div 
+          *ngFor="let agent of agents" 
+          class="agent-card"
+          (click)="addNode(agent.agent_type)">
+          <mat-icon>{{ agent.icon || 'smart_toy' }}</mat-icon>
+          <div class="agent-info">
+            <div class="agent-name">{{ agent.name }}</div>
+            <div class="agent-category">{{ agent.category }}</div>
+            <div class="agent-cost">
+              {{ agent.is_free ? 'FREE' : '$' + agent.pricing_rate }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </mat-sidenav>
+
+    <!-- Canvas -->
+    <mat-sidenav-content class="canvas-container">
+      <div class="pipeline-canvas">
+        <div class="canvas-header">
+          <h3>Pipeline Canvas</h3>
+          <p *ngIf="nodes.length === 0" class="empty-message">
+            Click an agent from the left panel to add it to your pipeline
+          </p>
+        </div>
+
+        <!-- Simple Node Display (Will be replaced with drag-and-drop) -->
+        <div class="nodes-list">
+          <div 
+            *ngFor="let node of nodes; let i = index" 
+            class="node-item"
+            (click)="selectNode(node)">
+            <div class="node-header">
+              <mat-icon>smart_toy</mat-icon>
+              <span>{{ node.agent_type }}</span>
+              <span class="node-order">#{{ i + 1 }}</span>
+            </div>
+            <button mat-icon-button (click)="removeNode(node.id); $event.stopPropagation()">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Configuration Panel -->
+        <div *ngIf="selectedNode" class="config-panel">
+          <h4>Configure: {{ selectedNode.agent_type }}</h4>
+          <p class="config-placeholder">
+            Configuration form will appear here based on agent's JSON schema
+          </p>
+          <!-- This will be replaced with dynamic JSON Schema form -->
+        </div>
+      </div>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+</div>
+

@@ -1,0 +1,178 @@
+/**
+ * Pipeline Builder Styles
+ */
+
+.pipeline-builder {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-toolbar {
+  flex-shrink: 0;
+  gap: 8px;
+  
+  .toolbar-title {
+    font-size: 18px;
+    font-weight: 500;
+  }
+  
+  .toolbar-spacer {
+    flex: 1 1 auto;
+  }
+}
+
+.builder-container {
+  flex: 1;
+  height: calc(100vh - 64px);
+}
+
+/* Agent Palette */
+.agent-palette {
+  width: 300px;
+  border-right: 1px solid #e0e0e0;
+  
+  .palette-title {
+    padding: 16px;
+    margin: 0;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f5f5f5;
+  }
+  
+  .agent-list {
+    padding: 8px;
+  }
+  
+  .agent-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    &:hover {
+      background: #f5f5f5;
+      border-color: #3f51b5;
+      transform: translateY(-2px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    mat-icon {
+      color: #3f51b5;
+    }
+    
+    .agent-info {
+      flex: 1;
+      
+      .agent-name {
+        font-weight: 500;
+        font-size: 14px;
+      }
+      
+      .agent-category {
+        font-size: 12px;
+        color: #666;
+        text-transform: capitalize;
+      }
+      
+      .agent-cost {
+        font-size: 11px;
+        color: #4caf50;
+        font-weight: 500;
+      }
+    }
+  }
+}
+
+/* Canvas */
+.canvas-container {
+  background: #fafafa;
+}
+
+.pipeline-canvas {
+  padding: 24px;
+  height: 100%;
+  
+  .canvas-header {
+    margin-bottom: 24px;
+    
+    h3 {
+      margin: 0 0 8px 0;
+    }
+    
+    .empty-message {
+      color: #666;
+      font-size: 14px;
+    }
+  }
+  
+  .nodes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 800px;
+  }
+  
+  .node-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    &:hover {
+      border-color: #3f51b5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .node-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      
+      mat-icon {
+        color: #3f51b5;
+      }
+      
+      span {
+        font-weight: 500;
+      }
+      
+      .node-order {
+        background: #3f51b5;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+      }
+    }
+  }
+  
+  .config-panel {
+    margin-top: 24px;
+    padding: 24px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-width: 800px;
+    
+    h4 {
+      margin: 0 0 16px 0;
+      color: #3f51b5;
+    }
+    
+    .config-placeholder {
+      color: #666;
+      font-style: italic;
+    }
+  }
+}
+
