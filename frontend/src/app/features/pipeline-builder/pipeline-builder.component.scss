@@ -1,178 +1,705 @@
-/**
- * Pipeline Builder Styles
- */
-
-.pipeline-builder {
+.visual-pipeline-builder {
+  width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: #f5f7fa;
+  overflow: hidden;
 }
 
-.builder-toolbar {
-  flex-shrink: 0;
-  gap: 8px;
-  
-  .toolbar-title {
-    font-size: 18px;
-    font-weight: 500;
-  }
-  
-  .toolbar-spacer {
-    flex: 1 1 auto;
-  }
-}
+// Top Toolbar
+.top-toolbar {
+  height: 70px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  z-index: 100;
 
-.builder-container {
-  flex: 1;
-  height: calc(100vh - 64px);
-}
-
-/* Agent Palette */
-.agent-palette {
-  width: 300px;
-  border-right: 1px solid #e0e0e0;
-  
-  .palette-title {
-    padding: 16px;
-    margin: 0;
-    border-bottom: 1px solid #e0e0e0;
-    background: #f5f5f5;
-  }
-  
-  .agent-list {
-    padding: 8px;
-  }
-  
-  .agent-card {
+  .toolbar-left {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
-    margin-bottom: 8px;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    
-    &:hover {
-      background: #f5f5f5;
-      border-color: #3f51b5;
-      transform: translateY(-2px);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
+    gap: 1rem;
+    flex: 1;
+
     mat-icon {
-      color: #3f51b5;
+      color: #667eea;
+      font-size: 2rem;
+      width: 2rem;
+      height: 2rem;
     }
-    
-    .agent-info {
-      flex: 1;
-      
-      .agent-name {
-        font-weight: 500;
-        font-size: 14px;
-      }
-      
-      .agent-category {
-        font-size: 12px;
-        color: #666;
-        text-transform: capitalize;
-      }
-      
-      .agent-cost {
-        font-size: 11px;
-        color: #4caf50;
-        font-weight: 500;
-      }
-    }
-  }
-}
 
-/* Canvas */
-.canvas-container {
-  background: #fafafa;
-}
-
-.pipeline-canvas {
-  padding: 24px;
-  height: 100%;
-  
-  .canvas-header {
-    margin-bottom: 24px;
-    
-    h3 {
-      margin: 0 0 8px 0;
+    .pipeline-name {
+      max-width: 300px;
+      
+      input {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
     }
-    
-    .empty-message {
+
+    .node-count {
       color: #666;
-      font-size: 14px;
+      font-size: 0.9rem;
+      padding-left: 1rem;
+      border-left: 2px solid #e0e0e0;
     }
   }
-  
-  .nodes-list {
+
+  .toolbar-center {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    .compact {
+      width: 150px;
+    }
+
+    .cost-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 20px;
+      font-weight: 600;
+
+      mat-icon {
+        font-size: 1.25rem;
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+    }
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+  }
+}
+
+// Main Content
+.builder-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+// Agent Palette
+.agent-palette {
+  width: 300px;
+  background: white;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+
+  .palette-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+
+    h3 {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0 0 0.5rem 0;
+      font-size: 1.25rem;
+      color: #333;
+
+      mat-icon {
+        color: #667eea;
+      }
+    }
+
+    p {
+      margin: 0;
+      color: #666;
+      font-size: 0.9rem;
+    }
+  }
+
+  .agent-list {
+    flex: 1;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    max-width: 800px;
+    gap: 0.75rem;
   }
-  
-  .node-item {
+
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: #999;
+
+    mat-icon {
+      font-size: 3rem;
+      width: 3rem;
+      height: 3rem;
+      margin-bottom: 1rem;
+
+      &.spinning {
+        animation: spin 1s linear infinite;
+      }
+    }
+  }
+
+  .agent-item {
+    cursor: grab;
+    transition: all 0.2s ease;
+
+    &:active {
+      cursor: grabbing;
+    }
+
+    .agent-content {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      transition: all 0.2s ease;
+
+      &:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        transform: translateY(-2px);
+      }
+
+      .agent-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+
+        mat-icon {
+          color: white;
+          font-size: 1.5rem;
+          width: 1.5rem;
+          height: 1.5rem;
+        }
+      }
+
+      .agent-details {
+        flex: 1;
+
+        h4 {
+          margin: 0 0 0.25rem 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #333;
+        }
+
+        .agent-category {
+          font-size: 0.85rem;
+          color: #666;
+          text-transform: capitalize;
+        }
+      }
+
+      .agent-price {
+        padding: 0.35rem 0.75rem;
+        background: #e8eaf6;
+        color: #667eea;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+
+        &.free {
+          background: #e8f5e9;
+          color: #388e3c;
+        }
+      }
+    }
+  }
+
+  .agent-drag-preview {
+    .preview-card {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.5rem;
+      background: white;
+      border: 2px solid #667eea;
+      border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(102, 126, 234, 0.3);
+
+      mat-icon {
+        font-size: 1.5rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        color: #667eea;
+      }
+
+      span {
+        font-weight: 600;
+        color: #333;
+        white-space: nowrap;
+      }
+    }
+  }
+}
+
+// Canvas Area
+.canvas-area {
+  flex: 1;
+  position: relative;
+  background: 
+    linear-gradient(90deg, #f5f7fa 1px, transparent 1px),
+    linear-gradient(#f5f7fa 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 0;
+  overflow: auto;
+  min-height: 600px;
+
+  .canvas-empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: #999;
+
+    mat-icon {
+      font-size: 5rem;
+      width: 5rem;
+      height: 5rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin: 0 0 0.5rem 0;
+      color: #666;
+    }
+
+    p {
+      margin: 0 0 2rem 0;
+      color: #999;
+    }
+
+    .empty-features {
+      display: flex;
+      gap: 2rem;
+      justify-content: center;
+
+      .feature-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+
+        mat-icon {
+          font-size: 2rem;
+          width: 2rem;
+          height: 2rem;
+          margin: 0;
+        }
+
+        span {
+          font-size: 0.9rem;
+        }
+      }
+    }
+  }
+
+  // SVG Connections Layer
+  .connections-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+
+    .connection-line {
+      fill: none;
+      stroke: #667eea;
+      stroke-width: 3;
+      pointer-events: stroke;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        stroke: #764ba2;
+        stroke-width: 4;
+      }
+    }
+
+    .connection-temp {
+      fill: none;
+      stroke: #667eea;
+      stroke-width: 2;
+      stroke-dasharray: 5, 5;
+      opacity: 0.5;
+    }
+  }
+
+  // Canvas Nodes
+  .canvas-node {
+    position: absolute;
+    z-index: 10;
+    cursor: move;
+
+    &.selected .node-card {
+      border-color: #667eea;
+      box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    }
+
+    .node-card {
+      width: 300px;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+      position: relative;
+
+      &:hover {
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      }
+
+      // Connection Ports
+      .connection-port {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 40px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 20;
+
+        &.input-port {
+          top: -10px;
+        }
+
+        &.output-port {
+          bottom: -10px;
+        }
+
+        .port-dot {
+          width: 14px;
+          height: 14px;
+          background: white;
+          border: 3px solid #667eea;
+          border-radius: 50%;
+          transition: all 0.2s ease;
+
+          &:hover {
+            background: #667eea;
+            transform: scale(1.2);
+          }
+        }
+      }
+
+      .node-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+
+        .node-icon {
+          width: 48px;
+          height: 48px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border-radius: 12px;
+
+          mat-icon {
+            color: white;
+            font-size: 1.75rem;
+            width: 1.75rem;
+            height: 1.75rem;
+          }
+        }
+
+        .node-info {
+          flex: 1;
+          min-width: 0;
+
+          h4 {
+            margin: 0 0 0.25rem 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .node-category {
+            font-size: 0.85rem;
+            color: #666;
+            text-transform: capitalize;
+          }
+        }
+
+        .node-remove {
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+
+        &:hover .node-remove {
+          opacity: 1;
+        }
+      }
+
+      .node-body {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+
+        .node-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 0.75rem;
+          background: #e8eaf6;
+          color: #667eea;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 600;
+
+          mat-icon {
+            font-size: 1.25rem;
+            width: 1.25rem;
+            height: 1.25rem;
+          }
+
+          &.free-badge {
+            background: #e8f5e9;
+            color: #388e3c;
+          }
+        }
+
+        .node-timeframes {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.85rem;
+          color: #666;
+
+          mat-icon {
+            font-size: 1.1rem;
+            width: 1.1rem;
+            height: 1.1rem;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Configuration Panel
+.config-panel {
+  width: 350px;
+  background: white;
+  border-left: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+
+  .config-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px;
-    background: white;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    
-    &:hover {
-      border-color: #3f51b5;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    
-    .node-header {
+
+    h3 {
       display: flex;
       align-items: center;
-      gap: 12px;
-      
+      gap: 0.5rem;
+      margin: 0;
+      font-size: 1.25rem;
+      color: #333;
+
       mat-icon {
-        color: #3f51b5;
-      }
-      
-      span {
-        font-weight: 500;
-      }
-      
-      .node-order {
-        background: #3f51b5;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
+        color: #667eea;
       }
     }
   }
-  
-  .config-panel {
-    margin-top: 24px;
-    padding: 24px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    max-width: 800px;
-    
-    h4 {
-      margin: 0 0 16px 0;
-      color: #3f51b5;
+
+  .config-content {
+    flex: 1;
+    padding: 1.5rem;
+
+    .config-agent-info {
+      text-align: center;
+      margin-bottom: 1.5rem;
+
+      .agent-icon-large {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+
+        mat-icon {
+          color: white;
+          font-size: 3rem;
+          width: 3rem;
+          height: 3rem;
+        }
+      }
+
+      h4 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.25rem;
+        color: #333;
+      }
+
+      p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+        line-height: 1.5;
+      }
     }
-    
+
+    mat-divider {
+      margin: 1.5rem 0;
+    }
+
+    .config-properties, .config-form {
+      h5 {
+        margin: 0 0 1rem 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #333;
+      }
+    }
+
+    .property-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+
+      span:first-child {
+        color: #666;
+        font-weight: 500;
+      }
+
+      span:last-child {
+        color: #333;
+        font-weight: 600;
+      }
+    }
+
     .config-placeholder {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: #fff9c4;
+      border-left: 4px solid #fbc02d;
+      border-radius: 8px;
       color: #666;
-      font-style: italic;
+      font-size: 0.9rem;
+      line-height: 1.5;
+
+      mat-icon {
+        color: #fbc02d;
+        flex-shrink: 0;
+      }
     }
   }
 }
 
+// Animations
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+// CDK Drag Styles
+.cdk-drag-preview {
+  opacity: 1 !important;
+  z-index: 1000 !important;
+  cursor: grabbing !important;
+}
+
+.cdk-drag-animating {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.3;
+}
+
+// Prevent reordering in agent palette
+.agent-list.cdk-drop-list {
+  &.cdk-drop-list-dragging .agent-item:not(.cdk-drag-placeholder) {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+// Canvas drop zone
+.canvas-area.cdk-drop-list {
+  min-height: 100%;
+  
+  &.cdk-drop-list-dragging {
+    background: rgba(102, 126, 234, 0.05);
+  }
+  
+  &.cdk-drop-list-receiving {
+    background: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+  }
+}
+
+.cdk-drop-list-dragging .canvas-node:not(.cdk-drag-placeholder) {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Ensure drag preview is not constrained
+.cdk-drag {
+  &:not(.cdk-drag-dragging) {
+    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+// Responsive
+@media (max-width: 1024px) {
+  .agent-palette {
+    width: 250px;
+  }
+
+  .config-panel {
+    width: 300px;
+  }
+}
