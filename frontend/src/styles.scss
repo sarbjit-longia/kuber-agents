@@ -180,17 +180,169 @@ mat-spinner {
 }
 
 // Canvas node drag preview - ensure proper rendering
+// These styles are in global scope to avoid Angular view encapsulation
 .cdk-drag-preview {
-  // Ensure proper z-index and positioning
   z-index: 10000 !important;
+  opacity: 0.95 !important;
+  box-sizing: border-box !important;
   
-  // Ensure Material Icons render properly
+  // Canvas node specific styles
+  &.canvas-node {
+    // Ensure the node card is fully visible and styled
+    .node-card {
+      width: 300px !important;
+      background: white !important;
+      border: 3px solid #667eea !important;
+      border-radius: 16px !important;
+      box-shadow: 0 20px 60px rgba(102, 126, 234, 0.5) !important;
+      transform: rotate(2deg) !important;
+      overflow: visible !important;
+      display: block !important;
+    }
+    
+    // Hide connection ports during drag
+    .connection-port {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    
+    // Node header styling
+    .node-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.75rem !important;
+      padding: 1rem !important;
+      background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%) !important;
+      border-bottom: 1px solid #e8eaff !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    
+    .node-icon {
+      width: 40px !important;
+      height: 40px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      border-radius: 10px !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      
+      mat-icon {
+        color: white !important;
+        font-size: 1.5rem !important;
+        width: 1.5rem !important;
+        height: 1.5rem !important;
+      }
+    }
+    
+    .node-info {
+      flex: 1 !important;
+      min-width: 0 !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      
+      h4 {
+        margin: 0 0 0.25rem 0 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: #1a1a1a !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      .node-category {
+        font-size: 0.85rem !important;
+        color: #666 !important;
+        text-transform: capitalize !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    }
+    
+    // Node body styling
+    .node-body {
+      padding: 1rem !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    
+    .node-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      padding: 0.5rem 0.75rem !important;
+      border-radius: 8px !important;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      
+      &.free-badge {
+        background: #e8f5e9 !important;
+        color: #388e3c !important;
+      }
+      
+      &:not(.free-badge) {
+        background: #e8eaf6 !important;
+        color: #667eea !important;
+      }
+      
+      mat-icon {
+        font-size: 1rem !important;
+        width: 1rem !important;
+        height: 1rem !important;
+      }
+    }
+    
+    .node-timeframes {
+      margin-top: 0.75rem !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      padding: 0.5rem !important;
+      background: #f5f5f5 !important;
+      border-radius: 8px !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      
+      mat-icon {
+        font-size: 1rem !important;
+        width: 1rem !important;
+        height: 1rem !important;
+        color: #667eea !important;
+      }
+      
+      span {
+        font-size: 0.85rem !important;
+        color: #666 !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    }
+    
+    // Hide the remove button during drag
+    .node-remove {
+      display: none !important;
+    }
+  }
+  
+  // Ensure Material Icons render properly everywhere
   mat-icon,
   .mat-icon {
     font-family: 'Material Icons' !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
+  }
+  
+  // Ensure all text is visible
+  span,
+  h4,
+  p {
+    visibility: visible !important;
+    opacity: 1 !important;
   }
   
   // Prevent any interaction during drag

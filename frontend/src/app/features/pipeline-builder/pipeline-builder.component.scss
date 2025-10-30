@@ -254,11 +254,14 @@
 .canvas-area {
   flex: 1;
   position: relative;
-  background: 
-    linear-gradient(90deg, #f5f7fa 1px, transparent 1px),
-    linear-gradient(#f5f7fa 1px, transparent 1px);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 0;
+  background-color: #fafbfc;
+  background-image: 
+    linear-gradient(90deg, #e0e4e8 1px, transparent 1px),
+    linear-gradient(#e0e4e8 1px, transparent 1px),
+    linear-gradient(90deg, #f0f2f5 1px, transparent 1px),
+    linear-gradient(#f0f2f5 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
   overflow: auto;
   min-height: 600px;
 
@@ -654,39 +657,7 @@
   transition: none !important;
 }
 
-// Style for the drag preview (cloned element)
-.cdk-drag-preview {
-  z-index: 10000 !important;
-  opacity: 0.95 !important;
-  
-  &.canvas-node {
-    .node-card {
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35) !important;
-      border: 3px solid #667eea !important;
-      transform: rotate(2deg);
-      background: white;
-    }
-    
-    // Hide connection ports during drag
-    .connection-port {
-      display: none !important;
-    }
-    
-    // Ensure all content is visible and styled
-    .node-header,
-    .node-body,
-    .node-icon,
-    .node-info,
-    .node-badge,
-    .node-timeframes,
-    h4,
-    span,
-    mat-icon {
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-  }
-}
+// Drag preview styles moved to global styles.scss to avoid Angular view encapsulation
 
 // Placeholder for canvas nodes during drag
 .canvas-node.cdk-drag-placeholder {
