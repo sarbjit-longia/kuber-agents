@@ -122,10 +122,20 @@
       }
     }
 
-    p {
+    .help-text {
       margin: 0;
       color: #666;
       font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+
+      mat-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        color: #667eea;
+      }
     }
   }
 
@@ -158,10 +168,15 @@
   }
 
   .agent-item {
-    cursor: grab;
+    cursor: pointer;
     transition: all 0.2s ease;
+    user-select: none;
 
     &:active {
+      cursor: grabbing;
+    }
+    
+    &.cdk-drag-dragging {
       cursor: grabbing;
     }
 
@@ -231,32 +246,9 @@
     }
   }
 
-  .agent-drag-preview {
-    .preview-card {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 1rem 1.5rem;
-      background: white;
-      border: 2px solid #667eea;
-      border-radius: 12px;
-      box-shadow: 0 12px 32px rgba(102, 126, 234, 0.3);
-
-      mat-icon {
-        font-size: 1.5rem;
-        width: 1.5rem;
-        height: 1.5rem;
-        color: #667eea;
-      }
-
-      span {
-        font-weight: 600;
-        color: #333;
-        white-space: nowrap;
-      }
-    }
-  }
 }
+
+// Note: Drag preview styles are in global styles.scss to avoid Angular encapsulation issues
 
 // Canvas Area
 .canvas-area {
@@ -360,6 +352,16 @@
     position: absolute;
     z-index: 10;
     cursor: move;
+    
+    // Prevent CDK from applying transform when not dragging
+    &:not(.cdk-drag-dragging) {
+      transform: none !important;
+    }
+    
+    // During drag, allow CDK transform
+    &.cdk-drag-dragging {
+      z-index: 1000;
+    }
 
     &.selected .node-card {
       border-color: #667eea;
@@ -645,12 +647,7 @@
   to { transform: rotate(360deg); }
 }
 
-// CDK Drag Styles
-.cdk-drag-preview {
-  opacity: 1 !important;
-  z-index: 1000 !important;
-  cursor: grabbing !important;
-}
+// CDK Drag Styles (main styles are in global styles.scss)
 
 .cdk-drag-animating {
   transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);

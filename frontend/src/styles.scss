@@ -83,3 +83,106 @@ body {
 mat-spinner {
   display: inline-block;
 }
+
+// CDK Drag & Drop Preview Styles (Global to avoid encapsulation issues)
+.cdk-drag-preview {
+  opacity: 1 !important;
+  z-index: 10000 !important;
+  
+  &.drag-preview-container {
+    display: flex !important;
+    align-items: center !important;
+    gap: 1rem !important;
+    padding: 1rem 1.5rem !important;
+    background: #ffffff !important;
+    border: 3px solid #667eea !important;
+    border-radius: 12px !important;
+    box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6) !important;
+    min-width: 260px !important;
+    max-width: 300px !important;
+    cursor: grabbing !important;
+    
+    .preview-icon {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 52px !important;
+      height: 52px !important;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      border-radius: 12px !important;
+      flex-shrink: 0 !important;
+
+      mat-icon,
+      .mat-icon {
+        font-size: 32px !important;
+        width: 32px !important;
+        height: 32px !important;
+        line-height: 32px !important;
+        color: #ffffff !important;
+        font-family: 'Material Icons' !important;
+      }
+    }
+
+    .preview-content {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.3rem !important;
+      flex: 1 !important;
+      min-width: 0 !important;
+
+      h4 {
+        margin: 0 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: #1a1a1a !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+      }
+
+      .preview-category {
+        font-size: 0.75rem !important;
+        color: #667eea !important;
+        text-transform: uppercase !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px !important;
+        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+      }
+
+      .preview-price {
+        font-size: 0.85rem !important;
+        color: #764ba2 !important;
+        font-weight: 700 !important;
+        margin-top: 0.15rem !important;
+        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+
+        &.free {
+          color: #10b981 !important;
+        }
+      }
+    }
+    
+    * {
+      pointer-events: none !important;
+    }
+  }
+}
+
+// Ensure drag placeholder is subtle
+.cdk-drag-placeholder {
+  opacity: 0.4 !important;
+}
+
+// Canvas node drag preview (full node card appearance)
+.canvas-node-drag-preview {
+  * {
+    pointer-events: none !important;
+  }
+  
+  // Override any default Material styles
+  .mat-icon,
+  mat-icon {
+    font-family: 'Material Icons' !important;
+  }
+}

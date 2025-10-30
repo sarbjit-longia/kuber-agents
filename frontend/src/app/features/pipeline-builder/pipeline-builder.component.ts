@@ -165,6 +165,52 @@ export class PipelineBuilderComponent implements OnInit {
   }
 
   /**
+   * Add agent to center of canvas (double-click handler)
+   */
+  addAgentToCenter(agent: AgentMetadata): void {
+    const canvasRect = this.canvasRef.nativeElement.getBoundingClientRect();
+    
+    // Calculate center position
+    const centerX = (canvasRect.width / 2) + this.canvasRef.nativeElement.scrollLeft - 100; // 100 = half node width
+    const centerY = (canvasRect.height / 2) + this.canvasRef.nativeElement.scrollTop - 80; // 80 = half node height
+    
+    this.addNodeToCanvas(agent, centerX, centerY);
+    
+    // Show feedback
+    this.snackBar.open(`${agent.name} added to canvas`, 'Close', {
+      duration: 2000,
+      horizontalPosition: 'center',
+      verticalPosition: 'bottom'
+    });
+  }
+
+  /**
+   * Handle node drag within canvas
+   */
+  onNodeDragEnded(event: any, node: CanvasNode): void {
+    // Get the drag distance
+    const dragDistance = event.distance;
+    
+    // Update node position based on drag
+    node.position = {
+      x: node.position.x + dragDistance.x,
+      y: node.position.y + dragDistance.y
+    };
+    
+    // Update connections if needed
+    this.updateConnectionLines();
+  }
+
+  /**
+   * Update connection line positions
+   */
+  updateConnectionLines(): void {
+    // Force change detection to update SVG lines
+    // This ensures connection lines follow the nodes
+    this.connections = [...this.connections];
+  }
+
+  /**
    * Add node to canvas at specific position
    */
   addNodeToCanvas(agent: AgentMetadata, x: number, y: number): void {

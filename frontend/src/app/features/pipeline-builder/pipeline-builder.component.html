@@ -58,7 +58,10 @@
             <mat-icon>widgets</mat-icon>
             Agent Library
           </h3>
-          <p>Drag agents to canvas</p>
+          <p class="help-text">
+            <mat-icon>touch_app</mat-icon>
+            Drag or double-click to add
+          </p>
         </div>
         
         <div class="agent-list" 
@@ -76,11 +79,28 @@
             class="agent-item"
             cdkDrag
             [cdkDragData]="agent"
-            [matTooltip]="agent.description">
-            <div class="agent-drag-preview" *cdkDragPreview>
-              <div class="preview-card">
-                <mat-icon>{{agent.icon || 'extension'}}</mat-icon>
-                <span>{{agent.name}}</span>
+            (dblclick)="addAgentToCenter(agent)"
+            [matTooltip]="agent.description + ' (Double-click to add to canvas)'">
+            
+            <!-- Enhanced Drag Preview with inline styles as fallback -->
+            <div *cdkDragPreview 
+                 class="drag-preview-container"
+                 style="display: flex; align-items: center; gap: 1rem; padding: 1rem 1.5rem; background: white; border: 3px solid #667eea; border-radius: 12px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6); min-width: 260px;">
+              <div class="preview-icon" 
+                   style="display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; flex-shrink: 0;">
+                <mat-icon style="font-size: 32px; width: 32px; height: 32px; color: white;">{{agent.icon || 'extension'}}</mat-icon>
+              </div>
+              <div class="preview-content" 
+                   style="display: flex; flex-direction: column; gap: 0.3rem; flex: 1;">
+                <h4 style="margin: 0; font-size: 1rem; font-weight: 600; color: #1a1a1a; white-space: nowrap;">{{agent.name}}</h4>
+                <span class="preview-category" 
+                      style="font-size: 0.75rem; color: #667eea; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">{{agent.category}}</span>
+                <span class="preview-price" 
+                      [class.free]="agent.is_free"
+                      [style.color]="agent.is_free ? '#10b981' : '#764ba2'"
+                      style="font-size: 0.85rem; font-weight: 700;">
+                  {{agent.is_free ? 'FREE' : '$' + agent.pricing_rate}}
+                </span>
               </div>
             </div>
             
@@ -163,8 +183,39 @@
           [style.left.px]="node.position.x"
           [style.top.px]="node.position.y"
           cdkDrag
+          [cdkDragFreeDragPosition]="node.position"
+          (cdkDragEnded)="onNodeDragEnded($event, node)"
           cdkDragBoundary=".canvas-area"
           (click)="selectNode(node)">
+          
+          <!-- Custom Drag Preview - Match actual node appearance -->
+          <div *cdkDragPreview class="canvas-node-drag-preview">
+            <div class="node-card" style="width: 300px; background: white; border: 3px solid #667eea; border-radius: 16px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6); overflow: hidden;">
+              <!-- Node Header -->
+              <div class="node-header" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%); border-bottom: 1px solid #e8eaff;">
+                <div class="node-icon" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px;">
+                  <mat-icon style="color: white; font-size: 1.5rem; width: 1.5rem; height: 1.5rem;">{{node.metadata?.icon || 'extension'}}</mat-icon>
+                </div>
+                <div class="node-info" style="flex: 1; min-width: 0;">
+                  <h4 style="margin: 0 0 0.25rem 0; font-size: 1rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{node.metadata?.name}}</h4>
+                  <span style="font-size: 0.85rem; color: #666; text-transform: capitalize;">{{node.metadata?.category}}</span>
+                </div>
+              </div>
+              
+              <!-- Node Body -->
+              <div class="node-body" style="padding: 1rem;">
+                <div class="node-badge" [style.background]="node.metadata?.is_free ? '#e8f5e9' : '#e8eaf6'" [style.color]="node.metadata?.is_free ? '#388e3c' : '#667eea'" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600;">
+                  <mat-icon style="font-size: 1rem; width: 1rem; height: 1rem;">{{node.metadata?.is_free ? 'check_circle' : 'paid'}}</mat-icon>
+                  <span>{{node.metadata?.is_free ? 'FREE' : '$' + node.metadata?.pricing_rate}}</span>
+                </div>
+                
+                <div *ngIf="node.metadata?.requires_timeframes && node.metadata!.requires_timeframes.length > 0" style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: #f5f5f5; border-radius: 8px;">
+                  <mat-icon style="font-size: 1rem; width: 1rem; height: 1rem; color: #667eea;">schedule</mat-icon>
+                  <span style="font-size: 0.85rem; color: #666;">{{node.metadata!.requires_timeframes.join(', ')}}</span>
+                </div>
+              </div>
+            </div>
+          </div>
           
           <div class="node-card">
             <!-- Connection Port - Input (Top) -->
