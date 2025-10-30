@@ -274,10 +274,17 @@
           
           <div class="config-form">
             <h5>Configuration</h5>
-            <p class="config-placeholder">
+            <app-json-schema-form
+              *ngIf="selectedNode.metadata?.config_schema"
+              [schema]="selectedNode.metadata!.config_schema"
+              [data]="selectedNode.config"
+              (dataChange)="onConfigChange($event, selectedNode)">
+            </app-json-schema-form>
+            
+            <div *ngIf="!selectedNode.metadata?.config_schema" class="config-placeholder">
               <mat-icon>info</mat-icon>
-              Agent configuration will be available in the next update using JSON Schema forms.
-            </p>
+              <p>No configuration required for this agent.</p>
+            </div>
           </div>
         </div>
       </div>
