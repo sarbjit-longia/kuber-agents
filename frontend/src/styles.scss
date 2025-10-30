@@ -174,15 +174,22 @@ mat-spinner {
   opacity: 0.4 !important;
 }
 
-// Canvas node drag preview (full node card appearance)
-.canvas-node-drag-preview {
-  * {
-    pointer-events: none !important;
+// Canvas node drag preview - ensure proper rendering
+.cdk-drag-preview {
+  // Ensure proper z-index and positioning
+  z-index: 10000 !important;
+  
+  // Ensure Material Icons render properly
+  mat-icon,
+  .mat-icon {
+    font-family: 'Material Icons' !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
   
-  // Override any default Material styles
-  .mat-icon,
-  mat-icon {
-    font-family: 'Material Icons' !important;
+  // Prevent any text-only rendering
+  * {
+    pointer-events: none !important;
   }
 }

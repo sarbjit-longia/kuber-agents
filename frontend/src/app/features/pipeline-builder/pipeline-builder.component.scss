@@ -358,9 +358,15 @@
       transform: none !important;
     }
     
-    // During drag, allow CDK transform
+    // During drag, increase z-index but keep element intact
     &.cdk-drag-dragging {
       z-index: 1000;
+      opacity: 0.9;
+      
+      // Hide connection ports during drag for cleaner look
+      .connection-port {
+        opacity: 0;
+      }
     }
 
     &.selected .node-card {
@@ -647,10 +653,20 @@
   to { transform: rotate(360deg); }
 }
 
-// CDK Drag Styles (main styles are in global styles.scss)
-
+// CDK Drag Styles
 .cdk-drag-animating {
   transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+
+// Placeholder for canvas nodes during drag
+.canvas-node.cdk-drag-placeholder {
+  opacity: 0.3;
+  
+  .node-card {
+    border: 2px dashed #667eea;
+    background: rgba(102, 126, 234, 0.05);
+  }
 }
 
 .cdk-drag-placeholder {

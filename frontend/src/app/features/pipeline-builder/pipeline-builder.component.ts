@@ -188,10 +188,11 @@ export class PipelineBuilderComponent implements OnInit {
    * Handle node drag within canvas
    */
   onNodeDragEnded(event: any, node: CanvasNode): void {
-    // Get the drag distance
+    // Get the drag distance from CDK
     const dragDistance = event.distance;
     
-    // Update node position based on drag
+    // Update node position based on drag distance
+    // CDK maintains the grab offset automatically when using the actual element
     node.position = {
       x: node.position.x + dragDistance.x,
       y: node.position.y + dragDistance.y

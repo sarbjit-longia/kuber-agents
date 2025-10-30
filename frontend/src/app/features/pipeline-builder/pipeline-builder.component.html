@@ -188,28 +188,32 @@
           cdkDragBoundary=".canvas-area"
           (click)="selectNode(node)">
           
-          <!-- Custom Drag Preview - Match actual node appearance -->
-          <div *cdkDragPreview class="canvas-node-drag-preview">
-            <div class="node-card" style="width: 300px; background: white; border: 3px solid #667eea; border-radius: 16px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6); overflow: hidden;">
+          <!-- Drag Preview - Full inline styling for guaranteed rendering -->
+          <div *cdkDragPreview style="width: 300px;">
+            <div style="width: 300px; background: white; border: 3px solid #667eea; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); overflow: hidden; opacity: 0.95;">
+              
               <!-- Node Header -->
-              <div class="node-header" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%); border-bottom: 1px solid #e8eaff;">
-                <div class="node-icon" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%); border-bottom: 1px solid #e8eaff;">
+                <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px;">
                   <mat-icon style="color: white; font-size: 1.5rem; width: 1.5rem; height: 1.5rem;">{{node.metadata?.icon || 'extension'}}</mat-icon>
                 </div>
-                <div class="node-info" style="flex: 1; min-width: 0;">
+                <div style="flex: 1; min-width: 0;">
                   <h4 style="margin: 0 0 0.25rem 0; font-size: 1rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{node.metadata?.name}}</h4>
                   <span style="font-size: 0.85rem; color: #666; text-transform: capitalize;">{{node.metadata?.category}}</span>
                 </div>
               </div>
               
               <!-- Node Body -->
-              <div class="node-body" style="padding: 1rem;">
-                <div class="node-badge" [style.background]="node.metadata?.is_free ? '#e8f5e9' : '#e8eaf6'" [style.color]="node.metadata?.is_free ? '#388e3c' : '#667eea'" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600;">
+              <div style="padding: 1rem;">
+                <div [style.background]="node.metadata?.is_free ? '#e8f5e9' : '#e8eaf6'" 
+                     [style.color]="node.metadata?.is_free ? '#388e3c' : '#667eea'"
+                     style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600;">
                   <mat-icon style="font-size: 1rem; width: 1rem; height: 1rem;">{{node.metadata?.is_free ? 'check_circle' : 'paid'}}</mat-icon>
                   <span>{{node.metadata?.is_free ? 'FREE' : '$' + node.metadata?.pricing_rate}}</span>
                 </div>
                 
-                <div *ngIf="node.metadata?.requires_timeframes && node.metadata!.requires_timeframes.length > 0" style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: #f5f5f5; border-radius: 8px;">
+                <div *ngIf="node.metadata?.requires_timeframes && node.metadata!.requires_timeframes.length > 0" 
+                     style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: #f5f5f5; border-radius: 8px;">
                   <mat-icon style="font-size: 1rem; width: 1rem; height: 1rem; color: #667eea;">schedule</mat-icon>
                   <span style="font-size: 0.85rem; color: #666;">{{node.metadata!.requires_timeframes.join(', ')}}</span>
                 </div>
