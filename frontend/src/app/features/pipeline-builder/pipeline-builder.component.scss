@@ -352,21 +352,17 @@
     position: absolute;
     z-index: 10;
     cursor: move;
+    // No transitions on position to avoid snap-back animation
+    transition: none !important;
     
-    // Prevent CDK from applying transform when not dragging
-    &:not(.cdk-drag-dragging) {
-      transform: none !important;
-    }
-    
-    // During drag, increase z-index but keep element intact
+    // During drag, increase z-index
     &.cdk-drag-dragging {
       z-index: 1000;
-      opacity: 0.9;
-      
-      // Hide connection ports during drag for cleaner look
-      .connection-port {
-        opacity: 0;
-      }
+    }
+    
+    // After drag, don't animate back
+    &:not(.cdk-drag-dragging) {
+      transition: none !important;
     }
 
     &.selected .node-card {
@@ -653,11 +649,44 @@
   to { transform: rotate(360deg); }
 }
 
-// CDK Drag Styles
+// CDK Drag Styles - disable snap-back animation
 .cdk-drag-animating {
-  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+  transition: none !important;
 }
 
+// Style for the drag preview (cloned element)
+.cdk-drag-preview {
+  z-index: 10000 !important;
+  opacity: 0.95 !important;
+  
+  &.canvas-node {
+    .node-card {
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35) !important;
+      border: 3px solid #667eea !important;
+      transform: rotate(2deg);
+      background: white;
+    }
+    
+    // Hide connection ports during drag
+    .connection-port {
+      display: none !important;
+    }
+    
+    // Ensure all content is visible and styled
+    .node-header,
+    .node-body,
+    .node-icon,
+    .node-info,
+    .node-badge,
+    .node-timeframes,
+    h4,
+    span,
+    mat-icon {
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+  }
+}
 
 // Placeholder for canvas nodes during drag
 .canvas-node.cdk-drag-placeholder {
@@ -695,16 +724,6 @@
   }
 }
 
-.cdk-drop-list-dragging .canvas-node:not(.cdk-drag-placeholder) {
-  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-// Ensure drag preview is not constrained
-.cdk-drag {
-  &:not(.cdk-drag-dragging) {
-    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-  }
-}
 
 // Responsive
 @media (max-width: 1024px) {

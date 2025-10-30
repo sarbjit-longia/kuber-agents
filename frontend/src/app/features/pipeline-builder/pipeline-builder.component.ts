@@ -11,7 +11,7 @@
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { CdkDragDrop, CdkDragEnd, DragDropModule } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
@@ -187,16 +187,13 @@ export class PipelineBuilderComponent implements OnInit {
   /**
    * Handle node drag within canvas
    */
-  onNodeDragEnded(event: any, node: CanvasNode): void {
-    // Get the drag distance from CDK
-    const dragDistance = event.distance;
+  onNodeDragEnded(event: CdkDragEnd, node: CanvasNode): void {
+    // Get the drag distance (how far the element moved)
+    const distance = event.distance;
     
-    // Update node position based on drag distance
-    // CDK maintains the grab offset automatically when using the actual element
-    node.position = {
-      x: node.position.x + dragDistance.x,
-      y: node.position.y + dragDistance.y
-    };
+    // Update node position by adding the drag distance to current position
+    node.position.x += distance.x;
+    node.position.y += distance.y;
     
     // Update connections if needed
     this.updateConnectionLines();

@@ -169,6 +169,11 @@ mat-spinner {
   }
 }
 
+// Disable CDK snap-back animation globally
+.cdk-drag-animating {
+  transition: none !important;
+}
+
 // Ensure drag placeholder is subtle
 .cdk-drag-placeholder {
   opacity: 0.4 !important;
@@ -188,8 +193,15 @@ mat-spinner {
     justify-content: center !important;
   }
   
-  // Prevent any text-only rendering
+  // Prevent any interaction during drag
   * {
     pointer-events: none !important;
+  }
+  
+  // Ensure box-sizing is consistent
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box !important;
   }
 }
