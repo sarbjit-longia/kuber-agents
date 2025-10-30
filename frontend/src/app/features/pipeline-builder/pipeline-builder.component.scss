@@ -264,6 +264,11 @@
   background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
   overflow: auto;
   min-height: 600px;
+  
+  // Prevent scrollbars during drag
+  &.cdk-drop-list-dragging {
+    overflow: hidden;
+  }
 
   .canvas-empty-state {
     position: absolute;
@@ -357,15 +362,18 @@
     cursor: move;
     // No transitions on position to avoid snap-back animation
     transition: none !important;
+    will-change: auto;
     
     // During drag, increase z-index
     &.cdk-drag-dragging {
       z-index: 1000;
     }
     
-    // After drag, don't animate back
-    &:not(.cdk-drag-dragging) {
+    // Stationary nodes should not move at all
+    &:not(.cdk-drag-dragging):not(.cdk-drag-placeholder) {
       transition: none !important;
+      transform: none !important;
+      animation: none !important;
     }
 
     &.selected .node-card {
@@ -687,6 +695,13 @@
   
   &.cdk-drop-list-dragging {
     background: rgba(102, 126, 234, 0.05);
+    
+    // Prevent other nodes from moving/shaking during drag
+    .canvas-node:not(.cdk-drag-placeholder):not(.cdk-drag-dragging) {
+      transition: none !important;
+      transform: none !important;
+      animation: none !important;
+    }
   }
   
   &.cdk-drop-list-receiving {
