@@ -50,6 +50,7 @@ class BiasAgent(BaseAgent):
             requires_timeframes=["1h", "4h", "1d"],  # Minimum required
             requires_market_data=True,
             requires_position=False,
+            supported_tools=["webhook_notifier", "email_notifier"],  # Added for bias change alerts
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Bias Agent Configuration",

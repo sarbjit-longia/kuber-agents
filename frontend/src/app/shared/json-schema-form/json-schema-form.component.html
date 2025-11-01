@@ -1,0 +1,105 @@
+<form [formGroup]="form" *ngIf="form" class="json-schema-form">
+  <div *ngFor="let property of properties" class="form-field">
+    
+    <!-- Text/String Input -->
+    <mat-form-field *ngIf="getFieldType(property) === 'text'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <input 
+        matInput 
+        [formControlName]="property.key"
+        [placeholder]="property.description || ''">
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+    <!-- Number Input -->
+    <mat-form-field *ngIf="getFieldType(property) === 'number'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <input 
+        matInput 
+        type="number"
+        [formControlName]="property.key"
+        [placeholder]="property.description || ''">
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+    <!-- Select/Enum -->
+    <mat-form-field *ngIf="getFieldType(property) === 'select'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <mat-select [formControlName]="property.key">
+        <mat-option *ngFor="let option of property.enum" [value]="option">
+          {{ option }}
+        </mat-option>
+      </mat-select>
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+    <!-- Boolean (Toggle) -->
+    <div *ngIf="getFieldType(property) === 'boolean'" class="boolean-field">
+      <mat-slide-toggle [formControlName]="property.key">
+        {{ property.title || property.key }}
+      </mat-slide-toggle>
+      <p *ngIf="property.description" class="field-description">{{ property.description }}</p>
+    </div>
+
+    <!-- Date Picker -->
+    <mat-form-field *ngIf="getFieldType(property) === 'date'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <input 
+        matInput 
+        [matDatepicker]="datePicker"
+        [formControlName]="property.key"
+        [placeholder]="property.description || ''">
+      <mat-datepicker-toggle matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
+      <mat-datepicker #datePicker></mat-datepicker>
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+    <!-- Time Picker -->
+    <mat-form-field *ngIf="getFieldType(property) === 'time'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <input 
+        matInput 
+        type="time"
+        [formControlName]="property.key"
+        [placeholder]="property.description || ''">
+      <mat-icon matIconSuffix>schedule</mat-icon>
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+    <!-- DateTime Picker -->
+    <mat-form-field *ngIf="getFieldType(property) === 'datetime'" appearance="fill" class="full-width">
+      <mat-label>{{ property.title || property.key }}</mat-label>
+      <input 
+        matInput 
+        type="datetime-local"
+        [formControlName]="property.key"
+        [placeholder]="property.description || ''">
+      <mat-icon matIconSuffix>event</mat-icon>
+      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-error *ngIf="form.get(property.key)?.hasError('required')">
+        This field is required
+      </mat-error>
+    </mat-form-field>
+
+  </div>
+</form>
+
+<div *ngIf="!form || properties.length === 0" class="no-config">
+  <mat-icon>info</mat-icon>
+  <p>No configuration required for this agent.</p>
+</div>

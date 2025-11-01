@@ -7,6 +7,7 @@ Tools are utilities that agents can use to interact with external services.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 import logging
+from app.schemas.tool import ToolMetadata
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,10 @@ class BaseTool(ABC):
     
     Example:
         class MyTool(BaseTool):
+            @classmethod
+            def get_metadata(cls) -> ToolMetadata:
+                return ToolMetadata(...)
+            
             def execute(self, **kwargs) -> Any:
                 # Tool logic here
                 return result
@@ -44,6 +49,19 @@ class BaseTool(ABC):
         """
         self.config = config or {}
         self._validate_config()
+    
+    @classmethod
+    @abstractmethod
+    def get_metadata(cls) -> ToolMetadata:
+        """
+        Return metadata describing this tool.
+        
+        Must be implemented by all tool subclasses.
+        
+        Returns:
+            ToolMetadata object with tool information
+        """
+        pass
     
     @abstractmethod
     def execute(self, **kwargs) -> Any:

@@ -49,6 +49,7 @@ class StrategyAgent(BaseAgent):
             requires_timeframes=["5m", "15m", "1h"],
             requires_market_data=True,
             requires_position=False,
+            supported_tools=["webhook_notifier", "email_notifier"],  # Added tool support
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Strategy Agent Configuration",

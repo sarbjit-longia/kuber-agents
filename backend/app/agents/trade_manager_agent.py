@@ -42,7 +42,7 @@ class TradeManagerAgent(BaseAgent):
         return AgentMetadata(
             agent_type="trade_manager_agent",
             name="Trade Manager Agent",
-            description="Executes trades through Alpaca broker API. Handles order placement and confirmation. Free to use.",
+            description="Executes trades through broker API. Supports multiple brokers via attached tools. Free to use.",
             category="execution",
             version="1.0.0",
             icon="swap_horiz",
@@ -51,6 +51,7 @@ class TradeManagerAgent(BaseAgent):
             requires_timeframes=[],
             requires_market_data=True,
             requires_position=False,
+            supported_tools=["alpaca_broker", "webhook_notifier", "email_notifier"],  # Added
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Trade Manager Configuration",

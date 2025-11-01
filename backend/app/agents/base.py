@@ -237,6 +237,57 @@ class BaseAgent(ABC):
             "metadata": self.metadata.model_dump()
         }
     
+    def _load_tools(self) -> Dict[str, Any]:
+        """
+        Load and instantiate tools from agent configuration.
+        
+        Returns:
+            Dict mapping tool_type to instantiated tool objects
+            
+        Example:
+            tools = self._load_tools()
+            broker = tools.get("alpaca_broker")
+            if broker:
+                result = broker.execute(action="buy", symbol="AAPL", quantity=100)
+        """
+        from app.tools import get_registry
+        
+        tools = {}
+        tool_configs = self.config.get("tools", [])
+        
+        if not tool_configs:
+            return tools
+        
+        registry = get_registry()
+        
+        for tool_config in tool_configs:
+            tool_type = tool_config.get("tool_type")
+            enabled = tool_config.get("enabled", True)
+            config = tool_config.get("config", {})
+            
+            if not enabled:
+                continue
+            
+            try:
+                tool_instance = registry.create_tool(tool_type, config)
+                tools[tool_type] = tool_instance
+                self.logger.info(
+                    "tool_loaded",
+                    agent_id=self.agent_id,
+                    tool_type=tool_type
+                )
+            except Exception as e:
+                self.logger.error(
+                    "tool_load_failed",
+                    agent_id=self.agent_id,
+                    tool_type=tool_type,
+                    error=str(e),
+                    exc_info=True
+                )
+                # Continue loading other tools even if one fails
+        
+        return tools
+    
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'BaseAgent':
         """

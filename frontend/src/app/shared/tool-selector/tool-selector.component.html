@@ -1,0 +1,72 @@
+<div class="tool-selector">
+  <div class="tool-selector-header">
+    <h6>Attached Tools</h6>
+    <button 
+      mat-icon-button 
+      [matMenuTriggerFor]="addToolMenu"
+      [disabled]="getAvailableToolsForMenu().length === 0"
+      matTooltip="Add Tool">
+      <mat-icon>add</mat-icon>
+    </button>
+  </div>
+
+  <!-- List of attached tools -->
+  <div *ngIf="attachedTools.length > 0" class="tools-list">
+    <mat-card *ngFor="let tool of attachedTools" class="tool-card" [class.disabled]="!tool.enabled">
+      <mat-card-header>
+        <div class="tool-header">
+          <div class="tool-info">
+            <mat-icon class="tool-icon">{{tool.metadata?.icon || 'extension'}}</mat-icon>
+            <div>
+              <h6>{{tool.metadata?.name}}</h6>
+              <span class="tool-category">{{tool.metadata?.category}}</span>
+            </div>
+          </div>
+          <div class="tool-actions">
+            <button 
+              mat-icon-button 
+              (click)="toggleTool(tool.tool_type)"
+              [matTooltip]="tool.enabled ? 'Disable' : 'Enable'">
+              <mat-icon>{{tool.enabled ? 'toggle_on' : 'toggle_off'}}</mat-icon>
+            </button>
+            <button 
+              mat-icon-button 
+              (click)="removeTool(tool.tool_type)"
+              matTooltip="Remove Tool">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+      </mat-card-header>
+
+      <mat-card-content *ngIf="tool.enabled && tool.metadata?.config_schema">
+        <app-json-schema-form
+          [schema]="tool.metadata!.config_schema"
+          [data]="tool.config"
+          (dataChange)="onToolConfigChange($event, tool)">
+        </app-json-schema-form>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- Empty state -->
+  <div *ngIf="attachedTools.length === 0" class="empty-state">
+    <mat-icon>extension_off</mat-icon>
+    <p>No tools attached</p>
+    <small>Click + to add tools for trade execution, notifications, etc.</small>
+  </div>
+
+  <!-- Add tool menu -->
+  <mat-menu #addToolMenu="matMenu">
+    <button 
+      mat-menu-item 
+      *ngFor="let tool of getAvailableToolsForMenu()"
+      (click)="addTool(tool.tool_type)">
+      <mat-icon>{{tool.icon || 'extension'}}</mat-icon>
+      <span>{{tool.name}}</span>
+    </button>
+    <div *ngIf="getAvailableToolsForMenu().length === 0" class="no-tools-message">
+      <small>All supported tools already attached</small>
+    </div>
+  </mat-menu>
+</div>

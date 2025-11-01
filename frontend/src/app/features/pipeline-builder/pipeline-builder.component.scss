@@ -527,6 +527,29 @@
             height: 1.1rem;
           }
         }
+
+        .node-tools {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.85rem;
+          padding: 0.5rem;
+          background: #e8f5e9;
+          border-radius: 4px;
+          margin-top: 0.5rem;
+
+          mat-icon {
+            font-size: 1.1rem;
+            width: 1.1rem;
+            height: 1.1rem;
+            color: #4caf50;
+          }
+
+          span {
+            font-weight: 500;
+            color: #2e7d32;
+          }
+        }
       }
     }
   }
@@ -565,6 +588,8 @@
   .config-content {
     flex: 1;
     padding: 1.5rem;
+    overflow-y: auto;
+    max-height: calc(100vh - 100px); // Allow scrolling
 
     .config-agent-info {
       text-align: center;

@@ -31,6 +31,7 @@ import { ExecutionService } from '../../core/services/execution.service';
 import { PipelineNode } from '../../core/models/pipeline.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { JsonSchemaFormComponent } from '../../shared/json-schema-form/json-schema-form.component';
+import { ToolSelectorComponent } from '../../shared/tool-selector/tool-selector.component';
 
 // Define AgentMetadata locally since it might not be exported
 interface AgentMetadata {
@@ -46,6 +47,7 @@ interface AgentMetadata {
   requires_market_data: boolean;
   requires_position: boolean;
   config_schema?: any; // JSON Schema for agent configuration
+  supported_tools?: string[]; // List of tool types this agent supports
 }
 
 interface CanvasNode extends PipelineNode {
@@ -77,7 +79,8 @@ interface Connection {
     MatDialogModule,
     MatDividerModule,
     NavbarComponent,
-    JsonSchemaFormComponent
+    JsonSchemaFormComponent,
+    ToolSelectorComponent
   ],
   templateUrl: './pipeline-builder.component.html',
   styleUrls: ['./pipeline-builder.component.scss']
@@ -284,6 +287,18 @@ export class PipelineBuilderComponent implements OnInit {
   onConfigChange(config: any, node: CanvasNode): void {
     node.config = config;
     this.showNotification('Configuration updated', 'success');
+  }
+
+  /**
+   * Handle tools changes from tool selector
+   */
+  onToolsChange(tools: any[], node: CanvasNode): void {
+    if (!node.config) {
+      node.config = {};
+    }
+    // Create a new array reference to trigger change detection
+    node.config['tools'] = [...tools];
+    this.showNotification('Tools updated', 'success');
   }
 
   /**

@@ -236,6 +236,9 @@ class AgentMetadata(BaseModel):
     # Configuration
     config_schema: AgentConfigSchema
     
+    # Tools Support
+    supported_tools: List[str] = Field(default_factory=list)  # e.g., ["alpaca_broker", "webhook_notifier"]
+    
     # Capabilities
     can_initiate_trades: bool = False
     can_close_positions: bool = False

@@ -53,6 +53,7 @@ class RiskManagerAgent(BaseAgent):
             requires_timeframes=[],
             requires_market_data=True,
             requires_position=False,
+            supported_tools=["webhook_notifier", "email_notifier"],  # Added for risk warnings/alerts
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Risk Manager Configuration",

@@ -217,6 +217,12 @@
                 <mat-icon>schedule</mat-icon>
                 <span>{{node.metadata!.requires_timeframes.join(', ')}}</span>
               </div>
+              
+              <!-- Attached Tools Indicator -->
+              <div class="node-tools" *ngIf="node.config && node.config['tools'] && node.config['tools'].length > 0">
+                <mat-icon>extension</mat-icon>
+                <span>{{node.config['tools'].length}} tool{{node.config['tools'].length > 1 ? 's' : ''}}</span>
+              </div>
             </div>
             
             <!-- Connection Port - Output (Bottom) -->
@@ -285,6 +291,16 @@
               <mat-icon>info</mat-icon>
               <p>No configuration required for this agent.</p>
             </div>
+          </div>
+          
+          <mat-divider *ngIf="selectedNode.metadata?.supported_tools && (selectedNode.metadata?.supported_tools?.length ?? 0) > 0"></mat-divider>
+          
+          <div class="config-tools" *ngIf="selectedNode.metadata?.supported_tools && (selectedNode.metadata?.supported_tools?.length ?? 0) > 0">
+            <app-tool-selector
+              [supportedTools]="selectedNode.metadata?.supported_tools || []"
+              [attachedTools]="selectedNode.config['tools'] || []"
+              (toolsChange)="onToolsChange($event, selectedNode)">
+            </app-tool-selector>
           </div>
         </div>
       </div>
