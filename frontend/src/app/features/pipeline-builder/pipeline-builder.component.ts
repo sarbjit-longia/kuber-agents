@@ -416,8 +416,8 @@ export class PipelineBuilderComponent implements OnInit {
     if (totalTools === 0) return;
     
     // Constants (must match createToolNode) - n8n-style compact design
-    const AGENT_WIDTH = 120;
-    const AGENT_HEIGHT = 80;
+    const AGENT_WIDTH = 160; // Updated to accommodate longer names
+    const AGENT_HEIGHT = 90; // Updated for better proportions
     const TOOL_SIZE = 36; // Circular tools (diameter)
     const PEG_SIZE = 5; // Half size gray pegs
     const PEG_GAP = 40; // Tighter spacing between pegs
@@ -464,8 +464,8 @@ export class PipelineBuilderComponent implements OnInit {
     const toolIndex = existingToolNodes.length;
     
     // Agent dimensions and position - n8n-style compact design
-    const AGENT_WIDTH = 120;
-    const AGENT_HEIGHT = 80;
+    const AGENT_WIDTH = 160; // Updated to accommodate longer names
+    const AGENT_HEIGHT = 90; // Updated for better proportions
     const TOOL_SIZE = 36; // Circular tools (diameter)
     const TOOL_GAP = 40; // Gap between tools horizontally
     const VERTICAL_GAP = 25; // Gap between agent bottom and tool top
@@ -656,8 +656,8 @@ export class PipelineBuilderComponent implements OnInit {
     if (isToolConnection) {
       // Straight vertical line (90 degrees) from peg to tool
       // Constants must match createToolNode
-      const AGENT_WIDTH = 120;
-      const AGENT_HEIGHT = 80; // Must match createToolNode
+      const AGENT_WIDTH = 160; // Updated to match new card size
+      const AGENT_HEIGHT = 90; // Updated to match new card size
       const TOOL_SIZE = 36;
       const PEG_OFFSET = 2.5; // Peg is at bottom: -2.5px in CSS (center of diamond)
       
@@ -676,8 +676,8 @@ export class PipelineBuilderComponent implements OnInit {
 
     // For agent-to-agent connections, use curved Bezier path
     // Connect from right side of source to left side of target
-    const AGENT_WIDTH = 120;
-    const AGENT_HEIGHT = 80;
+    const AGENT_WIDTH = 160; // Updated to match new card size
+    const AGENT_HEIGHT = 90; // Updated to match new card size
     
     const fromX = fromNode.position.x + AGENT_WIDTH; // Right edge of source node
     const fromY = fromNode.position.y + (AGENT_HEIGHT / 2); // Middle (vertical center)

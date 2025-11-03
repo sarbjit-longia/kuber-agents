@@ -486,8 +486,8 @@
     }
 
     .node-card {
-      width: 120px; // Compact n8n-style
-      min-height: 80px;
+      width: 160px; // Increased from 120px to accommodate longer names with ellipsis
+      min-height: 90px; // Slightly taller for better proportions
       background: white;
       border: 2px solid #e0e0e0;
       border-radius: 12px; // Slightly less rounded
@@ -614,6 +614,7 @@
         .node-info {
           text-align: center;
           width: 100%;
+          overflow: hidden; // Prevent overflow from container
 
           h4 {
             margin: 0;
@@ -624,6 +625,8 @@
             overflow: hidden;
             text-overflow: ellipsis;
             line-height: 1.2;
+            max-width: 100%; // Ensure it respects container width
+            padding: 0 4px; // Small padding to prevent text touching edges
           }
 
           .node-category {
@@ -631,6 +634,10 @@
             color: #999;
             text-transform: capitalize;
             margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
           }
         }
 

@@ -209,7 +209,7 @@
                 <mat-icon>{{node.metadata?.icon || 'extension'}}</mat-icon>
               </div>
               <div class="node-info">
-                <h4>{{node.metadata?.name}}</h4>
+                <h4 [matTooltip]="node.metadata?.name || ''" matTooltipPosition="above">{{node.metadata?.name}}</h4>
                 <span class="node-category">{{node.metadata?.category}}</span>
               </div>
               <button mat-icon-button class="node-remove" (click)="removeNode(node.id); $event.stopPropagation()" matTooltip="Remove">

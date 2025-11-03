@@ -211,8 +211,8 @@ body.cdk-drop-list-dragging * {
   &.canvas-node {
     // Ensure the node card is fully visible and styled - n8n-style compact
     .node-card {
-      width: 120px !important; // Compact size
-      min-height: 80px !important;
+      width: 160px !important; // Updated to accommodate longer names
+      min-height: 90px !important; // Updated for better proportions
       background: white !important;
       border: 3px solid #667eea !important;
       border-radius: 12px !important;
@@ -270,6 +270,7 @@ body.cdk-drop-list-dragging * {
       width: 100% !important;
       visibility: visible !important;
       opacity: 1 !important;
+      overflow: hidden !important; // Prevent text overflow
       
       h4 {
         margin: 0 !important;
@@ -279,6 +280,12 @@ body.cdk-drop-list-dragging * {
         line-height: 1.2 !important;
         visibility: visible !important;
         opacity: 1 !important;
+        // Truncate long names with ellipsis
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
+        padding: 0 4px !important;
       }
       
       .node-category {
@@ -288,6 +295,11 @@ body.cdk-drop-list-dragging * {
         text-transform: capitalize !important;
         visibility: visible !important;
         opacity: 1 !important;
+        // Also truncate category if needed
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
       }
     }
     
