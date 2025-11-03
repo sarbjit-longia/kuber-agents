@@ -10,50 +10,26 @@
     </button>
   </div>
 
-  <!-- List of attached tools -->
-  <div *ngIf="attachedTools.length > 0" class="tools-list">
-    <mat-card *ngFor="let tool of attachedTools" class="tool-card" [class.disabled]="!tool.enabled">
-      <mat-card-header>
-        <div class="tool-header">
-          <div class="tool-info">
-            <mat-icon class="tool-icon">{{tool.metadata?.icon || 'extension'}}</mat-icon>
-            <div>
-              <h6>{{tool.metadata?.name}}</h6>
-              <span class="tool-category">{{tool.metadata?.category}}</span>
-            </div>
-          </div>
-          <div class="tool-actions">
-            <button 
-              mat-icon-button 
-              (click)="toggleTool(tool.tool_type)"
-              [matTooltip]="tool.enabled ? 'Disable' : 'Enable'">
-              <mat-icon>{{tool.enabled ? 'toggle_on' : 'toggle_off'}}</mat-icon>
-            </button>
-            <button 
-              mat-icon-button 
-              (click)="removeTool(tool.tool_type)"
-              matTooltip="Remove Tool">
-              <mat-icon>delete</mat-icon>
-            </button>
-          </div>
-        </div>
-      </mat-card-header>
-
-      <mat-card-content *ngIf="tool.enabled && tool.metadata?.config_schema">
-        <app-json-schema-form
-          [schema]="tool.metadata!.config_schema"
-          [data]="tool.config"
-          (dataChange)="onToolConfigChange($event, tool)">
-        </app-json-schema-form>
-      </mat-card-content>
-    </mat-card>
+  <!-- Simple list of attached tools (NO configuration here) -->
+  <div *ngIf="attachedTools.length > 0" class="tools-list-simple">
+    <div *ngFor="let tool of attachedTools" class="tool-item-simple">
+      <mat-icon class="tool-icon-small">{{tool.metadata?.icon || 'extension'}}</mat-icon>
+      <span class="tool-name">{{tool.metadata?.name}}</span>
+      <button 
+        mat-icon-button 
+        (click)="removeTool(tool.tool_type)"
+        matTooltip="Remove Tool"
+        class="remove-btn">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
   </div>
 
   <!-- Empty state -->
-  <div *ngIf="attachedTools.length === 0" class="empty-state">
+  <div *ngIf="attachedTools.length === 0" class="empty-state-simple">
     <mat-icon>extension_off</mat-icon>
     <p>No tools attached</p>
-    <small>Click + to add tools for trade execution, notifications, etc.</small>
+    <small>Click + to add tools. Configure tools by clicking their node on canvas.</small>
   </div>
 
   <!-- Add tool menu -->

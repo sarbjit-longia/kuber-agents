@@ -114,19 +114,6 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
     this.emitChange();
   }
 
-  toggleTool(toolType: string): void {
-    const tool = this.attachedTools.find(t => t.tool_type === toolType);
-    if (tool) {
-      tool.enabled = !tool.enabled;
-      this.emitChange();
-    }
-  }
-
-  onToolConfigChange(config: any, tool: ToolInstance): void {
-    tool.config = config;
-    this.emitChange();
-  }
-
   emitChange(): void {
     // Emit tools without metadata (backend doesn't need it)
     const toolsForBackend = this.attachedTools.map(({ tool_type, enabled, config }) => ({

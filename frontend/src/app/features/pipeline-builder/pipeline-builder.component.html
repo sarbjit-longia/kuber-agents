@@ -161,8 +161,9 @@
           <path
             *ngFor="let connection of connections"
             [attr.d]="getConnectionPath(connection)"
-            class="connection-line"
-            marker-end="url(#arrowhead)"
+            [class.connection-line]="true"
+            [class.tool-connection]="isToolConnection(connection)"
+            [attr.marker-end]="isToolConnection(connection) ? null : 'url(#arrowhead)'"
             (click)="removeConnection(connection)">
           </path>
           
@@ -180,13 +181,23 @@
           *ngFor="let node of canvasNodes"
           class="canvas-node"
           [class.selected]="selectedNode?.id === node.id"
+          [class.tool-node]="node.node_category === 'tool'"
           [style.left.px]="node.position.x"
           [style.top.px]="node.position.y"
           cdkDrag
+          [cdkDragDisabled]="node.node_category === 'tool'"
           (cdkDragEnded)="onNodeDragEnded($event, node)"
           (click)="selectNode(node)">
           
-          <div class="node-card">
+          <!-- Custom Drag Preview for Tool Nodes -->
+          <ng-container *ngIf="node.node_category === 'tool'">
+            <div *cdkDragPreview
+                 style="width: 40px; height: 40px; background: white; border: 2px solid #ff9800; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);">
+              <mat-icon style="font-size: 20px; width: 20px; height: 20px; color: #ff9800;">{{node.metadata?.icon || 'extension'}}</mat-icon>
+            </div>
+          </ng-container>
+          
+          <div class="node-card" [attr.data-tool-name]="node.metadata?.name">
             <!-- Connection Port - Input (Top) -->
             <div class="connection-port input-port" (click)="completeConnection(node); $event.stopPropagation()">
               <div class="port-dot"></div>
@@ -208,26 +219,32 @@
             
             <!-- Node Body -->
             <div class="node-body">
-              <div class="node-badge" [class.free-badge]="node.metadata?.is_free">
-                <mat-icon>{{node.metadata?.is_free ? 'check_circle' : 'paid'}}</mat-icon>
-                <span>{{node.metadata?.is_free ? 'FREE' : '$' + node.metadata?.pricing_rate}}</span>
+              <div class="node-badge" [class.free-badge]="isAgentNode(node) && getAgentMetadata(node)?.is_free">
+                <mat-icon>{{isAgentNode(node) && getAgentMetadata(node)?.is_free ? 'check_circle' : 'paid'}}</mat-icon>
+                <span>{{isAgentNode(node) ? (getAgentMetadata(node)?.is_free ? 'FREE' : '$' + getAgentMetadata(node)?.pricing_rate) : 'Tool'}}</span>
               </div>
               
-              <div class="node-timeframes" *ngIf="node.metadata?.requires_timeframes && node.metadata!.requires_timeframes.length > 0">
+              <div class="node-timeframes" *ngIf="isAgentNode(node) && getAgentMetadata(node)?.requires_timeframes && getAgentMetadata(node)!.requires_timeframes.length > 0">
                 <mat-icon>schedule</mat-icon>
-                <span>{{node.metadata!.requires_timeframes.join(', ')}}</span>
+                <span>{{getAgentMetadata(node)!.requires_timeframes.join(', ')}}</span>
               </div>
               
-              <!-- Attached Tools Indicator -->
-              <div class="node-tools" *ngIf="node.config && node.config['tools'] && node.config['tools'].length > 0">
-                <mat-icon>extension</mat-icon>
-                <span>{{node.config['tools'].length}} tool{{node.config['tools'].length > 1 ? 's' : ''}}</span>
-              </div>
+              <!-- Attached Tools Indicator - REMOVED, tools are shown visually below -->
             </div>
             
-            <!-- Connection Port - Output (Bottom) -->
+            <!-- Connection Port - Output (Bottom center for agent-to-agent) -->
             <div class="connection-port output-port" (click)="startConnection(node); $event.stopPropagation()">
               <div class="port-dot"></div>
+            </div>
+            
+            <!-- Tool Attachment Pegs (dynamically created, one per attached tool) -->
+            <div class="tool-pegs" *ngIf="isAgentNode(node) && (node.config['tools']?.length || 0) > 0">
+              <div 
+                *ngFor="let tool of node.config['tools']"
+                class="tool-peg"
+                [matTooltip]="tool.tool_type">
+                <div class="peg-dot"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -238,7 +255,7 @@
         <div class="config-header">
           <h3>
             <mat-icon>settings</mat-icon>
-            Configure Agent
+            {{selectedNode.node_category === 'tool' ? 'Configure Tool' : 'Configure Agent'}}
           </h3>
           <button mat-icon-button (click)="selectedNode = null">
             <mat-icon>close</mat-icon>
@@ -247,7 +264,7 @@
         
         <div class="config-content">
           <div class="config-agent-info">
-            <div class="agent-icon-large">
+            <div class="agent-icon-large" [class.tool-icon-large]="selectedNode.node_category === 'tool'">
               <mat-icon>{{selectedNode.metadata?.icon || 'extension'}}</mat-icon>
             </div>
             <h4>{{selectedNode.metadata?.name}}</h4>
@@ -256,28 +273,30 @@
           
           <mat-divider></mat-divider>
           
+          <!-- Properties for both agents and tools -->
           <div class="config-properties">
             <h5>Properties</h5>
             <div class="property-item">
-              <span>Agent Type:</span>
+              <span>{{selectedNode.node_category === 'tool' ? 'Tool Type' : 'Agent Type'}}:</span>
               <span>{{selectedNode.agent_type}}</span>
             </div>
             <div class="property-item">
               <span>Category:</span>
               <span>{{selectedNode.metadata?.category}}</span>
             </div>
-            <div class="property-item">
+            <div class="property-item" *ngIf="isAgentNode(selectedNode)">
               <span>Cost:</span>
-              <span>{{selectedNode.metadata?.is_free ? 'FREE' : '$' + selectedNode.metadata?.pricing_rate}}</span>
+              <span>{{getAgentMetadata(selectedNode)?.is_free ? 'FREE' : '$' + getAgentMetadata(selectedNode)?.pricing_rate}}</span>
             </div>
-            <div class="property-item" *ngIf="selectedNode.metadata?.requires_timeframes">
+            <div class="property-item" *ngIf="isAgentNode(selectedNode) && getAgentMetadata(selectedNode)?.requires_timeframes">
               <span>Timeframes:</span>
-              <span>{{selectedNode.metadata!.requires_timeframes.join(', ')}}</span>
+              <span>{{getAgentMetadata(selectedNode)!.requires_timeframes.join(', ')}}</span>
             </div>
           </div>
           
           <mat-divider></mat-divider>
           
+          <!-- Configuration form (for both agents and tools) -->
           <div class="config-form">
             <h5>Configuration</h5>
             <app-json-schema-form
@@ -289,15 +308,16 @@
             
             <div *ngIf="!selectedNode.metadata?.config_schema" class="config-placeholder">
               <mat-icon>info</mat-icon>
-              <p>No configuration required for this agent.</p>
+              <p>No configuration required for this {{selectedNode.node_category === 'tool' ? 'tool' : 'agent'}}.</p>
             </div>
           </div>
           
-          <mat-divider *ngIf="selectedNode.metadata?.supported_tools && (selectedNode.metadata?.supported_tools?.length ?? 0) > 0"></mat-divider>
+          <!-- Tool Selector (ONLY for agents) -->
+          <mat-divider *ngIf="isAgentNode(selectedNode) && getAgentSupportedTools(selectedNode).length > 0"></mat-divider>
           
-          <div class="config-tools" *ngIf="selectedNode.metadata?.supported_tools && (selectedNode.metadata?.supported_tools?.length ?? 0) > 0">
+          <div class="config-tools" *ngIf="isAgentNode(selectedNode) && getAgentSupportedTools(selectedNode).length > 0">
             <app-tool-selector
-              [supportedTools]="selectedNode.metadata?.supported_tools || []"
+              [supportedTools]="getAgentSupportedTools(selectedNode)"
               [attachedTools]="selectedNode.config['tools'] || []"
               (toolsChange)="onToolsChange($event, selectedNode)">
             </app-tool-selector>

@@ -330,7 +330,7 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 1;
+    z-index: 1; // Below nodes but above canvas
 
     .connection-line {
       fill: none;
@@ -343,6 +343,15 @@
       &:hover {
         stroke: #764ba2;
         stroke-width: 4;
+      }
+      
+      // Tool connections: dotted gray line (per user requirements)
+      &.tool-connection {
+        stroke: #757575 !important; // Gray color
+        stroke-width: 2 !important;
+        stroke-dasharray: 4, 4; // Dotted pattern
+        pointer-events: none; // Not interactive
+        fill: none !important;
       }
     }
 
@@ -379,6 +388,94 @@
     &.selected .node-card {
       border-color: #667eea;
       box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    }
+
+    // Tool nodes: small, subtle, rounded squares (like n8n reference image)
+    &.tool-node {
+      cursor: pointer !important; // Not draggable, just clickable
+      
+      .node-card {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+        background: white;
+        border: 2px solid #ff9800;
+        border-radius: 8px !important; // Rounded square
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        cursor: pointer; // Click to configure, not drag
+
+        // Hide connection ports for tools
+        .connection-port {
+          display: none;
+        }
+
+        .node-header {
+          background: transparent;
+          border: none;
+          padding: 0;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+
+          .node-icon {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border-radius: 0;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            mat-icon {
+              font-size: 20px;
+              width: 20px;
+              height: 20px;
+              color: #ff9800;
+            }
+          }
+
+          .node-info {
+            display: none; // Hide text labels
+          }
+
+          .node-remove {
+            display: none; // Hide remove button
+          }
+        }
+
+        .node-body {
+          display: none; // Hide body section
+        }
+      }
+
+      // Show small tooltip on hover
+      &:hover .node-card::after {
+        content: attr(data-tool-name);
+        position: absolute;
+        bottom: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+        z-index: 1000;
+      }
+    }
+
+    &.tool-node.selected .node-card {
+      border-color: #ff6f00;
+      border-width: 4px;
+      box-shadow: 0 4px 20px rgba(255, 152, 0, 0.4);
     }
 
     .node-card {
@@ -426,6 +523,37 @@
           &:hover {
             background: #667eea;
             transform: scale(1.2);
+          }
+        }
+      }
+
+      // Tool Attachment Pegs (below output port, only for agents)
+      // Diamond shapes like n8n reference image
+      // Tool pegs (dynamic, one per tool, on bottom border of agent)
+      .tool-pegs {
+        position: absolute;
+        bottom: -6px; // On the border (half inside, half outside)
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 60px; // Match TOOL_GAP from TypeScript
+        z-index: 19;
+        pointer-events: none;
+
+        .tool-peg {
+          width: 12px;
+          height: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .peg-dot {
+            width: 12px;
+            height: 12px;
+            background: #ff9800;
+            border: 2px solid #ff9800;
+            transform: rotate(45deg); // Diamond shape
+            box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
           }
         }
       }
@@ -611,6 +739,10 @@
           width: 3rem;
           height: 3rem;
         }
+      }
+
+      .tool-icon-large {
+        background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
       }
 
       h4 {
