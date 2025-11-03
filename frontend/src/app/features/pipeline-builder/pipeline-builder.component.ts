@@ -369,10 +369,6 @@ export class PipelineBuilderComponent implements OnInit {
       node.config = {};
     }
     
-    console.log('======= onToolsChange called =======');
-    console.log('New tools array:', tools);
-    console.log('Tools count:', tools.length);
-    
     // Get existing visual tool nodes on canvas (the source of truth)
     const existingToolNodes = this.getToolNodesForAgent(node.id);
     const existingToolTypes = existingToolNodes.map((n: CanvasNode) => n.agent_type);
@@ -380,40 +376,85 @@ export class PipelineBuilderComponent implements OnInit {
     // Get new tool types from the tools array
     const newToolTypes = tools.map((t: any) => t.tool_type);
     
-    console.log('Existing tool nodes on canvas:', existingToolTypes);
-    console.log('New tool types from config:', newToolTypes);
-    
     // Find added tools (in new list but NOT on canvas)
     const addedToolTypes = newToolTypes.filter((type: string) => !existingToolTypes.includes(type));
     
     // Find removed tools (on canvas but NOT in new list)
     const removedToolTypes = existingToolTypes.filter((type: string) => !newToolTypes.includes(type));
     
-    console.log('Tools to ADD (create visual nodes):', addedToolTypes);
-    console.log('Tools to REMOVE (delete visual nodes):', removedToolTypes);
-    
     // Update agent's config FIRST (so createToolNode can see the correct total count)
     node.config['tools'] = [...tools];
     
     // Remove visual nodes for removed tools
     removedToolTypes.forEach((toolType: string) => {
-      console.log('Removing tool node:', toolType);
       this.removeToolNode(toolType, node);
     });
     
     // Create visual nodes for newly added tools
-    console.log('About to create', addedToolTypes.length, 'new tool nodes');
     addedToolTypes.forEach((toolType: string) => {
       const toolData = tools.find((t: any) => t.tool_type === toolType);
-      console.log('Creating tool node for:', toolType, 'toolData:', toolData);
       if (toolData) {
         this.createToolNode(toolType, node, toolData);
-      } else {
-        console.error('No toolData found for:', toolType);
       }
     });
     
+    // IMPORTANT: Reposition ALL existing tool nodes to maintain alignment
+    // This is needed because when tools are added/removed, the spacing changes
+    this.repositionAllToolsForAgent(node);
+    
     this.showNotification('Tools updated', 'success');
+  }
+
+  /**
+   * Reposition all tool nodes for an agent to maintain proper alignment with pegs
+   * Called after tools are added or removed to ensure all tools align with their pegs
+   */
+  private repositionAllToolsForAgent(parentAgent: CanvasNode): void {
+    const toolNodes = this.getToolNodesForAgent(parentAgent.id);
+    const totalTools = toolNodes.length;
+    
+    if (totalTools === 0) return;
+    
+    // Constants (must match createToolNode)
+    const AGENT_WIDTH = 300;
+    const AGENT_HEIGHT = 180;
+    const TOOL_SIZE = 40;
+    const PEG_SIZE = 12; // CSS .tool-peg width
+    const PEG_GAP = 60; // CSS gap between pegs
+    const VERTICAL_GAP = 50;
+    
+    // Calculate peg positions accounting for flexbox gap
+    // With flexbox, gap is between elements, so distance between centers is: PEG_SIZE + PEG_GAP
+    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 12 + 60 = 72px between peg centers
+    
+    const agentCenterX = parentAgent.position.x + (AGENT_WIDTH / 2);
+    
+    // Total width from first peg center to last peg center
+    const totalPegsWidth = (totalTools - 1) * pegCenterDistance;
+    const firstPegCenterX = agentCenterX - (totalPegsWidth / 2);
+    
+    // Reposition each tool
+    toolNodes.forEach((toolNode, index) => {
+      const thisPegCenterX = firstPegCenterX + (index * pegCenterDistance);
+      const newToolX = thisPegCenterX - (TOOL_SIZE / 2);
+      const newToolY = parentAgent.position.y + AGENT_HEIGHT + VERTICAL_GAP;
+      
+      console.log(`Repositioning tool ${index}:`, {
+        agentCenterX,
+        totalPegsWidth,
+        firstPegCenterX,
+        thisPegCenterX,
+        toolX: newToolX,
+        toolCenterX: newToolX + TOOL_SIZE / 2
+      });
+      
+      // Update position
+      toolNode.position.x = newToolX;
+      toolNode.position.y = newToolY;
+    });
+    
+    // Update connection lines
+    this.updateConnectionLines();
   }
 
   /**
@@ -431,10 +472,6 @@ export class PipelineBuilderComponent implements OnInit {
     const existingToolNodes = this.getToolNodesForAgent(parentAgent.id);
     const toolIndex = existingToolNodes.length;
     
-    console.log('=== CREATING TOOL NODE ===');
-    console.log('Tool type:', toolType);
-    console.log('Tool index:', toolIndex);
-    
     // Agent dimensions and position
     const AGENT_WIDTH = 300;
     const AGENT_HEIGHT = 180; // Actual agent card height (including header + body)
@@ -445,31 +482,33 @@ export class PipelineBuilderComponent implements OnInit {
     // Get total number of tools
     const totalTools = (parentAgent.config['tools'] || []).length;
     
-    console.log('Total tools:', totalTools, 'Current tool index:', toolIndex);
+    // Calculate tool position to align with pegs
+    // Pegs are positioned with CSS flexbox: gap between elements
+    // Distance between peg centers = PEG_SIZE + PEG_GAP
     
-    // Calculate horizontal positioning: tools arranged in a row, centered below agent
-    // Total width occupied by all tools: (totalTools * TOOL_SIZE) + ((totalTools - 1) * TOOL_GAP)
-    const totalToolsWidth = (totalTools * TOOL_SIZE) + ((totalTools - 1) * TOOL_GAP);
+    const PEG_SIZE = 12; // CSS .tool-peg width
+    const PEG_GAP = 60; // CSS gap between pegs
+    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 72px between peg centers
     
-    // Agent center X
     const agentCenterX = parentAgent.position.x + (AGENT_WIDTH / 2);
     
-    // Starting X for first tool (leftmost)
-    const firstToolX = agentCenterX - (totalToolsWidth / 2);
+    // Total width from first peg center to last peg center
+    const totalPegsWidth = (totalTools - 1) * pegCenterDistance;
     
-    // This tool's X position (top-left corner)
-    const toolX = firstToolX + (toolIndex * (TOOL_SIZE + TOOL_GAP));
+    // First peg center X (leftmost peg)
+    const firstPegCenterX = agentCenterX - (totalPegsWidth / 2);
+    
+    // This peg's center X
+    const thisPegCenterX = firstPegCenterX + (toolIndex * pegCenterDistance);
+    
+    // Tool should be centered under the peg
+    // Tool is TOOL_SIZE wide, so top-left corner is at pegCenter - (TOOL_SIZE / 2)
+    const toolX = thisPegCenterX - (TOOL_SIZE / 2);
     
     // Y position: below agent with gap
     const toolY = parentAgent.position.y + AGENT_HEIGHT + VERTICAL_GAP;
     
     const toolNodeId = `tool-${parentAgent.id}-${toolType}-${Date.now()}`;
-    
-    console.log('Positioning:');
-    console.log('  Agent center X:', agentCenterX);
-    console.log('  Total tools width:', totalToolsWidth);
-    console.log('  First tool X:', firstToolX);
-    console.log('  Tool X:', toolX, 'Tool Y:', toolY);
     
     // Create tool node
     const toolNode: CanvasNode = {

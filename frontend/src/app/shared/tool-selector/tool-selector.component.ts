@@ -129,8 +129,8 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
     const available = this.availableTools.filter(tool => 
       !this.attachedTools.some(t => t.tool_type === tool.tool_type)
     );
-    console.log('Available tools for menu:', available);
-    console.log('Already attached tools:', this.attachedTools.map(t => t.tool_type));
+    //console.log('Available tools for menu:', available);
+    //console.log('Already attached tools:', this.attachedTools.map(t => t.tool_type));
     return available;
   }
 }
