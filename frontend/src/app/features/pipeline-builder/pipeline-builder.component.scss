@@ -255,13 +255,12 @@
   flex: 1;
   position: relative;
   background-color: #2a2a2a; // Lighter dark gray (not pure black)
+  // Dot grid pattern using radial gradients
   background-image: 
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
-  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+    radial-gradient(circle, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px, 100px 100px;
+  background-position: 0 0, 0 0;
   overflow: auto;
   min-height: 600px;
   
@@ -558,28 +557,28 @@
       // Tool pegs (dynamic, one per tool, on bottom border of agent)
       .tool-pegs {
         position: absolute;
-        bottom: -5px; // On the border (half inside, half outside)
+        bottom: -2.5px; // On the border (half inside, half outside) - adjusted for smaller size
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 40px; // Tighter spacing for compact design
+        gap: 40px; // Keep same spacing between pegs
         z-index: 19;
         pointer-events: none;
 
         .tool-peg {
-          width: 10px; // Smaller pegs
-          height: 10px;
+          width: 5px; // Half of previous 10px
+          height: 5px;
           display: flex;
           align-items: center;
           justify-content: center;
 
           .peg-dot {
-            width: 10px;
-            height: 10px;
-            background: #ff9800;
-            border: 2px solid #ff9800;
+            width: 5px; // Half of previous 10px
+            height: 5px;
+            background: #888; // Gray color instead of orange
+            border: 1px solid #888; // Thinner border for smaller size
             transform: rotate(45deg); // Diamond shape
-            box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
+            box-shadow: 0 1px 2px rgba(136, 136, 136, 0.3); // Subtle gray shadow
           }
         }
       }
@@ -893,7 +892,7 @@
   min-height: 100%;
   
   &.cdk-drop-list-dragging {
-    background: rgba(102, 126, 234, 0.05);
+    // Don't change background during drag - keep dark theme consistent
     
     // Prevent other nodes from moving/shaking during drag
     .canvas-node:not(.cdk-drag-placeholder):not(.cdk-drag-dragging) {

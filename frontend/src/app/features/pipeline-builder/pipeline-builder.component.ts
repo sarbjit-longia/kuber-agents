@@ -419,13 +419,13 @@ export class PipelineBuilderComponent implements OnInit {
     const AGENT_WIDTH = 120;
     const AGENT_HEIGHT = 80;
     const TOOL_SIZE = 36; // Circular tools (diameter)
-    const PEG_SIZE = 10; // Smaller pegs
+    const PEG_SIZE = 5; // Half size gray pegs
     const PEG_GAP = 40; // Tighter spacing between pegs
     const VERTICAL_GAP = 25; // Reduced gap to tools
     
     // Calculate peg positions accounting for flexbox gap
     // With flexbox, gap is between elements, so distance between centers is: PEG_SIZE + PEG_GAP
-    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 12 + 60 = 72px between peg centers
+    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 5 + 40 = 45px between peg centers
     
     const agentCenterX = parentAgent.position.x + (AGENT_WIDTH / 2);
     
@@ -477,9 +477,9 @@ export class PipelineBuilderComponent implements OnInit {
     // Pegs are positioned with CSS flexbox: gap between elements
     // Distance between peg centers = PEG_SIZE + PEG_GAP
     
-    const PEG_SIZE = 10; // CSS .tool-peg width
+    const PEG_SIZE = 5; // CSS .tool-peg width (half size gray pegs)
     const PEG_GAP = 40; // CSS gap between pegs
-    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 50px between peg centers
+    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 45px between peg centers
     
     const agentCenterX = parentAgent.position.x + (AGENT_WIDTH / 2);
     
@@ -659,7 +659,7 @@ export class PipelineBuilderComponent implements OnInit {
       const AGENT_WIDTH = 120;
       const AGENT_HEIGHT = 80; // Must match createToolNode
       const TOOL_SIZE = 36;
-      const PEG_OFFSET = 5; // Peg is at bottom: -5px in CSS (center of diamond)
+      const PEG_OFFSET = 2.5; // Peg is at bottom: -2.5px in CSS (center of diamond)
       
       // Tool center X
       const toolCenterX = toNode.position.x + (TOOL_SIZE / 2);
