@@ -211,10 +211,11 @@ body.cdk-drop-list-dragging * {
   &.canvas-node {
     // Ensure the node card is fully visible and styled
     .node-card {
-      width: 300px !important;
+      width: 120px !important; // Match new compact size
+      min-height: 80px !important;
       background: white !important;
       border: 3px solid #667eea !important;
-      border-radius: 16px !important;
+      border-radius: 12px !important; // Match new border radius
       box-shadow: 0 20px 60px rgba(102, 126, 234, 0.5) !important;
       overflow: visible !important;
       display: block !important;

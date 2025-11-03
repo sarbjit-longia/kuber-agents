@@ -254,12 +254,12 @@
 .canvas-area {
   flex: 1;
   position: relative;
-  background-color: #fafbfc;
+  background-color: #2a2a2a; // Lighter dark gray (not pure black)
   background-image: 
-    linear-gradient(90deg, #e0e4e8 1px, transparent 1px),
-    linear-gradient(#e0e4e8 1px, transparent 1px),
-    linear-gradient(90deg, #f0f2f5 1px, transparent 1px),
-    linear-gradient(#f0f2f5 1px, transparent 1px);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
   background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
   overflow: auto;
@@ -276,14 +276,15 @@
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
-    color: #999;
+    color: #666; // Lighter gray for dark background
 
     mat-icon {
       font-size: 5rem;
       width: 5rem;
       height: 5rem;
       margin-bottom: 1rem;
-      opacity: 0.5;
+      opacity: 0.3;
+      color: #666;
     }
 
     h2 {
@@ -334,22 +335,22 @@
 
     .connection-line {
       fill: none;
-      stroke: #667eea;
-      stroke-width: 3;
+      stroke: #888; // Light gray for dark background
+      stroke-width: 2;
       pointer-events: stroke;
       cursor: pointer;
       transition: all 0.2s ease;
 
       &:hover {
-        stroke: #764ba2;
-        stroke-width: 4;
+        stroke: #aaa; // Lighter on hover
+        stroke-width: 3;
       }
       
-      // Tool connections: dotted gray line (per user requirements)
+      // Tool connections: solid light gray line (n8n-style)
       &.tool-connection {
-        stroke: #757575 !important; // Gray color
-        stroke-width: 2 !important;
-        stroke-dasharray: 4, 4; // Dotted pattern
+        stroke: #9e9e9e !important; // Light gray
+        stroke-width: 2 !important; // Thicker
+        stroke-dasharray: none !important; // Solid line
         pointer-events: none; // Not interactive
         fill: none !important;
       }
@@ -387,26 +388,33 @@
 
     &.selected .node-card {
       border-color: #667eea;
-      box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+      box-shadow: 0 0 30px rgba(102, 126, 234, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4); // Strong glow for selected
     }
 
-    // Tool nodes: small, subtle, rounded squares (like n8n reference image)
+    // Tool nodes: circular, n8n-style
     &.tool-node {
       cursor: pointer !important; // Not draggable, just clickable
       
       .node-card {
-        width: 40px !important;
-        height: 40px !important;
-        min-width: 40px !important;
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
         background: white;
         border: 2px solid #ff9800;
-        border-radius: 8px !important; // Rounded square
+        border-radius: 50% !important; // Fully circular
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 0;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 0 15px rgba(255, 152, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.3); // Glow for tools
         cursor: pointer; // Click to configure, not drag
+        transition: all 0.2s ease;
+
+        &:hover {
+          box-shadow: 0 0 20px rgba(255, 152, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+          transform: translateY(-1px);
+        }
 
         // Hide connection ports for tools
         .connection-port {
@@ -434,9 +442,9 @@
             justify-content: center;
 
             mat-icon {
-              font-size: 20px;
-              width: 20px;
-              height: 20px;
+              font-size: 18px;
+              width: 18px;
+              height: 18px;
               color: #ff9800;
             }
           }
@@ -479,51 +487,69 @@
     }
 
     .node-card {
-      width: 300px;
+      width: 120px; // Compact n8n-style
+      min-height: 80px;
       background: white;
       border: 2px solid #e0e0e0;
-      border-radius: 16px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      border-radius: 12px; // Slightly less rounded
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.3); // Glow for depth on dark bg
       transition: all 0.2s ease;
       position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
 
       &:hover {
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 0 30px rgba(255, 255, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.4); // Stronger glow on hover
+        transform: translateY(-2px); // Subtle lift effect
       }
 
-      // Connection Ports
+      // Connection Ports (n8n-style: left for input, right for output)
       .connection-port {
         position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 40px;
-        height: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         z-index: 20;
+        opacity: 0; // Hidden by default
+        transition: opacity 0.2s ease;
 
         &.input-port {
-          top: -10px;
+          left: -8px; // Half outside the card
         }
 
         &.output-port {
-          bottom: -10px;
+          right: -8px; // Half outside the card
         }
 
         .port-dot {
-          width: 14px;
-          height: 14px;
-          background: white;
-          border: 3px solid #667eea;
+          width: 12px;
+          height: 12px;
+          background: #2a2a2a; // Match canvas background
+          border: 2px solid #888; // Gray border
           border-radius: 50%;
           transition: all 0.2s ease;
 
           &:hover {
             background: #667eea;
-            transform: scale(1.2);
+            border-color: #667eea;
+            transform: scale(1.3);
           }
+        }
+      }
+
+      // Show ports on hover of the entire node card
+      &:hover .connection-port {
+        opacity: 0.6;
+
+        &:hover {
+          opacity: 1;
         }
       }
 
@@ -532,24 +558,24 @@
       // Tool pegs (dynamic, one per tool, on bottom border of agent)
       .tool-pegs {
         position: absolute;
-        bottom: -6px; // On the border (half inside, half outside)
+        bottom: -5px; // On the border (half inside, half outside)
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 60px; // Match TOOL_GAP from TypeScript
+        gap: 40px; // Tighter spacing for compact design
         z-index: 19;
         pointer-events: none;
 
         .tool-peg {
-          width: 12px;
-          height: 12px;
+          width: 10px; // Smaller pegs
+          height: 10px;
           display: flex;
           align-items: center;
           justify-content: center;
 
           .peg-dot {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             background: #ff9800;
             border: 2px solid #ff9800;
             transform: rotate(45deg); // Diamond shape
@@ -560,50 +586,59 @@
 
       .node-header {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 1rem;
-        padding: 1rem;
-        border-bottom: 1px solid #e0e0e0;
+        justify-content: center;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        border-bottom: none; // No divider in compact view
+        flex: 1;
 
         .node-icon {
-          width: 48px;
-          height: 48px;
+          width: 36px; // Larger icon for compact design
+          height: 36px;
           display: flex;
           align-items: center;
           justify-content: center;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 12px;
+          border-radius: 8px;
+          flex-shrink: 0;
 
           mat-icon {
             color: white;
-            font-size: 1.75rem;
-            width: 1.75rem;
-            height: 1.75rem;
+            font-size: 1.5rem;
+            width: 1.5rem;
+            height: 1.5rem;
           }
         }
 
         .node-info {
-          flex: 1;
-          min-width: 0;
+          text-align: center;
+          width: 100%;
 
           h4 {
-            margin: 0 0 0.25rem 0;
-            font-size: 1.1rem;
+            margin: 0;
+            font-size: 0.75rem; // Smaller text
             font-weight: 600;
             color: #333;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            line-height: 1.2;
           }
 
           .node-category {
-            font-size: 0.85rem;
-            color: #666;
+            font-size: 0.65rem; // Very small category text
+            color: #999;
             text-transform: capitalize;
+            margin-top: 2px;
           }
         }
 
         .node-remove {
+          position: absolute;
+          top: 4px;
+          right: 4px;
           opacity: 0;
           transition: opacity 0.2s ease;
         }
@@ -614,10 +649,8 @@
       }
 
       .node-body {
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+        display: none; // Hide pricing/timeframe from compact card face
+        // Info will be shown in config panel instead
 
         .node-badge {
           display: flex;

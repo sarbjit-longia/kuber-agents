@@ -415,13 +415,13 @@ export class PipelineBuilderComponent implements OnInit {
     
     if (totalTools === 0) return;
     
-    // Constants (must match createToolNode)
-    const AGENT_WIDTH = 300;
-    const AGENT_HEIGHT = 180;
-    const TOOL_SIZE = 40;
-    const PEG_SIZE = 12; // CSS .tool-peg width
-    const PEG_GAP = 60; // CSS gap between pegs
-    const VERTICAL_GAP = 50;
+    // Constants (must match createToolNode) - n8n-style compact design
+    const AGENT_WIDTH = 120;
+    const AGENT_HEIGHT = 80;
+    const TOOL_SIZE = 36; // Circular tools (diameter)
+    const PEG_SIZE = 10; // Smaller pegs
+    const PEG_GAP = 40; // Tighter spacing between pegs
+    const VERTICAL_GAP = 25; // Reduced gap to tools
     
     // Calculate peg positions accounting for flexbox gap
     // With flexbox, gap is between elements, so distance between centers is: PEG_SIZE + PEG_GAP
@@ -463,12 +463,12 @@ export class PipelineBuilderComponent implements OnInit {
     const existingToolNodes = this.getToolNodesForAgent(parentAgent.id);
     const toolIndex = existingToolNodes.length;
     
-    // Agent dimensions and position
-    const AGENT_WIDTH = 300;
-    const AGENT_HEIGHT = 180; // Actual agent card height (including header + body)
-    const TOOL_SIZE = 40; // Tool node is 40x40px
-    const TOOL_GAP = 60; // Gap between tools horizontally
-    const VERTICAL_GAP = 50; // Gap between agent bottom and tool top (increased for visibility)
+    // Agent dimensions and position - n8n-style compact design
+    const AGENT_WIDTH = 120;
+    const AGENT_HEIGHT = 80;
+    const TOOL_SIZE = 36; // Circular tools (diameter)
+    const TOOL_GAP = 40; // Gap between tools horizontally
+    const VERTICAL_GAP = 25; // Gap between agent bottom and tool top
     
     // Get total number of tools
     const totalTools = (parentAgent.config['tools'] || []).length;
@@ -477,9 +477,9 @@ export class PipelineBuilderComponent implements OnInit {
     // Pegs are positioned with CSS flexbox: gap between elements
     // Distance between peg centers = PEG_SIZE + PEG_GAP
     
-    const PEG_SIZE = 12; // CSS .tool-peg width
-    const PEG_GAP = 60; // CSS gap between pegs
-    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 72px between peg centers
+    const PEG_SIZE = 10; // CSS .tool-peg width
+    const PEG_GAP = 40; // CSS gap between pegs
+    const pegCenterDistance = PEG_SIZE + PEG_GAP; // 50px between peg centers
     
     const agentCenterX = parentAgent.position.x + (AGENT_WIDTH / 2);
     
@@ -656,10 +656,10 @@ export class PipelineBuilderComponent implements OnInit {
     if (isToolConnection) {
       // Straight vertical line (90 degrees) from peg to tool
       // Constants must match createToolNode
-      const AGENT_WIDTH = 300;
-      const AGENT_HEIGHT = 180; // Must match createToolNode
-      const TOOL_SIZE = 40;
-      const PEG_OFFSET = 6; // Peg is at bottom: -6px in CSS (center of diamond)
+      const AGENT_WIDTH = 120;
+      const AGENT_HEIGHT = 80; // Must match createToolNode
+      const TOOL_SIZE = 36;
+      const PEG_OFFSET = 5; // Peg is at bottom: -5px in CSS (center of diamond)
       
       // Tool center X
       const toolCenterX = toNode.position.x + (TOOL_SIZE / 2);
@@ -675,14 +675,18 @@ export class PipelineBuilderComponent implements OnInit {
     }
 
     // For agent-to-agent connections, use curved Bezier path
-    const fromX = fromNode.position.x + 150; // Center + half width
-    const fromY = fromNode.position.y + 100; // Bottom of node
-    const toX = toNode.position.x + 150;
-    const toY = toNode.position.y; // Top of node
+    // Connect from right side of source to left side of target
+    const AGENT_WIDTH = 120;
+    const AGENT_HEIGHT = 80;
+    
+    const fromX = fromNode.position.x + AGENT_WIDTH; // Right edge of source node
+    const fromY = fromNode.position.y + (AGENT_HEIGHT / 2); // Middle (vertical center)
+    const toX = toNode.position.x; // Left edge of target node
+    const toY = toNode.position.y + (AGENT_HEIGHT / 2); // Middle (vertical center)
 
-    // Bezier curve for smooth connection
-    const midY = (fromY + toY) / 2;
-    return `M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`;
+    // Bezier curve for smooth horizontal connection
+    const midX = (fromX + toX) / 2;
+    return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
   }
 
   /**
