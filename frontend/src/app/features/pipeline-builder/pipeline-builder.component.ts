@@ -439,15 +439,6 @@ export class PipelineBuilderComponent implements OnInit {
       const newToolX = thisPegCenterX - (TOOL_SIZE / 2);
       const newToolY = parentAgent.position.y + AGENT_HEIGHT + VERTICAL_GAP;
       
-      console.log(`Repositioning tool ${index}:`, {
-        agentCenterX,
-        totalPegsWidth,
-        firstPegCenterX,
-        thisPegCenterX,
-        toolX: newToolX,
-        toolCenterX: newToolX + TOOL_SIZE / 2
-      });
-      
       // Update position
       toolNode.position.x = newToolX;
       toolNode.position.y = newToolY;
@@ -620,10 +611,25 @@ export class PipelineBuilderComponent implements OnInit {
    * Remove node from canvas
    */
   removeNode(nodeId: string): void {
-    // Remove node
+    const nodeToRemove = this.canvasNodes.find(n => n.id === nodeId);
+    
+    // If removing an agent, also remove all its attached tools
+    if (nodeToRemove && nodeToRemove.node_category === 'agent') {
+      const toolNodes = this.getToolNodesForAgent(nodeId);
+      toolNodes.forEach(toolNode => {
+        // Remove tool node
+        this.canvasNodes = this.canvasNodes.filter(n => n.id !== toolNode.id);
+        // Remove tool connections
+        this.connections = this.connections.filter(
+          c => c.from !== toolNode.id && c.to !== toolNode.id
+        );
+      });
+    }
+    
+    // Remove the node itself
     this.canvasNodes = this.canvasNodes.filter(n => n.id !== nodeId);
     
-    // Remove connections
+    // Remove connections to/from this node
     this.connections = this.connections.filter(
       c => c.from !== nodeId && c.to !== nodeId
     );
