@@ -170,20 +170,29 @@ class MarketDataTool(BaseTool):
         now = datetime.utcnow()
         
         # Estimate lookback based on timeframe
-        if timeframe.endswith("m"):
-            minutes = int(timeframe[:-1])
-            lookback = timedelta(minutes=minutes * periods)
-        elif timeframe.endswith("h"):
-            hours = int(timeframe[:-1])
-            lookback = timedelta(hours=hours * periods)
-        elif timeframe == "1d":
-            lookback = timedelta(days=periods)
-        elif timeframe == "1w":
-            lookback = timedelta(weeks=periods)
-        elif timeframe == "1M":
-            lookback = timedelta(days=30 * periods)
-        else:
-            lookback = timedelta(days=periods)
+        try:
+            if timeframe.endswith("m"):
+                minutes_str = timeframe[:-1]
+                if not minutes_str:
+                    raise ValueError(f"Invalid timeframe format: {timeframe}")
+                minutes = int(minutes_str)
+                lookback = timedelta(minutes=minutes * periods)
+            elif timeframe.endswith("h"):
+                hours_str = timeframe[:-1]
+                if not hours_str:
+                    raise ValueError(f"Invalid timeframe format: {timeframe}")
+                hours = int(hours_str)
+                lookback = timedelta(hours=hours * periods)
+            elif timeframe == "1d":
+                lookback = timedelta(days=periods)
+            elif timeframe == "1w":
+                lookback = timedelta(weeks=periods)
+            elif timeframe == "1M":
+                lookback = timedelta(days=30 * periods)
+            else:
+                lookback = timedelta(days=periods)
+        except (ValueError, AttributeError) as e:
+            raise ValueError(f"Invalid timeframe '{timeframe}': {str(e)}")
         
         from_ts = int((now - lookback).timestamp())
         to_ts = int(now.timestamp())

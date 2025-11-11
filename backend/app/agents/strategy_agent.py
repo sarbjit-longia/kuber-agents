@@ -241,18 +241,19 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
             # Store in state
             state.strategy = strategy_result
             
+            confidence_str = f"{strategy_result.confidence:.2f}" if strategy_result.confidence is not None else "N/A"
             self.log(
                 state,
-                f"✓ Strategy generated: {strategy_result.action} "
-                f"(confidence: {strategy_result.confidence:.2f})"
+                f"✓ Strategy generated: {strategy_result.action} (confidence: {confidence_str})"
             )
             
             if strategy_result.action in ["BUY", "SELL"]:
+                entry_str = f"${strategy_result.entry_price:.2f}" if strategy_result.entry_price is not None else "N/A"
+                sl_str = f"${strategy_result.stop_loss:.2f}" if strategy_result.stop_loss is not None else "N/A"
+                tp_str = f"${strategy_result.take_profit:.2f}" if strategy_result.take_profit is not None else "N/A"
                 self.log(
                     state,
-                    f"  Entry: ${strategy_result.entry_price:.2f}, "
-                    f"SL: ${strategy_result.stop_loss:.2f}, "
-                    f"TP: ${strategy_result.take_profit:.2f}"
+                    f"  Entry: {entry_str}, SL: {sl_str}, TP: {tp_str}"
                 )
             
             # Track cost (GPT-4 is more expensive)

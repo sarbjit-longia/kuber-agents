@@ -84,6 +84,7 @@ class BaseAgent(ABC):
         self.agent_id = agent_id
         self.config = config
         self.metadata = self.get_metadata()
+        self.logger = logger  # Instance logger for convenience
         
         # Validate configuration
         self._validate_config()
@@ -278,16 +279,11 @@ class BaseAgent(ABC):
                 tool_instance = registry.create_tool(tool_type, config)
                 tools[tool_type] = tool_instance
                 self.logger.info(
-                    "tool_loaded",
-                    agent_id=self.agent_id,
-                    tool_type=tool_type
+                    f"Tool loaded: {tool_type} for agent {self.agent_id}"
                 )
             except Exception as e:
                 self.logger.error(
-                    "tool_load_failed",
-                    agent_id=self.agent_id,
-                    tool_type=tool_type,
-                    error=str(e),
+                    f"Failed to load tool {tool_type} for agent {self.agent_id}: {str(e)}",
                     exc_info=True
                 )
                 # Continue loading other tools even if one fails

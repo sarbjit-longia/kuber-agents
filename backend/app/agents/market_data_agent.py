@@ -119,9 +119,14 @@ class MarketDataAgent(BaseAgent):
         try:
             # Get configuration
             timeframes = self.config.get("timeframes", ["5m", "1h", "4h", "1d"])
+            
+            # Handle case where timeframes might be a comma-separated string
+            if isinstance(timeframes, str):
+                timeframes = [tf.strip() for tf in timeframes.split(",")]
+            
             lookback_periods = self.config.get("lookback_periods", 100)
             
-            self.log(state, f"Fetching data for {state.symbol} - Timeframes: {timeframes}")
+            self.log(state, f"Fetching data for {state.symbol} - Timeframes: {','.join(timeframes)}")
             
             # Fetch market data (run async operation)
             loop = asyncio.get_event_loop()
