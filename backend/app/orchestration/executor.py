@@ -318,12 +318,25 @@ class PipelineExecutor:
             # Update execution record with results
             execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
             execution.completed_at = datetime.utcnow()
+            
+            # Convert Pydantic models to JSON-serializable dicts
+            def serialize_model(model):
+                """Convert Pydantic model to JSON-serializable dict."""
+                if model is None:
+                    return None
+                data = model.dict()
+                # Convert datetime objects to ISO format strings
+                for key, value in data.items():
+                    if isinstance(value, datetime):
+                        data[key] = value.isoformat()
+                return data
+            
             execution.result = {
                 "trigger_met": state.trigger_met,
                 "trigger_reason": state.trigger_reason,
-                "strategy": state.strategy.dict() if state.strategy else None,
-                "risk_assessment": state.risk_assessment.dict() if state.risk_assessment else None,
-                "trade_execution": state.trade_execution.dict() if state.trade_execution else None,
+                "strategy": serialize_model(state.strategy),
+                "risk_assessment": serialize_model(state.risk_assessment),
+                "trade_execution": serialize_model(state.trade_execution),
                 "errors": state.errors,
                 "warnings": state.warnings
             }

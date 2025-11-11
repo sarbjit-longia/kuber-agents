@@ -192,7 +192,7 @@ REQUIREMENTS:
 - Strategy Timeframe: {strategy_tf}
 - Minimum Risk/Reward: {min_rr}:1
 - Aggressive Mode: {"Yes" if aggressive else "No"}
-- Current Price: ${state.market_data.current_price:.2f}
+- Current Price: {f'${state.market_data.current_price:.2f}' if state.market_data.current_price is not None else 'N/A'}
 
 If a valid trading opportunity exists:
 1. Determine ACTION: BUY or SELL
@@ -276,24 +276,35 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
         # Get recent candles
         recent = candles[-10:]  # Last 10 candles
         
+        # Format current price safely
+        price_str = f"${state.market_data.current_price:.2f}" if state.market_data.current_price is not None else "N/A"
+        spread_str = f"${state.market_data.spread:.4f}" if state.market_data.spread else "N/A"
+        
         context = f"""
-Current Price: ${state.market_data.current_price:.2f}
-Spread: ${state.market_data.spread:.4f if state.market_data.spread else 'N/A'}
+Current Price: {price_str}
+Spread: {spread_str}
 
 Last 10 Candles (oldest to newest):
 """
         for i, candle in enumerate(recent, 1):
-            context += f"{i}. O:{candle.open:.2f} H:{candle.high:.2f} L:{candle.low:.2f} C:{candle.close:.2f} V:{candle.volume:,}\n"
+            o = f"{candle.open:.2f}" if candle.open is not None else "N/A"
+            h = f"{candle.high:.2f}" if candle.high is not None else "N/A"
+            l = f"{candle.low:.2f}" if candle.low is not None else "N/A"
+            c = f"{candle.close:.2f}" if candle.close is not None else "N/A"
+            v = f"{candle.volume:,}" if candle.volume is not None else "N/A"
+            context += f"{i}. O:{o} H:{h} L:{l} C:{c} V:{v}\n"
         
         # Add indicators if available
         latest = recent[-1]
-        if latest.rsi:
+        if latest.rsi is not None:
             context += f"\nTechnical Indicators (Latest):\n"
             context += f"RSI: {latest.rsi:.2f}\n"
-            if latest.macd:
-                context += f"MACD: {latest.macd:.2f} (Signal: {latest.macd_signal:.2f})\n"
-            if latest.sma_20:
-                context += f"SMA(20): {latest.sma_20:.2f}, SMA(50): {latest.sma_50:.2f}\n"
+            if latest.macd is not None:
+                macd_sig = f"{latest.macd_signal:.2f}" if latest.macd_signal is not None else "N/A"
+                context += f"MACD: {latest.macd:.2f} (Signal: {macd_sig})\n"
+            if latest.sma_20 is not None:
+                sma50 = f"{latest.sma_50:.2f}" if latest.sma_50 is not None else "N/A"
+                context += f"SMA(20): {latest.sma_20:.2f}, SMA(50): {sma50}\n"
         
         return context
     
