@@ -10,23 +10,40 @@
       <h1>Execution Details</h1>
     </div>
     <div class="header-actions" *ngIf="execution">
+      <!-- Resume button for paused executions -->
       <button mat-raised-button color="primary" 
               *ngIf="execution.status === 'paused'"
-              (click)="resumeExecution()">
+              (click)="resumeExecution()"
+              matTooltip="Resume execution">
         <mat-icon>play_arrow</mat-icon>
         Resume
       </button>
+      
+      <!-- Pause button for running executions -->
       <button mat-raised-button color="accent"
               *ngIf="execution.status === 'running'"
-              (click)="pauseExecution()">
+              (click)="pauseExecution()"
+              matTooltip="Pause execution temporarily">
         <mat-icon>pause</mat-icon>
         Pause
       </button>
+      
+      <!-- Stop button for running or paused executions -->
       <button mat-raised-button color="warn"
               *ngIf="execution.status === 'running' || execution.status === 'paused'"
-              (click)="stopExecution()">
+              (click)="stopExecution()"
+              matTooltip="Stop execution permanently">
         <mat-icon>stop</mat-icon>
         Stop
+      </button>
+      
+      <!-- Cancel button for pending executions -->
+      <button mat-raised-button color="warn"
+              *ngIf="execution.status === 'pending'"
+              (click)="cancelExecution()"
+              matTooltip="Cancel pending execution">
+        <mat-icon>cancel</mat-icon>
+        Cancel
       </button>
     </div>
   </div>
@@ -90,6 +107,31 @@
           [value]="getAgentProgress()"
           class="progress-bar">
         </mat-progress-bar>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Execution Controls Info (only show for pending/running/paused) -->
+    <mat-card *ngIf="execution.status === 'pending' || execution.status === 'running' || execution.status === 'paused'" class="info-card">
+      <mat-card-content>
+        <div class="info-header">
+          <mat-icon>info</mat-icon>
+          <strong>Execution Controls</strong>
+        </div>
+        <div class="info-text">
+          <p *ngIf="execution.status === 'pending'">
+            <mat-icon>cancel</mat-icon> <strong>Cancel:</strong> Stop the execution before it starts
+          </p>
+          <p *ngIf="execution.status === 'running'">
+            <mat-icon>pause</mat-icon> <strong>Pause:</strong> Temporarily pause execution (can be resumed later)
+            <br>
+            <mat-icon>stop</mat-icon> <strong>Stop:</strong> Permanently stop execution (cannot be resumed)
+          </p>
+          <p *ngIf="execution.status === 'paused'">
+            <mat-icon>play_arrow</mat-icon> <strong>Resume:</strong> Continue paused execution
+            <br>
+            <mat-icon>stop</mat-icon> <strong>Stop:</strong> Permanently stop execution
+          </p>
+        </div>
       </mat-card-content>
     </mat-card>
 

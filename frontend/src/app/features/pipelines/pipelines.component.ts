@@ -87,11 +87,9 @@ export class PipelinesComponent implements OnInit {
   executePipeline(pipeline: any, event: Event): void {
     event.stopPropagation();
     
-    if (!pipeline.is_active) {
-      this.showNotification('Pipeline must be active to execute', 'warning');
-      return;
-    }
-
+    // Manual execution doesn't require the pipeline to be active
+    // Active pipelines are for scheduled/automated runs
+    
     const executionData = {
       pipeline_id: pipeline.id,
       mode: 'paper' as 'paper' | 'live' | 'simulation' | 'validation', // Type assertion for mode
@@ -130,13 +128,17 @@ export class PipelinesComponent implements OnInit {
   toggleActive(pipeline: any, event: Event): void {
     event.stopPropagation();
     
+    console.log('🔄 Toggling pipeline active status:', pipeline.name, 'Current:', pipeline.is_active);
+    
     const updatedPipeline = {
-      ...pipeline,
       is_active: !pipeline.is_active
     };
 
+    console.log('📤 Sending update:', updatedPipeline);
+
     this.pipelineService.updatePipeline(pipeline.id, updatedPipeline).subscribe({
-      next: () => {
+      next: (response) => {
+        console.log('✅ Pipeline updated:', response);
         this.showNotification(
           pipeline.is_active ? 'Pipeline deactivated' : 'Pipeline activated',
           'success'
@@ -144,7 +146,7 @@ export class PipelinesComponent implements OnInit {
         this.loadPipelines();
       },
       error: (error) => {
-        console.error('Failed to update pipeline:', error);
+        console.error('❌ Failed to update pipeline:', error);
         this.showNotification('Failed to update pipeline', 'error');
       }
     });

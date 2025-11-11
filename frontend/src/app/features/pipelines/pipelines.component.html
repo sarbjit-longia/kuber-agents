@@ -76,12 +76,18 @@
                   <mat-icon>edit</mat-icon>
                   <span>Edit</span>
                 </button>
-                <button mat-menu-item (click)="executePipeline(pipeline, $event)">
+                <button 
+                  mat-menu-item 
+                  (click)="executePipeline(pipeline, $event)"
+                  matTooltip="Run pipeline once immediately">
                   <mat-icon>play_arrow</mat-icon>
-                  <span>Execute</span>
+                  <span>Execute Now</span>
                 </button>
-                <button mat-menu-item (click)="toggleActive(pipeline, $event)">
-                  <mat-icon>{{ pipeline.is_active ? 'pause' : 'play_arrow' }}</mat-icon>
+                <button 
+                  mat-menu-item 
+                  (click)="toggleActive(pipeline, $event)"
+                  matTooltip="Enable/disable for scheduled automated runs">
+                  <mat-icon>{{ pipeline.is_active ? 'toggle_on' : 'toggle_off' }}</mat-icon>
                   <span>{{ pipeline.is_active ? 'Deactivate' : 'Activate' }}</span>
                 </button>
                 <mat-divider></mat-divider>

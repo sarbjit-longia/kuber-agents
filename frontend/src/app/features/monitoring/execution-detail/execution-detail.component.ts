@@ -138,6 +138,25 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     });
   }
 
+  cancelExecution(): void {
+    if (confirm('Cancel this pending execution?')) {
+      console.log('🚫 Cancelling execution:', this.executionId);
+      this.monitoringService.cancelExecution(this.executionId).subscribe({
+        next: (response) => {
+          console.log('✅ Execution cancelled:', response);
+          this.showNotification('Execution cancelled', 'success');
+          this.loadExecution();
+        },
+        error: (error) => {
+          console.error('❌ Failed to cancel execution:', error);
+          console.error('Error details:', error.error);
+          const errorMsg = error.error?.detail || 'Failed to cancel execution';
+          this.showNotification(errorMsg, 'error');
+        }
+      });
+    }
+  }
+
   getAgentProgress(): number {
     if (!this.execution || !this.execution.agent_states) return 0;
     const completed = this.execution.agent_states.filter(a => a.status === 'completed').length;

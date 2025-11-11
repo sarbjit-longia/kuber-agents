@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 
 from app.database import get_db
 from app.models.user import User
@@ -62,17 +63,24 @@ async def start_execution(
             detail="You don't have permission to execute this pipeline"
         )
     
-    if not pipeline.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pipeline is not active"
-        )
+    # Note: Manual executions can run on inactive pipelines
+    # Active status only matters for scheduled/automated runs
     
-    # Create execution record
+    # Extract symbol from pipeline config or use from execution_data
+    symbol = None
+    if hasattr(execution_data, 'symbol') and execution_data.symbol:
+        symbol = execution_data.symbol
+    elif pipeline.config and isinstance(pipeline.config, dict):
+        symbol = pipeline.config.get('symbol')
+    
+    # Create execution record with all metadata
     execution = Execution(
         pipeline_id=execution_data.pipeline_id,
         user_id=current_user.id,
-        status=ExecutionStatus.PENDING
+        status=ExecutionStatus.PENDING,
+        mode=execution_data.mode or "paper",
+        symbol=symbol,
+        started_at=datetime.utcnow()  # Mark as started immediately
     )
     db.add(execution)
     await db.commit()
@@ -89,12 +97,12 @@ async def start_execution(
     return execution
 
 
-@router.get("/{execution_id}", response_model=ExecutionInDB)
+@router.get("/{execution_id}", response_model=dict)
 async def get_execution(
     execution_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-) -> ExecutionInDB:
+) -> dict:
     """
     Get execution details by ID.
     
@@ -104,18 +112,22 @@ async def get_execution(
         db: Database session
         
     Returns:
-        Execution details
+        Execution details with pipeline name
     """
     result = await db.execute(
-        select(Execution).where(Execution.id == execution_id)
+        select(Execution, Pipeline.name)
+        .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .where(Execution.id == execution_id)
     )
-    execution = result.scalar_one_or_none()
+    row = result.first()
     
-    if not execution:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Execution not found"
         )
+    
+    execution, pipeline_name = row
     
     if execution.user_id != current_user.id:
         raise HTTPException(
@@ -123,7 +135,27 @@ async def get_execution(
             detail="You don't have permission to view this execution"
         )
     
-    return execution
+    # Convert execution to dict and add pipeline_name
+    execution_dict = {
+        "id": str(execution.id),
+        "pipeline_id": str(execution.pipeline_id),
+        "pipeline_name": pipeline_name,  # Add pipeline name
+        "user_id": str(execution.user_id),
+        "status": execution.status.value,
+        "mode": execution.mode,
+        "symbol": execution.symbol,
+        "result": execution.result,
+        "error_message": execution.error_message,
+        "cost": execution.cost,
+        "logs": execution.logs or [],
+        "agent_states": execution.agent_states or [],
+        "cost_breakdown": execution.cost_breakdown or {},
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+        "created_at": execution.created_at.isoformat() if execution.created_at else None,
+    }
+    
+    return execution_dict
 
 
 @router.get("/", response_model=List[ExecutionSummary])

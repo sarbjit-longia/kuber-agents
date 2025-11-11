@@ -41,6 +41,7 @@ export interface PipelineEdge {
 
 export interface PipelineConfig {
   symbol?: string;
+  mode?: 'live' | 'paper' | 'simulation' | 'validation';
   nodes: PipelineNode[];
   edges: PipelineEdge[];
 }

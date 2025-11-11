@@ -145,8 +145,45 @@ export class PipelineBuilderComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    // Load agents and tools first
     this.loadAgents();
-    this.loadTools(); // Added
+    this.loadTools();
+    
+    // Check if we're editing an existing pipeline
+    // Wait for agents to load before loading pipeline
+    this.route.paramMap.subscribe(params => {
+      const pipelineId = params.get('id');
+      if (pipelineId) {
+        this.currentPipelineId = pipelineId;
+        // Wait a bit for agents to load, or check if they're loaded
+        this.waitForAgentsAndLoadPipeline(pipelineId);
+      }
+    });
+  }
+  
+  /**
+   * Wait for agents to be loaded, then load the pipeline
+   */
+  waitForAgentsAndLoadPipeline(pipelineId: string): void {
+    // If agents are already loaded, load pipeline immediately
+    if (this.agents.length > 0) {
+      this.loadPipeline(pipelineId);
+    } else {
+      // Wait for agents to load (check every 100ms, max 5 seconds)
+      let attempts = 0;
+      const maxAttempts = 50;
+      const interval = setInterval(() => {
+        attempts++;
+        if (this.agents.length > 0) {
+          clearInterval(interval);
+          this.loadPipeline(pipelineId);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          console.warn('Agents not loaded in time, loading pipeline anyway');
+          this.loadPipeline(pipelineId);
+        }
+      }, 100);
+    }
   }
 
   loadAgents(): void {
@@ -178,6 +215,69 @@ export class PipelineBuilderComponent implements OnInit {
       error: (error) => {
         console.error('Error loading tools:', error);
         this.showNotification('Failed to load tools', 'error');
+      }
+    });
+  }
+
+  /**
+   * Load an existing pipeline from the backend
+   */
+  loadPipeline(pipelineId: string): void {
+    console.log('🔄 Loading pipeline:', pipelineId);
+    this.loading = true;
+    
+    this.pipelineService.getPipeline(pipelineId).subscribe({
+      next: (pipeline) => {
+        console.log('✅ Pipeline loaded:', pipeline);
+        
+        // Set pipeline metadata
+        this.pipelineName = pipeline.name || 'Untitled Pipeline';
+        this.pipelineDescription = pipeline.description || '';
+        
+        // Load pipeline configuration
+        if (pipeline.config) {
+          this.selectedSymbol = pipeline.config.symbol || 'AAPL';
+          this.executionMode = pipeline.config.mode || 'paper';
+          
+          // Load nodes onto canvas
+          if (pipeline.config.nodes && Array.isArray(pipeline.config.nodes)) {
+            console.log('📦 Loading nodes:', pipeline.config.nodes.length);
+            this.canvasNodes = pipeline.config.nodes.map((node: any) => {
+              // Find agent metadata
+              const agentMetadata = this.agents.find(a => a.agent_type === node.agent_type);
+              
+              return {
+                id: node.id,
+                agent_type: node.agent_type,
+                config: node.config || {},
+                position: node.position || { x: 100, y: 100 },
+                metadata: agentMetadata,
+                node_category: node.node_category || 'agent'
+              };
+            });
+            
+            console.log('✅ Nodes loaded on canvas:', this.canvasNodes);
+          }
+          
+          // Load connections
+          if (pipeline.config.edges && Array.isArray(pipeline.config.edges)) {
+            console.log('🔗 Loading connections:', pipeline.config.edges.length);
+            this.connections = pipeline.config.edges.map((edge: any) => ({
+              from: edge.from,
+              to: edge.to
+            }));
+            
+            console.log('✅ Connections loaded:', this.connections);
+          }
+        }
+        
+        this.loading = false;
+        this.showNotification('Pipeline loaded successfully', 'success');
+      },
+      error: (error) => {
+        console.error('❌ Failed to load pipeline:', error);
+        this.loading = false;
+        this.showNotification('Failed to load pipeline', 'error');
       }
     });
   }
@@ -773,9 +873,22 @@ export class PipelineBuilderComponent implements OnInit {
 
     console.log('Saving pipeline:', pipelineData); // Debug log
 
-    this.pipelineService.createPipeline(pipelineData).subscribe({
+    // Determine if we're updating or creating
+    const saveOperation = this.currentPipelineId
+      ? this.pipelineService.updatePipeline(this.currentPipelineId, pipelineData)
+      : this.pipelineService.createPipeline(pipelineData);
+
+    saveOperation.subscribe({
       next: (pipeline: any) => {
         this.saving = false;
+        
+        // If this was a new pipeline, store its ID
+        if (!this.currentPipelineId && pipeline.id) {
+          this.currentPipelineId = pipeline.id;
+          // Update the URL without reloading the page
+          this.router.navigate(['/pipeline-builder', pipeline.id], { replaceUrl: true });
+        }
+        
         this.showNotification('Pipeline saved successfully!', 'success');
         console.log('Pipeline saved:', pipeline);
       },
