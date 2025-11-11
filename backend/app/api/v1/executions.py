@@ -69,6 +69,11 @@ async def start_execution(
     is_valid, validation_errors = validator.validate(pipeline.config)
     
     if not is_valid:
+        import structlog
+        logger = structlog.get_logger()
+        logger.error("Pipeline validation failed", 
+                     pipeline_id=str(pipeline.id),
+                     errors=validation_errors)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={

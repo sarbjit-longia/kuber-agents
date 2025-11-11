@@ -107,11 +107,22 @@ class PipelineValidator:
                         f"Please attach one of: {tool_names}"
                     )
         
-        # Check for required configuration fields
+        # Check for required configuration fields (accounting for defaults)
         schema = metadata.config_schema
         if schema and schema.required:
             for field in schema.required:
-                if field not in config or config[field] is None:
+                # Check if field exists in config
+                has_value = field in config and config[field] is not None
+                
+                # Check if field has a default value in schema
+                has_default = (
+                    schema.properties and 
+                    field in schema.properties and 
+                    "default" in schema.properties[field]
+                )
+                
+                # Only error if no value AND no default
+                if not has_value and not has_default:
                     errors.append(
                         f"Agent '{metadata.name}': Missing required configuration field '{field}'"
                     )

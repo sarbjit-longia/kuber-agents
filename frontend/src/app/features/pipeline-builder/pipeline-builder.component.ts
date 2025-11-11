@@ -21,7 +21,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
-import { MatDialogModule } from '@angular/material/dialog';
+import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatDividerModule } from '@angular/material/divider';
 import { Router, ActivatedRoute } from '@angular/router';
 
@@ -33,6 +33,7 @@ import { PipelineNode } from '../../core/models/pipeline.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { JsonSchemaFormComponent } from '../../shared/json-schema-form/json-schema-form.component';
 import { ToolSelectorComponent } from '../../shared/tool-selector/tool-selector.component';
+import { ValidationErrorDialogComponent } from '../../shared/validation-error-dialog/validation-error-dialog.component';
 
 // Define AgentMetadata locally since it might not be exported
 interface AgentMetadata {
@@ -142,8 +143,9 @@ export class PipelineBuilderComponent implements OnInit {
     private agentService: AgentService,
     private pipelineService: PipelineService,
     private executionService: ExecutionService,
-    private toolService: ToolService, // Added
+    private toolService: ToolService,
     private snackBar: MatSnackBar,
+    private dialog: MatDialog,
     private router: Router,
     private route: ActivatedRoute
   ) {}
@@ -166,24 +168,25 @@ export class PipelineBuilderComponent implements OnInit {
   }
   
   /**
-   * Wait for agents to be loaded, then load the pipeline
+   * Wait for agents and tools to be loaded, then load the pipeline
    */
   waitForAgentsAndLoadPipeline(pipelineId: string): void {
-    // If agents are already loaded, load pipeline immediately
-    if (this.agents.length > 0) {
+    // If agents and tools are already loaded, load pipeline immediately
+    if (this.agents.length > 0 && this.tools.length > 0) {
       this.loadPipeline(pipelineId);
     } else {
-      // Wait for agents to load (check every 100ms, max 5 seconds)
+      // Wait for agents and tools to load (check every 100ms, max 5 seconds)
       let attempts = 0;
       const maxAttempts = 50;
       const interval = setInterval(() => {
         attempts++;
-        if (this.agents.length > 0) {
+        if (this.agents.length > 0 && this.tools.length > 0) {
           clearInterval(interval);
           this.loadPipeline(pipelineId);
         } else if (attempts >= maxAttempts) {
           clearInterval(interval);
-          console.warn('Agents not loaded in time, loading pipeline anyway');
+          console.warn('Agents/tools not loaded in time, loading pipeline anyway');
+          console.log('Agents loaded:', this.agents.length, 'Tools loaded:', this.tools.length);
           this.loadPipeline(pipelineId);
         }
       }, 100);
@@ -998,8 +1001,7 @@ export class PipelineBuilderComponent implements OnInit {
         },
         error: (error: any) => {
           this.executing = false;
-          this.showNotification('Failed to start execution', 'error');
-          console.error('Execution error:', error);
+          this.handleExecutionError(error);
         }
       });
       return;
@@ -1048,8 +1050,7 @@ export class PipelineBuilderComponent implements OnInit {
           },
           error: (error: any) => {
             this.executing = false;
-            this.showNotification('Failed to start execution', 'error');
-            console.error('Execution error:', error);
+            this.handleExecutionError(error);
           }
         });
       },
@@ -1059,6 +1060,28 @@ export class PipelineBuilderComponent implements OnInit {
         console.error('Save error:', error);
       }
     });
+  }
+
+  /**
+   * Handle execution errors with friendly validation messages
+   */
+  private handleExecutionError(error: any): void {
+    console.error('Execution error:', error);
+    
+    // Check if this is a validation error (400 with errors array)
+    if (error.status === 400 && error.error?.detail?.errors) {
+      const errors = error.error.detail.errors;
+      
+      // Show validation error dialog
+      this.dialog.open(ValidationErrorDialogComponent, {
+        width: '600px',
+        data: { errors }
+      });
+    } else {
+      // Generic error
+      const message = error.error?.detail?.message || error.error?.message || 'Failed to start execution';
+      this.showNotification(message, 'error');
+    }
   }
 
   /**
