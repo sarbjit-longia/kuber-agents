@@ -996,8 +996,12 @@ export class PipelineBuilderComponent implements OnInit {
       this.executionService.startExecution(executionData).subscribe({
         next: (execution: any) => {
           this.executing = false;
-          this.showNotification('Pipeline execution started!', 'success');
+          this.showNotification('Pipeline execution started! Redirecting to monitoring...', 'success');
           console.log('Execution started:', execution);
+          // Navigate to execution detail page to see real-time progress
+          setTimeout(() => {
+            this.router.navigate(['/monitoring', execution.id]);
+          }, 1500);
         },
         error: (error: any) => {
           this.executing = false;
@@ -1045,8 +1049,12 @@ export class PipelineBuilderComponent implements OnInit {
         this.executionService.startExecution(executionData).subscribe({
           next: (execution: any) => {
             this.executing = false;
-            this.showNotification('Pipeline execution started!', 'success');
+            this.showNotification('Pipeline execution started! Redirecting to monitoring...', 'success');
             console.log('Execution started:', execution);
+            // Navigate to execution detail page to see real-time progress
+            setTimeout(() => {
+              this.router.navigate(['/monitoring', execution.id]);
+            }, 1500);
           },
           error: (error: any) => {
             this.executing = false;

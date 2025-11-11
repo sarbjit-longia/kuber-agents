@@ -153,6 +153,9 @@ class PipelineState(BaseModel):
     # Agent execution log (for debugging and reporting)
     execution_log: List[Dict[str, Any]] = Field(default_factory=list)
     
+    # Agent execution states (for UI progress tracking)
+    agent_execution_states: List[Dict[str, Any]] = Field(default_factory=list)
+    
     def add_log(self, agent_id: str, message: str, level: str = "info"):
         """Add a log entry to the execution log."""
         self.execution_log.append({

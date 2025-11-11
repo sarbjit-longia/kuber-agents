@@ -110,33 +110,8 @@ def execute_pipeline(
                 db.commit()
             
             try:
-                # Execute pipeline (runs async internally)
-                import asyncio
-                
-                # Create a new event loop for this task
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                try:
-                    state = loop.run_until_complete(executor.execute())
-                finally:
-                    loop.close()
-                
-                # Update execution with results
-                execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
-                execution.completed_at = datetime.utcnow()
-                execution.result = {
-                    "trigger_met": state.trigger_met,
-                    "trigger_reason": state.trigger_reason,
-                    "strategy": state.strategy.dict() if state.strategy else None,
-                    "risk_assessment": state.risk_assessment.dict() if state.risk_assessment else None,
-                    "trade_execution": state.trade_execution.dict() if state.trade_execution else None,
-                    "errors": state.errors,
-                    "warnings": state.warnings
-                }
-                execution.cost = state.total_cost
-                execution.logs = state.execution_log
-                db.commit()
+                # Execute pipeline with real-time DB updates using sync session
+                execution = executor.execute_with_sync_db_tracking(db, execution)
                 
             except TriggerNotMetException as e:
                 execution.status = ExecutionStatus.SKIPPED

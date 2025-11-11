@@ -169,11 +169,28 @@ class PipelineExecutor:
         # Get execution order
         execution_order = self._build_execution_order()
         
+        # Initialize agent states tracking
+        agent_states = []
+        for node in execution_order:
+            agent_states.append({
+                "agent_id": node["id"],
+                "agent_type": node["agent_type"],
+                "status": "pending",
+                "started_at": None,
+                "completed_at": None,
+                "error": None,
+                "cost": 0.0
+            })
+        
         # Execute each agent in sequence
         for i, node in enumerate(execution_order):
             agent_type = node["agent_type"]
             agent_id = node["id"]
             agent_config = node.get("config", {})
+            
+            # Update agent state to running
+            agent_states[i]["status"] = "running"
+            agent_states[i]["started_at"] = datetime.utcnow().isoformat()
             
             self.logger.info(
                 "executing_agent",
@@ -193,6 +210,11 @@ class PipelineExecutor:
                 # Execute agent
                 state = agent.process(state)
                 
+                # Update agent state to completed
+                agent_states[i]["status"] = "completed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
+                
                 self.logger.info(
                     "agent_completed",
                     agent_type=agent_type,
@@ -204,12 +226,18 @@ class PipelineExecutor:
                 self.logger.info("trigger_not_met", reason=str(e))
                 state.trigger_met = False
                 state.trigger_reason = str(e)
+                agent_states[i]["status"] = "skipped"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = "Trigger not met"
                 break
                 
             except AgentError as e:
                 # Agent-specific error
                 self.logger.error("agent_error", agent_type=agent_type, error=str(e))
                 state.errors.append(f"Agent {agent_type} failed: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
                 
                 # Decide whether to continue or abort
                 if self._should_abort_on_error(agent_type, str(e)):
@@ -222,10 +250,16 @@ class PipelineExecutor:
                 # Unexpected error
                 self.logger.exception("unexpected_error", agent_type=agent_type)
                 state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
                 raise
         
         # Mark completion
         state.completed_at = datetime.utcnow()
+        
+        # Store agent states in pipeline state for database persistence
+        state.agent_execution_states = agent_states
         
         self.logger.info(
             "pipeline_execution_completed",
@@ -274,6 +308,355 @@ class PipelineExecutor:
         
         return False
     
+    def execute_with_sync_db_tracking(self, db_session, execution):
+        """
+        Execute pipeline with real-time database updates (synchronous version for Celery).
+        
+        Args:
+            db_session: Synchronous SQLAlchemy session
+            execution: Execution database record
+            
+        Returns:
+            Updated Execution record
+        """
+        # Initialize state
+        state = PipelineState(
+            pipeline_id=self.pipeline.id,
+            execution_id=self.execution_id,
+            user_id=self.user_id,
+            symbol=self.config.get("symbol", "UNKNOWN"),
+            mode=self.mode
+        )
+        
+        # Get execution order
+        execution_order = self._build_execution_order()
+        
+        # Initialize agent states tracking
+        agent_states = []
+        for node in execution_order:
+            agent_states.append({
+                "agent_id": node["id"],
+                "agent_type": node["agent_type"],
+                "status": "pending",
+                "started_at": None,
+                "completed_at": None,
+                "error": None,
+                "cost": 0.0
+            })
+        
+        # Update execution with initial agent states
+        execution.agent_states = agent_states
+        db_session.commit()
+        
+        # Execute each agent in sequence
+        for i, node in enumerate(execution_order):
+            agent_type = node["agent_type"]
+            agent_id = node["id"]
+            agent_config = node.get("config", {})
+            
+            # Update agent state to running
+            agent_states[i]["status"] = "running"
+            agent_states[i]["started_at"] = datetime.utcnow().isoformat()
+            
+            # Update DB with current progress
+            execution.agent_states = agent_states
+            execution.logs = self._serialize_logs(state.execution_log)
+            db_session.commit()
+            
+            self.logger.info(
+                "executing_agent",
+                step=f"{i+1}/{len(execution_order)}",
+                agent_type=agent_type,
+                agent_id=agent_id
+            )
+            
+            try:
+                # Create agent instance
+                agent = self.registry.create_agent(
+                    agent_type=agent_type,
+                    agent_id=agent_id,
+                    config=agent_config
+                )
+                
+                # Execute agent
+                state = agent.process(state)
+                
+                # Update agent state to completed
+                agent_states[i]["status"] = "completed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
+                
+                # Update DB with progress
+                execution.agent_states = agent_states
+                execution.logs = self._serialize_logs(state.execution_log)
+                execution.cost = state.total_cost
+                execution.cost_breakdown = state.agent_costs
+                
+                # Mark JSONB columns as modified so SQLAlchemy saves them
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(execution, "agent_states")
+                flag_modified(execution, "logs")
+                flag_modified(execution, "cost_breakdown")
+                
+                db_session.commit()
+                
+                self.logger.info(
+                    "agent_completed",
+                    agent_type=agent_type,
+                    cost=state.agent_costs.get(agent_id, 0.0)
+                )
+                
+            except TriggerNotMetException as e:
+                # Trigger not met - not an error, just skip execution
+                self.logger.info("trigger_not_met", reason=str(e))
+                state.trigger_met = False
+                state.trigger_reason = str(e)
+                agent_states[i]["status"] = "skipped"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = "Trigger not met"
+                execution.agent_states = agent_states
+                flag_modified(execution, "agent_states")
+                db_session.commit()
+                raise
+                
+            except AgentError as e:
+                # Agent-specific error
+                self.logger.error("agent_error", agent_type=agent_type, error=str(e))
+                state.errors.append(f"Agent {agent_type} failed: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
+                execution.agent_states = agent_states
+                flag_modified(execution, "agent_states")
+                db_session.commit()
+                
+                # Decide whether to continue or abort
+                if self._should_abort_on_error(agent_type, str(e)):
+                    raise
+                else:
+                    # Continue to next agent
+                    continue
+                    
+            except Exception as e:
+                # Unexpected error
+                self.logger.exception("unexpected_error", agent_type=agent_type)
+                state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
+                execution.agent_states = agent_states
+                flag_modified(execution, "agent_states")
+                db_session.commit()
+                raise
+        
+        # Mark completion
+        state.completed_at = datetime.utcnow()
+        
+        # Update final execution record
+        execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
+        execution.completed_at = datetime.utcnow()
+        
+        # Serialize result models
+        def serialize_model(model):
+            if model is None:
+                return None
+            data = model.dict()
+            for key, value in data.items():
+                if isinstance(value, datetime):
+                    data[key] = value.isoformat()
+            return data
+        
+        execution.result = {
+            "trigger_met": state.trigger_met,
+            "trigger_reason": state.trigger_reason,
+            "strategy": serialize_model(state.strategy),
+            "risk_assessment": serialize_model(state.risk_assessment),
+            "trade_execution": serialize_model(state.trade_execution),
+            "errors": state.errors,
+            "warnings": state.warnings
+        }
+        execution.agent_states = agent_states
+        execution.logs = self._serialize_logs(state.execution_log)
+        execution.cost = state.total_cost
+        execution.cost_breakdown = state.agent_costs
+        
+        # Mark JSONB columns as modified
+        flag_modified(execution, "agent_states")
+        flag_modified(execution, "logs")
+        flag_modified(execution, "cost_breakdown")
+        
+        db_session.commit()
+        
+        self.logger.info(
+            "pipeline_execution_completed",
+            total_cost=state.total_cost,
+            errors=len(state.errors),
+            warnings=len(state.warnings),
+            trigger_met=state.trigger_met
+        )
+        
+        return execution
+    
+    async def execute_with_realtime_updates(self, db_session, execution):
+        """
+        Execute pipeline with real-time database updates for agent progress.
+        
+        Args:
+            db_session: SQLAlchemy async session
+            execution: Execution database record
+            
+        Returns:
+            Updated PipelineState
+        """
+        # Initialize state
+        state = PipelineState(
+            pipeline_id=self.pipeline.id,
+            execution_id=self.execution_id,
+            user_id=self.user_id,
+            symbol=self.config.get("symbol", "UNKNOWN"),
+            mode=self.mode
+        )
+        
+        # Get execution order
+        execution_order = self._build_execution_order()
+        
+        # Initialize agent states tracking
+        agent_states = []
+        for node in execution_order:
+            agent_states.append({
+                "agent_id": node["id"],
+                "agent_type": node["agent_type"],
+                "status": "pending",
+                "started_at": None,
+                "completed_at": None,
+                "error": None,
+                "cost": 0.0
+            })
+        
+        # Update execution with initial agent states
+        execution.agent_states = agent_states
+        await db_session.commit()
+        
+        # Execute each agent in sequence
+        for i, node in enumerate(execution_order):
+            agent_type = node["agent_type"]
+            agent_id = node["id"]
+            agent_config = node.get("config", {})
+            
+            # Update agent state to running
+            agent_states[i]["status"] = "running"
+            agent_states[i]["started_at"] = datetime.utcnow().isoformat()
+            
+            # Update DB with current progress
+            execution.agent_states = agent_states
+            execution.logs = self._serialize_logs(state.execution_log)
+            await db_session.commit()
+            
+            self.logger.info(
+                "executing_agent",
+                step=f"{i+1}/{len(execution_order)}",
+                agent_type=agent_type,
+                agent_id=agent_id
+            )
+            
+            try:
+                # Create agent instance
+                agent = self.registry.create_agent(
+                    agent_type=agent_type,
+                    agent_id=agent_id,
+                    config=agent_config
+                )
+                
+                # Execute agent
+                state = agent.process(state)
+                
+                # Update agent state to completed
+                agent_states[i]["status"] = "completed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
+                
+                # Update DB with progress
+                execution.agent_states = agent_states
+                execution.logs = self._serialize_logs(state.execution_log)
+                execution.cost = state.total_cost
+                execution.cost_breakdown = state.agent_costs
+                await db_session.commit()
+                
+                self.logger.info(
+                    "agent_completed",
+                    agent_type=agent_type,
+                    cost=state.agent_costs.get(agent_id, 0.0)
+                )
+                
+            except TriggerNotMetException as e:
+                # Trigger not met - not an error, just skip execution
+                self.logger.info("trigger_not_met", reason=str(e))
+                state.trigger_met = False
+                state.trigger_reason = str(e)
+                agent_states[i]["status"] = "skipped"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = "Trigger not met"
+                execution.agent_states = agent_states
+                await db_session.commit()
+                break
+                
+            except AgentError as e:
+                # Agent-specific error
+                self.logger.error("agent_error", agent_type=agent_type, error=str(e))
+                state.errors.append(f"Agent {agent_type} failed: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
+                execution.agent_states = agent_states
+                await db_session.commit()
+                
+                # Decide whether to continue or abort
+                if self._should_abort_on_error(agent_type, str(e)):
+                    raise
+                else:
+                    # Continue to next agent
+                    continue
+                    
+            except Exception as e:
+                # Unexpected error
+                self.logger.exception("unexpected_error", agent_type=agent_type)
+                state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
+                agent_states[i]["status"] = "failed"
+                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                agent_states[i]["error"] = str(e)
+                execution.agent_states = agent_states
+                await db_session.commit()
+                raise
+        
+        # Mark completion
+        state.completed_at = datetime.utcnow()
+        
+        # Store agent states in pipeline state for database persistence
+        state.agent_execution_states = agent_states
+        
+        self.logger.info(
+            "pipeline_execution_completed",
+            total_cost=state.total_cost,
+            errors=len(state.errors),
+            warnings=len(state.warnings),
+            trigger_met=state.trigger_met
+        )
+        
+        return state
+    
+    def _serialize_logs(self, logs):
+        """Convert execution logs to JSON-serializable format."""
+        serialized = []
+        for log_entry in logs:
+            serialized_entry = {}
+            for key, value in log_entry.items():
+                if isinstance(value, datetime):
+                    serialized_entry[key] = value.isoformat()
+                else:
+                    serialized_entry[key] = value
+            serialized.append(serialized_entry)
+        return serialized
+    
     async def execute_with_db_tracking(self, db_session) -> Execution:
         """
         Execute pipeline and track in database.
@@ -312,10 +695,10 @@ class PipelineExecutor:
         await db_session.commit()
         
         try:
-            # Execute pipeline
-            state = await self.execute()
+            # Execute pipeline and update DB in real-time
+            state = await self.execute_with_realtime_updates(db_session, execution)
             
-            # Update execution record with results
+            # Update execution record with final results
             execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
             execution.completed_at = datetime.utcnow()
             
@@ -331,6 +714,19 @@ class PipelineExecutor:
                         data[key] = value.isoformat()
                 return data
             
+            def serialize_logs(logs):
+                """Convert execution logs to JSON-serializable format."""
+                serialized = []
+                for log_entry in logs:
+                    serialized_entry = {}
+                    for key, value in log_entry.items():
+                        if isinstance(value, datetime):
+                            serialized_entry[key] = value.isoformat()
+                        else:
+                            serialized_entry[key] = value
+                    serialized.append(serialized_entry)
+                return serialized
+            
             execution.result = {
                 "trigger_met": state.trigger_met,
                 "trigger_reason": state.trigger_reason,
@@ -341,7 +737,9 @@ class PipelineExecutor:
                 "warnings": state.warnings
             }
             execution.cost = state.total_cost
-            execution.logs = state.execution_log
+            execution.logs = serialize_logs(state.execution_log)
+            execution.agent_states = getattr(state, 'agent_execution_states', [])
+            execution.cost_breakdown = state.agent_costs
             
             await db_session.commit()
             
