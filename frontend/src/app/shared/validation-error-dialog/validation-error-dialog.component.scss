@@ -1,0 +1,137 @@
+.validation-error-dialog {
+  .dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+
+      .error-icon {
+        font-size: 2rem;
+        width: 2rem;
+        height: 2rem;
+        color: #f44336;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: #d32f2f;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .dialog-body {
+    padding: 1.5rem;
+    max-height: 60vh;
+    overflow-y: auto;
+
+    .error-message {
+      font-size: 1rem;
+      color: #555;
+      margin: 0 0 1.5rem 0;
+      line-height: 1.6;
+    }
+
+    .error-list {
+      padding: 0;
+      margin: 0 0 1.5rem 0;
+      background: #fff8e1;
+      border-radius: 8px;
+      border: 1px solid #ffecb3;
+
+      mat-list-item {
+        min-height: 60px;
+        height: auto !important;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #ffecb3;
+        white-space: normal !important;
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        .list-icon {
+          color: #f57c00;
+          margin-right: 0.75rem;
+          flex-shrink: 0;
+          margin-top: 0.25rem;
+        }
+
+        .error-text {
+          color: #e65100;
+          font-size: 0.95rem;
+          line-height: 1.5;
+          font-weight: 500;
+          white-space: normal;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+      }
+    }
+
+    .help-section {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      background: #e3f2fd;
+      border-radius: 8px;
+      border-left: 4px solid #2196f3;
+
+      .help-icon {
+        color: #1976d2;
+        font-size: 1.5rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        flex-shrink: 0;
+        margin-top: 0.25rem;
+      }
+
+      .help-text {
+        flex: 1;
+        color: #0d47a1;
+
+        strong {
+          display: block;
+          margin-bottom: 0.5rem;
+          font-size: 0.95rem;
+        }
+
+        ul {
+          margin: 0;
+          padding-left: 1.25rem;
+          
+          li {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
+
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+
+    button {
+      min-width: 200px;
+    }
+  }
+}
+

@@ -1,0 +1,44 @@
+<div class="validation-error-dialog">
+  <div class="dialog-header">
+    <div class="header-content">
+      <mat-icon class="error-icon">error_outline</mat-icon>
+      <h2>Pipeline Validation Failed</h2>
+    </div>
+    <button mat-icon-button (click)="close()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <div class="dialog-body">
+    <p class="error-message">
+      Your pipeline has some configuration issues that need to be fixed before it can run:
+    </p>
+
+    <mat-list class="error-list">
+      <mat-list-item *ngFor="let error of data.errors">
+        <mat-icon matListItemIcon class="list-icon">warning</mat-icon>
+        <div matListItemTitle class="error-text">{{ error }}</div>
+      </mat-list-item>
+    </mat-list>
+
+    <div class="help-section">
+      <mat-icon class="help-icon">help_outline</mat-icon>
+      <div class="help-text">
+        <strong>How to fix:</strong>
+        <ul>
+          <li>Click on each agent in the pipeline to open its configuration panel</li>
+          <li>Fill in any required fields that are missing</li>
+          <li>Attach required tools (like Market Data tools for Market Data Agent)</li>
+          <li>Click "Save" to apply your changes</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="dialog-actions">
+    <button mat-raised-button color="primary" (click)="close()">
+      Got it, I'll fix these
+    </button>
+  </div>
+</div>
+
