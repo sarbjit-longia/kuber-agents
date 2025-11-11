@@ -302,13 +302,32 @@
             <app-json-schema-form
               *ngIf="selectedNode.metadata?.config_schema"
               [schema]="selectedNode.metadata!.config_schema"
-              [data]="selectedNode.config"
+              [data]="editingConfig"
               (dataChange)="onConfigChange($event, selectedNode)">
             </app-json-schema-form>
             
             <div *ngIf="!selectedNode.metadata?.config_schema" class="config-placeholder">
               <mat-icon>info</mat-icon>
               <p>No configuration required for this {{selectedNode.node_category === 'tool' ? 'tool' : 'agent'}}.</p>
+            </div>
+            
+            <!-- Save/Cancel buttons -->
+            <div *ngIf="selectedNode.metadata?.config_schema" class="config-actions">
+              <button 
+                mat-raised-button 
+                color="primary" 
+                (click)="saveConfigChanges()"
+                [disabled]="!hasUnsavedConfigChanges()">
+                <mat-icon>save</mat-icon>
+                Save
+              </button>
+              <button 
+                mat-button 
+                (click)="cancelConfigChanges()"
+                [disabled]="!hasUnsavedConfigChanges()">
+                <mat-icon>close</mat-icon>
+                Cancel
+              </button>
             </div>
           </div>
           

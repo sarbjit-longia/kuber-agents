@@ -32,7 +32,7 @@ class MarketDataTool(BaseTool):
     @classmethod
     def get_metadata(cls):
         """Get metadata for this tool."""
-        from app.schemas.pipeline_state import ToolMetadata, ToolConfigSchema
+        from app.schemas.tool import ToolMetadata, ToolConfigSchema
         
         return ToolMetadata(
             tool_type="market_data",

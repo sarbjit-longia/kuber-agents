@@ -17,6 +17,7 @@ from app.services.pipeline_service import (
     delete_pipeline,
 )
 from app.core.deps import get_current_active_user
+from app.orchestration.validator import PipelineValidator
 
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
@@ -115,8 +116,34 @@ async def update_existing_pipeline(
         Updated pipeline object
         
     Raises:
-        HTTPException: If pipeline not found
+        HTTPException: If pipeline not found or validation fails when activating
     """
+    # If activating the pipeline, validate it first
+    if hasattr(pipeline_update, 'is_active') and pipeline_update.is_active:
+        # Get existing pipeline to validate its config
+        existing_pipeline = await get_pipeline_by_id(db, pipeline_id, current_user.id)
+        if not existing_pipeline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pipeline not found",
+            )
+        
+        # Use updated config if provided, otherwise use existing
+        config_to_validate = pipeline_update.config if hasattr(pipeline_update, 'config') and pipeline_update.config else existing_pipeline.config
+        
+        # Validate pipeline configuration
+        validator = PipelineValidator()
+        is_valid, validation_errors = validator.validate(config_to_validate)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Cannot activate pipeline: validation failed",
+                    "errors": validation_errors
+                }
+            )
+    
     pipeline = await update_pipeline(db, pipeline_id, pipeline_update, current_user.id)
     if not pipeline:
         raise HTTPException(

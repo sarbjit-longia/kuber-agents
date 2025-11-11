@@ -44,8 +44,31 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['schema'] || changes['data']) {
+    // Rebuild form only if:
+    // 1. Schema changes (different agent/tool selected)
+    // 2. Data reference changes significantly (different node selected)
+    //    but NOT on every keystroke update
+    
+    const schemaChanged = changes['schema'] && !changes['schema'].firstChange;
+    const dataChanged = changes['data'] && !changes['data'].firstChange;
+    
+    if (schemaChanged) {
+      // Schema changed - completely rebuild form
       this.buildForm();
+    } else if (dataChanged && this.form) {
+      // Data changed but schema didn't - just update form values without rebuilding
+      // This handles switching between nodes with the same schema
+      const newData = changes['data'].currentValue;
+      if (newData && typeof newData === 'object') {
+        // Only update if the form exists and values are different
+        Object.keys(this.form.controls).forEach(key => {
+          const currentValue = this.form.get(key)?.value;
+          const newValue = newData[key] !== undefined ? newData[key] : null;
+          if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+            this.form.get(key)?.setValue(newValue, { emitEvent: false });
+          }
+        });
+      }
     }
   }
 

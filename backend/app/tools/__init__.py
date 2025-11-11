@@ -15,15 +15,15 @@ def _initialize_registry():
     """Initialize the tool registry with all available tools."""
     registry = get_registry()
     
+    # Register market data tools
+    registry.register(MarketDataTool)
+    
     # Register broker tools
     registry.register(AlpacaBrokerTool)
     
     # Register notifier tools
     registry.register(WebhookNotifierTool)
     registry.register(EmailNotifierTool)
-    
-    # Note: MarketDataTool is typically used directly by agents,
-    # not as an attachable tool, so we don't register it here.
 
 # Initialize registry on import
 _initialize_registry()

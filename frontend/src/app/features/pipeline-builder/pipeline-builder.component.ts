@@ -133,6 +133,10 @@ export class PipelineBuilderComponent implements OnInit {
   ];
 
   currentPipelineId: string | null = null;
+  
+  // Configuration editing state
+  editingConfig: any = null; // Temporary config being edited
+  originalConfig: any = null; // Original config before editing
 
   constructor(
     private agentService: AgentService,
@@ -257,6 +261,24 @@ export class PipelineBuilderComponent implements OnInit {
             });
             
             console.log('✅ Nodes loaded on canvas:', this.canvasNodes);
+            
+            // Recreate visual tool nodes for each agent that has tools attached
+            this.canvasNodes.forEach((node: CanvasNode) => {
+              if (node.node_category === 'agent' && node.config && node.config['tools']) {
+                const tools = node.config['tools'];
+                if (Array.isArray(tools) && tools.length > 0) {
+                  console.log(`🔧 Recreating ${tools.length} tool nodes for agent:`, node.agent_type);
+                  
+                  // Create visual tool nodes for each attached tool
+                  tools.forEach((toolData: any) => {
+                    this.createToolNode(toolData.tool_type, node, toolData);
+                  });
+                  
+                  // Reposition all tools for proper alignment
+                  this.repositionAllToolsForAgent(node);
+                }
+              }
+            });
           }
           
           // Load connections
@@ -453,14 +475,47 @@ export class PipelineBuilderComponent implements OnInit {
    */
   selectNode(node: CanvasNode): void {
     this.selectedNode = node;
+    // Initialize editing config (deep copy to avoid reference issues)
+    this.originalConfig = JSON.parse(JSON.stringify(node.config || {}));
+    this.editingConfig = JSON.parse(JSON.stringify(node.config || {}));
   }
 
   /**
-   * Handle configuration changes from JSON Schema form
+   * Handle configuration changes from JSON Schema form (temporary, not saved yet)
    */
   onConfigChange(config: any, node: CanvasNode): void {
-    node.config = config;
-    this.showNotification('Configuration updated', 'success');
+    // Just update the temporary editing config, don't save to node yet
+    this.editingConfig = config;
+  }
+  
+  /**
+   * Save configuration changes
+   */
+  saveConfigChanges(): void {
+    if (this.selectedNode && this.editingConfig) {
+      this.selectedNode.config = JSON.parse(JSON.stringify(this.editingConfig));
+      this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig));
+      this.showNotification('Configuration saved', 'success');
+    }
+  }
+  
+  /**
+   * Cancel configuration changes
+   */
+  cancelConfigChanges(): void {
+    if (this.selectedNode && this.originalConfig) {
+      // Restore original config
+      this.editingConfig = JSON.parse(JSON.stringify(this.originalConfig));
+      this.selectedNode.config = JSON.parse(JSON.stringify(this.originalConfig));
+      this.showNotification('Changes cancelled', 'info');
+    }
+  }
+  
+  /**
+   * Check if config has unsaved changes
+   */
+  hasUnsavedConfigChanges(): boolean {
+    return JSON.stringify(this.editingConfig) !== JSON.stringify(this.originalConfig);
   }
 
   /**

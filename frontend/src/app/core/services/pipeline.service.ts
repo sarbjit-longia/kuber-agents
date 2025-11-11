@@ -69,7 +69,7 @@ export class PipelineService {
    * Update an existing pipeline
    */
   updatePipeline(id: string, data: PipelineUpdate): Observable<Pipeline> {
-    return this.apiService.put<Pipeline>(`/api/v1/pipelines/${id}`, data).pipe(
+    return this.apiService.patch<Pipeline>(`/api/v1/pipelines/${id}`, data).pipe(
       tap(updated => {
         const current = this.pipelinesSubject.value;
         const index = current.findIndex(p => p.id === id);

@@ -39,6 +39,13 @@ export class ApiService {
   }
 
   /**
+   * Patch request helper
+   */
+  patch<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.patch<T>(`${this.baseUrl}${endpoint}`, data);
+  }
+
+  /**
    * Delete request helper
    */
   delete<T>(endpoint: string): Observable<T> {
