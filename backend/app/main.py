@@ -78,6 +78,17 @@ async def root():
     }
 
 
+# Health check endpoint
+@app.get("/health", tags=["Root"])
+async def health_check():
+    """Health check endpoint for container orchestration."""
+    return {
+        "status": "healthy",
+        "service": "trading-platform-api",
+        "version": "0.1.0"
+    }
+
+
 # Include routers
 app.include_router(v1.router, prefix="/api/v1")
 

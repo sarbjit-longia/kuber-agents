@@ -24,6 +24,11 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'pipelines',
+    loadComponent: () => import('./features/pipelines/pipelines.component').then(m => m.PipelinesComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'pipeline-builder',
     loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
     canActivate: [authGuard]
@@ -31,6 +36,16 @@ export const routes: Routes = [
   {
     path: 'pipeline-builder/:id',
     loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'monitoring',
+    loadComponent: () => import('./features/monitoring/monitoring.component').then(m => m.MonitoringComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'monitoring/:id',
+    loadComponent: () => import('./features/monitoring/execution-detail/execution-detail.component').then(m => m.ExecutionDetailComponent),
     canActivate: [authGuard]
   },
   {

@@ -18,6 +18,7 @@ class ExecutionStatus(str, PyEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PAUSED = "paused"
     SKIPPED = "skipped"  # When trigger not met or budget exceeded
 
 
@@ -44,10 +45,14 @@ class Execution(Base):
     pipeline_id = Column(UUID(as_uuid=True), ForeignKey("pipelines.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     status = Column(Enum(ExecutionStatus), default=ExecutionStatus.PENDING, nullable=False, index=True)
+    mode = Column(String(20), default="paper", nullable=False)  # live, paper, simulation, validation
     symbol = Column(String(20), nullable=True)
     result = Column(JSONB, nullable=True, default=dict)
     error_message = Column(Text, nullable=True)
     cost = Column(Float, default=0.0, nullable=False)
+    logs = Column(JSONB, nullable=True, default=list)  # List of log entries
+    agent_states = Column(JSONB, nullable=True, default=list)  # Agent execution states
+    cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

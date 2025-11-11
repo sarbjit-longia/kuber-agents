@@ -18,8 +18,14 @@
         <a routerLink="/dashboard" class="nav-link" routerLinkActive="active">
           Dashboard
         </a>
+        <a routerLink="/pipelines" class="nav-link" routerLinkActive="active">
+          Pipelines
+        </a>
         <a routerLink="/pipeline-builder" class="nav-link" routerLinkActive="active">
-          Pipeline Builder
+          Builder
+        </a>
+        <a routerLink="/monitoring" class="nav-link" routerLinkActive="active">
+          Monitoring
         </a>
       </ng-container>
     </div>
@@ -46,9 +52,17 @@
             <mat-icon>dashboard</mat-icon>
             <span>Dashboard</span>
           </button>
-          <button mat-menu-item routerLink="/pipeline-builder">
+          <button mat-menu-item routerLink="/pipelines">
             <mat-icon>account_tree</mat-icon>
-            <span>Pipelines</span>
+            <span>My Pipelines</span>
+          </button>
+          <button mat-menu-item routerLink="/pipeline-builder">
+            <mat-icon>edit</mat-icon>
+            <span>Builder</span>
+          </button>
+          <button mat-menu-item routerLink="/monitoring">
+            <mat-icon>monitoring</mat-icon>
+            <span>Monitoring</span>
           </button>
           <mat-divider></mat-divider>
           <button mat-menu-item (click)="logout()">

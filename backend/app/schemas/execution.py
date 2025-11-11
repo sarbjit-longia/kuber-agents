@@ -34,9 +34,13 @@ class ExecutionInDB(ExecutionBase):
     pipeline_id: UUID
     user_id: UUID
     status: ExecutionStatus
+    mode: str
     result: Dict[str, Any]
     error_message: Optional[str] = None
     cost: float
+    logs: Optional[List[Dict[str, Any]]] = None
+    agent_states: Optional[List[Dict[str, Any]]] = None
+    cost_breakdown: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -54,4 +58,32 @@ class ExecutionList(BaseModel):
     """Schema for list of executions."""
     executions: List[Execution]
     total: int
+
+
+class ExecutionSummary(BaseModel):
+    """Schema for execution summary (list view)."""
+    id: UUID
+    pipeline_id: UUID
+    pipeline_name: str
+    status: ExecutionStatus
+    mode: str
+    symbol: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    total_cost: float
+    agent_count: int
+    agents_completed: int
+    error_message: Optional[str] = None
+
+
+class ExecutionStats(BaseModel):
+    """Schema for execution statistics."""
+    total_executions: int
+    running_executions: int
+    completed_executions: int
+    failed_executions: int
+    total_cost: float
+    avg_duration_seconds: float
+    success_rate: float
 

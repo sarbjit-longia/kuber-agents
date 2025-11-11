@@ -1,0 +1,183 @@
+/**
+ * Monitoring Component
+ * 
+ * Main monitoring dashboard showing list of executions
+ */
+
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { MatCardModule } from '@angular/material/card';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTableModule } from '@angular/material/table';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+
+import { MonitoringService } from '../../core/services/monitoring.service';
+import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
+import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+
+@Component({
+  selector: 'app-monitoring',
+  standalone: true,
+  imports: [
+    CommonModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatTableModule,
+    MatChipsModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+    MatSnackBarModule,
+    NavbarComponent
+  ],
+  templateUrl: './monitoring.component.html',
+  styleUrls: ['./monitoring.component.scss']
+})
+export class MonitoringComponent implements OnInit, OnDestroy {
+  executions: ExecutionSummary[] = [];
+  stats: ExecutionStats | null = null;
+  loading = true;
+  displayedColumns: string[] = ['pipeline', 'mode', 'symbol', 'status', 'started', 'duration', 'cost', 'actions'];
+
+  private refreshInterval: any;
+
+  constructor(
+    private monitoringService: MonitoringService,
+    private router: Router,
+    private snackBar: MatSnackBar
+  ) {}
+
+  ngOnInit(): void {
+    this.loadData();
+    // Refresh every 5 seconds
+    this.refreshInterval = setInterval(() => this.loadData(), 5000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+    }
+  }
+
+  loadData(): void {
+    this.monitoringService.loadExecutions().subscribe({
+      next: (executions) => {
+        this.executions = executions;
+        this.loading = false;
+      },
+      error: (error) => {
+        console.error('Failed to load executions:', error);
+        this.loading = false;
+        this.showNotification('Failed to load executions', 'error');
+      }
+    });
+
+    this.monitoringService.getExecutionStats().subscribe({
+      next: (stats) => {
+        this.stats = stats;
+      },
+      error: (error) => {
+        console.error('Failed to load stats:', error);
+      }
+    });
+  }
+
+  viewExecution(execution: ExecutionSummary): void {
+    this.router.navigate(['/monitoring', execution.id]);
+  }
+
+  stopExecution(execution: ExecutionSummary, event: Event): void {
+    event.stopPropagation();
+    
+    if (confirm(`Stop execution for ${execution.pipeline_name}?`)) {
+      this.monitoringService.stopExecution(execution.id).subscribe({
+        next: () => {
+          this.showNotification('Execution stopped', 'success');
+          this.loadData();
+        },
+        error: (error) => {
+          console.error('Failed to stop execution:', error);
+          this.showNotification('Failed to stop execution', 'error');
+        }
+      });
+    }
+  }
+
+  getStatusColor(status: string): string {
+    const colors: any = {
+      'pending': 'default',
+      'running': 'primary',
+      'completed': 'accent',
+      'failed': 'warn',
+      'cancelled': 'default',
+      'paused': 'default'
+    };
+    return colors[status] || 'default';
+  }
+
+  getStatusIcon(status: string): string {
+    const icons: any = {
+      'pending': 'schedule',
+      'running': 'play_circle',
+      'completed': 'check_circle',
+      'failed': 'error',
+      'cancelled': 'cancel',
+      'paused': 'pause_circle'
+    };
+    return icons[status] || 'help';
+  }
+
+  getModeColor(mode: string): string {
+    const colors: any = {
+      'live': 'warn',
+      'paper': 'primary',
+      'simulation': 'accent',
+      'validation': 'default'
+    };
+    return colors[mode] || 'default';
+  }
+
+  formatDuration(seconds: number | undefined): string {
+    if (!seconds) return '-';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  }
+
+  formatCost(cost: number): string {
+    return `$${cost.toFixed(4)}`;
+  }
+
+  formatDate(dateString: string): string {
+    return new Date(dateString).toLocaleString();
+  }
+
+  showNotification(message: string, type: 'success' | 'error' | 'info'): void {
+    this.snackBar.open(message, 'Close', {
+      duration: 3000,
+      horizontalPosition: 'right',
+      verticalPosition: 'top',
+      panelClass: [`snackbar-${type}`]
+    });
+  }
+
+  refresh(): void {
+    this.loading = true;
+    this.loadData();
+  }
+}
+

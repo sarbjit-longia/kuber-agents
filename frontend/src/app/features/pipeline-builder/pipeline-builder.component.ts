@@ -23,7 +23,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatDividerModule } from '@angular/material/divider';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 
 import { AgentService } from '../../core/services/agent.service';
 import { PipelineService } from '../../core/services/pipeline.service';
@@ -132,13 +132,16 @@ export class PipelineBuilderComponent implements OnInit {
     { value: 'live', label: 'Live Trading' }
   ];
 
+  currentPipelineId: string | null = null;
+
   constructor(
     private agentService: AgentService,
     private pipelineService: PipelineService,
     private executionService: ExecutionService,
     private toolService: ToolService, // Added
     private snackBar: MatSnackBar,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
@@ -723,23 +726,42 @@ export class PipelineBuilderComponent implements OnInit {
    * Save pipeline
    */
   savePipeline(): void {
-    if (this.canvasNodes.length === 0) {
+    // Check if user is authenticated
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      this.showNotification('Please login to save pipelines', 'warning');
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    // Filter out tool nodes - only save agent nodes
+    const agentNodes = this.canvasNodes.filter(node => node.node_category !== 'tool');
+    
+    if (agentNodes.length === 0) {
       this.showNotification('Please add at least one agent', 'warning');
       return;
     }
+
+    // Filter connections to only include agent-to-agent connections (exclude tool connections)
+    const agentConnections = this.connections.filter(conn => {
+      const fromNode = this.canvasNodes.find(n => n.id === conn.from);
+      const toNode = this.canvasNodes.find(n => n.id === conn.to);
+      return fromNode?.node_category !== 'tool' && toNode?.node_category !== 'tool';
+    });
 
     this.saving = true;
     const pipelineData: any = {
       name: this.pipelineName,
       description: this.pipelineDescription,
       config: {
-        nodes: this.canvasNodes.map(node => ({
+        nodes: agentNodes.map(node => ({
           id: node.id,
           agent_type: node.agent_type,
           config: node.config,
-          position: node.position
+          position: node.position,
+          node_category: node.node_category // Include category for clarity
         })),
-        edges: this.connections.map(conn => ({
+        edges: agentConnections.map(conn => ({
           from: conn.from,
           to: conn.to
         })),
@@ -748,6 +770,8 @@ export class PipelineBuilderComponent implements OnInit {
       },
       is_active: false
     };
+
+    console.log('Saving pipeline:', pipelineData); // Debug log
 
     this.pipelineService.createPipeline(pipelineData).subscribe({
       next: (pipeline: any) => {
@@ -759,6 +783,10 @@ export class PipelineBuilderComponent implements OnInit {
         this.saving = false;
         this.showNotification('Failed to save pipeline', 'error');
         console.error('Save error:', error);
+        // Show more detailed error message
+        if (error.error?.detail) {
+          console.error('Error details:', error.error.detail);
+        }
       }
     });
   }
@@ -767,10 +795,20 @@ export class PipelineBuilderComponent implements OnInit {
    * Execute pipeline
    */
   executePipeline(): void {
-    if (this.canvasNodes.length === 0) {
+    // Filter out tool nodes - only execute agent nodes
+    const agentNodes = this.canvasNodes.filter(node => node.node_category !== 'tool');
+    
+    if (agentNodes.length === 0) {
       this.showNotification('Please add agents to the pipeline', 'warning');
       return;
     }
+
+    // Filter connections to only include agent-to-agent connections (exclude tool connections)
+    const agentConnections = this.connections.filter(conn => {
+      const fromNode = this.canvasNodes.find(n => n.id === conn.from);
+      const toNode = this.canvasNodes.find(n => n.id === conn.to);
+      return fromNode?.node_category !== 'tool' && toNode?.node_category !== 'tool';
+    });
 
     this.executing = true;
     
@@ -778,13 +816,14 @@ export class PipelineBuilderComponent implements OnInit {
       name: this.pipelineName,
       description: this.pipelineDescription,
       config: {
-        nodes: this.canvasNodes.map(node => ({
+        nodes: agentNodes.map(node => ({
           id: node.id,
           agent_type: node.agent_type,
           config: node.config,
-          position: node.position
+          position: node.position,
+          node_category: node.node_category
         })),
-        edges: this.connections.map(conn => ({
+        edges: agentConnections.map(conn => ({
           from: conn.from,
           to: conn.to
         })),
@@ -793,6 +832,8 @@ export class PipelineBuilderComponent implements OnInit {
       },
       is_active: true
     };
+
+    console.log('Executing pipeline:', pipelineData); // Debug log
 
     this.pipelineService.createPipeline(pipelineData).subscribe({
       next: (pipeline: any) => {

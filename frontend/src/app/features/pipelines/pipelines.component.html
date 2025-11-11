@@ -1,0 +1,103 @@
+<div class="pipelines-page">
+  <app-navbar></app-navbar>
+
+  <div class="pipelines-container">
+    <div class="header">
+      <h1>
+        <mat-icon>account_tree</mat-icon>
+        My Pipelines
+      </h1>
+      <button mat-raised-button color="primary" (click)="createNew()">
+        <mat-icon>add</mat-icon>
+        Create New Pipeline
+      </button>
+    </div>
+
+    <mat-card class="pipelines-card">
+      <mat-card-content>
+        <div *ngIf="loading" class="loading-container">
+          <mat-spinner></mat-spinner>
+          <p>Loading pipelines...</p>
+        </div>
+
+        <div *ngIf="!loading && pipelines.length === 0" class="empty-state">
+          <mat-icon>inbox</mat-icon>
+          <p>No pipelines yet</p>
+          <p class="empty-hint">Create your first pipeline to get started</p>
+          <button mat-raised-button color="primary" (click)="createNew()">
+            <mat-icon>add</mat-icon>
+            Create Pipeline
+          </button>
+        </div>
+
+        <table *ngIf="!loading && pipelines.length > 0" mat-table [dataSource]="pipelines" class="pipelines-table">
+          <!-- Name Column -->
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef>Pipeline</th>
+            <td mat-cell *matCellDef="let pipeline">
+              <div class="pipeline-cell">
+                <mat-icon>account_tree</mat-icon>
+                <div>
+                  <div class="pipeline-name">{{ pipeline.name }}</div>
+                  <div class="pipeline-desc">{{ pipeline.description || 'No description' }}</div>
+                  <div class="pipeline-meta">
+                    <span>{{ getAgentCount(pipeline) }} agents</span>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Status Column -->
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let pipeline">
+              <mat-chip [color]="pipeline.is_active ? 'accent' : 'default'" selected>
+                {{ pipeline.is_active ? 'ACTIVE' : 'INACTIVE' }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <!-- Created Column -->
+          <ng-container matColumnDef="created">
+            <th mat-header-cell *matHeaderCellDef>Created</th>
+            <td mat-cell *matCellDef="let pipeline">{{ formatDate(pipeline.created_at) }}</td>
+          </ng-container>
+
+          <!-- Actions Column -->
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let pipeline">
+              <button mat-icon-button [matMenuTriggerFor]="menu" (click)="$event.stopPropagation()">
+                <mat-icon>more_vert</mat-icon>
+              </button>
+              <mat-menu #menu="matMenu">
+                <button mat-menu-item (click)="editPipeline(pipeline)">
+                  <mat-icon>edit</mat-icon>
+                  <span>Edit</span>
+                </button>
+                <button mat-menu-item (click)="executePipeline(pipeline, $event)">
+                  <mat-icon>play_arrow</mat-icon>
+                  <span>Execute</span>
+                </button>
+                <button mat-menu-item (click)="toggleActive(pipeline, $event)">
+                  <mat-icon>{{ pipeline.is_active ? 'pause' : 'play_arrow' }}</mat-icon>
+                  <span>{{ pipeline.is_active ? 'Deactivate' : 'Activate' }}</span>
+                </button>
+                <mat-divider></mat-divider>
+                <button mat-menu-item (click)="deletePipeline(pipeline, $event)" class="delete-action">
+                  <mat-icon>delete</mat-icon>
+                  <span>Delete</span>
+                </button>
+              </mat-menu>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" (click)="editPipeline(row)" class="pipeline-row"></tr>
+        </table>
+      </mat-card-content>
+    </mat-card>
+  </div>
+</div>
+

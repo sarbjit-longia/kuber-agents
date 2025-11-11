@@ -1,0 +1,165 @@
+<div class="monitoring-page">
+  <app-navbar></app-navbar>
+
+<div class="monitoring-container">
+  <div class="header">
+    <h1>
+      <mat-icon>monitoring</mat-icon>
+      Execution Monitoring
+    </h1>
+    <button mat-raised-button color="primary" (click)="refresh()">
+      <mat-icon>refresh</mat-icon>
+      Refresh
+    </button>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="stats-grid" *ngIf="stats">
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon">
+          <mat-icon>analytics</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Total Executions</div>
+          <div class="stat-value">{{ stats.total_executions }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon running">
+          <mat-icon>play_circle</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Running</div>
+          <div class="stat-value">{{ stats.running_executions }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon success">
+          <mat-icon>check_circle</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value">{{ (stats.success_rate * 100).toFixed(1) }}%</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon cost">
+          <mat-icon>attach_money</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Total Cost</div>
+          <div class="stat-value">{{ formatCost(stats.total_cost) }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- Executions Table -->
+  <mat-card class="table-card">
+    <mat-card-header>
+      <mat-card-title>Recent Executions</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div *ngIf="loading" class="loading-container">
+        <mat-spinner></mat-spinner>
+        <p>Loading executions...</p>
+      </div>
+
+      <div *ngIf="!loading && executions.length === 0" class="empty-state">
+        <mat-icon>inbox</mat-icon>
+        <p>No executions yet</p>
+        <p class="empty-hint">Execute a pipeline to see monitoring data here</p>
+      </div>
+
+      <table *ngIf="!loading && executions.length > 0" mat-table [dataSource]="executions" class="executions-table">
+        <!-- Pipeline Column -->
+        <ng-container matColumnDef="pipeline">
+          <th mat-header-cell *matHeaderCellDef>Pipeline</th>
+          <td mat-cell *matCellDef="let execution">
+            <div class="pipeline-cell">
+              <mat-icon>account_tree</mat-icon>
+              <span>{{ execution.pipeline_name }}</span>
+            </div>
+          </td>
+        </ng-container>
+
+        <!-- Mode Column -->
+        <ng-container matColumnDef="mode">
+          <th mat-header-cell *matHeaderCellDef>Mode</th>
+          <td mat-cell *matCellDef="let execution">
+            <mat-chip [color]="getModeColor(execution.mode)" selected>
+              {{ execution.mode | uppercase }}
+            </mat-chip>
+          </td>
+        </ng-container>
+
+        <!-- Symbol Column -->
+        <ng-container matColumnDef="symbol">
+          <th mat-header-cell *matHeaderCellDef>Symbol</th>
+          <td mat-cell *matCellDef="let execution">{{ execution.symbol || '-' }}</td>
+        </ng-container>
+
+        <!-- Status Column -->
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let execution">
+            <mat-chip [color]="getStatusColor(execution.status)" selected>
+              <mat-icon>{{ getStatusIcon(execution.status) }}</mat-icon>
+              {{ execution.status | uppercase }}
+            </mat-chip>
+          </td>
+        </ng-container>
+
+        <!-- Started Column -->
+        <ng-container matColumnDef="started">
+          <th mat-header-cell *matHeaderCellDef>Started</th>
+          <td mat-cell *matCellDef="let execution">{{ formatDate(execution.started_at) }}</td>
+        </ng-container>
+
+        <!-- Duration Column -->
+        <ng-container matColumnDef="duration">
+          <th mat-header-cell *matHeaderCellDef>Duration</th>
+          <td mat-cell *matCellDef="let execution">{{ formatDuration(execution.duration_seconds) }}</td>
+        </ng-container>
+
+        <!-- Cost Column -->
+        <ng-container matColumnDef="cost">
+          <th mat-header-cell *matHeaderCellDef>Cost</th>
+          <td mat-cell *matCellDef="let execution">{{ formatCost(execution.total_cost) }}</td>
+        </ng-container>
+
+        <!-- Actions Column -->
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let execution">
+            <button mat-icon-button [matTooltip]="'View Details'" (click)="viewExecution(execution)">
+              <mat-icon>visibility</mat-icon>
+            </button>
+            <button mat-icon-button 
+                    [matTooltip]="'Stop Execution'" 
+                    color="warn"
+                    *ngIf="execution.status === 'running'"
+                    (click)="stopExecution(execution, $event)">
+              <mat-icon>stop</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" (click)="viewExecution(row)" class="execution-row"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+</div>
+</div>
+

@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.execution import Execution, ExecutionStatus
 from app.models.pipeline import Pipeline
-from app.schemas.execution import ExecutionInDB, ExecutionCreate
+from app.schemas.execution import ExecutionInDB, ExecutionCreate, ExecutionSummary, ExecutionStats
 from app.api.dependencies import get_current_user
 from app.orchestration.tasks import execute_pipeline, stop_execution
 
@@ -126,7 +126,7 @@ async def get_execution(
     return execution
 
 
-@router.get("/", response_model=List[ExecutionInDB])
+@router.get("/", response_model=List[ExecutionSummary])
 async def list_executions(
     pipeline_id: Optional[UUID] = Query(None, description="Filter by pipeline ID"),
     status_filter: Optional[ExecutionStatus] = Query(None, alias="status", description="Filter by status"),
@@ -134,9 +134,9 @@ async def list_executions(
     offset: int = Query(0, ge=0, description="Number of executions to skip"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-) -> List[ExecutionInDB]:
+) -> List[ExecutionSummary]:
     """
-    List executions for the current user.
+    List executions for the current user with summary information.
     
     Args:
         pipeline_id: Optional pipeline ID filter
@@ -147,9 +147,11 @@ async def list_executions(
         db: Database session
         
     Returns:
-        List of executions
+        List of execution summaries
     """
-    query = select(Execution).where(Execution.user_id == current_user.id)
+    query = select(Execution, Pipeline.name).join(
+        Pipeline, Execution.pipeline_id == Pipeline.id
+    ).where(Execution.user_id == current_user.id)
     
     if pipeline_id:
         query = query.where(Execution.pipeline_id == pipeline_id)
@@ -160,9 +162,35 @@ async def list_executions(
     query = query.order_by(desc(Execution.created_at)).limit(limit).offset(offset)
     
     result = await db.execute(query)
-    executions = result.scalars().all()
+    rows = result.all()
     
-    return executions
+    summaries = []
+    for execution, pipeline_name in rows:
+        duration_seconds = None
+        if execution.started_at and execution.completed_at:
+            duration_seconds = (execution.completed_at - execution.started_at).total_seconds()
+        
+        agent_states = execution.agent_states or []
+        agent_count = len(agent_states)
+        agents_completed = len([a for a in agent_states if a.get('status') == 'completed'])
+        
+        summaries.append(ExecutionSummary(
+            id=execution.id,
+            pipeline_id=execution.pipeline_id,
+            pipeline_name=pipeline_name,
+            status=execution.status,
+            mode=execution.mode,
+            symbol=execution.symbol,
+            started_at=execution.started_at,
+            completed_at=execution.completed_at,
+            duration_seconds=duration_seconds,
+            total_cost=execution.cost,
+            agent_count=agent_count,
+            agents_completed=agents_completed,
+            error_message=execution.error_message
+        ))
+    
+    return summaries
 
 
 @router.post("/{execution_id}/stop", response_model=dict)
@@ -217,6 +245,7 @@ async def stop_execution_endpoint(
 @router.get("/{execution_id}/logs", response_model=List[dict])
 async def get_execution_logs(
     execution_id: UUID,
+    limit: int = Query(100, ge=1, le=1000, description="Max number of logs"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[dict]:
@@ -225,6 +254,7 @@ async def get_execution_logs(
     
     Args:
         execution_id: Execution UUID
+        limit: Maximum number of logs to return
         current_user: Authenticated user
         db: Database session
         
@@ -248,5 +278,208 @@ async def get_execution_logs(
             detail="You don't have permission to view these logs"
         )
     
-    return execution.logs or []
+    logs = execution.logs or []
+    return logs[-limit:] if len(logs) > limit else logs
+
+
+@router.get("/stats", response_model=ExecutionStats)
+async def get_execution_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> ExecutionStats:
+    """
+    Get execution statistics for the current user.
+    
+    Args:
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Execution statistics
+    """
+    from sqlalchemy import func
+    
+    # Get all executions for the user
+    result = await db.execute(
+        select(Execution).where(Execution.user_id == current_user.id)
+    )
+    executions = result.scalars().all()
+    
+    total_executions = len(executions)
+    running_executions = len([e for e in executions if e.status == ExecutionStatus.RUNNING])
+    completed_executions = len([e for e in executions if e.status == ExecutionStatus.COMPLETED])
+    failed_executions = len([e for e in executions if e.status == ExecutionStatus.FAILED])
+    
+    total_cost = sum(e.cost for e in executions)
+    
+    # Calculate average duration for completed executions
+    completed_with_duration = [
+        e for e in executions 
+        if e.status == ExecutionStatus.COMPLETED and e.started_at and e.completed_at
+    ]
+    
+    if completed_with_duration:
+        durations = [
+            (e.completed_at - e.started_at).total_seconds() 
+            for e in completed_with_duration
+        ]
+        avg_duration_seconds = sum(durations) / len(durations)
+    else:
+        avg_duration_seconds = 0.0
+    
+    # Calculate success rate
+    finished_executions = completed_executions + failed_executions
+    success_rate = completed_executions / finished_executions if finished_executions > 0 else 0.0
+    
+    return ExecutionStats(
+        total_executions=total_executions,
+        running_executions=running_executions,
+        completed_executions=completed_executions,
+        failed_executions=failed_executions,
+        total_cost=total_cost,
+        avg_duration_seconds=avg_duration_seconds,
+        success_rate=success_rate
+    )
+
+
+@router.post("/{execution_id}/pause", response_model=ExecutionInDB)
+async def pause_execution(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> ExecutionInDB:
+    """
+    Pause a running execution.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Updated execution
+    """
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to pause this execution"
+        )
+    
+    if execution.status != ExecutionStatus.RUNNING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot pause execution with status: {execution.status.value}"
+        )
+    
+    execution.status = ExecutionStatus.PAUSED
+    await db.commit()
+    await db.refresh(execution)
+    
+    return execution
+
+
+@router.post("/{execution_id}/resume", response_model=ExecutionInDB)
+async def resume_execution(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> ExecutionInDB:
+    """
+    Resume a paused execution.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Updated execution
+    """
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to resume this execution"
+        )
+    
+    if execution.status != ExecutionStatus.PAUSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot resume execution with status: {execution.status.value}"
+        )
+    
+    execution.status = ExecutionStatus.RUNNING
+    await db.commit()
+    await db.refresh(execution)
+    
+    return execution
+
+
+@router.post("/{execution_id}/cancel", response_model=ExecutionInDB)
+async def cancel_execution(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> ExecutionInDB:
+    """
+    Cancel an execution.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Updated execution
+    """
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to cancel this execution"
+        )
+    
+    if execution.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel execution with status: {execution.status.value}"
+        )
+    
+    execution.status = ExecutionStatus.CANCELLED
+    execution.completed_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(execution)
+    
+    return execution
 

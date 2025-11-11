@@ -1,0 +1,212 @@
+<div class="execution-detail-page">
+  <app-navbar></app-navbar>
+
+<div class="execution-detail-container">
+  <div class="header">
+    <div class="header-left">
+      <button mat-icon-button (click)="back()">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <h1>Execution Details</h1>
+    </div>
+    <div class="header-actions" *ngIf="execution">
+      <button mat-raised-button color="primary" 
+              *ngIf="execution.status === 'paused'"
+              (click)="resumeExecution()">
+        <mat-icon>play_arrow</mat-icon>
+        Resume
+      </button>
+      <button mat-raised-button color="accent"
+              *ngIf="execution.status === 'running'"
+              (click)="pauseExecution()">
+        <mat-icon>pause</mat-icon>
+        Pause
+      </button>
+      <button mat-raised-button color="warn"
+              *ngIf="execution.status === 'running' || execution.status === 'paused'"
+              (click)="stopExecution()">
+        <mat-icon>stop</mat-icon>
+        Stop
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="loading-container">
+    <mat-spinner></mat-spinner>
+    <p>Loading execution details...</p>
+  </div>
+
+  <div *ngIf="!loading && execution" class="content">
+    <!-- Execution Summary -->
+    <mat-card class="summary-card">
+      <mat-card-content>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-label">Pipeline</div>
+            <div class="summary-value">
+              <mat-icon>account_tree</mat-icon>
+              {{ execution.pipeline_name || 'Unknown Pipeline' }}
+            </div>
+          </div>
+
+          <div class="summary-item">
+            <div class="summary-label">Status</div>
+            <div class="summary-value">
+              <mat-chip [color]="getAgentStatusColor(execution.status)" selected>
+                <mat-icon>{{ getAgentStatusIcon(execution.status) }}</mat-icon>
+                {{ execution.status | uppercase }}
+              </mat-chip>
+            </div>
+          </div>
+
+          <div class="summary-item">
+            <div class="summary-label">Mode</div>
+            <div class="summary-value">
+              <mat-chip color="primary" selected>
+                {{ execution.mode | uppercase }}
+              </mat-chip>
+            </div>
+          </div>
+
+          <div class="summary-item">
+            <div class="summary-label">Symbol</div>
+            <div class="summary-value">{{ execution.symbol || '-' }}</div>
+          </div>
+
+          <div class="summary-item">
+            <div class="summary-label">Started</div>
+            <div class="summary-value">{{ formatDate(execution.started_at) }}</div>
+          </div>
+
+          <div class="summary-item">
+            <div class="summary-label">Total Cost</div>
+            <div class="summary-value cost">{{ formatCost(execution.cost_breakdown?.total_cost) }}</div>
+          </div>
+        </div>
+
+        <mat-progress-bar 
+          *ngIf="execution.status === 'running'"
+          mode="determinate" 
+          [value]="getAgentProgress()"
+          class="progress-bar">
+        </mat-progress-bar>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Tabs -->
+    <mat-card class="tabs-card">
+      <mat-tab-group>
+        <!-- Agent Progress Tab -->
+        <mat-tab label="Agent Progress">
+          <div class="tab-content">
+            <div *ngIf="!execution.agent_states || execution.agent_states.length === 0" class="empty-state">
+              <mat-icon>hourglass_empty</mat-icon>
+              <p>No agent data yet</p>
+            </div>
+
+            <div *ngIf="execution.agent_states && execution.agent_states.length > 0" class="agents-list">
+              <mat-card *ngFor="let agent of execution.agent_states" class="agent-card">
+                <mat-card-content>
+                  <div class="agent-header">
+                    <div class="agent-info">
+                      <mat-icon [ngClass]="'status-' + agent.status">
+                        {{ getAgentStatusIcon(agent.status) }}
+                      </mat-icon>
+                      <div>
+                        <div class="agent-name">{{ agent.agent_name || agent.agent_type }}</div>
+                        <div class="agent-type">{{ agent.agent_type }}</div>
+                      </div>
+                    </div>
+                    <mat-chip [color]="getAgentStatusColor(agent.status)" selected class="agent-status">
+                      {{ agent.status | uppercase }}
+                    </mat-chip>
+                  </div>
+
+                  <div class="agent-meta">
+                    <div class="meta-item" *ngIf="agent.started_at">
+                      <mat-icon>schedule</mat-icon>
+                      <span>Duration: {{ formatDuration(agent) }}</span>
+                    </div>
+                    <div class="meta-item" *ngIf="agent.cost">
+                      <mat-icon>attach_money</mat-icon>
+                      <span>Cost: {{ formatCost(agent.cost) }}</span>
+                    </div>
+                  </div>
+
+                  <div *ngIf="agent.error_message" class="agent-error">
+                    <mat-icon>error</mat-icon>
+                    <span>{{ agent.error_message }}</span>
+                  </div>
+
+                  <mat-expansion-panel *ngIf="agent.output" class="agent-output">
+                    <mat-expansion-panel-header>
+                      <mat-panel-title>View Output</mat-panel-title>
+                    </mat-expansion-panel-header>
+                    <pre>{{ agent.output | json }}</pre>
+                  </mat-expansion-panel>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- Logs Tab -->
+        <mat-tab label="Logs">
+          <div class="tab-content">
+            <div *ngIf="logs.length === 0" class="empty-state">
+              <mat-icon>description</mat-icon>
+              <p>No logs yet</p>
+            </div>
+
+            <div *ngIf="logs.length > 0" class="logs-list">
+              <div *ngFor="let log of logs" class="log-entry" [ngClass]="getLogLevelClass(log.level)">
+                <div class="log-header">
+                  <mat-icon>{{ getLogLevelIcon(log.level) }}</mat-icon>
+                  <span class="log-timestamp">{{ formatDate(log.timestamp) }}</span>
+                  <span class="log-level">{{ log.level | uppercase }}</span>
+                  <span class="log-agent" *ngIf="log.agent_type">{{ log.agent_type }}</span>
+                </div>
+                <div class="log-message">{{ log.message }}</div>
+                <pre *ngIf="log.details" class="log-details">{{ log.details | json }}</pre>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- Cost Breakdown Tab -->
+        <mat-tab label="Cost Breakdown" *ngIf="execution.cost_breakdown">
+          <div class="tab-content">
+            <div class="cost-summary">
+              <div class="cost-item total">
+                <span>Total Cost</span>
+                <span class="cost-value">{{ formatCost(execution.cost_breakdown.total_cost) }}</span>
+              </div>
+              <div class="cost-item">
+                <span>LLM Cost</span>
+                <span class="cost-value">{{ formatCost(execution.cost_breakdown.llm_cost) }}</span>
+              </div>
+              <div class="cost-item">
+                <span>Agent Rental Cost</span>
+                <span class="cost-value">{{ formatCost(execution.cost_breakdown.agent_rental_cost) }}</span>
+              </div>
+              <div class="cost-item">
+                <span>API Call Cost</span>
+                <span class="cost-value">{{ formatCost(execution.cost_breakdown.api_call_cost) }}</span>
+              </div>
+            </div>
+
+            <h3 *ngIf="execution.cost_breakdown.by_agent">Cost by Agent</h3>
+            <div *ngIf="execution.cost_breakdown.by_agent" class="cost-by-agent">
+              <div *ngFor="let item of execution.cost_breakdown.by_agent | keyvalue" class="cost-item">
+                <span>{{ item.key }}</span>
+                <span class="cost-value">{{ formatCost(item.value) }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </mat-card>
+  </div>
+</div>
+</div>
+
