@@ -90,20 +90,56 @@ class PipelineExecutor:
     
     def _build_execution_order(self) -> List[Dict[str, Any]]:
         """
-        Build the execution order based on edges.
-        
-        For MVP, we'll use a simple sequential approach based on node order.
-        Future: Implement proper topological sort for complex DAGs.
+        Build the execution order based on edges using topological sort.
         
         Returns:
             List of nodes in execution order
+            
+        Raises:
+            ValueError: If pipeline has cycles
         """
-        # Simple approach: execute nodes in the order they appear
-        # This works for linear pipelines (most common case)
-        execution_order = self.nodes.copy()
+        # Build adjacency list and in-degree count
+        node_map = {node["id"]: node for node in self.nodes}
+        adjacency = {node["id"]: [] for node in self.nodes}
+        in_degree = {node["id"]: 0 for node in self.nodes}
         
-        # TODO: Implement topological sort for complex DAGs
-        # For now, assume linear pipeline
+        # Build graph from edges (filter out tool connections)
+        for edge in self.edges:
+            from_id = edge.get("from") or edge.get("source")
+            to_id = edge.get("to") or edge.get("target")
+            
+            # Skip tool connections (tools are not executed)
+            if from_id in node_map and to_id in node_map:
+                from_node = node_map[from_id]
+                to_node = node_map[to_id]
+                
+                # Only add edge if both are agents (not tools)
+                if from_node.get("node_category") != "tool" and to_node.get("node_category") != "tool":
+                    adjacency[from_id].append(to_id)
+                    in_degree[to_id] += 1
+        
+        # Topological sort using Kahn's algorithm
+        queue = [node_id for node_id in in_degree if in_degree[node_id] == 0]
+        execution_order = []
+        
+        while queue:
+            # Sort queue to ensure deterministic order
+            queue.sort()
+            current = queue.pop(0)
+            
+            # Only add agents (not tools) to execution order
+            if node_map[current].get("node_category") != "tool":
+                execution_order.append(node_map[current])
+            
+            # Process neighbors
+            for neighbor in adjacency[current]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+        
+        # Check for cycles
+        if len(execution_order) != len([n for n in self.nodes if n.get("node_category") != "tool"]):
+            raise ValueError("Pipeline has cycles or disconnected nodes")
         
         self.logger.info("execution_order_built", steps=len(execution_order))
         return execution_order
@@ -250,15 +286,29 @@ class PipelineExecutor:
         Returns:
             Execution database record with results
         """
-        # Create execution record
-        execution = Execution(
-            id=self.execution_id,
-            pipeline_id=self.pipeline.id,
-            user_id=self.user_id,
-            status=ExecutionStatus.RUNNING,
-            start_time=datetime.utcnow()
+        # Get or create execution record
+        from sqlalchemy import select
+        result = await db_session.execute(
+            select(Execution).where(Execution.id == self.execution_id)
         )
-        db_session.add(execution)
+        execution = result.scalar_one_or_none()
+        
+        if not execution:
+            # Create new execution if it doesn't exist
+            execution = Execution(
+                id=self.execution_id,
+                pipeline_id=self.pipeline.id,
+                user_id=self.user_id,
+                status=ExecutionStatus.RUNNING,
+                started_at=datetime.utcnow()
+            )
+            db_session.add(execution)
+        else:
+            # Update existing execution
+            execution.status = ExecutionStatus.RUNNING
+            if not execution.started_at:
+                execution.started_at = datetime.utcnow()
+        
         await db_session.commit()
         
         try:
@@ -267,7 +317,7 @@ class PipelineExecutor:
             
             # Update execution record with results
             execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
-            execution.end_time = datetime.utcnow()
+            execution.completed_at = datetime.utcnow()
             execution.result = {
                 "trigger_met": state.trigger_met,
                 "trigger_reason": state.trigger_reason,
@@ -289,7 +339,7 @@ class PipelineExecutor:
         except TriggerNotMetException:
             # Trigger not met - mark as skipped
             execution.status = ExecutionStatus.SKIPPED
-            execution.end_time = datetime.utcnow()
+            execution.completed_at = datetime.utcnow()
             execution.result = {"trigger_met": False, "reason": "Trigger conditions not met"}
             await db_session.commit()
             return execution
@@ -297,7 +347,7 @@ class PipelineExecutor:
         except Exception as e:
             # Execution failed
             execution.status = ExecutionStatus.FAILED
-            execution.end_time = datetime.utcnow()
+            execution.completed_at = datetime.utcnow()
             execution.result = {"error": str(e)}
             await db_session.commit()
             raise

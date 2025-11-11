@@ -924,7 +924,33 @@ export class PipelineBuilderComponent implements OnInit {
     });
 
     this.executing = true;
-    
+
+    // If we have a currentPipelineId, just execute the existing pipeline
+    if (this.currentPipelineId) {
+      const executionData: any = {
+        pipeline_id: this.currentPipelineId,
+        symbol: this.selectedSymbol,
+        mode: this.executionMode as 'live' | 'paper' | 'simulation' | 'validation'
+      };
+
+      console.log('Executing existing pipeline:', this.currentPipelineId);
+
+      this.executionService.startExecution(executionData).subscribe({
+        next: (execution: any) => {
+          this.executing = false;
+          this.showNotification('Pipeline execution started!', 'success');
+          console.log('Execution started:', execution);
+        },
+        error: (error: any) => {
+          this.executing = false;
+          this.showNotification('Failed to start execution', 'error');
+          console.error('Execution error:', error);
+        }
+      });
+      return;
+    }
+
+    // No currentPipelineId, so save the pipeline first, then execute
     const pipelineData: any = {
       name: this.pipelineName,
       description: this.pipelineDescription,
@@ -943,13 +969,16 @@ export class PipelineBuilderComponent implements OnInit {
         symbol: this.selectedSymbol,
         mode: this.executionMode
       },
-      is_active: true
+      is_active: false
     };
 
-    console.log('Executing pipeline:', pipelineData); // Debug log
+    console.log('Creating new pipeline for execution:', pipelineData);
 
     this.pipelineService.createPipeline(pipelineData).subscribe({
       next: (pipeline: any) => {
+        // Store the pipeline ID for future executions
+        this.currentPipelineId = pipeline.id;
+
         const executionData: any = {
           pipeline_id: pipeline.id,
           symbol: this.selectedSymbol,

@@ -17,6 +17,7 @@ from app.models.pipeline import Pipeline
 from app.models.execution import Execution, ExecutionStatus
 from app.models.cost_tracking import UserBudget
 from app.orchestration.executor import PipelineExecutor
+from app.agents.base import TriggerNotMetException
 
 logger = structlog.get_logger()
 
@@ -64,10 +65,9 @@ def execute_pipeline(
             if str(pipeline.user_id) != user_id:
                 raise PermissionError("Pipeline does not belong to user")
             
-            # Check if pipeline is active
-            if not pipeline.is_active:
-                logger.warning("pipeline_not_active", pipeline_id=pipeline_id)
-                return {"status": "skipped", "reason": "Pipeline not active"}
+            # Note: Manual executions don't require pipeline to be active
+            # Active status only matters for scheduled runs
+            # The check is done by check_scheduled_pipelines task
             
             # Check user budget
             budget = db.query(UserBudget).filter(UserBudget.user_id == UUID(user_id)).first()
@@ -85,20 +85,72 @@ def execute_pipeline(
                 execution_id=UUID(execution_id) if execution_id else None
             )
             
-            # Execute pipeline with DB tracking
-            import asyncio
-            from sqlalchemy.ext.asyncio import AsyncSession
-            from sqlalchemy.orm import sessionmaker
-            from app.database import engine
+            # Execute pipeline synchronously for Celery
+            # Get or create execution record
+            execution = db.query(Execution).filter(Execution.id == executor.execution_id).first()
             
-            # Create async session for executor
-            async_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            if not execution:
+                # Create new execution record
+                execution = Execution(
+                    id=executor.execution_id,
+                    pipeline_id=pipeline.id,
+                    user_id=UUID(user_id),
+                    status=ExecutionStatus.RUNNING,
+                    mode=mode,
+                    symbol=pipeline.config.get("symbol"),
+                    started_at=datetime.utcnow()
+                )
+                db.add(execution)
+                db.commit()
+            else:
+                # Update existing execution
+                execution.status = ExecutionStatus.RUNNING
+                if not execution.started_at:
+                    execution.started_at = datetime.utcnow()
+                db.commit()
             
-            async def run_execution():
-                async with async_session_factory() as session:
-                    return await executor.execute_with_db_tracking(session)
-            
-            execution = asyncio.run(run_execution())
+            try:
+                # Execute pipeline (runs async internally)
+                import asyncio
+                
+                # Create a new event loop for this task
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    state = loop.run_until_complete(executor.execute())
+                finally:
+                    loop.close()
+                
+                # Update execution with results
+                execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
+                execution.completed_at = datetime.utcnow()
+                execution.result = {
+                    "trigger_met": state.trigger_met,
+                    "trigger_reason": state.trigger_reason,
+                    "strategy": state.strategy.dict() if state.strategy else None,
+                    "risk_assessment": state.risk_assessment.dict() if state.risk_assessment else None,
+                    "trade_execution": state.trade_execution.dict() if state.trade_execution else None,
+                    "errors": state.errors,
+                    "warnings": state.warnings
+                }
+                execution.cost = state.total_cost
+                execution.logs = state.execution_log
+                db.commit()
+                
+            except TriggerNotMetException as e:
+                execution.status = ExecutionStatus.SKIPPED
+                execution.completed_at = datetime.utcnow()
+                execution.result = {"trigger_met": False, "reason": str(e)}
+                db.commit()
+                
+            except Exception as e:
+                execution.status = ExecutionStatus.FAILED
+                execution.completed_at = datetime.utcnow()
+                execution.result = {"error": str(e)}
+                execution.error_message = str(e)
+                db.commit()
+                raise
             
             logger.info(
                 "celery_task_completed",
@@ -144,30 +196,27 @@ def check_scheduled_pipelines():
     scheduled_count = 0
     
     try:
-        # Find active pipelines with schedules
+        # Find active pipelines
+        # Note: For MVP, we use Celery Beat for scheduling via time triggers
+        # Future: Add database-level schedule field for more complex scheduling
         pipelines = db.query(Pipeline).filter(
-            Pipeline.is_active == True,  # noqa: E712
-            Pipeline.schedule != None  # noqa: E711
+            Pipeline.is_active == True  # noqa: E712
         ).all()
         
         for pipeline in pipelines:
             try:
-                # Check if pipeline should run based on schedule
-                if _should_run_pipeline(pipeline):
-                    logger.info("scheduling_pipeline_execution", pipeline_id=str(pipeline.id))
-                    
-                    # Trigger execution task
-                    execute_pipeline.delay(
-                        pipeline_id=str(pipeline.id),
-                        user_id=str(pipeline.user_id),
-                        mode=pipeline.config.get("mode", "paper")
-                    )
-                    
-                    scheduled_count += 1
+                # For now, just log active pipelines
+                # The actual scheduling is handled by TimeTriggerAgent in each pipeline
+                logger.debug(
+                    "active_pipeline_found",
+                    pipeline_id=str(pipeline.id),
+                    name=pipeline.name
+                )
+                scheduled_count += 1
                     
             except Exception as e:
                 logger.error(
-                    "error_checking_pipeline_schedule",
+                    "error_checking_pipeline",
                     pipeline_id=str(pipeline.id),
                     error=str(e)
                 )
@@ -180,52 +229,53 @@ def check_scheduled_pipelines():
         db.close()
 
 
-def _should_run_pipeline(pipeline: Pipeline) -> bool:
-    """
-    Determine if a pipeline should run based on its schedule.
-    
-    Args:
-        pipeline: Pipeline to check
-        
-    Returns:
-        True if should run, False otherwise
-    """
-    if not pipeline.schedule:
-        return False
-    
-    # Get last execution
-    db = SessionLocal()
-    try:
-        last_execution = db.query(Execution).filter(
-            Execution.pipeline_id == pipeline.id
-        ).order_by(Execution.created_at.desc()).first()
-        
-        # Parse schedule (simple cron-like format)
-        interval = pipeline.schedule.get("interval", "1h")
-        
-        # Convert interval to timedelta
-        interval_map = {
-            "1m": timedelta(minutes=1),
-            "5m": timedelta(minutes=5),
-            "15m": timedelta(minutes=15),
-            "30m": timedelta(minutes=30),
-            "1h": timedelta(hours=1),
-            "4h": timedelta(hours=4),
-            "1d": timedelta(days=1),
-        }
-        
-        interval_delta = interval_map.get(interval, timedelta(hours=1))
-        
-        # Check if enough time has passed
-        if last_execution:
-            time_since_last = datetime.utcnow() - last_execution.created_at
-            return time_since_last >= interval_delta
-        else:
-            # No previous execution, run now
-            return True
-            
-    finally:
-        db.close()
+# TODO: Remove this function - we use Celery Beat and TimeTriggerAgent for scheduling
+# def _should_run_pipeline(pipeline: Pipeline) -> bool:
+#     """
+#     Determine if a pipeline should run based on its schedule.
+#     
+#     Args:
+#         pipeline: Pipeline to check
+#         
+#     Returns:
+#         True if should run, False otherwise
+#     """
+#     if not pipeline.schedule:
+#         return False
+#     
+#     # Get last execution
+#     db = SessionLocal()
+#     try:
+#         last_execution = db.query(Execution).filter(
+#             Execution.pipeline_id == pipeline.id
+#         ).order_by(Execution.created_at.desc()).first()
+#         
+#         # Parse schedule (simple cron-like format)
+#         interval = pipeline.schedule.get("interval", "1h")
+#         
+#         # Convert interval to timedelta
+#         interval_map = {
+#             "1m": timedelta(minutes=1),
+#             "5m": timedelta(minutes=5),
+#             "15m": timedelta(minutes=15),
+#             "30m": timedelta(minutes=30),
+#             "1h": timedelta(hours=1),
+#             "4h": timedelta(hours=4),
+#             "1d": timedelta(days=1),
+#         }
+#         
+#         interval_delta = interval_map.get(interval, timedelta(hours=1))
+#         
+#         # Check if enough time has passed
+#         if last_execution:
+#             time_since_last = datetime.utcnow() - last_execution.created_at
+#             return time_since_last >= interval_delta
+#         else:
+#             # No previous execution, run now
+#             return True
+#             
+#     finally:
+#         db.close()
 
 
 @celery_app.task(name="app.orchestration.tasks.cleanup_old_executions")

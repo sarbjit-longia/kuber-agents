@@ -21,6 +21,7 @@ from app.models.pipeline import Pipeline
 from app.schemas.execution import ExecutionInDB, ExecutionCreate, ExecutionSummary, ExecutionStats
 from app.api.dependencies import get_current_user
 from app.orchestration.tasks import execute_pipeline, stop_execution
+from app.orchestration.validator import PipelineValidator
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
@@ -61,6 +62,19 @@ async def start_execution(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to execute this pipeline"
+        )
+    
+    # Validate pipeline configuration
+    validator = PipelineValidator()
+    is_valid, validation_errors = validator.validate(pipeline.config)
+    
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Pipeline validation failed",
+                "errors": validation_errors
+            }
         )
     
     # Note: Manual executions can run on inactive pipelines

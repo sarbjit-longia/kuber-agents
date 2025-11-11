@@ -132,7 +132,7 @@ class BaseAgent(ABC):
     
     def _validate_config(self):
         """
-        Validate agent configuration against schema.
+        Validate agent configuration against schema and apply defaults.
         
         Raises:
             ValueError: If configuration is invalid
@@ -140,6 +140,12 @@ class BaseAgent(ABC):
         schema = self.metadata.config_schema
         required_fields = schema.required
         
+        # Apply defaults for missing fields
+        for field_name, field_schema in schema.properties.items():
+            if field_name not in self.config and "default" in field_schema:
+                self.config[field_name] = field_schema["default"]
+        
+        # Validate required fields
         for field in required_fields:
             if field not in self.config:
                 raise ValueError(

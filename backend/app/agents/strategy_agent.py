@@ -46,7 +46,7 @@ class StrategyAgent(BaseAgent):
             icon="psychology",
             pricing_rate=0.15,  # $0.15 per execution (GPT-4 is more expensive)
             is_free=False,
-            requires_timeframes=["5m", "15m", "1h"],
+            requires_timeframes=["5m"],  # Only requires the strategy timeframe
             requires_market_data=True,
             requires_position=False,
             supported_tools=["webhook_notifier", "email_notifier"],  # Added tool support
@@ -310,14 +310,22 @@ Last 10 Candles (oldest to newest):
         
         return context
     
-    def _parse_crew_result(self, result: str, state: PipelineState) -> StrategyResult:
+    def _parse_crew_result(self, result: Any, state: PipelineState) -> StrategyResult:
         """Parse CrewAI result into StrategyResult."""
         import json
         import re
         
+        # Convert CrewOutput to string if needed
+        if hasattr(result, 'raw'):
+            result_str = str(result.raw)
+        elif hasattr(result, 'output'):
+            result_str = str(result.output)
+        else:
+            result_str = str(result)
+        
         # Try to extract JSON
         try:
-            json_match = re.search(r'\{[^}]+\}', result, re.DOTALL)
+            json_match = re.search(r'\{[^}]+\}', result_str, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
                 
@@ -334,7 +342,7 @@ Last 10 Candles (oldest to newest):
                     stop_loss=float(data.get("stop_loss", 0)) if action in ["BUY", "SELL"] else None,
                     take_profit=float(data.get("take_profit", 0)) if action in ["BUY", "SELL"] else None,
                     position_size=None,  # Will be set by Risk Manager
-                    reasoning=data.get("reasoning", result[:500]),
+                    reasoning=data.get("reasoning", result_str[:500]),
                     pattern_detected=data.get("pattern_detected")
                 )
         except Exception as e:
@@ -342,9 +350,9 @@ Last 10 Candles (oldest to newest):
         
         # Fallback: Parse text
         action = "HOLD"
-        if "BUY" in result.upper() and "DON'T BUY" not in result.upper():
+        if "BUY" in result_str.upper() and "DON'T BUY" not in result_str.upper():
             action = "BUY"
-        elif "SELL" in result.upper() and "DON'T SELL" not in result.upper():
+        elif "SELL" in result_str.upper() and "DON'T SELL" not in result_str.upper():
             action = "SELL"
         
         return StrategyResult(
@@ -354,7 +362,7 @@ Last 10 Candles (oldest to newest):
             stop_loss=None,
             take_profit=None,
             position_size=None,
-            reasoning=result[:500],
+            reasoning=result_str[:500],
             pattern_detected=None
         )
 

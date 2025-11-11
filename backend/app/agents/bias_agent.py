@@ -305,12 +305,12 @@ class BiasAgent(BaseAgent):
         else:
             return "(Neutral)"
     
-    def _parse_crew_result(self, result: str, timeframe: str) -> BiasResult:
+    def _parse_crew_result(self, result: Any, timeframe: str) -> BiasResult:
         """
         Parse CrewAI result into BiasResult.
         
         Args:
-            result: Raw result from CrewAI
+            result: Raw result from CrewAI (CrewOutput or str)
             timeframe: Timeframe analyzed
             
         Returns:
@@ -319,10 +319,18 @@ class BiasAgent(BaseAgent):
         import json
         import re
         
+        # Convert CrewOutput to string if needed
+        if hasattr(result, 'raw'):
+            result_str = str(result.raw)
+        elif hasattr(result, 'output'):
+            result_str = str(result.output)
+        else:
+            result_str = str(result)
+        
         # Try to extract JSON from the result
         try:
             # Look for JSON in the result
-            json_match = re.search(r'\{[^}]+\}', result, re.DOTALL)
+            json_match = re.search(r'\{[^}]+\}', result_str, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
                 
@@ -330,7 +338,7 @@ class BiasAgent(BaseAgent):
                     bias=data.get("bias", "NEUTRAL"),
                     confidence=float(data.get("confidence", 0.5)),
                     timeframe=timeframe,
-                    reasoning=data.get("reasoning", result[:200]),
+                    reasoning=data.get("reasoning", result_str[:200]),
                     key_factors=data.get("key_factors", [])
                 )
         except:
@@ -338,16 +346,16 @@ class BiasAgent(BaseAgent):
         
         # Fallback: Parse text result
         bias = "NEUTRAL"
-        if "BULLISH" in result.upper():
+        if "BULLISH" in result_str.upper():
             bias = "BULLISH"
-        elif "BEARISH" in result.upper():
+        elif "BEARISH" in result_str.upper():
             bias = "BEARISH"
         
         return BiasResult(
             bias=bias,
             confidence=0.6,
             timeframe=timeframe,
-            reasoning=result[:500],  # First 500 chars
+            reasoning=result_str[:500],  # First 500 chars
             key_factors=[]
         )
 

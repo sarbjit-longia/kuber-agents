@@ -29,14 +29,46 @@ class MarketDataTool(BaseTool):
         api_key: Finnhub API key (optional, uses settings.FINNHUB_API_KEY by default)
     """
     
+    @classmethod
+    def get_metadata(cls):
+        """Get metadata for this tool."""
+        from app.schemas.pipeline_state import ToolMetadata, ToolConfigSchema
+        
+        return ToolMetadata(
+            tool_type="market_data",
+            name="Market Data",
+            description="Fetches real-time and historical market data from Finnhub",
+            category="data",
+            version="1.0.0",
+            icon="show_chart",
+            is_free=True,  # Free tier available
+            config_schema=ToolConfigSchema(
+                type="object",
+                title="Market Data Configuration",
+                properties={
+                    "api_key": {
+                        "type": "string",
+                        "title": "Finnhub API Key",
+                        "description": "Optional API key (uses default if not provided)"
+                    }
+                },
+                required=[]
+            )
+        )
+    
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.api_key = self.config.get("api_key", settings.FINNHUB_API_KEY)
+        # Set API key after parent init (which sets self.config)
+        self.api_key = self.config.get("api_key") if self.config else None
+        if not self.api_key:
+            self.api_key = settings.FINNHUB_API_KEY
         self.base_url = "https://finnhub.io/api/v1"
     
     def _validate_config(self):
         """Validate that we have an API key."""
-        if not self.api_key and not settings.FINNHUB_API_KEY:
+        if not hasattr(self, 'api_key'):
+            self.api_key = settings.FINNHUB_API_KEY
+        if not self.api_key:
             logger.warning("No Finnhub API key configured. Market data will not work.")
     
     async def execute(

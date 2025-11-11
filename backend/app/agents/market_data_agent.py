@@ -40,7 +40,7 @@ class MarketDataAgent(BaseAgent):
         return AgentMetadata(
             agent_type="market_data_agent",
             name="Market Data Agent",
-            description="Fetches real-time and historical market data. Free to use.",
+            description="Fetches real-time and historical market data. Requires a Market Data Tool to be attached.",
             category="data",
             version="1.0.0",
             icon="show_chart",
@@ -49,6 +49,7 @@ class MarketDataAgent(BaseAgent):
             requires_timeframes=[],
             requires_market_data=False,
             requires_position=False,
+            supported_tools=["market_data"],  # Requires a market data tool
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Market Data Configuration",
@@ -71,12 +72,6 @@ class MarketDataAgent(BaseAgent):
                         "default": 100,
                         "minimum": 10,
                         "maximum": 500
-                    },
-                    "use_mock_data": {
-                        "type": "boolean",
-                        "title": "Use Mock Data",
-                        "description": "Use synthetic data instead of real market data (for testing)",
-                        "default": False
                     }
                 },
                 required=["timeframes"]
@@ -87,15 +82,7 @@ class MarketDataAgent(BaseAgent):
     
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        
-        # Initialize market data tool
-        use_mock = config.get("use_mock_data", False)
-        if use_mock:
-            self.market_data_tool = MockMarketDataTool()
-            self.log_message = "Using mock market data"
-        else:
-            self.market_data_tool = MarketDataTool()
-            self.log_message = "Using real market data"
+        # No hardcoded tools - will load from config
     
     def process(self, state: PipelineState) -> PipelineState:
         """
@@ -109,9 +96,21 @@ class MarketDataAgent(BaseAgent):
             
         Raises:
             InsufficientDataError: If symbol is missing
-            AgentProcessingError: If data fetch fails
+            AgentProcessingError: If data fetch fails or no market data tool attached
         """
-        self.log(state, f"Fetching market data ({self.log_message})")
+        # Load configured tools
+        tools = self._load_tools()
+        
+        # Get market data tool (REQUIRED - must be attached by user)
+        market_data_tool = tools.get("market_data")
+        
+        if not market_data_tool:
+            raise AgentProcessingError(
+                "Market Data Agent requires a Market Data Tool to be attached. "
+                "Please attach a tool like 'Finnhub Market Data' in the pipeline builder."
+            )
+        
+        self.log(state, f"Fetching market data (Using {market_data_tool.__class__.__name__})")
         
         # Validate we have a symbol
         if not state.symbol:
@@ -133,7 +132,7 @@ class MarketDataAgent(BaseAgent):
                 nest_asyncio.apply()
             
             market_data_dict = loop.run_until_complete(
-                self.market_data_tool.execute(
+                market_data_tool.execute(
                     symbol=state.symbol,
                     timeframes=timeframes,
                     lookback_periods=lookback_periods
