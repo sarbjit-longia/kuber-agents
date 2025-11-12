@@ -114,7 +114,8 @@ def execute_pipeline(
                 execution = executor.execute_with_sync_db_tracking(db, execution)
                 
             except TriggerNotMetException as e:
-                execution.status = ExecutionStatus.SKIPPED
+                # Trigger not met - mark as COMPLETED (successfully determined not to execute)
+                execution.status = ExecutionStatus.COMPLETED
                 execution.completed_at = datetime.utcnow()
                 execution.result = {"trigger_met": False, "reason": str(e)}
                 db.commit()

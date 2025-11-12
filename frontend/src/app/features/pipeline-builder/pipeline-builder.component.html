@@ -300,6 +300,7 @@
           <div class="config-form">
             <h5>Configuration</h5>
             <app-json-schema-form
+              #jsonSchemaForm
               *ngIf="selectedNode.metadata?.config_schema"
               [schema]="selectedNode.metadata!.config_schema"
               [data]="editingConfig"

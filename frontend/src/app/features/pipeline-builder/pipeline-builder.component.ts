@@ -8,7 +8,7 @@
  * - Zoom and pan canvas
  */
 
-import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, QueryList, ViewChildren } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CdkDragDrop, CdkDragEnd, DragDropModule } from '@angular/cdk/drag-drop';
@@ -138,6 +138,9 @@ export class PipelineBuilderComponent implements OnInit {
   // Configuration editing state
   editingConfig: any = null; // Temporary config being edited
   originalConfig: any = null; // Original config before editing
+  
+  // ViewChild for JSON schema form (for timezone conversion)
+  @ViewChild('jsonSchemaForm') jsonSchemaForm?: JsonSchemaFormComponent;
 
   constructor(
     private agentService: AgentService,
@@ -496,8 +499,14 @@ export class PipelineBuilderComponent implements OnInit {
    */
   saveConfigChanges(): void {
     if (this.selectedNode && this.editingConfig) {
-      this.selectedNode.config = JSON.parse(JSON.stringify(this.editingConfig));
-      this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig));
+      // Convert times to UTC if the form component is available
+      let configToSave = this.editingConfig;
+      if (this.jsonSchemaForm) {
+        configToSave = this.jsonSchemaForm.convertTimesToUTC(this.editingConfig);
+      }
+      
+      this.selectedNode.config = JSON.parse(JSON.stringify(configToSave));
+      this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig)); // Keep original in local time
       this.showNotification('Configuration saved', 'success');
     }
   }

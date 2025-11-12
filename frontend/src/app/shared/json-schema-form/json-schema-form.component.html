@@ -75,7 +75,12 @@
         [formControlName]="property.key"
         [placeholder]="property.description || ''">
       <mat-icon matIconSuffix>schedule</mat-icon>
-      <mat-hint *ngIf="property.description">{{ property.description }}</mat-hint>
+      <mat-hint *ngIf="property.description">
+        {{ property.description }}
+        <span *ngIf="property['x-timezone'] === 'local'" class="timezone-hint">
+          (Your timezone: {{ getUserTimezone() }})
+        </span>
+      </mat-hint>
       <mat-error *ngIf="form.get(property.key)?.hasError('required')">
         This field is required
       </mat-error>

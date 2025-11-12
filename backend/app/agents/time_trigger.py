@@ -59,15 +59,19 @@ class TimeTriggerAgent(BaseAgent):
                     },
                     "start_time": {
                         "type": "string",
-                        "title": "Start Time",
+                        "title": "Start Time (Your Local Time)",
                         "description": "Start time in HH:MM format (optional, e.g., '09:30')",
-                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$"
+                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
+                        "format": "time",
+                        "x-timezone": "local"
                     },
                     "end_time": {
                         "type": "string",
-                        "title": "End Time",
+                        "title": "End Time (Your Local Time)",
                         "description": "End time in HH:MM format (optional, e.g., '16:00')",
-                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$"
+                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
+                        "format": "time",
+                        "x-timezone": "local"
                     },
                     "days_of_week": {
                         "type": "array",

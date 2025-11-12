@@ -319,6 +319,9 @@ class PipelineExecutor:
         Returns:
             Updated Execution record
         """
+        # Import flag_modified for JSONB column tracking
+        from sqlalchemy.orm.attributes import flag_modified
+        
         # Initialize state
         state = PipelineState(
             pipeline_id=self.pipeline.id,
@@ -393,7 +396,6 @@ class PipelineExecutor:
                 execution.cost_breakdown = state.agent_costs
                 
                 # Mark JSONB columns as modified so SQLAlchemy saves them
-                from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(execution, "agent_states")
                 flag_modified(execution, "logs")
                 flag_modified(execution, "cost_breakdown")
@@ -407,13 +409,20 @@ class PipelineExecutor:
                 )
                 
             except TriggerNotMetException as e:
-                # Trigger not met - not an error, just skip execution
+                # Trigger not met - mark current agent as skipped
                 self.logger.info("trigger_not_met", reason=str(e))
                 state.trigger_met = False
                 state.trigger_reason = str(e)
                 agent_states[i]["status"] = "skipped"
                 agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
                 agent_states[i]["error"] = "Trigger not met"
+                
+                # Mark all remaining agents as skipped too
+                for j in range(i + 1, len(agent_states)):
+                    agent_states[j]["status"] = "skipped"
+                    agent_states[j]["completed_at"] = datetime.utcnow().isoformat()
+                    agent_states[j]["error"] = "Skipped due to trigger not met"
+                
                 execution.agent_states = agent_states
                 flag_modified(execution, "agent_states")
                 db_session.commit()

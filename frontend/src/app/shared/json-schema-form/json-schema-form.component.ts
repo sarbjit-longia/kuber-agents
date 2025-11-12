@@ -36,8 +36,11 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
 
   form!: FormGroup;
   properties: any[] = [];
+  userTimezone: string;
 
-  constructor(private fb: FormBuilder) {}
+  constructor(private fb: FormBuilder) {
+    this.userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
 
   ngOnInit(): void {
     this.buildForm();
@@ -90,8 +93,13 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
         validators.push(Validators.required);
       }
 
-      // Get initial value
-      const initialValue = this.data[key] !== undefined ? this.data[key] : property.default;
+      // Get initial value - convert UTC to local time if needed
+      let initialValue = this.data[key] !== undefined ? this.data[key] : property.default;
+      
+      // If this is a time field with UTC timezone, convert to local
+      if (property.format === 'time' && property['x-timezone'] === 'local' && initialValue) {
+        initialValue = this.convertUTCTimeToLocal(initialValue);
+      }
 
       // Create form control
       formControls[key] = [initialValue, validators];
@@ -106,7 +114,7 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
 
     this.form = this.fb.group(formControls);
 
-    // Emit changes
+    // Emit changes WITHOUT timezone conversion (conversion happens on save)
     this.form.valueChanges.subscribe(value => {
       this.dataChange.emit(value);
     });
@@ -141,5 +149,86 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
       default:
         return 'text';
     }
+  }
+
+  getUserTimezone(): string {
+    return this.userTimezone;
+  }
+
+  /**
+   * Convert local time (HH:MM) to UTC time (HH:MM)
+   */
+  convertLocalTimeToUTC(localTime: string): string {
+    if (!localTime || !localTime.includes(':')) {
+      return localTime;
+    }
+
+    const [hours, minutes] = localTime.split(':').map(Number);
+    const today = new Date();
+    today.setHours(hours, minutes, 0, 0);
+
+    // Get UTC hours and minutes
+    const utcHours = today.getUTCHours();
+    const utcMinutes = today.getUTCMinutes();
+
+    return `${String(utcHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}`;
+  }
+
+  /**
+   * Convert UTC time (HH:MM) to local time (HH:MM)
+   */
+  convertUTCTimeToLocal(utcTime: string): string {
+    if (!utcTime || !utcTime.includes(':')) {
+      return utcTime;
+    }
+
+    const [hours, minutes] = utcTime.split(':').map(Number);
+    const today = new Date();
+    
+    // Set as UTC time
+    const utcDate = new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+      hours,
+      minutes,
+      0
+    ));
+
+    // Get local hours and minutes
+    const localHours = utcDate.getHours();
+    const localMinutes = utcDate.getMinutes();
+
+    return `${String(localHours).padStart(2, '0')}:${String(localMinutes).padStart(2, '0')}`;
+  }
+
+  /**
+   * Convert time fields marked with x-timezone: local to UTC
+   * This should be called by parent component when saving
+   */
+  convertTimesToUTC(formValue: any): any {
+    if (!this.schema || !this.schema.properties) {
+      return formValue;
+    }
+
+    const converted = { ...formValue };
+
+    Object.keys(this.schema.properties).forEach(key => {
+      const property = this.schema.properties[key];
+      
+      // If this is a time field with local timezone, convert to UTC
+      if (property.format === 'time' && property['x-timezone'] === 'local' && converted[key]) {
+        converted[key] = this.convertLocalTimeToUTC(converted[key]);
+      }
+    });
+
+    return converted;
+  }
+
+  /**
+   * Get current form value with timezone conversion applied
+   */
+  getConvertedValue(): any {
+    return this.convertTimesToUTC(this.form.value);
   }
 }
