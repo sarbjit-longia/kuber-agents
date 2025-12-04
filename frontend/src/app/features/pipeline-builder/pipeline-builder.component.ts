@@ -499,16 +499,72 @@ export class PipelineBuilderComponent implements OnInit {
    */
   saveConfigChanges(): void {
     if (this.selectedNode && this.editingConfig) {
-      // Convert times to UTC if the form component is available
+      console.log('🔵 saveConfigChanges - editingConfig:', this.editingConfig);
+      
+      // Convert times to UTC before saving
       let configToSave = this.editingConfig;
-      if (this.jsonSchemaForm) {
-        configToSave = this.jsonSchemaForm.convertTimesToUTC(this.editingConfig);
+      
+      // Check if the agent/tool has time fields that need conversion
+      const schema = this.selectedNode.metadata?.config_schema;
+      console.log('🔵 Schema:', schema);
+      
+      if (schema && schema.properties) {
+        console.log('🔵 Before conversion:', configToSave);
+        configToSave = this.convertTimesToUTC(this.editingConfig, schema);
+        console.log('🔵 After conversion:', configToSave);
+      } else {
+        console.log('⚠️ No schema found, skipping conversion');
       }
       
       this.selectedNode.config = JSON.parse(JSON.stringify(configToSave));
       this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig)); // Keep original in local time
       this.showNotification('Configuration saved', 'success');
     }
+  }
+  
+  /**
+   * Convert local times to UTC based on schema
+   */
+  private convertTimesToUTC(formValue: any, schema: any): any {
+    if (!schema || !schema.properties) {
+      return formValue;
+    }
+
+    const converted = { ...formValue };
+
+    Object.keys(schema.properties).forEach(key => {
+      const property = schema.properties[key];
+      
+      console.log(`🔍 Checking field "${key}":`, property);
+      
+      // If this is a time field with local timezone, convert to UTC
+      if (property.format === 'time' && property['x-timezone'] === 'local' && converted[key]) {
+        const originalValue = converted[key];
+        converted[key] = this.convertLocalTimeToUTC(converted[key]);
+        console.log(`✅ Converted ${key}: ${originalValue} → ${converted[key]}`);
+      }
+    });
+
+    return converted;
+  }
+  
+  /**
+   * Convert local time (HH:MM) to UTC time (HH:MM)
+   */
+  private convertLocalTimeToUTC(localTime: string): string {
+    if (!localTime || !localTime.includes(':')) {
+      return localTime;
+    }
+
+    const [hours, minutes] = localTime.split(':').map(Number);
+    const today = new Date();
+    today.setHours(hours, minutes, 0, 0);
+
+    // Get UTC hours and minutes
+    const utcHours = today.getUTCHours();
+    const utcMinutes = today.getUTCMinutes();
+
+    return `${String(utcHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}`;
   }
   
   /**
@@ -917,17 +973,32 @@ export class PipelineBuilderComponent implements OnInit {
     });
 
     this.saving = true;
+    
+    // Convert times to UTC for all nodes before saving
+    const processedNodes = agentNodes.map(node => {
+      let config = node.config;
+      
+      // Check if this node has time fields that need conversion
+      const schema = node.metadata?.config_schema;
+      if (schema && schema.properties) {
+        config = this.convertTimesToUTC(node.config, schema);
+        console.log(`🔵 Converted times for ${node.agent_type}:`, node.config, '→', config);
+      }
+      
+      return {
+        id: node.id,
+        agent_type: node.agent_type,
+        config: config,
+        position: node.position,
+        node_category: node.node_category
+      };
+    });
+    
     const pipelineData: any = {
       name: this.pipelineName,
       description: this.pipelineDescription,
       config: {
-        nodes: agentNodes.map(node => ({
-          id: node.id,
-          agent_type: node.agent_type,
-          config: node.config,
-          position: node.position,
-          node_category: node.node_category // Include category for clarity
-        })),
+        nodes: processedNodes,
         edges: agentConnections.map(conn => ({
           from: conn.from,
           to: conn.to

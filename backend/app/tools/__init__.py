@@ -17,6 +17,7 @@ def _initialize_registry():
     
     # Register market data tools
     registry.register(MarketDataTool)
+    registry.register(MockMarketDataTool)  # Mock for testing/development
     
     # Register broker tools
     registry.register(AlpacaBrokerTool)

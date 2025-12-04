@@ -262,7 +262,7 @@
   background-size: 20px 20px, 100px 100px;
   background-position: 0 0, 0 0;
   overflow: auto;
-  min-height: 600px;
+  // REMOVED min-height - let flexbox handle sizing
   
   // Prevent scrollbars during drag
   &.cdk-drop-list-dragging {
@@ -729,7 +729,9 @@
   border-left: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  height: calc(100vh - 70px); // full height minus toolbar
+  max-height: calc(100vh - 70px);
+  overflow: hidden;
 
   .config-header {
     padding: 1.5rem;
@@ -737,6 +739,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0; // Don't shrink header
 
     h3 {
       display: flex;
@@ -754,9 +757,35 @@
 
   .config-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; // CRITICAL: Allows flexbox child to shrink below content size
     padding: 1.5rem;
-    overflow-y: auto;
-    max-height: calc(100vh - 100px); // Allow scrolling
+    padding-bottom: 5rem; // Extra room so attached tools + buttons fully show
+    overflow-y: scroll; // Always show scrollbar space
+    overflow-x: hidden;
+    
+    // Make scrollbar always visible and styled
+    scrollbar-width: thin; // For Firefox
+    scrollbar-color: #888 #f1f1f1; // For Firefox
+    
+    &::-webkit-scrollbar {
+      width: 10px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 10px;
+      
+      &:hover {
+        background: #555;
+      }
+    }
 
     .config-agent-info {
       text-align: center;
@@ -861,8 +890,12 @@
       display: flex;
       gap: 0.75rem;
       margin-top: 1.5rem;
-      padding-top: 1rem;
+      margin-bottom: 1rem; // Space at bottom
+      padding: 1rem;
       border-top: 1px solid #e0e0e0;
+      background: white; // Ensure buttons stand out
+      border-radius: 8px;
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05); // Subtle shadow to make it visible
       
       button {
         flex: 1;
@@ -874,6 +907,11 @@
           margin-right: 0.25rem;
         }
       }
+    }
+    
+    // Tool selector section
+    .config-tools {
+      margin-top: 1.5rem; // Space from buttons/form above
     }
   }
 }

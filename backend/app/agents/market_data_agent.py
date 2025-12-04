@@ -49,7 +49,7 @@ class MarketDataAgent(BaseAgent):
             requires_timeframes=[],
             requires_market_data=False,
             requires_position=False,
-            supported_tools=["market_data"],  # Requires a market data tool
+            supported_tools=["market_data", "mock_market_data"],  # Supports both real and mock market data tools
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Market Data Configuration",

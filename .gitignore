@@ -1,46 +1,65 @@
-# Environment
-.env
-.env.local
-.env.*.local
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-venv/
-env/
-ENV/
-
-# Node
-node_modules/
+build/
+develop-eggs/
 dist/
-.angular/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDEs
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
+# Environment variables
+.env
+.env.local
 
 # Database
 *.db
 *.sqlite
 
-# Test coverage
-coverage/
-.coverage
-htmlcov/
+# Logs
+*.log
+logs/
 
-# Build
-build/
-dist/
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules (Frontend)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Celery
+celerybeat-schedule
+
+# Data files (market data cache)
+backend/data/
+
+# Docker
+*.pid

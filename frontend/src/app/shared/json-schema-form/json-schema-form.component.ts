@@ -47,32 +47,50 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // Rebuild form only if:
-    // 1. Schema changes (different agent/tool selected)
-    // 2. Data reference changes significantly (different node selected)
-    //    but NOT on every keystroke update
-    
     const schemaChanged = changes['schema'] && !changes['schema'].firstChange;
     const dataChanged = changes['data'] && !changes['data'].firstChange;
     
     if (schemaChanged) {
-      // Schema changed - completely rebuild form
+      // Schema changed - completely rebuild form (includes UTC→Local conversion)
       this.buildForm();
     } else if (dataChanged && this.form) {
-      // Data changed but schema didn't - just update form values without rebuilding
-      // This handles switching between nodes with the same schema
       const newData = changes['data'].currentValue;
-      if (newData && typeof newData === 'object') {
-        // Only update if the form exists and values are different
-        Object.keys(this.form.controls).forEach(key => {
-          const currentValue = this.form.get(key)?.value;
+      const previousData = changes['data'].previousValue;
+      
+      // Check if this is a complete data replacement (node switch) or just property updates (editing)
+      const changedKeys = this.getChangedKeys(previousData, newData);
+      const totalKeys = Object.keys(this.schema?.properties || {}).length;
+      
+      // If more than half the keys changed, it's probably a node switch - rebuild form
+      if (changedKeys.length > totalKeys / 2) {
+        this.buildForm(); // Rebuild to ensure UTC→Local conversion
+      } else {
+        // Single property changed (user typing) - just update that value (already local time)
+        changedKeys.forEach(key => {
           const newValue = newData[key] !== undefined ? newData[key] : null;
+          const currentValue = this.form.get(key)?.value;
+          
           if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
             this.form.get(key)?.setValue(newValue, { emitEvent: false });
           }
         });
       }
     }
+  }
+  
+  /**
+   * Get list of keys that changed between two objects
+   */
+  private getChangedKeys(obj1: any, obj2: any): string[] {
+    if (!obj1 || !obj2) return Object.keys(obj2 || obj1 || {});
+    
+    const keys1 = Object.keys(obj1);
+    const keys2 = Object.keys(obj2);
+    const allKeys = [...new Set([...keys1, ...keys2])];
+    
+    return allKeys.filter(key => 
+      JSON.stringify(obj1[key]) !== JSON.stringify(obj2[key])
+    );
   }
 
   buildForm(): void {
