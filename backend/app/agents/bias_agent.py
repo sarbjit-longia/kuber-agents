@@ -247,6 +247,25 @@ class BiasAgent(BaseAgent):
                 f"✓ Bias determined: {bias_result.bias} "
                 f"(confidence: {bias_result.confidence:.2f}) on {primary_tf}"
             )
+            self.record_report(
+                state,
+                title="Bias analysis completed",
+                summary=(
+                    f"{bias_result.bias} bias ({bias_result.confidence:.2%} confidence) "
+                    f"on {primary_tf}"
+                ),
+                metrics={
+                    "bias": bias_result.bias,
+                    "confidence": round(bias_result.confidence, 2),
+                    "timeframe": primary_tf,
+                },
+                data={
+                    "key_factors": bias_result.key_factors,
+                    "reasoning": bias_result.reasoning,
+                    "secondary_timeframes": secondary_tfs,
+                    "model": self.model,
+                },
+            )
             
             # Track cost (estimate based on tokens)
             # TODO: Implement actual token counting from OpenAI response

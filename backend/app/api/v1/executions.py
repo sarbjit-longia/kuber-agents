@@ -168,6 +168,7 @@ async def get_execution(
         "cost": execution.cost,
         "logs": execution.logs or [],
         "agent_states": execution.agent_states or [],
+        "reports": execution.reports or {},
         "cost_breakdown": execution.cost_breakdown or {},
         "started_at": execution.started_at.isoformat() if execution.started_at else None,
         "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,

@@ -52,6 +52,7 @@ class Execution(Base):
     cost = Column(Float, default=0.0, nullable=False)
     logs = Column(JSONB, nullable=True, default=list)  # List of log entries
     agent_states = Column(JSONB, nullable=True, default=list)  # Agent execution states
+    reports = Column(JSONB, nullable=True, default=dict)  # Structured agent reports
     cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)

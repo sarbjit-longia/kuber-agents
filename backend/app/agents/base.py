@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
 
-from app.schemas.pipeline_state import PipelineState, AgentMetadata
+from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentReportMetric
 
 
 logger = logging.getLogger(__name__)
@@ -229,6 +229,39 @@ class BaseAgent(ABC):
         """
         state.warnings.append(f"{self.agent_id}: {warning}")
         self.log(state, f"Warning: {warning}", level="warning")
+    
+    def record_report(
+        self,
+        state: PipelineState,
+        title: str,
+        summary: str,
+        *,
+        details: Optional[str] = None,
+        status: str = "completed",
+        metrics: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Record a structured report entry for this agent.
+        """
+        metric_entries = []
+        if metrics:
+            for name, value in metrics.items():
+                if isinstance(value, AgentReportMetric):
+                    metric_entries.append(value)
+                else:
+                    metric_entries.append(AgentReportMetric(name=name, value=value))
+        
+        state.add_report(
+            agent_id=self.agent_id,
+            agent_type=self.metadata.agent_type,
+            title=title,
+            summary=summary,
+            details=details,
+            status=status,
+            metrics=metric_entries,
+            data=data,
+        )
     
     def to_dict(self) -> Dict[str, Any]:
         """

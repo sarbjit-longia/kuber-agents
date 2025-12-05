@@ -139,6 +139,12 @@ class RiskManagerAgent(BaseAgent):
                 reasoning="No trade proposed (HOLD signal)"
             )
             self.log(state, "✓ Risk assessment: HOLD signal approved")
+            self.record_report(
+                state,
+                title="Risk review (HOLD)",
+                summary="No position opened because strategy advised HOLD",
+                data={"reasoning": "Strategy returned HOLD"},
+            )
             return state
         
         try:
@@ -252,6 +258,29 @@ class RiskManagerAgent(BaseAgent):
                     state,
                     f"✗ Trade REJECTED: {', '.join(warnings) if warnings else 'High risk score'}"
                 )
+            
+            self.record_report(
+                state,
+                title="Risk assessment completed",
+                summary=f"{'APPROVED' if approved else 'REJECTED'} with R/R {rr_ratio:.2f}:1 "
+                        f"and risk ${max_risk_amount:.2f}",
+                status="completed" if approved else "rejected",
+                metrics={
+                    "risk_score": round(risk_score, 2),
+                    "position_size": round(position_size, 2),
+                    "risk_reward_ratio": round(rr_ratio, 2),
+                },
+                data={
+                    "warnings": warnings,
+                    "reasoning": state.risk_assessment.reasoning,
+                    "config": {
+                        "account_size": account_size,
+                        "risk_per_trade_percent": risk_per_trade_pct,
+                        "max_position_size_percent": max_position_pct,
+                        "min_risk_reward_ratio": min_rr_ratio,
+                    },
+                },
+            )
             
             # No cost for this agent (rule-based)
             self.track_cost(state, 0.0)

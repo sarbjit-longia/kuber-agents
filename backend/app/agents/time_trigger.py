@@ -109,10 +109,19 @@ class TimeTriggerAgent(BaseAgent):
         
         # Check day of week constraint
         days_of_week = self.config.get("days_of_week", [])
-        if days_of_week and now.weekday() not in days_of_week:
-            self.log(state, f"Not running today (day {now.weekday()})")
+        weekday = now.weekday()
+        if days_of_week and weekday not in days_of_week:
+            reason = f"Today ({weekday}) not in allowed days {days_of_week}"
+            self.log(state, f"Not running today (day {weekday})")
+            self.record_report(
+                state,
+                title="Trigger window not scheduled",
+                summary=reason,
+                status="skipped",
+                data={"weekday": weekday, "allowed_days": days_of_week},
+            )
             raise TriggerNotMetException(
-                f"Trigger not met: Today is day {now.weekday()}, "
+                f"Trigger not met: Today is day {weekday}, "
                 f"only running on days {days_of_week}"
             )
         
@@ -124,13 +133,29 @@ class TimeTriggerAgent(BaseAgent):
             current_time = now.strftime("%H:%M")
             
             if start_time and current_time < start_time:
+                reason = f"Current time {current_time} before start {start_time}"
                 self.log(state, f"Before start time ({start_time})")
+                self.record_report(
+                    state,
+                    title="Trigger outside window",
+                    summary=reason,
+                    status="paused",
+                    data={"current_time": current_time, "start_time": start_time},
+                )
                 raise TriggerNotMetException(
                     f"Trigger not met: Current time {current_time} is before start time {start_time}"
                 )
             
             if end_time and current_time > end_time:
+                reason = f"Current time {current_time} after end {end_time}"
                 self.log(state, f"After end time ({end_time})")
+                self.record_report(
+                    state,
+                    title="Trigger outside window",
+                    summary=reason,
+                    status="paused",
+                    data={"current_time": current_time, "end_time": end_time},
+                )
                 raise TriggerNotMetException(
                     f"Trigger not met: Current time {current_time} is after end time {end_time}"
                 )
@@ -141,6 +166,17 @@ class TimeTriggerAgent(BaseAgent):
         state.trigger_reason = f"Time trigger ({interval} interval) condition met"
         
         self.log(state, f"✓ Trigger met - proceeding with pipeline execution")
+        self.record_report(
+            state,
+            title="Trigger fired",
+            summary=f"Interval {interval} satisfied at {now.strftime('%H:%M UTC')}",
+            data={
+                "interval": interval,
+                "start_time": start_time,
+                "end_time": end_time,
+                "days_of_week": days_of_week,
+            },
+        )
         
         return state
     

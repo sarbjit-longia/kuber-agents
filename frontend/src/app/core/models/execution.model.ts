@@ -19,6 +19,7 @@ export interface Execution {
   cost_breakdown?: CostBreakdown;
   agent_states?: AgentState[];
   logs?: ExecutionLog[];
+  reports?: { [agentId: string]: AgentReport };
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +48,25 @@ export interface AgentState {
   error_message?: string;
   output?: any;
   cost?: number;
+}
+
+export interface AgentReportMetric {
+  name: string;
+  value: any;
+  unit?: string;
+  description?: string;
+}
+
+export interface AgentReport {
+  agent_id: string;
+  agent_type: string;
+  title: string;
+  summary: string;
+  status: string;
+  details?: string;
+  metrics?: AgentReportMetric[];
+  data?: any;
+  created_at: string;
 }
 
 export type AgentStatus = 

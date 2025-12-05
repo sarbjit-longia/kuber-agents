@@ -215,6 +215,54 @@
           </div>
         </mat-tab>
 
+        <!-- Reports Tab -->
+        <mat-tab label="Agent Reports">
+          <div class="tab-content">
+            <div *ngIf="!reports.length" class="empty-state">
+              <mat-icon>fact_check</mat-icon>
+              <p>No reports generated yet</p>
+            </div>
+
+            <div *ngIf="reports.length" class="reports-list">
+              <mat-card *ngFor="let report of reports" class="report-card">
+                <mat-card-content>
+                  <div class="report-header">
+                    <div>
+                      <h3>{{ report.title }}</h3>
+                      <p class="report-subtitle">
+                        {{ report.agent_type }} • {{ formatReportDate(report.created_at) }}
+                      </p>
+                    </div>
+                    <mat-chip [color]="report.status === 'completed' ? 'accent' : 'warn'" selected>
+                      {{ report.status | uppercase }}
+                    </mat-chip>
+                  </div>
+
+                  <p class="report-summary">{{ report.summary }}</p>
+
+                  <div class="report-metrics" *ngIf="report.metrics?.length">
+                    <div class="metric-chip" *ngFor="let metric of report.metrics">
+                      <span class="metric-name">{{ metric.name }}:</span>
+                      <span class="metric-value">
+                        {{ metric.value }}<span *ngIf="metric.unit"> {{ metric.unit }}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <pre *ngIf="report.details" class="report-details">{{ report.details }}</pre>
+
+                  <mat-expansion-panel *ngIf="report.data">
+                    <mat-expansion-panel-header>
+                      <mat-panel-title>Additional Data</mat-panel-title>
+                    </mat-expansion-panel-header>
+                    <pre>{{ report.data | json }}</pre>
+                  </mat-expansion-panel>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          </div>
+        </mat-tab>
+
         <!-- Cost Breakdown Tab -->
         <mat-tab label="Cost Breakdown" *ngIf="execution.cost_breakdown">
           <div class="tab-content">

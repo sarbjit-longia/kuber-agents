@@ -256,6 +256,25 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
                     f"  Entry: {entry_str}, SL: {sl_str}, TP: {tp_str}"
                 )
             
+            self.record_report(
+                state,
+                title="Strategy plan generated",
+                summary=f"{strategy_result.action} plan on {strategy_tf} (confidence {confidence_str})",
+                metrics={
+                    "action": strategy_result.action,
+                    "confidence": confidence_str,
+                    "risk_reward_minimum": min_rr,
+                },
+                data={
+                    "entry_price": strategy_result.entry_price,
+                    "stop_loss": strategy_result.stop_loss,
+                    "take_profit": strategy_result.take_profit,
+                    "pattern": strategy_result.pattern_detected,
+                    "reasoning": strategy_result.reasoning,
+                    "aggressive_mode": aggressive,
+                },
+            )
+            
             # Track cost (GPT-4 is more expensive)
             estimated_cost = 0.15
             self.track_cost(state, estimated_cost)

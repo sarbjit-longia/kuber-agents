@@ -167,6 +167,21 @@ class MarketDataAgent(BaseAgent):
                 f"✓ Market data fetched - Price: ${state.market_data.current_price:.2f}, "
                 f"Candles: {total_candles} across {len(timeframes)} timeframes"
             )
+            self.record_report(
+                state,
+                title="Market data refreshed",
+                summary=f"Fetched {total_candles} candles across {len(timeframes)} timeframes",
+                metrics={
+                    "current_price": state.market_data.current_price,
+                    "timeframes": ", ".join(timeframes),
+                    "total_candles": total_candles,
+                },
+                data={
+                    "timeframes": timeframes,
+                    "lookback_periods": lookback_periods,
+                    "tool": market_data_tool.__class__.__name__,
+                },
+            )
             
             # No cost for this agent (it's free)
             self.track_cost(state, 0.0)

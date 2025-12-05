@@ -82,6 +82,27 @@ class RiskAssessment(BaseModel):
     reasoning: str
 
 
+class AgentReportMetric(BaseModel):
+    """Metric/value pair for agent reports."""
+    name: str
+    value: Any
+    unit: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AgentReport(BaseModel):
+    """Human-readable report for what an agent did."""
+    agent_id: str
+    agent_type: str
+    title: str
+    summary: str
+    details: Optional[str] = None
+    status: str = "completed"
+    metrics: List[AgentReportMetric] = Field(default_factory=list)
+    data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class TradeExecution(BaseModel):
     """Trade execution details from Trade Manager Agent."""
     order_id: Optional[str] = None
@@ -156,6 +177,9 @@ class PipelineState(BaseModel):
     # Agent execution states (for UI progress tracking)
     agent_execution_states: List[Dict[str, Any]] = Field(default_factory=list)
     
+    # Structured agent reports
+    agent_reports: Dict[str, AgentReport] = Field(default_factory=dict)
+    
     def add_log(self, agent_id: str, message: str, level: str = "info"):
         """Add a log entry to the execution log."""
         self.execution_log.append({
@@ -182,6 +206,31 @@ class PipelineState(BaseModel):
         if data and len(data) > 0:
             return data[-1]
         return None
+    
+    def add_report(
+        self,
+        agent_id: str,
+        agent_type: str,
+        title: str,
+        summary: str,
+        *,
+        details: Optional[str] = None,
+        status: str = "completed",
+        metrics: Optional[List[AgentReportMetric]] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ):
+        """Add or update the structured report for an agent."""
+        report = AgentReport(
+            agent_id=agent_id,
+            agent_type=agent_type,
+            title=title,
+            summary=summary,
+            details=details,
+            status=status,
+            metrics=metrics or [],
+            data=data or {},
+        )
+        self.agent_reports[agent_id] = report
 
 
 class AgentConfigSchema(BaseModel):

@@ -40,6 +40,7 @@ class ExecutionInDB(ExecutionBase):
     cost: float
     logs: Optional[List[Dict[str, Any]]] = None
     agent_states: Optional[List[Dict[str, Any]]] = None
+    reports: Optional[Dict[str, Any]] = None
     cost_breakdown: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

@@ -151,6 +151,13 @@ class TradeManagerAgent(BaseAgent):
                 broker_response={"reason": "Trade not approved by risk manager"}
             )
             self.log(state, "Trade not approved - execution skipped")
+            self.record_report(
+                state,
+                title="Trade execution skipped",
+                summary="Risk manager did not approve trade",
+                status="skipped",
+                data={"reason": "Trade not approved by risk manager"},
+            )
             return state
         
         # If strategy is HOLD, no execution needed
@@ -165,6 +172,13 @@ class TradeManagerAgent(BaseAgent):
                 broker_response={"reason": "HOLD signal - no trade to execute"}
             )
             self.log(state, "HOLD signal - no execution needed")
+            self.record_report(
+                state,
+                title="No execution (HOLD)",
+                summary="Strategy advised HOLD so no trade executed",
+                status="skipped",
+                data={"reason": "Strategy HOLD"},
+            )
             return state
         
         try:
@@ -173,6 +187,17 @@ class TradeManagerAgent(BaseAgent):
                 # Simulation mode
                 state.trade_execution = self._simulate_execution(state, strategy, risk)
                 self.log(state, "⚠️ SIMULATED execution (enable_execution=false)")
+                self.record_report(
+                    state,
+                    title="Simulated trade execution",
+                    summary=f"{strategy.action} {risk.position_size:.0f} units @ {strategy.entry_price}",
+                    data={
+                        "mode": "simulation",
+                        "order_type": self.config.get("order_type", "market"),
+                        "position_size": risk.position_size,
+                        "entry_price": strategy.entry_price,
+                    },
+                )
                 return state
             
             # Real execution
@@ -199,6 +224,20 @@ class TradeManagerAgent(BaseAgent):
                     f"⚠️ Trade status: {execution.status}",
                     level="warning"
                 )
+            
+            self.record_report(
+                state,
+                title="Trade execution result",
+                summary=f"{execution.status.upper()} - {strategy.action} {execution.filled_quantity} units",
+                status="completed" if execution.status == "filled" else execution.status,
+                data={
+                    "filled_price": execution.filled_price,
+                    "filled_quantity": execution.filled_quantity,
+                    "order_type": self.config.get("order_type", "market"),
+                    "execution_mode": "live" if self.execution_enabled else "simulation",
+                    "broker_response": execution.broker_response,
+                },
+            )
             
             # No cost for this agent
             self.track_cost(state, 0.0)

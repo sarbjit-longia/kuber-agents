@@ -19,8 +19,9 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 
 import { MonitoringService } from '../../../core/services/monitoring.service';
-import { Execution, AgentState, ExecutionLog } from '../../../core/models/execution.model';
+import { Execution, AgentState, ExecutionLog, AgentReport, AgentReportMetric } from '../../../core/models/execution.model';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-execution-detail',
@@ -45,8 +46,10 @@ import { NavbarComponent } from '../../../core/components/navbar/navbar.componen
 export class ExecutionDetailComponent implements OnInit, OnDestroy {
   execution: Execution | null = null;
   logs: ExecutionLog[] = [];
+  reports: AgentReport[] = [];
   loading = true;
   executionId: string = '';
+  private executionSub?: Subscription;
 
   constructor(
     private route: ActivatedRoute,
@@ -60,22 +63,29 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     this.loadExecution();
     this.loadLogs();
 
-    // Start polling if execution is running
-    this.monitoringService.currentExecution$.subscribe(execution => {
-      if (execution && ['running', 'pending'].includes(execution.status)) {
-        this.monitoringService.startPolling(this.executionId);
+    this.executionSub = this.monitoringService.currentExecution$.subscribe(execution => {
+      if (execution) {
+        this.execution = execution;
+        this.reports = this.extractReports(execution);
+        this.loading = false;
+
+        if (['running', 'pending'].includes(execution.status)) {
+          this.monitoringService.startPolling(this.executionId);
+        }
       }
     });
   }
 
   ngOnDestroy(): void {
     this.monitoringService.stopPolling();
+    this.executionSub?.unsubscribe();
   }
 
   loadExecution(): void {
     this.monitoringService.getExecution(this.executionId).subscribe({
       next: (execution) => {
         this.execution = execution;
+        this.reports = this.extractReports(execution);
         this.loading = false;
       },
       error: (error) => {
@@ -214,6 +224,26 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
 
   formatCost(cost: number | undefined): string {
     return cost ? `$${cost.toFixed(4)}` : '$0.0000';
+  }
+
+  formatReportDate(date: string | undefined): string {
+    return date ? new Date(date).toLocaleString() : '';
+  }
+
+  getReportMetrics(report: AgentReport): AgentReportMetric[] {
+    return report.metrics || [];
+  }
+
+  private extractReports(execution: Execution | null): AgentReport[] {
+    if (!execution?.reports) {
+      return [];
+    }
+
+    return Object.values(execution.reports).sort((a, b) => {
+      const aTime = new Date(a.created_at).getTime();
+      const bTime = new Date(b.created_at).getTime();
+      return bTime - aTime;
+    });
   }
 
   back(): void {

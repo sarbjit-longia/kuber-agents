@@ -392,12 +392,14 @@ class PipelineExecutor:
                 # Update DB with progress
                 execution.agent_states = agent_states
                 execution.logs = self._serialize_logs(state.execution_log)
+                execution.reports = self._serialize_reports(state.agent_reports)
                 execution.cost = state.total_cost
                 execution.cost_breakdown = state.agent_costs
                 
                 # Mark JSONB columns as modified so SQLAlchemy saves them
                 flag_modified(execution, "agent_states")
                 flag_modified(execution, "logs")
+                flag_modified(execution, "reports")
                 flag_modified(execution, "cost_breakdown")
                 
                 db_session.commit()
@@ -482,16 +484,19 @@ class PipelineExecutor:
             "risk_assessment": serialize_model(state.risk_assessment),
             "trade_execution": serialize_model(state.trade_execution),
             "errors": state.errors,
-            "warnings": state.warnings
+            "warnings": state.warnings,
+            "agent_reports": self._serialize_reports(state.agent_reports),
         }
         execution.agent_states = agent_states
         execution.logs = self._serialize_logs(state.execution_log)
+        execution.reports = self._serialize_reports(state.agent_reports)
         execution.cost = state.total_cost
         execution.cost_breakdown = state.agent_costs
         
         # Mark JSONB columns as modified
         flag_modified(execution, "agent_states")
         flag_modified(execution, "logs")
+        flag_modified(execution, "reports")
         flag_modified(execution, "cost_breakdown")
         
         db_session.commit()
@@ -587,6 +592,7 @@ class PipelineExecutor:
                 # Update DB with progress
                 execution.agent_states = agent_states
                 execution.logs = self._serialize_logs(state.execution_log)
+                execution.reports = self._serialize_reports(state.agent_reports)
                 execution.cost = state.total_cost
                 execution.cost_breakdown = state.agent_costs
                 await db_session.commit()
@@ -659,12 +665,28 @@ class PipelineExecutor:
         for log_entry in logs:
             serialized_entry = {}
             for key, value in log_entry.items():
-                if isinstance(value, datetime):
-                    serialized_entry[key] = value.isoformat()
-                else:
-                    serialized_entry[key] = value
+                serialized_entry[key] = self._serialize_value(value)
             serialized.append(serialized_entry)
         return serialized
+    
+    def _serialize_reports(self, reports):
+        """Convert agent reports to JSON-safe dict."""
+        if not reports:
+            return {}
+        serialized = {}
+        for agent_id, report in reports.items():
+            serialized[agent_id] = self._serialize_value(report.dict())
+        return serialized
+    
+    def _serialize_value(self, value):
+        """Recursively convert datetimes and nested structures."""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, list):
+            return [self._serialize_value(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self._serialize_value(v) for k, v in value.items()}
+        return value
     
     async def execute_with_db_tracking(self, db_session) -> Execution:
         """
@@ -743,11 +765,13 @@ class PipelineExecutor:
                 "risk_assessment": serialize_model(state.risk_assessment),
                 "trade_execution": serialize_model(state.trade_execution),
                 "errors": state.errors,
-                "warnings": state.warnings
+                "warnings": state.warnings,
+                "agent_reports": self._serialize_reports(state.agent_reports),
             }
             execution.cost = state.total_cost
             execution.logs = serialize_logs(state.execution_log)
             execution.agent_states = getattr(state, 'agent_execution_states', [])
+            execution.reports = self._serialize_reports(state.agent_reports)
             execution.cost_breakdown = state.agent_costs
             
             await db_session.commit()
