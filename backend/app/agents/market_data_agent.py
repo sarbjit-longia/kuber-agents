@@ -191,5 +191,25 @@ class MarketDataAgent(BaseAgent):
         except Exception as e:
             error_msg = f"Failed to fetch market data: {str(e)}"
             self.add_error(state, error_msg)
+            
+            # Capture failure report for UI/monitoring
+            tool_name = "unknown"
+            try:
+                tool_name = market_data_tool.__class__.__name__
+            except Exception:
+                pass
+            
+            self.record_report(
+                state,
+                title="Market data fetch failed",
+                summary=error_msg,
+                status="failed",
+                data={
+                    "tool": tool_name,
+                    "symbol": state.symbol,
+                    "timeframes": timeframes if "timeframes" in locals() else self.config.get("timeframes"),
+                    "lookback_periods": lookback_periods if "lookback_periods" in locals() else self.config.get("lookback_periods"),
+                },
+            )
             raise AgentProcessingError(error_msg) from e
 

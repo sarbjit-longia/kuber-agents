@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "description": "Watchlist configuration for signal generators",
+  "updated": "2025-12-05",
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "TSLA"
+  ],
+  "notes": [
+    "Add tickers here to expand the watchlist",
+    "Generators will monitor all tickers in this list",
+    "Restart signal-generator service after changes"
+  ]
+}
+

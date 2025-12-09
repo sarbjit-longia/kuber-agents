@@ -1,42 +1,24 @@
 """
-Time-Based Trigger Agent
+Time-Based Trigger Agent (tool-driven)
 
-A FREE agent that triggers pipeline execution at regular intervals.
+This agent delegates trigger evaluation to attached trigger tools
+(e.g., TimeTriggerTool) instead of hardcoding time logic.
 """
-from datetime import datetime, timedelta
 from typing import Dict, Any
 
-from app.agents.base import BaseAgent, TriggerNotMetException
+from app.agents.base import BaseAgent, TriggerNotMetException, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema
 
 
 class TimeTriggerAgent(BaseAgent):
-    """
-    Time-based trigger that executes at regular intervals.
-    
-    This is a FREE agent (no LLM calls, no costs).
-    
-    Configuration:
-        - interval: Time interval (e.g., "5m", "1h", "1d")
-        - start_time: Optional start time (HH:MM format)
-        - end_time: Optional end time (HH:MM format)
-        - days_of_week: Optional list of days (0=Monday, 6=Sunday)
-    
-    Example config:
-        {
-            "interval": "5m",
-            "start_time": "09:30",
-            "end_time": "16:00",
-            "days_of_week": [0, 1, 2, 3, 4]  # Monday-Friday
-        }
-    """
+    """Generic trigger agent; relies on attached trigger tools."""
     
     @classmethod
     def get_metadata(cls) -> AgentMetadata:
         return AgentMetadata(
             agent_type="time_trigger",
             name="Time-Based Trigger",
-            description="Triggers pipeline execution at regular time intervals. Free to use.",
+            description="Triggers pipeline execution using attached trigger tools (e.g., Time Trigger). Free to use.",
             category="trigger",
             version="1.0.0",
             icon="schedule",
@@ -45,46 +27,13 @@ class TimeTriggerAgent(BaseAgent):
             requires_timeframes=[],
             requires_market_data=False,
             requires_position=False,
+            supported_tools=["time_trigger"],
             config_schema=AgentConfigSchema(
                 type="object",
-                title="Time Trigger Configuration",
-                description="Configure when the pipeline should execute",
-                properties={
-                    "interval": {
-                        "type": "string",
-                        "title": "Interval",
-                        "description": "How often to trigger (e.g., '5m', '15m', '1h', '4h', '1d')",
-                        "default": "5m",
-                        "enum": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
-                    },
-                    "start_time": {
-                        "type": "string",
-                        "title": "Start Time (Your Local Time)",
-                        "description": "Start time in HH:MM format (optional, e.g., '09:30')",
-                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
-                        "format": "time",
-                        "x-timezone": "local"
-                    },
-                    "end_time": {
-                        "type": "string",
-                        "title": "End Time (Your Local Time)",
-                        "description": "End time in HH:MM format (optional, e.g., '16:00')",
-                        "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
-                        "format": "time",
-                        "x-timezone": "local"
-                    },
-                    "days_of_week": {
-                        "type": "array",
-                        "title": "Days of Week",
-                        "description": "Days to run on (0=Monday, 6=Sunday). Empty = all days",
-                        "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 6
-                        }
-                    }
-                },
-                required=["interval"]
+                title="Trigger Agent Configuration",
+                description="Attach a trigger tool (e.g., Time Trigger).",
+                properties={},
+                required=[]
             ),
             can_initiate_trades=False,
             can_close_positions=False
@@ -92,7 +41,7 @@ class TimeTriggerAgent(BaseAgent):
     
     def process(self, state: PipelineState) -> PipelineState:
         """
-        Check if the trigger condition is met based on time.
+        Check trigger condition using attached trigger tools.
         
         Args:
             state: Current pipeline state
@@ -102,103 +51,42 @@ class TimeTriggerAgent(BaseAgent):
             
         Raises:
             TriggerNotMetException: If trigger condition not met
+            AgentProcessingError: If no trigger tool attached
         """
-        self.log(state, "Evaluating time-based trigger")
+        self.log(state, "Evaluating trigger via attached tools")
         
-        now = datetime.utcnow()
+        tools = self._load_tools()
+        trigger_tool = tools.get("time_trigger")
         
-        # Check day of week constraint
-        days_of_week = self.config.get("days_of_week", [])
-        weekday = now.weekday()
-        if days_of_week and weekday not in days_of_week:
-            reason = f"Today ({weekday}) not in allowed days {days_of_week}"
-            self.log(state, f"Not running today (day {weekday})")
+        if not trigger_tool:
+            msg = "Trigger Agent requires a trigger tool (e.g., Time Trigger) to be attached."
+            self.log(state, msg, level="error")
+            raise AgentProcessingError(msg)
+        
+        result = trigger_tool.execute()
+        trigger_met = bool(result.get("trigger_met"))
+        reason = result.get("reason", "")
+        
+        if not trigger_met:
             self.record_report(
                 state,
-                title="Trigger window not scheduled",
-                summary=reason,
+                title="Trigger not met",
+                summary=reason or "Trigger conditions not met",
                 status="skipped",
-                data={"weekday": weekday, "allowed_days": days_of_week},
+                data=result,
             )
-            raise TriggerNotMetException(
-                f"Trigger not met: Today is day {weekday}, "
-                f"only running on days {days_of_week}"
-            )
+            raise TriggerNotMetException(reason or "Trigger conditions not met")
         
-        # Check start/end time constraints
-        start_time = self.config.get("start_time")
-        end_time = self.config.get("end_time")
-        
-        if start_time or end_time:
-            current_time = now.strftime("%H:%M")
-            
-            if start_time and current_time < start_time:
-                reason = f"Current time {current_time} before start {start_time}"
-                self.log(state, f"Before start time ({start_time})")
-                self.record_report(
-                    state,
-                    title="Trigger outside window",
-                    summary=reason,
-                    status="paused",
-                    data={"current_time": current_time, "start_time": start_time},
-                )
-                raise TriggerNotMetException(
-                    f"Trigger not met: Current time {current_time} is before start time {start_time}"
-                )
-            
-            if end_time and current_time > end_time:
-                reason = f"Current time {current_time} after end {end_time}"
-                self.log(state, f"After end time ({end_time})")
-                self.record_report(
-                    state,
-                    title="Trigger outside window",
-                    summary=reason,
-                    status="paused",
-                    data={"current_time": current_time, "end_time": end_time},
-                )
-                raise TriggerNotMetException(
-                    f"Trigger not met: Current time {current_time} is after end time {end_time}"
-                )
-        
-        # If we get here, trigger is met
-        interval = self.config["interval"]
         state.trigger_met = True
-        state.trigger_reason = f"Time trigger ({interval} interval) condition met"
+        state.trigger_reason = reason or "Trigger met"
         
         self.log(state, f"✓ Trigger met - proceeding with pipeline execution")
         self.record_report(
             state,
             title="Trigger fired",
-            summary=f"Interval {interval} satisfied at {now.strftime('%H:%M UTC')}",
-            data={
-                "interval": interval,
-                "start_time": start_time,
-                "end_time": end_time,
-                "days_of_week": days_of_week,
-            },
+            summary=state.trigger_reason,
+            data=result,
         )
         
         return state
-    
-    def _parse_interval(self, interval: str) -> timedelta:
-        """
-        Parse interval string to timedelta.
-        
-        Args:
-            interval: Interval string (e.g., "5m", "1h", "1d")
-            
-        Returns:
-            timedelta object
-        """
-        unit = interval[-1]
-        value = int(interval[:-1])
-        
-        if unit == 'm':
-            return timedelta(minutes=value)
-        elif unit == 'h':
-            return timedelta(hours=value)
-        elif unit == 'd':
-            return timedelta(days=value)
-        else:
-            raise ValueError(f"Invalid interval format: {interval}")
 

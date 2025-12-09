@@ -427,6 +427,8 @@ class PipelineExecutor:
                 
                 execution.agent_states = agent_states
                 flag_modified(execution, "agent_states")
+                execution.reports = self._serialize_reports(state.agent_reports)
+                flag_modified(execution, "reports")
                 db_session.commit()
                 raise
                 
@@ -439,6 +441,8 @@ class PipelineExecutor:
                 agent_states[i]["error"] = str(e)
                 execution.agent_states = agent_states
                 flag_modified(execution, "agent_states")
+                execution.reports = self._serialize_reports(state.agent_reports)
+                flag_modified(execution, "reports")
                 db_session.commit()
                 
                 # Decide whether to continue or abort
@@ -457,6 +461,8 @@ class PipelineExecutor:
                 agent_states[i]["error"] = str(e)
                 execution.agent_states = agent_states
                 flag_modified(execution, "agent_states")
+                execution.reports = self._serialize_reports(state.agent_reports)
+                flag_modified(execution, "reports")
                 db_session.commit()
                 raise
         
@@ -785,6 +791,9 @@ class PipelineExecutor:
             execution.status = ExecutionStatus.SKIPPED
             execution.completed_at = datetime.utcnow()
             execution.result = {"trigger_met": False, "reason": "Trigger conditions not met"}
+            execution.logs = serialize_logs(getattr(locals().get("state", None), "execution_log", []))
+            execution.agent_states = getattr(locals().get("state", None), "agent_execution_states", [])
+            execution.reports = self._serialize_reports(getattr(locals().get("state", None), "agent_reports", {}))
             await db_session.commit()
             return execution
             

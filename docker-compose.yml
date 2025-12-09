@@ -127,6 +127,25 @@ services:
       - redis
       - celery-worker
 
+  # Signal Generator Service
+  signal-generator:
+    build:
+      context: ./signal-generator
+      dockerfile: Dockerfile
+    container_name: trading-signal-generator
+    environment:
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - LOG_LEVEL=INFO
+      - MOCK_GENERATOR_INTERVAL_SECONDS=60
+      - GOLDEN_CROSS_CHECK_INTERVAL_SECONDS=300
+      - GOLDEN_CROSS_SMA_SHORT=50
+      - GOLDEN_CROSS_SMA_LONG=200
+      - GOLDEN_CROSS_TIMEFRAME=D
+    volumes:
+      # Mount config directory so users can edit watchlist without rebuilding
+      - ./signal-generator/config:/app/config
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
