@@ -2,7 +2,7 @@
 Pydantic schemas for User model.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 
@@ -29,6 +29,9 @@ class UserInDB(UserBase):
     id: UUID
     is_active: bool
     is_superuser: bool
+    subscription_tier: str
+    max_active_pipelines: int
+    subscription_expires_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -39,6 +42,18 @@ class UserInDB(UserBase):
 class User(UserInDB):
     """Schema for user response."""
     pass
+
+
+class UserSubscriptionInfo(BaseModel):
+    """Detailed subscription information for a user."""
+    tier: str
+    max_active_pipelines: int
+    current_active_pipelines: int
+    total_pipelines: int
+    pipelines_remaining: int
+    available_signals: List[str]
+    subscription_expires_at: Optional[str] = None
+    is_limit_enforced: bool
 
 
 class UserLogin(BaseModel):

@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     # Email (SES)
     SES_FROM_EMAIL: Optional[str] = Field(default=None, description="SES from email address")
     
+    # Subscription & Billing
+    ENFORCE_SUBSCRIPTION_LIMITS: bool = Field(
+        default=False,
+        description="Enforce subscription tier limits (set to True in production)"
+    )
+    DEFAULT_SUBSCRIPTION_TIER: str = Field(
+        default="enterprise",
+        description="Default subscription tier for all users in dev mode"
+    )
+    
     @validator("ALLOWED_ORIGINS", pre=True)
     def parse_cors_origins(cls, v):
         """Parse CORS origins from string or list."""

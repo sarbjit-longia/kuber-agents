@@ -46,16 +46,18 @@ services:
       - "8000:8000"
       - "8001:8001"  # Prometheus metrics endpoint
     environment:
-      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=${DATABASE_URL:-postgresql://dev:devpass@postgres:5432/trading_platform}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
-      - ENV=development
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
+      - ENV=${ENV:-development}
+      - DEBUG=${DEBUG:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - ENFORCE_SUBSCRIPTION_LIMITS=${ENFORCE_SUBSCRIPTION_LIMITS:-false}
+      - DEFAULT_SUBSCRIPTION_TIER=${DEFAULT_SUBSCRIPTION_TIER:-enterprise}
     volumes:
       - ./backend:/app
       - /app/__pycache__

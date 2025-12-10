@@ -536,6 +536,123 @@ This roadmap outlines the development plan for the Trading Platform from initial
 
 ---
 
+## Subscription & Billing Roadmap
+
+### Phase 1: Data Models & Structure (Current - Week 8)
+**Duration**: 2-3 hours  
+**Goal**: Add subscription tier infrastructure without enforcement
+
+#### Backend Tasks
+- [x] Add `SubscriptionTier` enum (FREE, BASIC, PRO, ENTERPRISE)
+- [x] Add subscription fields to User model
+- [x] Create signal bucket definitions
+- [x] Add environment variable `ENFORCE_SUBSCRIPTION_LIMITS` (default: false)
+- [x] Add helper functions for limit checking (soft enforcement)
+- [x] Update User schema with subscription info
+- [x] Add API endpoint to get user subscription details
+
+#### Frontend Tasks
+- [ ] Add subscription models/interfaces
+- [ ] Display current tier in user profile
+- [ ] Show subscription limits in UI (even if not enforced)
+- [ ] Add "Dev Mode" badges where limits shown but not enforced
+
+#### Signal Bucket Definitions
+```
+FREE: External signals (webhooks, TrendSpider, etc.)
+BASIC ($29/month): 
+  - External + Golden Cross, Death Cross, RSI, MACD, Volume Spike
+  - Max 5 active pipelines
+  
+PRO ($99/month):
+  - All BASIC + News Sentiment, Volatility, Support/Resistance
+  - Max 20 active pipelines
+  
+ENTERPRISE ($299/month):
+  - All signals + Custom signals
+  - Unlimited pipelines
+  - Priority processing
+```
+
+#### Deliverables
+- ✅ Subscription tier architecture in place
+- ✅ UI shows future state (tiers, limits)
+- ✅ Zero friction in development (enforcement disabled)
+- ✅ Ready to enable enforcement with single ENV variable
+
+---
+
+### Phase 2: Enforcement & Billing (Future - Week 12+)
+**Duration**: 2-3 weeks  
+**Goal**: Enforce subscription limits and integrate billing
+
+#### Backend Tasks
+- [ ] Set `ENFORCE_SUBSCRIPTION_LIMITS=true` in production
+- [ ] Implement pipeline creation limit enforcement
+- [ ] Implement signal access enforcement in trigger-dispatcher
+- [ ] Add upgrade/downgrade logic
+- [ ] Stripe integration for payment processing
+- [ ] Subscription management API endpoints
+- [ ] Webhook handlers for Stripe events
+- [ ] Usage metering and invoicing
+- [ ] Free tier rate limiting (100 external signals/day)
+- [ ] Grace period handling (subscription expired)
+
+#### Frontend Tasks
+- [ ] Subscription management page
+- [ ] Upgrade prompts when limits hit
+- [ ] Payment form integration (Stripe Elements)
+- [ ] Billing history page
+- [ ] Usage dashboard (signals used, pipelines active)
+- [ ] Subscription cancellation flow
+- [ ] Plan comparison page
+
+#### Billing Features
+- [ ] Monthly recurring billing
+- [ ] Pro-rated upgrades/downgrades
+- [ ] Invoice generation
+- [ ] Payment method management
+- [ ] Failed payment handling
+- [ ] Subscription renewal reminders
+- [ ] Usage-based add-ons (extra pipelines: $5 per 5 pipelines)
+
+#### Admin Features
+- [ ] Admin panel for subscription management
+- [ ] Override subscription limits
+- [ ] Manual subscription adjustments
+- [ ] Billing analytics dashboard
+- [ ] Churn prevention features
+
+#### Deliverables
+- [ ] Full subscription enforcement active
+- [ ] Stripe payment processing working
+- [ ] Users can upgrade/downgrade
+- [ ] Billing automation complete
+- [ ] Revenue tracking in place
+
+---
+
+### Phase 3: Advanced Monetization (Future - Month 3+)
+**Duration**: 2-3 weeks  
+**Goal**: Advanced pricing and marketplace features
+
+#### Features
+- [ ] À la carte signal purchases ($15/month per Pro signal)
+- [ ] Custom signal bucket creation
+- [ ] Signal marketplace (buy/sell custom signals)
+- [ ] Annual billing discount (20% off)
+- [ ] Enterprise custom pricing
+- [ ] Referral program
+- [ ] Volume discounts for teams
+- [ ] Academic/non-profit pricing
+
+#### Deliverables
+- [ ] Flexible monetization options
+- [ ] Signal marketplace launched
+- [ ] Referral program active
+
+---
+
 ## Post-MVP Roadmap (Future Phases)
 
 ### Phase 2: Enhanced Features (Weeks 11-14)
