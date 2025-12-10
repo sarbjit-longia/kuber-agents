@@ -7,13 +7,17 @@ or Kafka (Phase 2).
 """
 import asyncio
 import json
+import time
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 import structlog
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
 
 from app.config import settings
 from app.generators import get_registry, MockSignalGenerator, GoldenCrossSignalGenerator
 from app.schemas.signal import Signal
+from app.telemetry import setup_telemetry
 
 
 # Configure structured logging
@@ -33,7 +37,7 @@ class SignalGeneratorService:
     Signal generator service that runs multiple generators.
     
     In Phase 1, signals are emitted to stdout/logs.
-    In Phase 2, signals will be published to Kafka.
+    In Phase 2, signals are published to Kafka.
     """
     
     def __init__(self):
@@ -41,9 +45,82 @@ class SignalGeneratorService:
         self.registry = get_registry()
         self.generators = []
         self.running = False
+        self.kafka_producer: Optional[KafkaProducer] = None
+        
+        # Initialize telemetry
+        try:
+            self.meter = setup_telemetry(service_name="signal-generator")
+            self._setup_metrics()
+            logger.info("telemetry_initialized")
+        except Exception as e:
+            logger.error("telemetry_initialization_failed", error=str(e))
+            self.meter = None
+        
+        # Initialize Kafka producer
+        self._initialize_kafka()
+    
+    def _setup_metrics(self):
+        """Setup custom metrics."""
+        if not self.meter:
+            return
+        
+        self.signals_generated = self.meter.create_counter(
+            "signals_generated_total",
+            description="Total signals generated",
+            unit="1"
+        )
+        
+        self.signal_generation_duration = self.meter.create_histogram(
+            "signal_generation_duration_seconds",
+            description="Time taken to generate signals",
+            unit="s"
+        )
+        
+        self.kafka_publish_duration = self.meter.create_histogram(
+            "kafka_publish_duration_seconds",
+            description="Time taken to publish signal to Kafka",
+            unit="s"
+        )
+        
+        self.kafka_publish_success = self.meter.create_counter(
+            "kafka_publish_success_total",
+            description="Total successful Kafka publishes",
+            unit="1"
+        )
+        
+        self.kafka_publish_failure = self.meter.create_counter(
+            "kafka_publish_failure_total",
+            description="Total failed Kafka publishes",
+            unit="1"
+        )
         
         # Initialize generators based on configuration
         self._initialize_generators()
+    
+    def _initialize_kafka(self):
+        """Initialize Kafka producer for signal publishing."""
+        try:
+            self.kafka_producer = KafkaProducer(
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                key_serializer=lambda k: k.encode('utf-8') if k else None,
+                acks='all',  # Wait for all replicas to acknowledge
+                retries=3,
+                max_in_flight_requests_per_connection=1  # Ensure ordering
+            )
+            logger.info(
+                "kafka_producer_initialized",
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                topic=settings.KAFKA_SIGNAL_TOPIC
+            )
+        except Exception as e:
+            logger.error(
+                "kafka_producer_initialization_failed",
+                error=str(e),
+                exc_info=True
+            )
+            self.kafka_producer = None
+            logger.warning("signals_will_only_log", message="Kafka unavailable, falling back to logs only")
     
     def _initialize_generators(self):
         """Initialize all configured generators."""
@@ -103,8 +180,19 @@ class SignalGeneratorService:
         
         while self.running:
             try:
+                # Track generation time
+                start_time = time.time()
+                
                 # Generate signals
                 signals = await generator.generate()
+                
+                # Record generation duration
+                if self.meter and signals:
+                    gen_duration = time.time() - start_time
+                    self.signal_generation_duration.record(
+                        gen_duration,
+                        {"generator": name, "signal_type": signals[0].signal_type.value}
+                    )
                 
                 if signals:
                     # Emit signals (Phase 1: just log them)
@@ -135,7 +223,76 @@ class SignalGeneratorService:
             # Convert to Kafka-ready format
             message = signal.to_kafka_message()
             
-            # Phase 1: Log the signal
+            # Track metrics
+            if self.meter:
+                self.signals_generated.add(1, {
+                    "signal_type": signal.signal_type.value,
+                    "source": signal.source
+                })
+            
+            # Phase 2: Publish to Kafka
+            if self.kafka_producer:
+                publish_start = time.time()
+                try:
+                    # Use signal_type as the key for partitioning
+                    key = signal.signal_type.value
+                    
+                    future = self.kafka_producer.send(
+                        settings.KAFKA_SIGNAL_TOPIC,
+                        key=key,
+                        value=message
+                    )
+                    
+                    # Wait for acknowledgment (with timeout)
+                    record_metadata = future.get(timeout=10)
+                    
+                    # Record successful publish
+                    if self.meter:
+                        publish_duration = time.time() - publish_start
+                        self.kafka_publish_duration.record(publish_duration, {
+                            "signal_type": signal.signal_type.value
+                        })
+                        self.kafka_publish_success.add(1, {
+                            "signal_type": signal.signal_type.value
+                        })
+                    
+                    logger.info(
+                        "signal_published_to_kafka",
+                        signal_id=str(signal.signal_id),
+                        topic=record_metadata.topic,
+                        partition=record_metadata.partition,
+                        offset=record_metadata.offset
+                    )
+                except KafkaError as e:
+                    # Record failed publish
+                    if self.meter:
+                        self.kafka_publish_failure.add(1, {
+                            "signal_type": signal.signal_type.value,
+                            "error_type": type(e).__name__
+                        })
+                    
+                    logger.error(
+                        "kafka_publish_failed",
+                        signal_id=str(signal.signal_id),
+                        error=str(e),
+                        exc_info=True
+                    )
+                except Exception as e:
+                    # Record failed publish
+                    if self.meter:
+                        self.kafka_publish_failure.add(1, {
+                            "signal_type": signal.signal_type.value,
+                            "error_type": type(e).__name__
+                        })
+                    
+                    logger.error(
+                        "unexpected_kafka_error",
+                        signal_id=str(signal.signal_id),
+                        error=str(e),
+                        exc_info=True
+                    )
+            
+            # Also log the signal (structured logging)
             logger.info(
                 "signal_emitted",
                 signal_id=str(signal.signal_id),
@@ -158,6 +315,10 @@ class SignalGeneratorService:
             print(f"   ID: {signal.signal_id}")
             print(f"   Source: {signal.source}")
             print(f"   Timestamp: {signal.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            
+            if self.kafka_producer:
+                print(f"   📤 Published to Kafka: {settings.KAFKA_SIGNAL_TOPIC}")
+            
             print(f"   Tickers:")
             
             for ticker_signal in signal.tickers:
@@ -199,8 +360,18 @@ class SignalGeneratorService:
             raise
     
     async def stop(self):
-        """Stop all generators."""
+        """Stop all generators and cleanup resources."""
         self.running = False
+        
+        # Close Kafka producer
+        if self.kafka_producer:
+            try:
+                self.kafka_producer.flush(timeout=5)
+                self.kafka_producer.close(timeout=5)
+                logger.info("kafka_producer_closed")
+            except Exception as e:
+                logger.error("kafka_producer_close_error", error=str(e))
+        
         logger.info("signal_generator_service_stopping")
         print("\n🛑 Signal Generator Service Stopping...\n")
 

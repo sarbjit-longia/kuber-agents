@@ -9,6 +9,7 @@ Orchestrates the execution of trading pipelines by:
 5. Handling errors and retries
 """
 import structlog
+import time
 from typing import Dict, Any, List, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
@@ -20,6 +21,20 @@ from app.agents import get_registry
 from app.agents.base import AgentError, TriggerNotMetException
 
 logger = structlog.get_logger()
+
+# Metrics (initialized lazily)
+_metrics_helper = None
+
+def _get_metrics():
+    """Get metrics helper (lazy initialization)."""
+    global _metrics_helper
+    if _metrics_helper is None:
+        try:
+            from app.telemetry import get_meter, MetricsHelper
+            _metrics_helper = MetricsHelper(get_meter())
+        except:
+            _metrics_helper = None  # Telemetry not available
+    return _metrics_helper
 
 
 class PipelineExecutor:
@@ -322,6 +337,21 @@ class PipelineExecutor:
         # Import flag_modified for JSONB column tracking
         from sqlalchemy.orm.attributes import flag_modified
         
+        # Track execution metrics
+        start_time = time.time()
+        metrics = _get_metrics()
+        
+        if metrics:
+            exec_counter = metrics.counter(
+                "pipeline_executions_total",
+                description="Total pipeline executions"
+            )
+            exec_duration = metrics.histogram(
+                "pipeline_execution_duration_seconds",
+                description="Pipeline execution duration",
+                unit="s"
+            )
+        
         # Initialize state
         state = PipelineState(
             pipeline_id=self.pipeline.id,
@@ -468,6 +498,21 @@ class PipelineExecutor:
         
         # Mark completion
         state.completed_at = datetime.utcnow()
+        
+        # Track execution completion metrics
+        execution_time = time.time() - start_time
+        final_status = "success" if not state.errors else "failed"
+        
+        if metrics:
+            exec_counter.add(1, {
+                "status": final_status,
+                "pipeline_id": str(self.pipeline.id),
+                "trigger_mode": self.pipeline.trigger_mode.value if hasattr(self.pipeline, 'trigger_mode') else "unknown"
+            })
+            exec_duration.record(execution_time, {
+                "status": final_status,
+                "pipeline_id": str(self.pipeline.id)
+            })
         
         # Update final execution record
         execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED

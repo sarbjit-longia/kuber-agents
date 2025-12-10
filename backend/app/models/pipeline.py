@@ -2,12 +2,24 @@
 Pipeline model for storing user-created trading pipelines.
 """
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
+import enum
 
 from ..database import Base
+
+
+class TriggerMode(str, enum.Enum):
+    """
+    Trigger mode for pipeline execution.
+    
+    - SIGNAL: Pipeline is triggered by external signals (e.g., from signal generators)
+    - PERIODIC: Pipeline runs on a fixed schedule (e.g., every 5 minutes)
+    """
+    SIGNAL = "signal"
+    PERIODIC = "periodic"
 
 
 class Pipeline(Base):
@@ -24,6 +36,8 @@ class Pipeline(Base):
         description: Pipeline description
         config: JSONB storing the pipeline configuration (nodes, edges, etc.)
         is_active: Whether the pipeline is currently active/running
+        trigger_mode: How the pipeline is triggered (signal or periodic)
+        scanner_tickers: List of ticker symbols for signal-based pipelines
         created_at: Timestamp of pipeline creation
         updated_at: Timestamp of last update
     """
@@ -35,6 +49,8 @@ class Pipeline(Base):
     description = Column(Text, nullable=True)
     config = Column(JSONB, nullable=False, default=dict)
     is_active = Column(Boolean, default=False, nullable=False)
+    trigger_mode = Column(SQLEnum(TriggerMode), default=TriggerMode.PERIODIC, nullable=False, index=True)
+    scanner_tickers = Column(JSONB, nullable=True, default=list)  # List of tickers for signal-based pipelines
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

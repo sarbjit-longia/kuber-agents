@@ -13,6 +13,7 @@ import structlog
 
 from app.config import settings
 from app.api import v1
+from app.telemetry import setup_telemetry, MetricsHelper
 
 # Configure structured logging
 structlog.configure(
@@ -33,9 +34,24 @@ async def lifespan(app: FastAPI):
     This handles:
     - Database connection pool initialization
     - Redis connection initialization
+    - OpenTelemetry setup
     - Cleanup on shutdown
     """
     logger.info("application_starting", environment=settings.ENV)
+    
+    # Setup OpenTelemetry
+    try:
+        meter = setup_telemetry(
+            app,
+            service_name="trading-backend",
+            service_version="1.0.0",
+            metrics_port=8001
+        )
+        # Store metrics helper in app state
+        app.state.metrics = MetricsHelper(meter)
+        logger.info("telemetry_initialized")
+    except Exception as e:
+        logger.error("telemetry_initialization_failed", error=str(e))
     
     # Startup logic here
     yield

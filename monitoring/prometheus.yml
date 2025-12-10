@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'trading-platform'
+    environment: 'development'
+
+scrape_configs:
+  # Backend API
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['backend:8001']
+        labels:
+          service: 'backend'
+          component: 'api'
+  
+  # Celery Worker
+  - job_name: 'celery-worker'
+    static_configs:
+      - targets: ['celery-worker:8001']
+        labels:
+          service: 'celery-worker'
+          component: 'worker'
+  
+  # Signal Generator
+  - job_name: 'signal-generator'
+    static_configs:
+      - targets: ['signal-generator:8001']
+        labels:
+          service: 'signal-generator'
+          component: 'generator'
+  
+  # Trigger Dispatcher
+  - job_name: 'trigger-dispatcher'
+    static_configs:
+      - targets: ['trigger-dispatcher:8001']
+        labels:
+          service: 'trigger-dispatcher'
+          component: 'dispatcher'
+

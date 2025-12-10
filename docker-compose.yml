@@ -44,6 +44,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
+      - "8001:8001"  # Prometheus metrics endpoint
     environment:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
       - REDIS_URL=redis://redis:6379
@@ -76,6 +77,8 @@ services:
       dockerfile: Dockerfile
     container_name: trading-celery-worker
     command: celery -A app.orchestration.celery_app worker --loglevel=info --concurrency=2
+    ports:
+      - "8002:8001"  # Prometheus metrics endpoint (different host port)
     environment:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
       - REDIS_URL=redis://redis:6379
@@ -127,12 +130,55 @@ services:
       - redis
       - celery-worker
 
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: trading-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: trading-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
   # Signal Generator Service
   signal-generator:
     build:
       context: ./signal-generator
       dockerfile: Dockerfile
     container_name: trading-signal-generator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8003:8001"  # Prometheus metrics endpoint
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - LOG_LEVEL=INFO
@@ -141,12 +187,93 @@ services:
       - GOLDEN_CROSS_SMA_SHORT=50
       - GOLDEN_CROSS_SMA_LONG=200
       - GOLDEN_CROSS_TIMEFRAME=D
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_SIGNAL_TOPIC=trading-signals
     volumes:
       # Mount config directory so users can edit watchlist without rebuilding
       - ./signal-generator/config:/app/config
     restart: unless-stopped
 
+  # Trigger Dispatcher Service
+  trigger-dispatcher:
+    build:
+      context: ./trigger-dispatcher
+      dockerfile: Dockerfile
+    container_name: trading-trigger-dispatcher
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8004:8001"  # Prometheus metrics endpoint
+    environment:
+      - LOG_LEVEL=INFO
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_SIGNAL_TOPIC=trading-signals
+      - KAFKA_CONSUMER_GROUP=trigger-dispatcher
+      - KAFKA_AUTO_OFFSET_RESET=latest
+      - BATCH_SIZE=20
+      - BATCH_TIMEOUT_SECONDS=0.5
+      - CACHE_REFRESH_INTERVAL_SECONDS=30
+      - POSTGRES_USER=${POSTGRES_USER:-dev}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trading_platform}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    restart: unless-stopped
+
+  # Prometheus - Metrics Storage & Aggregation
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: trading-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: unless-stopped
+    networks:
+      - default
+
+  # Grafana - Metrics Visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: trading-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - default
+
 volumes:
   postgres_data:
   redis_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  prometheus_data:
+  grafana_data:
 
