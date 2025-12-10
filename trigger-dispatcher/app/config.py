@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     
     # Database Configuration
     POSTGRES_USER: str = "dev"
-    POSTGRES_PASSWORD: str = "dev"
+    POSTGRES_PASSWORD: str = "devpass"
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "trading_platform"

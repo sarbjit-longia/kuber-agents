@@ -37,6 +37,9 @@
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Select Scanner</mat-label>
         <mat-select formControlName="scanner_id" required>
+          <mat-select-trigger>
+            <span *ngIf="getSelectedScanner() as scanner">{{ scanner.name }}</span>
+          </mat-select-trigger>
           <mat-option *ngFor="let scanner of scanners" [value]="scanner.id">
             <div class="scanner-option">
               <span class="scanner-name">{{ scanner.name }}</span>
@@ -88,12 +91,22 @@
           <mat-form-field appearance="outline" class="signal-type-field">
             <mat-label>Signal Type</mat-label>
             <mat-select formControlName="signal_type">
+              <mat-select-trigger>
+                <div class="selected-signal" *ngIf="sub.get('signal_type')?.value">
+                  <mat-icon class="signal-icon">{{ getSignalTypeInfo(sub.get('signal_type')?.value)?.icon }}</mat-icon>
+                  <span>{{ getSignalTypeInfo(sub.get('signal_type')?.value)?.name }}</span>
+                </div>
+              </mat-select-trigger>
               <mat-option *ngFor="let signalType of signalTypes" [value]="signalType.signal_type">
                 <div class="signal-type-option">
-                  <mat-icon>{{ signalType.icon }}</mat-icon>
-                  <div class="signal-info">
+                  <div class="signal-header">
+                    <mat-icon class="signal-icon">{{ signalType.icon }}</mat-icon>
                     <strong>{{ signalType.name }}</strong>
-                    <span class="signal-description">{{ signalType.description }}</span>
+                  </div>
+                  <div class="signal-description">{{ signalType.description }}</div>
+                  <div class="signal-meta">
+                    <span class="frequency">{{ signalType.typical_frequency }}</span>
+                    <span class="badge" [class.free]="signalType.is_free">{{ signalType.is_free ? 'FREE' : 'PAID' }}</span>
                   </div>
                 </div>
               </mat-option>

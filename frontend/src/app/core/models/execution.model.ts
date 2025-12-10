@@ -12,6 +12,8 @@ export interface Execution {
   status: ExecutionStatus;
   mode: ExecutionMode;
   symbol?: string;
+  trigger_mode?: 'signal' | 'periodic';
+  scanner_name?: string;
   started_at: string;
   completed_at?: string;
   error_message?: string;
@@ -110,6 +112,8 @@ export interface ExecutionSummary {
   status: ExecutionStatus;
   mode: ExecutionMode;
   symbol?: string;
+  trigger_mode?: 'signal' | 'periodic';
+  scanner_name?: string;
   started_at: string;
   completed_at?: string;
   duration_seconds?: number;

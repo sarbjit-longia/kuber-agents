@@ -108,6 +108,77 @@ def get_meter() -> metrics.Meter:
     return _meter
 
 
+def setup_telemetry_minimal(
+    service_name: str = "trading-worker",
+    service_version: str = "1.0.0",
+    metrics_port: int = 8001
+) -> metrics.Meter:
+    """
+    Set up OpenTelemetry instrumentation for non-web services (Celery workers).
+    
+    This is a minimal version that doesn't require a FastAPI app.
+    
+    Args:
+        service_name: Name of the service for identification
+        service_version: Version of the service
+        metrics_port: Port to expose Prometheus metrics endpoint
+        
+    Returns:
+        Meter instance for creating custom metrics
+    """
+    global _meter
+    
+    # Define resource (service identity)
+    resource = Resource.create({
+        SERVICE_NAME: service_name,
+        SERVICE_VERSION: service_version,
+        DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "development"),
+        "service.namespace": "trading-platform",
+    })
+    
+    logger.info(f"Setting up OpenTelemetry for {service_name}")
+    
+    # Setup Metrics with Prometheus exporter
+    prometheus_reader = PrometheusMetricReader()
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[prometheus_reader]
+    )
+    metrics.set_meter_provider(meter_provider)
+    
+    # Setup Traces
+    trace_provider = TracerProvider(resource=resource)
+    trace.set_tracer_provider(trace_provider)
+    
+    # Auto-instrument SQLAlchemy
+    try:
+        SQLAlchemyInstrumentor().instrument()
+        logger.info("SQLAlchemy auto-instrumentation enabled")
+    except Exception as e:
+        logger.warning(f"Failed to instrument SQLAlchemy: {e}")
+    
+    # Auto-instrument Redis
+    try:
+        RedisInstrumentor().instrument()
+        logger.info("Redis auto-instrumentation enabled")
+    except Exception as e:
+        logger.warning(f"Failed to instrument Redis: {e}")
+    
+    # Start Prometheus metrics HTTP server
+    try:
+        start_http_server(port=metrics_port)
+        logger.info(f"Prometheus metrics endpoint started on port {metrics_port}")
+    except OSError as e:
+        logger.warning(f"Failed to start metrics server on port {metrics_port}: {e}")
+    
+    # Create and cache meter
+    _meter = meter_provider.get_meter(service_name)
+    
+    logger.info(f"OpenTelemetry setup complete for {service_name}")
+    
+    return _meter
+
+
 def get_tracer(name: str = __name__) -> trace.Tracer:
     """
     Get a tracer for creating spans.

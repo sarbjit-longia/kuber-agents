@@ -2,8 +2,8 @@
 Pipeline model for storing user-created trading pipelines.
 """
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 import enum
@@ -49,7 +49,17 @@ class Pipeline(Base):
     description = Column(Text, nullable=True)
     config = Column(JSONB, nullable=False, default=dict)
     is_active = Column(Boolean, default=False, nullable=False)
-    trigger_mode = Column(ENUM('signal', 'periodic', name='triggermode', create_type=False), default='periodic', nullable=False, index=True)
+    trigger_mode = Column(
+        SQLEnum(
+            TriggerMode,
+            name='triggermode',
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        default=TriggerMode.PERIODIC,
+        nullable=False,
+        index=True
+    )
     
     # Scanner configuration (signal-based pipelines)
     scanner_id = Column(UUID(as_uuid=True), ForeignKey("scanners.id"), nullable=True, index=True)

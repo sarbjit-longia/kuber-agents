@@ -24,7 +24,7 @@ async def get_available_signal_types() -> List[Dict[str, Any]]:
     """
     return [
         {
-            "signal_type": SignalTypeEnum.MOCKSIGNAL.value,
+            "signal_type": SignalTypeEnum.MOCK.value,
             "name": "Mock Signal (Testing)",
             "description": "Random test signals for development and testing",
             "generator": "mock_generator",
@@ -36,7 +36,7 @@ async def get_available_signal_types() -> List[Dict[str, Any]]:
             "category": "testing"
         },
         {
-            "signal_type": SignalTypeEnum.GOLDENCROSSSIGNAL.value,
+            "signal_type": SignalTypeEnum.GOLDEN_CROSS.value,
             "name": "Golden Cross",
             "description": "Detects when 50-day SMA crosses above 200-day SMA (bullish signal)",
             "generator": "golden_cross_generator",

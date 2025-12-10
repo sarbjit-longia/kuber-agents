@@ -69,6 +69,8 @@ class ExecutionSummary(BaseModel):
     status: ExecutionStatus
     mode: str
     symbol: Optional[str] = None
+    trigger_mode: Optional[str] = None  # "signal" or "periodic"
+    scanner_name: Optional[str] = None  # Scanner name for signal-based pipelines
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     duration_seconds: Optional[float] = None

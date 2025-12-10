@@ -501,7 +501,7 @@ class PipelineExecutor:
         
         # Track execution completion metrics
         execution_time = time.time() - start_time
-        final_status = "success" if not state.errors else "failed"
+        final_status = "completed" if not state.errors else "failed"
         
         if metrics:
             exec_counter.add(1, {

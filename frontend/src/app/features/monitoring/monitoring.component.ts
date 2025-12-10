@@ -42,7 +42,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   executions: ExecutionSummary[] = [];
   stats: ExecutionStats | null = null;
   loading = true;
-  displayedColumns: string[] = ['pipeline', 'mode', 'symbol', 'status', 'started', 'duration', 'cost', 'actions'];
+  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'status', 'started', 'duration', 'cost', 'actions'];
 
   private refreshInterval: any;
 
@@ -163,7 +163,26 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString();
+    if (!dateString) return '-';
+    
+    // Ensure the date is treated as UTC if no timezone info is present
+    let isoString = dateString;
+    if (!dateString.endsWith('Z') && !dateString.match(/[+-]\d{2}:\d{2}$/)) {
+      // If no timezone info, append 'Z' to treat as UTC
+      isoString = dateString + 'Z';
+    }
+    
+    // Convert to local timezone
+    return new Date(isoString).toLocaleString();
+  }
+
+  getSource(execution: ExecutionSummary): string {
+    if (execution.trigger_mode === 'signal' && execution.scanner_name) {
+      return execution.scanner_name;
+    } else if (execution.trigger_mode === 'periodic') {
+      return 'Periodic';
+    }
+    return '—';
   }
 
   showNotification(message: string, type: 'success' | 'error' | 'info'): void {

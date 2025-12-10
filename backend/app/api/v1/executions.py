@@ -205,8 +205,17 @@ async def list_executions(
     Returns:
         List of execution summaries
     """
-    query = select(Execution, Pipeline.name).join(
+    from app.models.scanner import Scanner
+    
+    query = select(
+        Execution, 
+        Pipeline.name, 
+        Pipeline.trigger_mode,
+        Scanner.name.label('scanner_name')
+    ).join(
         Pipeline, Execution.pipeline_id == Pipeline.id
+    ).outerjoin(
+        Scanner, Pipeline.scanner_id == Scanner.id
     ).where(Execution.user_id == current_user.id)
     
     if pipeline_id:
@@ -221,7 +230,7 @@ async def list_executions(
     rows = result.all()
     
     summaries = []
-    for execution, pipeline_name in rows:
+    for execution, pipeline_name, trigger_mode, scanner_name in rows:
         duration_seconds = None
         if execution.started_at and execution.completed_at:
             duration_seconds = (execution.completed_at - execution.started_at).total_seconds()
@@ -237,6 +246,8 @@ async def list_executions(
             status=execution.status,
             mode=execution.mode,
             symbol=execution.symbol,
+            trigger_mode=trigger_mode.value if trigger_mode else None,
+            scanner_name=scanner_name,
             started_at=execution.started_at,
             completed_at=execution.completed_at,
             duration_seconds=duration_seconds,

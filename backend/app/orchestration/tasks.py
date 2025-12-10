@@ -159,7 +159,7 @@ def check_scheduled_pipelines():
     Check for pipelines that should be executed based on their schedule.
     
     This task runs every minute (configured in beat_schedule) and:
-    1. Finds active pipelines with schedules
+    1. Finds active periodic pipelines
     2. Checks if they should run based on their schedule
     3. Triggers execution tasks for pipelines that should run
     
@@ -170,36 +170,68 @@ def check_scheduled_pipelines():
     
     db = SessionLocal()
     scheduled_count = 0
+    triggered_count = 0
     
     try:
-        # Find active pipelines
-        # Note: For MVP, we use Celery Beat for scheduling via time triggers
-        # Future: Add database-level schedule field for more complex scheduling
+        from app.models.pipeline import TriggerMode
+        
+        # Find active PERIODIC pipelines
         pipelines = db.query(Pipeline).filter(
-            Pipeline.is_active == True  # noqa: E712
+            Pipeline.is_active == True,  # noqa: E712
+            Pipeline.trigger_mode == TriggerMode.PERIODIC
         ).all()
+        
+        logger.info("periodic_pipelines_found", count=len(pipelines))
         
         for pipeline in pipelines:
             try:
-                # For now, just log active pipelines
-                # The actual scheduling is handled by TimeTriggerAgent in each pipeline
-                logger.debug(
-                    "active_pipeline_found",
+                # Check if pipeline has any running executions
+                running_exec = db.query(Execution).filter(
+                    Execution.pipeline_id == pipeline.id,
+                    Execution.status.in_([ExecutionStatus.PENDING, ExecutionStatus.RUNNING])
+                ).first()
+                
+                if running_exec:
+                    logger.debug(
+                        "pipeline_already_running",
+                        pipeline_id=str(pipeline.id),
+                        execution_id=str(running_exec.id)
+                    )
+                    continue
+                
+                # Trigger pipeline execution
+                # For MVP: Execute all active periodic pipelines every minute
+                # Future: Add interval configuration (e.g., every 5min, 15min, 1h)
+                logger.info(
+                    "triggering_periodic_pipeline",
                     pipeline_id=str(pipeline.id),
                     name=pipeline.name
                 )
+                
+                execute_pipeline.delay(
+                    pipeline_id=str(pipeline.id),
+                    user_id=str(pipeline.user_id),
+                    mode="paper"  # Default to paper for periodic executions
+                )
+                
+                triggered_count += 1
                 scheduled_count += 1
                     
             except Exception as e:
                 logger.error(
                     "error_checking_pipeline",
                     pipeline_id=str(pipeline.id),
-                    error=str(e)
+                    error=str(e),
+                    exc_info=True
                 )
                 continue
         
-        logger.info("scheduled_pipelines_checked", count=scheduled_count)
-        return {"scheduled": scheduled_count}
+        logger.info(
+            "scheduled_pipelines_checked",
+            total_found=len(pipelines),
+            triggered=triggered_count
+        )
+        return {"scheduled": scheduled_count, "triggered": triggered_count}
         
     finally:
         db.close()

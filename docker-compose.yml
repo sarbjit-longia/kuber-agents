@@ -106,13 +106,19 @@ services:
     container_name: trading-celery-beat
     command: celery -A app.orchestration.celery_app beat --loglevel=info
     environment:
+      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
       - REDIS_URL=redis://redis:6379
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENV=development
+      - LOG_LEVEL=INFO
     volumes:
       - ./backend:/app
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # Flower (Celery monitoring UI)
   flower:
@@ -219,7 +225,7 @@ services:
       - BATCH_TIMEOUT_SECONDS=0.5
       - CACHE_REFRESH_INTERVAL_SECONDS=30
       - POSTGRES_USER=${POSTGRES_USER:-dev}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-devpass}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-trading_platform}

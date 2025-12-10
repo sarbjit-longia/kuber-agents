@@ -3,9 +3,13 @@ Celery Application Configuration
 
 Configures Celery for asynchronous task execution and scheduling.
 """
+import logging
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Create Celery app
 celery_app = Celery(
@@ -47,4 +51,24 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=0, minute=0),  # Midnight UTC
     },
 }
+
+
+# Initialize telemetry for Celery workers
+@worker_process_init.connect
+def init_worker_telemetry(**kwargs):
+    """
+    Initialize OpenTelemetry for Celery worker process.
+    
+    This runs once per worker process to set up metrics exporting.
+    """
+    try:
+        from app.telemetry import setup_telemetry_minimal
+        setup_telemetry_minimal(
+            service_name="trading-celery-worker",
+            service_version="1.0.0",
+            metrics_port=8001
+        )
+        logger.info("Celery worker telemetry initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize Celery worker telemetry: {e}")
 

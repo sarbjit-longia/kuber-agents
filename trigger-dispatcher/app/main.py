@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import structlog
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, cast, String
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from celery import Celery
@@ -225,7 +225,7 @@ class TriggerDispatcher:
                 ).where(
                     and_(
                         pipelines_table.c.is_active == True,
-                        pipelines_table.c.trigger_mode == 'signal'
+                        cast(pipelines_table.c.trigger_mode, String) == 'signal'
                     )
                 )
                 
@@ -309,7 +309,7 @@ class TriggerDispatcher:
                     # Check if this signal type is subscribed
                     subscribed = False
                     for subscription in signal_subscriptions:
-                        if subscription.get('signal_type') == signal.signal_type.value:
+                        if subscription.get('signal_type') == signal.signal_type:
                             # Check 3: Confidence threshold (if specified)
                             min_confidence = subscription.get('min_confidence')
                             if min_confidence is not None:
@@ -338,7 +338,7 @@ class TriggerDispatcher:
                             "signal_filtered_by_subscription",
                             signal_id=str(signal.signal_id),
                             pipeline_id=pipeline_id,
-                            signal_type=signal.signal_type.value,
+                            signal_type=signal.signal_type,
                             subscriptions=[s.get('signal_type') for s in signal_subscriptions]
                         )
                         continue  # Pipeline not subscribed to this signal type
@@ -354,7 +354,7 @@ class TriggerDispatcher:
                     pipeline_id=pipeline_id,
                     pipeline_name=pipeline_data['name'],
                     matched_tickers=list(matched_tickers),
-                    signal_type=signal.signal_type.value
+                    signal_type=signal.signal_type
                 )
         
         return matches
@@ -395,7 +395,7 @@ class TriggerDispatcher:
                 query = select(executions_table.c.pipeline_id).where(
                     and_(
                         executions_table.c.pipeline_id.in_(pipeline_uuids),
-                        executions_table.c.status.in_(['PENDING', 'RUNNING'])
+                        cast(executions_table.c.status, String).in_(['PENDING', 'RUNNING'])
                     )
                 )
                 
@@ -445,13 +445,24 @@ class TriggerDispatcher:
                 continue
             
             try:
+                # Get user_id from pipeline cache
+                pipeline_data = self.pipeline_cache.get(pipeline_id, {})
+                user_id = pipeline_data.get('user_id')
+                
+                if not user_id:
+                    logger.error(
+                        "pipeline_missing_user_id",
+                        pipeline_id=pipeline_id
+                    )
+                    continue
+                
                 # Enqueue Celery task
                 celery_app.send_task(
                     'app.orchestration.tasks.execute_pipeline',
                     kwargs={
                         'pipeline_id': pipeline_id,
-                        'triggered_by_signal': True,
-                        'signal_ids': signal_ids[:1]  # Use first signal only
+                        'user_id': str(user_id),
+                        'mode': 'paper'  # Signal-triggered pipelines use paper mode by default
                     }
                 )
                 
@@ -460,9 +471,11 @@ class TriggerDispatcher:
                 logger.info(
                     "pipeline_execution_enqueued",
                     pipeline_id=pipeline_id,
-                    pipeline_name=self.pipeline_cache.get(pipeline_id, {}).get('name'),
+                    pipeline_name=pipeline_data.get('name'),
+                    user_id=str(user_id),
                     signal_ids=signal_ids[:1],
-                    total_signals=len(signal_ids)
+                    total_signals=len(signal_ids),
+                    mode='paper'
                 )
                 
             except Exception as e:

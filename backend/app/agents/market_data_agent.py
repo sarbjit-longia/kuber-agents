@@ -102,12 +102,13 @@ class MarketDataAgent(BaseAgent):
         tools = self._load_tools()
         
         # Get market data tool (REQUIRED - must be attached by user)
-        market_data_tool = tools.get("market_data")
+        # Accept either market_data (Finnhub) or mock_market_data (Testing)
+        market_data_tool = tools.get("market_data") or tools.get("mock_market_data")
         
         if not market_data_tool:
             raise AgentProcessingError(
                 "Market Data Agent requires a Market Data Tool to be attached. "
-                "Please attach a tool like 'Finnhub Market Data' in the pipeline builder."
+                "Please attach a tool like 'Finnhub Market Data' or 'Mock Market Data (Testing)' in the pipeline builder."
             )
         
         self.log(state, f"Fetching market data (Using {market_data_tool.__class__.__name__})")
