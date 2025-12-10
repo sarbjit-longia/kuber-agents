@@ -88,6 +88,10 @@ def setup_telemetry(
     # Create and cache meter
     _meter = meter_provider.get_meter(service_name)
     
+    # Setup system metrics collection (for backend only)
+    if service_name == "trading-backend" and app is not None:
+        setup_system_metrics(_meter)
+    
     logger.info(f"OpenTelemetry setup complete for {service_name}")
     
     return _meter
@@ -231,4 +235,142 @@ class MetricsHelper:
                 unit=unit
             )
         return self._gauges[name]
+
+
+def setup_system_metrics(meter: metrics.Meter):
+    """
+    Setup system metrics collection via observable gauges.
+    
+    These metrics are automatically updated when Prometheus scrapes them.
+    
+    Args:
+        meter: OpenTelemetry meter instance
+    """
+    from app.metrics.system_metrics import system_metrics_collector
+    
+    logger.info("Setting up system metrics collection")
+    
+    def observe_metrics(options):
+        """Callback to observe all system metrics."""
+        try:
+            metrics_data = system_metrics_collector.collect_all_metrics()
+            
+            # Yield all metrics
+            for metric_name, value in metrics_data.items():
+                yield metrics.Observation(value=value, attributes={"metric": metric_name})
+        except Exception as e:
+            logger.error(f"Error collecting system metrics: {e}", exc_info=True)
+    
+    # Create observable gauges for system metrics
+    meter.create_observable_gauge(
+        name="system_active_pipelines",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('active_pipelines', 0)
+            )
+        ]],
+        description="Number of active pipelines",
+        unit="pipelines"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_total_pipelines",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('total_pipelines', 0)
+            )
+        ]],
+        description="Total number of pipelines",
+        unit="pipelines"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_signal_pipelines",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('signal_pipelines', 0)
+            )
+        ]],
+        description="Number of active signal-based pipelines",
+        unit="pipelines"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_periodic_pipelines",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('periodic_pipelines', 0)
+            )
+        ]],
+        description="Number of active periodic pipelines",
+        unit="pipelines"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_active_users",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('active_users', 0)
+            )
+        ]],
+        description="Number of active users (with active pipelines)",
+        unit="users"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_total_users",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('total_users', 0)
+            )
+        ]],
+        description="Total number of users",
+        unit="users"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_executions_today",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('executions_today', 0)
+            )
+        ]],
+        description="Number of executions started today",
+        unit="executions"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_executions_running",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('executions_running', 0)
+            )
+        ]],
+        description="Number of currently running executions",
+        unit="executions"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_executions_pending",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('executions_pending', 0)
+            )
+        ]],
+        description="Number of pending executions",
+        unit="executions"
+    )
+    
+    meter.create_observable_gauge(
+        name="system_success_rate_24h",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                value=system_metrics_collector.collect_all_metrics().get('success_rate_24h', 0.0)
+            )
+        ]],
+        description="Success rate of executions in last 24 hours",
+        unit="%"
+    )
+    
+    logger.info("System metrics collection configured")
 

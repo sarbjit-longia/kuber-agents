@@ -137,9 +137,17 @@ async def get_execution(
     Returns:
         Execution details with pipeline name
     """
+    from app.models.scanner import Scanner
+    
     result = await db.execute(
-        select(Execution, Pipeline.name)
+        select(
+            Execution, 
+            Pipeline.name,
+            Pipeline.trigger_mode,
+            Scanner.name.label('scanner_name')
+        )
         .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .outerjoin(Scanner, Pipeline.scanner_id == Scanner.id)
         .where(Execution.id == execution_id)
     )
     row = result.first()
@@ -150,7 +158,7 @@ async def get_execution(
             detail="Execution not found"
         )
     
-    execution, pipeline_name = row
+    execution, pipeline_name, trigger_mode, scanner_name = row
     
     if execution.user_id != current_user.id:
         raise HTTPException(
@@ -158,7 +166,7 @@ async def get_execution(
             detail="You don't have permission to view this execution"
         )
     
-    # Convert execution to dict and add pipeline_name
+    # Convert execution to dict and add pipeline_name, trigger_mode, scanner_name
     execution_dict = {
         "id": str(execution.id),
         "pipeline_id": str(execution.pipeline_id),
@@ -167,6 +175,8 @@ async def get_execution(
         "status": execution.status.value,
         "mode": execution.mode,
         "symbol": execution.symbol,
+        "trigger_mode": trigger_mode.value if trigger_mode else None,
+        "scanner_name": scanner_name,
         "result": execution.result,
         "error_message": execution.error_message,
         "cost": execution.cost,

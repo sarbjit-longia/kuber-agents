@@ -258,5 +258,16 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
       panelClass: [`snackbar-${type}`]
     });
   }
+
+  getSource(): string {
+    if (!this.execution) return '—';
+    
+    if (this.execution.trigger_mode === 'signal' && this.execution.scanner_name) {
+      return this.execution.scanner_name;
+    } else if (this.execution.trigger_mode === 'periodic') {
+      return 'Periodic';
+    }
+    return '—';
+  }
 }
 
