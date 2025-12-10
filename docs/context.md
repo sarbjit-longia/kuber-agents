@@ -22,9 +22,11 @@ An agent-based trading pipeline platform (similar to n8n) where retail traders c
 - **Task Queue**: Celery with Redis
 - **Database**: PostgreSQL with JSONB for flexible storage
 - **Cache**: Redis
-- **Infrastructure**: AWS (ECS Fargate, RDS, ElastiCache, S3, CloudFront)
-- **IaC**: Terraform
-- **CI/CD**: GitHub Actions
+- **Message Bus**: Apache Kafka for signal distribution
+- **Monitoring**: OpenTelemetry + Prometheus + Grafana
+- **Infrastructure**: AWS (ECS Fargate, RDS, ElastiCache, MSK, S3, CloudFront)
+- **IaC**: Terraform (future)
+- **CI/CD**: GitHub Actions (future)
 
 ---
 
@@ -177,47 +179,77 @@ strategy = StrategySignal(
 4. Exits: Automatically closes when levels reached
 ```
 
-### 6. Pipeline Scheduling & Execution Modes
+### 6. Pipeline Trigger Modes (Event-Driven Architecture)
 
-**Problem**: Should pipeline run once or continuously? How to prevent overnight positions for day traders?
+**Problem**: How should pipelines know when to execute? Polling is inefficient and costly.
 
-**Solution**: Four execution modes + time window controls
+**Solution**: Two trigger modes - Signal-based and Periodic
 
-**Execution Modes**:
-1. **RUN_ONCE**: Run once when started, then stop (safest, default)
-2. **RUN_CONTINUOUS**: Keep running until manually stopped
-3. **RUN_SCHEDULED**: Run on schedule (cron, intervals, market hours)
-4. **RUN_ON_SIGNAL**: Run continuously but wait for position to close before restart
+#### 6.1 Signal-Based Pipelines (`trigger_mode = SIGNAL`)
 
-**Time Window Controls**:
-- Set trading hours: 9:35 AM - 3:30 PM EST
-- Active days: Monday-Friday
-- **Auto-flatten positions at end time** (for day traders - no overnight positions)
-- Auto-stop pipeline at end time
-- Grace period: Don't start new trade if < 5 min until end
+**How it works**:
+1. User creates a **Scanner** (ticker list, e.g., "Tech Stocks" = [AAPL, GOOGL, MSFT])
+2. User creates a **Pipeline** and links to scanner
+3. User subscribes to **Signals** (e.g., golden_cross, news_sentiment)
+4. **Signal Generators** continuously monitor markets, emit signals to Kafka
+5. **Trigger Dispatcher** matches signals to pipelines:
+   - Does ticker match scanner?
+   - Does signal type match subscriptions?
+   - Is confidence above threshold?
+   - Is pipeline already running? (skip if yes)
+6. If match, enqueue pipeline to Celery
 
-**Daily Limits**:
-- Max trades per day
-- Max executions per day
-- Stop on daily loss (e.g., stop if lose $500)
-- Stop on drawdown percentage
-
-**Example - Day Trading Setup**:
-```python
+**Example**:
+```json
 {
-    "execution_mode": "run_continuous",
-    "start_time": "09:35",
-    "end_time": "15:30",
-    "flatten_positions_at_end": True,  # Close all at 3:30 PM
-    "max_trades_per_day": 3
+  "trigger_mode": "signal",
+  "scanner_id": "uuid-tech-stocks",
+  "signal_subscriptions": [
+    {"signal_type": "golden_cross", "min_confidence": 80},
+    {"signal_type": "news_sentiment", "min_confidence": 70}
+  ]
 }
 ```
 
 **What Happens**:
-- 9:35 AM: Pipeline starts
-- Throughout day: Takes up to 3 trades
-- 3:30 PM: **Automatically closes all positions at market price**
-- 3:30 PM: Pipeline stops, won't restart until tomorrow
+- Signal Generator detects golden cross on AAPL (confidence: 85%)
+- Kafka message: `{"signal_type": "golden_cross", "tickers": [{"ticker": "AAPL", "confidence": 85}]}`
+- Trigger Dispatcher: Matches to pipeline (AAPL in scanner, confidence ≥ 80)
+- Celery: Executes pipeline for AAPL
+
+#### 6.2 Periodic Pipelines (`trigger_mode = PERIODIC`)
+
+**How it works**:
+1. User creates a pipeline without scanner
+2. **Celery Beat** checks every 5 minutes for active periodic pipelines
+3. For each pipeline, check if already PENDING or RUNNING
+4. If not running, enqueue to Celery
+
+**Example**:
+```json
+{
+  "trigger_mode": "periodic",
+  "symbol": "AAPL"
+}
+```
+
+**What Happens**:
+- Every 5 minutes: Celery Beat checks if pipeline is running
+- If not running: Enqueue to Celery
+- Pipeline executes for AAPL
+
+#### 6.3 Key Benefits
+
+**Signal-Based**:
+- Low latency (< 1 second from signal to execution)
+- Event-driven (not polling)
+- Scalable (centralized signal generation)
+- Multi-ticker support via scanners
+
+**Periodic**:
+- Simple to configure
+- Predictable execution
+- No scanner required
 
 ### 7. Cost Estimation & Transparency
 
@@ -1052,18 +1084,149 @@ kuber-agents/
 
 ---
 
+## New Systems (Added December 2025)
+
+### Scanner System
+
+**What**: Reusable ticker lists for pipelines
+
+**Why**: Avoid duplicating ticker lists across pipelines. One scanner can be used by multiple pipelines.
+
+**Example**:
+```
+Scanner: "Tech Stocks" [AAPL, GOOGL, MSFT, NVDA]
+  ├─ Pipeline 1: Golden Cross Strategy
+  ├─ Pipeline 2: News Sentiment
+  └─ Pipeline 3: RSI Mean Reversion
+```
+
+**Types**:
+- **Manual** (Phase 1): User manually enters tickers
+- **Filter-Based** (Phase 2): User defines filters, system evaluates universe
+- **API-Based** (Phase 3): User provides webhook/API endpoint
+
+**Database**: `scanners` table with `tickers` JSONB column
+
+**API**: `/api/v1/scanners` (CRUD operations)
+
+**Frontend**: `/scanners` page for management
+
+---
+
+### Signal System
+
+**What**: Event-driven architecture for triggering pipelines based on market conditions
+
+**Components**:
+1. **Signal Generators**: Monitor markets, emit signals to Kafka
+2. **Kafka**: Message bus for signal distribution
+3. **Trigger Dispatcher**: Matches signals to pipelines
+4. **Celery Workers**: Execute matched pipelines
+
+**Signal Schema**:
+```json
+{
+  "timestamp": 1702234567,
+  "source": "golden_cross",
+  "signal_type": "golden_cross",
+  "tickers": [
+    {"ticker": "AAPL", "signal": "BULLISH", "confidence": 85}
+  ]
+}
+```
+
+**Current Generators**:
+- Mock (random test signals)
+- Golden Cross (SMA 50/200 crossover)
+
+**Future Generators**:
+- News Sentiment (AI-powered)
+- RSI, MACD, Volume Spike
+- Custom user-defined
+
+**Why Kafka?**
+- Decouples signal generation from pipeline execution
+- Horizontal scalability (add more generators/dispatchers)
+- Low latency (< 1 second from signal to execution)
+- Future: External signal providers can publish to Kafka
+
+---
+
+### Subscription & Billing Model
+
+**What**: Dual revenue model - subscriptions + pay-per-use
+
+#### Subscription Tiers (Signal Buckets)
+
+Users subscribe to **Signal Buckets** that determine which signals they can access:
+
+- **FREE** ($0/month): External signals only, 2 pipelines
+- **BASIC** ($29/month): 5 signals (Golden Cross, RSI, etc.), 5 pipelines
+- **PRO** ($99/month): 9 signals (+ News Sentiment), 20 pipelines
+- **ENTERPRISE** ($299/month): All signals, unlimited pipelines
+
+#### Agent Usage Fees
+
+Agents charge per-second when pipelines execute:
+- **Free Agents**: $0/hour (Market Data, Time Trigger)
+- **Basic Agents**: $0.05/hour (Risk Manager)
+- **Premium Agents**: $0.10/hour (Bias, Strategy)
+
+#### Enforcement
+
+- **Dev Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=false`): All users get `DEFAULT_SUBSCRIPTION_TIER` (default: `enterprise`)
+- **Production Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=true`): Hard limits enforced, Stripe integration
+
+**Database**: `users.subscription_tier`, `users.max_active_pipelines`
+
+**API**: `/api/v1/users/me/subscription`
+
+---
+
+### Monitoring & Observability
+
+**What**: Production-grade monitoring using OpenTelemetry + Prometheus + Grafana
+
+**Why OpenTelemetry?**
+- Vendor-neutral (no lock-in)
+- Auto-instrumentation (FastAPI, SQLAlchemy, Redis, Celery)
+- Future-proof (can switch to CloudWatch, Datadog, etc.)
+
+**Metrics Exposed**:
+- **System Health**: Active pipelines, users, success rate
+- **Pipeline Execution**: Executions by status, duration, cost
+- **Signal System**: Signals generated, matched, enqueued
+- **Auto-Instrumented**: HTTP requests, DB queries, Redis ops
+
+**Prometheus**: Scrapes `/metrics` endpoints every 15 seconds
+
+**Grafana**: "Trading Platform Overview" dashboard with 30+ panels
+
+**Future**: Distributed tracing (Jaeger/X-Ray), log aggregation (Loki/CloudWatch), alerting
+
+---
+
 ## Glossary
 
 - **Agent**: AI-powered component that performs specific task
 - **Pipeline**: Sequence of connected agents
+- **Scanner**: Reusable ticker list for pipelines
+- **Signal**: Market event/condition that triggers pipeline execution
+- **Signal Generator**: Service that monitors markets and emits signals
+- **Trigger Dispatcher**: Service that matches signals to pipelines
 - **Pipeline State**: Data object passed between agents
-- **Trigger Agent**: Agent that pauses pipeline until condition met
+- **Trigger Mode**: SIGNAL (event-driven) or PERIODIC (scheduled)
+- **Subscription Tier**: FREE, BASIC, PRO, ENTERPRISE
 - **Timeframe**: Chart timeframe (1m, 5m, 1h, 4h, 1d, etc.)
 - **CrewAI**: Multi-agent orchestration framework
 - **Celery**: Distributed task queue
+- **Kafka**: Message bus for signal distribution
+- **OpenTelemetry**: Vendor-neutral observability framework
+- **Prometheus**: Time-series metrics database
+- **Grafana**: Visualization and dashboards
 - **ECS**: Elastic Container Service (AWS)
 - **Fargate**: Serverless container execution
-- **ECR**: Elastic Container Registry (Docker images)
+- **MSK**: Managed Streaming for Kafka (AWS)
 - **RDS**: Relational Database Service (PostgreSQL)
 - **ElastiCache**: Managed Redis service
 - **ALB**: Application Load Balancer

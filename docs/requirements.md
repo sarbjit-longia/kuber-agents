@@ -28,13 +28,93 @@ This document outlines the requirements for an agent-based trading pipeline plat
 - Demo mode for risk-free learning
 
 ### 1.3 Revenue Model
-- **Platform Subscription**: Base monthly fee for platform access
-- **Agent Rental**: Hourly usage fees per agent (e.g., $0.10/hour for Strategy Agent)
-  - Some agents are free (e.g., Time-Based Trigger Agent)
-  - Premium agents have hourly rates
-  - Different agent types may have different pricing tiers
-- **Billing Granularity**: Charges only when pipelines are actively running (not during trigger wait states)
-- **Future**: Agent marketplace with revenue sharing
+
+The platform uses a **dual revenue model** combining subscriptions and pay-per-use:
+
+#### 1.3.1 Subscription Tiers (Signal Access)
+
+Users subscribe to **Signal Buckets** that determine which trading signals they can access:
+
+**FREE Tier ($0/month)**:
+- External signals only (webhooks, TrendSpider integration)
+- 2 active pipelines maximum
+- 100 external signal triggers/day
+- Community support
+
+**BASIC Tier ($29/month)**:
+- Basic Signal Bucket: Golden Cross, Death Cross, RSI, MACD, Volume Spike (5 signals)
+- Includes all FREE tier signals
+- 5 active pipelines maximum
+- Unlimited signal triggers
+- Email support
+
+**PRO Tier ($99/month)**:
+- Pro Signal Bucket: All BASIC + News Sentiment, Volatility, Support/Resistance (9 signals)
+- 20 active pipelines maximum
+- Priority signal processing
+- Chat support + API access
+
+**ENTERPRISE Tier ($299/month or custom)**:
+- Enterprise Signal Bucket: All signals + Dark Pool, Options Flow, Custom AI (15+ signals)
+- Unlimited pipelines
+- Custom signal development
+- Dedicated support + SLA
+
+**Add-ons**:
+- Extra pipelines: $5/month per 5 pipelines
+- Individual Pro signals à la carte: $15/month each
+- Custom scanner feeds: $20/month
+
+#### 1.3.2 Agent Usage Fees (Pay-Per-Use)
+
+Agents charge based on actual usage when pipelines execute:
+
+**Agent Rental Fees**:
+- **Free Agents**: Market Data, Time Trigger ($0/hour)
+- **Basic Agents**: Risk Manager, Reporting ($0.05/hour)
+- **Premium Agents**: Bias Analysis, Strategy Generation ($0.10/hour)
+- **Enterprise Agents**: Custom agents (variable pricing)
+
+**Billing Granularity**:
+- Charged only when pipelines actively running
+- Not charged during trigger wait states
+- Per-second billing, rounded to nearest minute
+- Costs tracked in real-time during execution
+
+**LLM API Costs** (pass-through + markup):
+- OpenAI API costs + 20% markup
+- Token counting and tracking per agent
+- Budget limits and alerts
+
+#### 1.3.3 Combined Example
+
+**User on PRO tier ($99/month) running 1 pipeline**:
+```
+Monthly Subscription:        $99.00  (Pro tier)
+Pipeline runs 10 times/day × 30 days = 300 executions
+Average execution: 2 minutes, 3 agents (1 free, 2 premium)
+
+Agent costs:
+  Market Data Agent:  0 min × $0.00 = $0.00
+  Bias Agent:       600 min × $0.10/hr = $1.00
+  Strategy Agent:   600 min × $0.10/hr = $1.00
+                                       -------
+Total Monthly:                        $101.00
+```
+
+**Key Benefits**:
+- Predictable base cost (subscription)
+- Pay only for execution (usage fees)
+- No surprise bills (budget limits)
+- Scale usage independently of subscription
+
+#### 1.3.4 Future Monetization
+
+- **Agent Marketplace**: Community-contributed agents with revenue sharing
+- **Strategy Templates**: Pre-built pipeline templates ($5-20 each)
+- **Backtesting Credits**: Pay per backtest run
+- **Premium Data Feeds**: Enhanced market data subscriptions
+- **White-Label**: Enterprise custom branding
 
 ### 1.4 Business Constraints
 - Must support scalability to hundreds/thousands of users

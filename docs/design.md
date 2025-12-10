@@ -2,75 +2,126 @@
 
 ## 1. System Architecture Overview
 
-### 1.1 High-Level Architecture
+### 1.1 High-Level Architecture (Updated Dec 2025)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Browser                            │
-│                    (Angular SPA + WebSocket)                    │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTPS/WSS
-┌──────────────────────────▼──────────────────────────────────────┐
-│                      API Gateway / ALB                          │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│                    FastAPI Backend                              │
-│  ┌────────────┬────────────┬──────────────┬──────────────┐    │
-│  │  Auth API  │Pipeline API│ Monitor API  │  Billing API │    │
-│  └────────────┴────────────┴──────────────┴──────────────┘    │
-└──────────┬──────────────────┬────────────────────┬─────────────┘
-           │                  │                    │
-           │         ┌────────▼────────┐          │
-           │         │  Celery Beat    │          │
-           │         │  (Scheduling)   │          │
-           │         └────────┬────────┘          │
-           │                  │                    │
-┌──────────▼──────────────────▼────────────────────▼─────────────┐
-│                    Redis (State + Queue)                        │
-└──────────┬──────────────────────────────────────────────────────┘
-           │
-┌──────────▼──────────────────────────────────────────────────────┐
-│              Celery Workers (Pipeline Executors)                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │          CrewAI Flow Orchestration                       │  │
-│  │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐      │  │
-│  │  │Trigger│→│Market│→│ Bias │→│Strat │→│ Risk │→...   │  │
-│  │  │ Agent│  │ Data │  │Agent │  │Agent │  │ Mgr  │      │  │
-│  │  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘      │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└───┬─────────────────┬─────────────────┬──────────────────┬────┘
-    │                 │                 │                  │
-┌───▼────┐    ┌───────▼────────┐  ┌────▼─────┐    ┌──────▼──────┐
-│  RDS   │    │  OpenAI API    │  │Finnhub   │    │Broker APIs  │
-│  PG    │    │  (LLM)         │  │(Mkt Data)│    │ (Alpaca)    │
-└────────┘    └────────────────┘  └──────────┘    └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         User Browser (Angular SPA)                          │
+│                     Authentication • Pipeline Builder                       │
+│                     Scanner Management • Monitoring                         │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │ HTTPS/WSS
+┌──────────────────────────────────▼──────────────────────────────────────────┐
+│                         FastAPI Backend API                                 │
+│   Auth • Pipelines • Scanners • Executions • Signals • Billing             │
+└────────┬────────────────────────────────────────────────────┬───────────────┘
+         │                                                    │
+         │                                                    │ Enqueue Tasks
+┌────────▼────────────────────────────────────────────────────▼───────────────┐
+│                         Redis (Queue + Cache)                               │
+└────────┬────────────────────────────────────────────────────────────────────┘
+         │
+         │                                       ┌─────────────────────────────┐
+         │                                       │   Signal Generators         │
+         │                                       │  ┌───────────────────────┐ │
+         │                                       │  │ Mock Signal Gen       │ │
+         │                                       │  │ Golden Cross Gen      │ │
+         │                                       │  │ News Sentiment Gen    │ │
+         │                                       │  └──────────┬────────────┘ │
+         │                                       └─────────────┼──────────────┘
+         │                                                     │ Publish
+         │                                              ┌──────▼──────────┐
+         │                                              │     Kafka       │
+         │                                              │ trading-signals │
+         │                                              └──────┬──────────┘
+         │                                                     │ Subscribe
+         │                                              ┌──────▼──────────────┐
+         │                                              │ Trigger Dispatcher  │
+         │                                              │ • Cache Pipelines   │
+         │                                              │ • Match Signals     │
+         │                                              │ • Enqueue Tasks     │
+         │                                              └──────┬──────────────┘
+         │                                                     │ Enqueue
+         │                                                     │
+┌────────▼─────────────────────────────────────────────────────▼───────────────┐
+│                      Celery Workers (Pipeline Execution)                     │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    CrewAI Agent Flow Orchestration                    │  │
+│  │  ┌────────┐  ┌────────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌────────┐  │  │
+│  │  │Market  │→│  Bias  │→│Strat │→│ Risk │→│ Order│→│Reports │  │  │
+│  │  │ Data   │  │ Agent  │  │Agent │  │ Mgr  │  │ Mgr  │  │        │  │  │
+│  │  └────────┘  └────────┘  └──────┘  └──────┘  └──────┘  └────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───┬─────────────┬──────────────┬──────────────┬────────────────┬────────────┘
+    │             │              │              │                │
+┌───▼────┐  ┌─────▼──────┐  ┌───▼───────┐  ┌───▼──────┐  ┌─────▼─────────┐
+│  PG    │  │  OpenAI    │  │ Finnhub   │  │ Alpaca   │  │  Prometheus   │
+│  RDS   │  │  API (LLM) │  │(Mkt Data) │  │ (Broker) │  │  + Grafana    │
+└────────┘  └────────────┘  └───────────┘  └──────────┘  └───────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Periodic Trigger (Celery Beat)                         │
+│  Checks for periodic-mode pipelines every 5 minutes                         │
+│  Enqueues to Celery if not already running                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 Component Responsibilities
 
 **Frontend (Angular)**
 - Visual pipeline builder (drag-drop interface)
+- Scanner management (create/edit ticker lists)
+- Signal subscription configuration
 - Real-time monitoring dashboard
 - User authentication & profile management
-- Cost tracking & reports viewer
+- Cost tracking & subscription management
 
 **Backend API (FastAPI)**
-- REST endpoints for CRUD operations
-- WebSocket server for real-time updates
+- REST endpoints for CRUD operations (Pipelines, Scanners, Executions, Users)
+- WebSocket server for real-time execution updates
 - Authentication & authorization (JWT)
+- Subscription tier enforcement
 - Request validation & rate limiting
+- OpenTelemetry metrics exposure
 
-**Pipeline Orchestrator (Celery + CrewAI)**
-- Execute pipeline workflows
+**Signal Generators (Independent Services)**
+- Monitor market conditions (technical indicators, news, custom)
+- Generate structured trading signals
+- Publish signals to Kafka topic (`trading-signals`)
+- Expose Prometheus metrics (generation rate, latency)
+
+**Trigger Dispatcher (Independent Service)**
+- Subscribe to Kafka signal topic
+- Maintain in-memory cache of active signal-based pipelines
+- Match signals to pipelines based on scanner tickers and subscriptions
+- Enqueue matched pipelines to Celery (if not already running)
+- Handle duplicate signal filtering
+
+**Periodic Scheduler (Celery Beat)**
+- Check for active periodic-mode pipelines every 5 minutes
+- Enqueue periodic pipelines if not already running
+- No polling per-pipeline (centralized scheduling)
+
+**Pipeline Orchestrator (Celery Workers + CrewAI)**
+- Execute pipeline workflows (agent DAG)
 - Manage agent lifecycle
+- Track execution costs (LLM tokens, agent runtime)
+- Generate structured reports per agent
 - Handle retries & failures
-- Non-blocking trigger waits
 
 **Data Layer**
-- PostgreSQL: Users, pipelines, trades, reports, billing
-- Redis: Pipeline state, task queue, caching
-- S3: Detailed reports, logs, archives
+- **PostgreSQL (RDS)**: Users, pipelines, scanners, trades, executions, subscriptions
+- **Redis (ElastiCache)**: Celery task queue, caching
+- **Kafka**: Signal message bus
+- **Prometheus**: Metrics time-series database
+- **Grafana**: Monitoring dashboards
+- **S3** (future): Detailed reports, logs, archives
+
+**Monitoring & Observability (OpenTelemetry + Prometheus + Grafana)**
+- Application metrics (HTTP requests, DB queries, Celery tasks)
+- Business metrics (pipelines, executions, signals, system health)
+- Dashboards for real-time visualization
+- Future: Distributed tracing, log aggregation, alerting
 
 ---
 
@@ -6413,10 +6464,241 @@ async def create_pipeline(request: Request, ...):
 - Easy to add new agents without changing infrastructure
 - Marketplace-ready (agents are products)
 
+### 16.5 Event-Driven Triggers (Kafka)
+
+- Push-based (not poll-based) for low latency
+- Centralized signal generation (not per-pipeline)
+- Horizontal scalability (add more generators/dispatchers)
+- Clear separation: Signal Generation → Distribution → Matching → Execution
+
+### 16.6 OpenTelemetry for Observability
+
+- Vendor-neutral (no lock-in to AWS/Datadog/etc.)
+- Auto-instrumentation for FastAPI, SQLAlchemy, Redis, Celery
+- Easy migration from local (Prometheus) to cloud (CloudWatch)
+- Future-proof for distributed tracing and log aggregation
+
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: October 22, 2025  
-**Authors**: Principal Engineering Team  
-**Status**: Draft for Review
+## 17. Signal System Architecture
+
+### 17.1 Overview
+
+The Signal System is an **event-driven architecture** for triggering pipelines based on market conditions.
+
+**Key Components**:
+1. **Signal Generators**: Monitor markets, emit signals
+2. **Kafka**: Message bus for signal distribution
+3. **Trigger Dispatcher**: Matches signals to pipelines
+4. **Celery Workers**: Execute matched pipelines
+
+### 17.2 Signal Schema
+
+```json
+{
+  "timestamp": 1702234567,
+  "source": "golden_cross",
+  "signal_id": "gc_1702234567_AAPL",
+  "signal_type": "golden_cross",
+  "tickers": [
+    {"ticker": "AAPL", "signal": "BULLISH", "confidence": 85.5}
+  ]
+}
+```
+
+### 17.3 Signal Generators
+
+Independent Docker containers that:
+- Monitor market data/events
+- Detect conditions (SMA crossover, news, RSI, etc.)
+- Generate structured signals
+- Publish to Kafka
+- Expose Prometheus metrics
+
+**Current**: Mock, Golden Cross  
+**Future**: News Sentiment, RSI, MACD, Volume Spike, Custom
+
+### 17.4 Trigger Dispatcher
+
+Lightweight Python service that:
+- Subscribes to Kafka `trading-signals` topic
+- Caches active signal-based pipelines (in-memory, refreshed every 5 min)
+- Matches signals to pipelines (ticker + signal type + confidence)
+- Enqueues to Celery if not already running
+
+**Matching Logic**:
+1. Extract tickers from signal
+2. Find pipelines with matching tickers in scanner
+3. Check signal subscriptions (type + min confidence)
+4. Check if already PENDING or RUNNING
+5. Enqueue to Celery
+
+---
+
+## 18. Scanner System
+
+### 18.1 Purpose
+
+Scanners define reusable ticker lists for pipelines.
+
+**Example**:
+```
+Scanner: "Tech Stocks" [AAPL, GOOGL, MSFT]
+  ├─ Pipeline 1: Golden Cross Strategy
+  ├─ Pipeline 2: News Sentiment
+  └─ Pipeline 3: RSI Mean Reversion
+```
+
+### 18.2 Scanner Types
+
+#### Phase 1: Manual (Current)
+User manually enters tickers.
+
+#### Phase 2: Filter-Based (Future)
+User defines filters (market cap, sector, price, indicators), system evaluates universe.
+
+#### Phase 3: API-Based (Future)
+User provides webhook/API endpoint (e.g., TrendSpider, TradingView screener).
+
+### 18.3 Database Schema
+
+```python
+class Scanner(Base):
+    id = Column(UUID, primary_key=True)
+    user_id = Column(UUID, ForeignKey("users.id"))
+    name = Column(String(255))
+    scanner_type = Column(Enum(ScannerType))
+    tickers = Column(JSONB)  # For manual scanners
+    filter_config = Column(JSONB)  # For filter scanners
+    api_config = Column(JSONB)  # For API scanners
+
+class Pipeline(Base):
+    # ...
+    scanner_id = Column(UUID, ForeignKey("scanners.id"))
+    signal_subscriptions = Column(JSONB)
+    # [{"signal_type": "golden_cross", "min_confidence": 80}]
+```
+
+### 18.4 API Endpoints
+
+- `POST /api/v1/scanners` - Create scanner
+- `GET /api/v1/scanners` - List user scanners
+- `PUT /api/v1/scanners/{id}` - Update scanner
+- `DELETE /api/v1/scanners/{id}` - Delete (fails if used by active pipelines)
+
+---
+
+## 19. Subscription & Billing Model
+
+### 19.1 Dual Revenue Model
+
+1. **Subscription Tiers**: Monthly fee for signal access + pipeline limits
+2. **Agent Usage Fees**: Pay-per-use when pipelines execute
+
+### 19.2 Subscription Tiers
+
+**FREE** ($0/month): External signals only, 2 pipelines  
+**BASIC** ($29/month): 5 signals (Golden Cross, RSI, etc.), 5 pipelines  
+**PRO** ($99/month): 9 signals (+ News Sentiment), 20 pipelines  
+**ENTERPRISE** ($299/month): All signals, unlimited pipelines
+
+### 19.3 Agent Usage Fees
+
+- **Free Agents**: $0/hour (Market Data, Time Trigger)
+- **Basic Agents**: $0.05/hour (Risk Manager)
+- **Premium Agents**: $0.10/hour (Bias, Strategy)
+
+Charged per-second, only when pipelines running.
+
+### 19.4 Database Schema
+
+```python
+class SubscriptionTier(str, enum.Enum):
+    FREE = "free"
+    BASIC = "basic"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
+
+class User(Base):
+    subscription_tier = Column(SQLEnum(SubscriptionTier))
+    max_active_pipelines = Column(Integer)
+    subscription_expires_at = Column(DateTime)
+```
+
+**Signal Bucket Definitions**: `backend/app/subscriptions/signal_buckets.py`
+
+### 19.5 Enforcement
+
+**Dev Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=false`):
+- All users get `DEFAULT_SUBSCRIPTION_TIER` (default: `enterprise`)
+- No enforcement, but UI still shows subscription status
+
+**Production Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=true`):
+- Hard limits on pipelines and signal access
+- Upgrade prompts
+- Stripe integration (Phase 2)
+
+---
+
+## 20. Monitoring & Observability
+
+### 20.1 Stack
+
+**OpenTelemetry + Prometheus + Grafana**
+
+**Why OpenTelemetry?**
+- Vendor-neutral (can switch to CloudWatch, Datadog, etc.)
+- Auto-instrumentation (FastAPI, SQLAlchemy, Redis, Celery)
+- Future-proof for tracing and log aggregation
+
+### 20.2 Metrics Exposed
+
+Each service exposes `/metrics` on port `800X`:
+- Backend API: `8001`
+- Celery Worker: `8002`
+- Signal Generator: `8003`
+- Trigger Dispatcher: `8004`
+
+Prometheus scrapes every 15 seconds.
+
+### 20.3 Key Metrics
+
+**System Health**:
+- `system_active_pipelines`, `system_active_users`
+- `system_executions_today_executions`, `system_success_rate_24h_percent`
+
+**Pipeline Execution**:
+- `pipeline_executions_total{status}`, `pipeline_execution_duration_seconds`
+
+**Signal System**:
+- `signals_generated_total{signal_type}`, `kafka_publish_success_total`
+- `pipelines_matched_total`, `pipeline_cache_size`
+
+**Auto-Instrumented** (via OpenTelemetry):
+- `http_server_request_duration_seconds`, `db_client_operation_duration_seconds`
+
+### 20.4 Grafana Dashboard
+
+**Trading Platform Overview** dashboard:
+- System Health (active pipelines, users, success rate)
+- System Status (service UP/DOWN)
+- Signal Generator metrics
+- Trigger Dispatcher metrics
+- Pipeline Execution metrics
+
+**Dashboard Provisioning**: `monitoring/grafana/dashboards/trading-platform-overview.json`
+
+### 20.5 Future
+
+- Distributed tracing (Jaeger/X-Ray)
+- Log aggregation (Loki/CloudWatch)
+- Alerting (AlertManager/SNS)
+- Anomaly detection
+
+---
+
+**Document Version**: 2.0  
+**Last Updated**: December 10, 2025  
+**Authors**: Engineering Team  
+**Status**: Living Document
 

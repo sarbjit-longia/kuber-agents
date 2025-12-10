@@ -9,9 +9,9 @@ This roadmap outlines the development plan for the Trading Platform from initial
 
 ---
 
-## Milestone 0: Project Foundation
+## Milestone 0: Project Foundation ✅ COMPLETE
 **Duration**: Week 1  
-**Goal**: Set up development environment and project structure
+**Status**: ✅ **COMPLETED**
 
 ### Tasks
 
@@ -19,285 +19,314 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Create Git repository and branch structure
 - [x] Create documentation (requirements, design, roadmap, context)
 - [x] Define coding standards and conventions
-- [ ] Set up project management tools (Jira/Linear)
+- [x] Set up project management tools (TODOs, documentation)
 
 **Infrastructure Setup**
-- [ ] Create AWS accounts (dev, staging, prod)
-- [ ] Set up Terraform for infrastructure as code
-- [ ] Configure CI/CD pipeline (GitHub Actions)
-- [ ] Set up Docker development environment
+- [x] Set up Docker development environment
+- [x] Configure docker-compose.yml with all services
+- [ ] Create AWS accounts (dev, staging, prod) - Deferred
+- [ ] Set up Terraform for infrastructure as code - Deferred
+- [ ] Configure CI/CD pipeline (GitHub Actions) - Deferred
 
 **Backend Foundation**
-- [ ] Initialize FastAPI project structure
-- [ ] Set up PostgreSQL with Alembic migrations
-- [ ] Configure Redis connection
-- [ ] Implement basic health check endpoint
-- [ ] Set up logging and monitoring
+- [x] Initialize FastAPI project structure
+- [x] Set up PostgreSQL with Alembic migrations
+- [x] Configure Redis connection
+- [x] Implement basic health check endpoint
+- [x] Set up logging and monitoring (structlog)
 
 **Frontend Foundation**
-- [ ] Initialize Angular project
-- [ ] Set up Angular Material / UI framework
-- [ ] Configure routing and state management
-- [ ] Create base layout components
+- [x] Initialize Angular project
+- [x] Set up Angular Material / UI framework
+- [x] Configure routing and state management
+- [x] Create base layout components (navbar, etc.)
 
 ### Deliverables
 - ✅ Complete documentation suite
-- [ ] Working Docker Compose environment
-- [ ] Basic FastAPI app with health check
-- [ ] Basic Angular app with routing
+- ✅ Working Docker Compose environment
+- ✅ Basic FastAPI app with health check
+- ✅ Basic Angular app with routing
 
 ---
 
-## Milestone 1: Authentication & Core APIs
+## Milestone 1: Authentication & Core APIs ✅ COMPLETE
 **Duration**: Week 2  
-**Goal**: Implement user management and foundational APIs
+**Status**: ✅ **COMPLETED**
 
 ### Tasks
 
 **Authentication**
-- [ ] User registration and login endpoints
-- [ ] JWT token generation and validation
-- [ ] Password hashing (bcrypt)
-- [ ] JWT middleware for protected routes
-- [ ] Frontend login/register forms
-- [ ] Token storage and automatic refresh
+- [x] User registration and login endpoints
+- [x] JWT token generation and validation
+- [x] Password hashing (bcrypt)
+- [x] JWT middleware for protected routes
+- [x] Frontend login/register forms
+- [x] Token storage and automatic refresh
 
 **Database Models**
-- [ ] User model and table
-- [ ] Pipeline model and table
-- [ ] Execution model and table
-- [ ] Database migrations
+- [x] User model and table (with subscription fields)
+- [x] Pipeline model and table
+- [x] Execution model and table
+- [x] Scanner model and table
+- [x] Database migrations (Alembic)
 
 **API Development**
-- [ ] User profile endpoints (GET, PATCH)
-- [ ] Pipeline CRUD endpoints
-- [ ] Basic error handling
-- [ ] Request validation with Pydantic
-- [ ] API documentation (Swagger)
+- [x] User profile endpoints (GET, subscription info)
+- [x] Pipeline CRUD endpoints
+- [x] Scanner CRUD endpoints
+- [x] Execution endpoints
+- [x] Basic error handling
+- [x] Request validation with Pydantic
+- [x] API documentation (Swagger at /docs)
 
 **Frontend**
-- [ ] Authentication service
-- [ ] Auth guard for protected routes
-- [ ] User profile page
-- [ ] Session management
+- [x] Authentication service
+- [x] Auth guard for protected routes
+- [x] Login/register pages
+- [x] Session management
 
 ### Deliverables
-- [ ] Working authentication system
-- [ ] User can register, login, and manage profile
-- [ ] API documentation available
-- [ ] Basic frontend authentication flow
+- ✅ Working authentication system
+- ✅ User can register, login, and manage profile
+- ✅ API documentation available at /docs
+- ✅ Frontend authentication flow complete
 
 ---
 
-## Milestone 2: Agent Framework & First Agents
+## Milestone 2: Agent Framework & First Agents ✅ COMPLETE
 **Duration**: Weeks 3-4  
-**Goal**: Build agent framework and implement first 3 agents
+**Status**: ✅ **COMPLETED**
 
 ### Week 3: Framework + Market Data + Trigger
 
 **Agent Framework**
-- [ ] Define `BaseAgent` abstract class
-- [ ] Implement `PipelineState` schema
-- [ ] Create agent registry system
-- [ ] Implement agent serialization (to_dict/from_dict)
-- [ ] Add agent metadata and config schema support
-- [ ] Factory pattern for agent instantiation
+- [x] Define `BaseAgent` abstract class
+- [x] Implement `PipelineState` schema
+- [x] Create agent registry system (`AGENT_REGISTRY`)
+- [x] Implement agent serialization (to_dict/from_dict)
+- [x] Add agent metadata and config schema support
+- [x] Factory pattern for agent instantiation
 
 **LLM Integration**
-- [ ] OpenAI provider implementation
-- [ ] Token counting middleware
-- [ ] Cost tracking for LLM calls
-- [ ] Error handling and retries
+- [x] OpenAI provider implementation
+- [x] Token counting middleware (tiktoken)
+- [x] Cost tracking for LLM calls (@track_llm_cost decorator)
+- [x] Error handling and retries
 
 **Tools Framework**
-- [ ] Base tool interface
-- [ ] Market data tool (Finnhub integration)
-- [ ] Database tool
-- [ ] Notification tool
+- [x] Base tool interface (`BaseTool`)
+- [x] Tool registry system (`TOOL_REGISTRY`)
+- [x] Market data tool (Finnhub + Mock implementations)
+- [x] User-configurable tools (attach to agents)
 
 **Agent Implementations**
-- [ ] Time-Based Trigger Agent (FREE)
-- [ ] Market Data Agent
-  - Real-time quote fetching
-  - Multiple timeframe support
-  - Technical indicator calculation
+- [x] Time-Based Trigger Agent (FREE) - Deprecated (replaced by signal system)
+- [x] Market Data Agent
+  - [x] Real-time quote fetching
+  - [x] Multiple timeframe support
+  - [x] Technical indicator calculation
+  - [x] Accepts attached tools (market_data or mock_market_data)
 
 ### Week 4: Analysis Agents
 
 **Agent Implementations**
-- [ ] Bias Agent (CrewAI crew)
-  - Market analyst sub-agent
-  - Sentiment analyst sub-agent
-  - Bias synthesizer
-- [ ] Technical Indicator Trigger Agent
-- [ ] Price-Based Trigger Agent
+- [x] Bias Agent (CrewAI crew)
+  - [x] Multi-timeframe analysis (1h, 4h, 1d)
+  - [x] Market analyst sub-agent
+  - [x] Comprehensive bias reasoning
+- [x] Strategy Agent (CrewAI crew)
+  - [x] Entry/stop/target calculation
+  - [x] Complete trade plan generation
+  - [x] Risk/reward analysis
 
 **Testing**
-- [ ] Unit tests for each agent
-- [ ] Integration tests for agent pipeline
-- [ ] Mock external APIs for testing
+- [x] Mock market data tool for development
+- [x] Integration tests with full pipeline execution
+- [ ] Unit test coverage > 70% - Deferred
 
 ### Deliverables
-- [ ] 5 working agents: Time Trigger, Technical Trigger, Price Trigger, Market Data, Bias
-- [ ] Agent framework with serialization
-- [ ] Tools framework
-- [ ] Unit test coverage > 70%
+- ✅ 6+ working agents: Market Data, Bias, Strategy, Risk Manager, Order Manager, Reporting
+- ✅ Agent framework with serialization and metadata
+- ✅ Tools framework with user-configurable attachments
+- ✅ Mock tools for development/testing
 
 ---
 
-## Milestone 3: Remaining Agents & Execution Engine
+## Milestone 3: Remaining Agents & Execution Engine ✅ COMPLETE
 **Duration**: Week 5  
-**Goal**: Complete all MVP agents and pipeline execution
+**Status**: ✅ **COMPLETED**
 
 ### Agent Implementations
-- [ ] Strategy Agent (CrewAI crew)
-  - Pattern recognition
-  - Entry/stop/target calculation
-  - Complete trade plan generation
-- [ ] Risk Manager Agent
-  - Position sizing
-  - Risk rules validation
-  - Trade approval logic
-- [ ] Trade Manager Agent
-  - Broker tool (Alpaca integration)
-  - Order submission
-  - Fill confirmation
-- [ ] Reporting Agent
-  - Collect reasoning chain
-  - Generate reports
-  - Store in S3
+- [x] Strategy Agent (CrewAI crew)
+  - [x] Pattern recognition
+  - [x] Entry/stop/target calculation
+  - [x] Complete trade plan generation
+- [x] Risk Manager Agent
+  - [x] Position sizing
+  - [x] Risk rules validation
+  - [x] Trade approval logic
+- [x] Order Manager Agent (Trade Manager)
+  - [x] Broker tool (Alpaca integration)
+  - [x] Order submission
+  - [x] Fill confirmation
+  - [x] Paper trading support
+- [x] Reporting Agent
+  - [x] Collect reasoning chain from all agents
+  - [x] Generate structured reports (`AgentReport` schema)
+  - [x] Store in execution artifacts (JSONB)
+  - [ ] S3 storage - Deferred
 
 ### Celery Integration
-- [ ] Set up Celery with Redis
-- [ ] Create pipeline execution task
-- [ ] Implement retry logic
-- [ ] Non-blocking trigger wait mechanism
-- [ ] Celery Beat for scheduling
+- [x] Set up Celery with Redis
+- [x] Create pipeline execution task (`execute_pipeline`)
+- [x] Implement retry logic
+- [x] Error handling and status tracking
+- [x] Celery Beat for periodic scheduling
 
-### CrewAI Flow
-- [ ] Implement TradingPipelineFlow
-- [ ] Agent-to-agent state passing
-- [ ] Flow error handling
-- [ ] Dynamic flow creation from pipeline config
+### Pipeline Orchestration
+- [x] Implement pipeline executor (`backend/app/orchestration/executor.py`)
+- [x] Agent-to-agent state passing (`PipelineState`)
+- [x] Error handling and partial execution support
+- [x] Dynamic agent instantiation from pipeline config
+- [x] Cost tracking during execution
+- [x] Metrics collection (OpenTelemetry)
 
 ### Deliverables
-- [ ] All 8+ MVP agents implemented
-- [ ] Working Celery task queue
-- [ ] CrewAI flow orchestration
-- [ ] End-to-end pipeline execution
+- ✅ All 6+ MVP agents implemented and working
+- ✅ Working Celery task queue with Redis backend
+- ✅ Pipeline orchestration (without CrewAI Flow - using sequential execution)
+- ✅ End-to-end pipeline execution (signal → agents → order → report)
 
 ---
 
-## Milestone 4: Pipeline Builder UI
+## Milestone 4: Pipeline Builder UI ✅ COMPLETE
 **Duration**: Week 6  
-**Goal**: Visual pipeline builder with agent configuration
+**Status**: ✅ **COMPLETED**
 
 ### Pipeline Builder
-- [ ] Agent palette component (drag source)
-- [ ] Canvas component with drag-drop
-- [ ] Node rendering (agents as visual nodes)
-- [ ] Edge rendering (connections)
-- [ ] Node selection and highlighting
-- [ ] Edge validation (prevent invalid connections)
+- [x] Agent palette component (drag source)
+- [x] Canvas component with drag-drop (Angular CDK)
+- [x] Node rendering (agents as visual cards)
+- [x] Edge rendering (connections/flow lines)
+- [x] Node selection and highlighting
+- [x] Node deletion
+- [x] Tool attachment UI (attach tools to agents)
 
 ### Agent Configuration
-- [ ] Fetch agent metadata from API
-- [ ] JSON Schema Form integration (@ajsf/core)
-- [ ] Dynamic form generation from config schema
-- [ ] Config panel component
-- [ ] Form validation
-- [ ] Save/load pipeline configuration
+- [x] Fetch agent metadata from API (`/api/v1/agents`)
+- [x] JSON Schema Form integration (@ajsf/core)
+- [x] Dynamic form generation from agent config schemas
+- [x] Config panel component (right sidebar)
+- [x] Form validation
+- [x] Save/Cancel buttons for config changes
+- [x] Tool configuration panel
 
 ### Pipeline Management
-- [ ] Pipeline list view
-- [ ] Create new pipeline
-- [ ] Edit existing pipeline
-- [ ] Delete pipeline
-- [ ] Clone pipeline
-- [ ] Pipeline validation before save
+- [x] Pipeline list view (card-based)
+- [x] Create new pipeline
+- [x] Edit existing pipeline (load from database)
+- [x] Delete pipeline
+- [x] Activate/deactivate pipeline
+- [x] Pipeline settings dialog (name, description, trigger mode, scanner, signals)
+- [x] Pipeline validation (ensure all agents configured, tools attached)
 
 ### Deliverables
-- [ ] Working visual pipeline builder
-- [ ] User can drag-drop agents
-- [ ] Dynamic config forms for each agent
-- [ ] Save/load pipelines
+- ✅ Working visual pipeline builder with intuitive UX
+- ✅ User can drag-drop agents onto canvas
+- ✅ Dynamic config forms for each agent and tool
+- ✅ Save/load pipelines from database
+- ✅ Scanner and signal subscription configuration
 
 ---
 
-## Milestone 5: Monitoring & Execution Control
+## Milestone 5: Monitoring & Execution Control ✅ COMPLETE
 **Duration**: Week 7  
-**Goal**: Real-time monitoring and execution control
+**Status**: ✅ **COMPLETED**
 
 ### WebSocket Implementation
-- [ ] WebSocket server in FastAPI
-- [ ] Connection manager
-- [ ] Event emitter from agents
-- [ ] WebSocket client in Angular
-- [ ] Fallback to polling on error
+- [x] WebSocket server in FastAPI
+- [x] Connection manager (`WebSocketManager`)
+- [x] Event emitter from pipeline executor
+- [x] WebSocket client in Angular (`WebSocketService`)
+- [x] Polling fallback on WebSocket failure
+- [x] Real-time execution updates (agent progress, status changes)
 
 ### Monitoring Dashboard
-- [ ] Active pipelines list
-- [ ] Pipeline execution detail view
-- [ ] Real-time agent progress
-- [ ] Live cost accumulation
-- [ ] Execution logs viewer
-- [ ] Trade execution notifications
+- [x] Active executions list (monitoring page `/monitoring`)
+- [x] Pipeline execution detail view (per-execution drill-down)
+- [x] Real-time agent progress (progress bar, current agent)
+- [x] Live cost accumulation (running total)
+- [x] Execution logs viewer (agent reports, errors)
+- [x] Status indicators (pending, running, completed, failed)
+- [x] Execution source display (periodic vs scanner name)
+- [x] Local timezone formatting for timestamps
+- [x] Filter by pipeline, status, date range
 
 ### Execution Control
-- [ ] Start pipeline button
-- [ ] Stop pipeline button
-- [ ] Pause/resume pipeline
-- [ ] Pipeline status indicators
-- [ ] Error display and retry
+- [x] Execute pipeline immediately (`/api/v1/executions`)
+- [x] View execution history
+- [x] Execution detail page with full agent breakdown
+- [x] Real-time status updates via WebSocket
+- [x] Pipeline activate/deactivate toggle
+- [ ] Stop/cancel running execution - Future
+- [ ] Pause/resume - Future
 
 ### Reports
-- [ ] Report list view
-- [ ] Report detail viewer
-- [ ] Reasoning chain display
-- [ ] Trade outcome visualization
-- [ ] Cost breakdown
-- [ ] Export reports (PDF/JSON)
+- [x] Agent reports displayed in execution detail
+- [x] Structured report schema (`AgentReport`)
+- [x] Reasoning chain display per agent
+- [x] Error display for failed agents
+- [x] Execution artifacts stored in database (JSONB)
+- [ ] Report list view (separate page) - Future
+- [ ] Export reports (PDF/JSON) - Future
+- [ ] Trade outcome visualization - Future
 
 ### Deliverables
-- [ ] Real-time monitoring dashboard
-- [ ] WebSocket updates working
-- [ ] Execution control (start/stop)
-- [ ] Report viewing system
+- ✅ Real-time monitoring dashboard with execution list
+- ✅ WebSocket communication for live updates
+- ✅ Execution detail view with agent reports
+- ✅ Timezone-aware UI (local time display)
+- ✅ Structured reporting system
 
 ---
 
-## Milestone 6: Cost Tracking & Billing
+## Milestone 6: Cost Tracking & Billing ⚠️ PARTIAL
 **Duration**: Week 7 (parallel with Milestone 5)  
-**Goal**: Implement comprehensive cost tracking
+**Status**: ⚠️ **PARTIALLY COMPLETE**
 
 ### Cost Tracking
-- [ ] Token counting for all LLM calls
-- [ ] API call metering
-- [ ] Agent runtime tracking
-- [ ] Cost calculation formulas
-- [ ] Database storage (cost_tracking table)
-- [ ] Real-time cost accumulation
+- [x] Token counting for all LLM calls (tiktoken)
+- [x] Agent runtime tracking (per-second)
+- [x] Cost calculation formulas (agent pricing rates)
+- [x] Real-time cost accumulation during execution
+- [x] Total cost stored per execution
+- [ ] API call metering - Deferred
+- [ ] Database storage (cost_tracking table) - Deferred
 
 ### Billing System
-- [ ] Agent pricing configuration
-- [ ] Budget limit enforcement
-- [ ] Budget alert thresholds
-- [ ] Cost summary API endpoints
-- [ ] Historical cost data
+- [x] Agent pricing configuration (metadata in agents)
+- [x] Subscription tier enforcement (Phase 1 - soft)
+- [x] Signal bucket definitions
+- [x] Pipeline limits per tier
+- [ ] Budget limit enforcement - Future
+- [ ] Budget alert thresholds - Future
+- [ ] Historical cost data queries - Future
 
 ### UI Components
-- [ ] Real-time cost display during execution
-- [ ] Cost dashboard page
-- [ ] Usage charts (Chart.js)
-- [ ] Budget settings
-- [ ] Cost projections
-- [ ] Budget alert notifications
+- [x] Real-time cost display during execution (monitoring page)
+- [x] Total cost in execution list
+- [x] Subscription info API (`/api/v1/users/me/subscription`)
+- [ ] Cost dashboard page - Future
+- [ ] Usage charts - Future
+- [ ] Budget settings - Future
+- [ ] Cost projections - Future
 
 ### Deliverables
-- [ ] Complete cost tracking system
-- [ ] Budget enforcement working
-- [ ] Cost dashboard in UI
-- [ ] Budget alerts
+- ✅ Basic cost tracking (per execution total)
+- ✅ Agent pricing configured
+- ✅ Subscription tier data model (Phase 1)
+- ⚠️ Budget enforcement - Deferred
+- ⚠️ Cost analytics dashboard - Deferred
 
 ---
 
@@ -412,38 +441,38 @@ This roadmap outlines the development plan for the Trading Platform from initial
 
 ## Scanner Feature Roadmap (Integrated into MVP)
 
-### Phase 1: Manual Scanner (Current - Week 8)
+### Phase 1: Manual Scanner ✅ COMPLETE
 **Duration**: 1-2 days  
-**Goal**: Enable users to create reusable ticker lists
+**Status**: ✅ **COMPLETED**
 
 #### Backend Tasks
 - [x] Scanner database model (`scanners` table)
 - [x] Pipeline model update (add `scanner_id`, `signal_subscriptions`)
-- [ ] Scanner Pydantic schemas
-- [ ] Scanner CRUD API endpoints
-- [ ] Trigger Dispatcher integration (use scanner for matching)
-- [ ] Alembic migration
-- [ ] API endpoint: Get available signal types
-- [ ] Validation: Signal-based pipelines require scanner
+- [x] Scanner Pydantic schemas
+- [x] Scanner CRUD API endpoints
+- [x] Trigger Dispatcher integration (use scanner for matching)
+- [x] Alembic migration
+- [x] API endpoint: Get available signal types
+- [x] Validation: Signal-based pipelines require scanner
 
 #### Frontend Tasks
-- [ ] Scanner models and TypeScript interfaces
-- [ ] Scanner service (API calls)
-- [ ] Scanner management page (`/scanners`)
-- [ ] Scanner list component (cards view)
-- [ ] Create/Edit Scanner dialog (manual ticker input)
-- [ ] Pipeline Settings dialog (scanner selector + signal subscriptions)
-- [ ] Signal subscription selector
-- [ ] Integration in Pipeline Builder
+- [x] Scanner models and TypeScript interfaces
+- [x] Scanner service (API calls)
+- [x] Scanner management page (`/scanners`)
+- [x] Scanner list component (cards view)
+- [x] Create/Edit Scanner dialog (manual ticker input)
+- [x] Pipeline Settings dialog (scanner selector + signal subscriptions)
+- [x] Signal subscription selector
+- [x] Integration in Pipeline Builder
 
 #### Features
-- Create scanner with name + manual ticker list
-- Edit scanner (add/remove tickers)
-- Delete scanner (with usage validation)
-- List all user scanners
-- Select scanner in Pipeline Builder
-- Configure signal subscriptions per pipeline
-- Preview scanner tickers
+- [x] Create scanner with name + manual ticker list
+- [x] Edit scanner (add/remove tickers)
+- [x] Delete scanner (with usage validation)
+- [x] List all user scanners
+- [x] Select scanner in Pipeline Builder
+- [x] Configure signal subscriptions per pipeline
+- [x] Preview scanner tickers
 
 #### Deliverables
 - ✅ Scanners as reusable, first-class entities
