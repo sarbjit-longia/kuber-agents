@@ -34,6 +34,7 @@ import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { JsonSchemaFormComponent } from '../../shared/json-schema-form/json-schema-form.component';
 import { ToolSelectorComponent } from '../../shared/tool-selector/tool-selector.component';
 import { ValidationErrorDialogComponent } from '../../shared/validation-error-dialog/validation-error-dialog.component';
+import { PipelineSettingsDialogComponent } from './pipeline-settings-dialog/pipeline-settings-dialog.component';
 
 // Define AgentMetadata locally since it might not be exported
 interface AgentMetadata {
@@ -134,6 +135,7 @@ export class PipelineBuilderComponent implements OnInit {
   ];
 
   currentPipelineId: string | null = null;
+  currentPipeline: any = null; // Full pipeline object with trigger_mode, scanner_id, etc.
   
   // Configuration editing state
   editingConfig: any = null; // Temporary config being edited
@@ -239,6 +241,9 @@ export class PipelineBuilderComponent implements OnInit {
     this.pipelineService.getPipeline(pipelineId).subscribe({
       next: (pipeline) => {
         console.log('✅ Pipeline loaded:', pipeline);
+        
+        // Store full pipeline object for settings dialog
+        this.currentPipeline = pipeline;
         
         // Set pipeline metadata
         this.pipelineName = pipeline.name || 'Untitled Pipeline';
@@ -943,6 +948,44 @@ export class PipelineBuilderComponent implements OnInit {
       this.selectedNode = null;
       this.showNotification('Canvas cleared', 'info');
     }
+  }
+
+  /**
+   * Open pipeline settings dialog
+   */
+  openPipelineSettings(): void {
+    if (!this.currentPipelineId) {
+      this.showNotification('Please save the pipeline first before configuring settings', 'warning');
+      return;
+    }
+
+    const dialogRef = this.dialog.open(PipelineSettingsDialogComponent, {
+      width: '700px',
+      data: {
+        pipeline: {
+          id: this.currentPipelineId,
+          trigger_mode: this.currentPipeline?.trigger_mode || 'periodic',
+          scanner_id: this.currentPipeline?.scanner_id,
+          signal_subscriptions: this.currentPipeline?.signal_subscriptions || []
+        }
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        // Update pipeline with new settings
+        this.pipelineService.updatePipeline(this.currentPipelineId!, result).subscribe({
+          next: (updatedPipeline) => {
+            this.currentPipeline = updatedPipeline;
+            this.showNotification('Pipeline settings updated successfully', 'success');
+          },
+          error: (error) => {
+            console.error('Failed to update pipeline settings:', error);
+            this.showNotification('Failed to update settings', 'error');
+          }
+        });
+      }
+    });
   }
 
   /**

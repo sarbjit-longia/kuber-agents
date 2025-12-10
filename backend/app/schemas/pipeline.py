@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from app.schemas.scanner import SignalSubscription
+
 
 class TriggerMode(str, Enum):
     """
@@ -25,7 +27,13 @@ class PipelineBase(BaseModel):
     description: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
     trigger_mode: TriggerMode = Field(default=TriggerMode.PERIODIC)
-    scanner_tickers: Optional[List[str]] = Field(default=None, description="Ticker symbols for signal-based pipelines")
+    
+    # Scanner configuration (for signal-based pipelines)
+    scanner_id: Optional[UUID] = Field(None, description="Scanner to use for ticker selection")
+    signal_subscriptions: Optional[List[SignalSubscription]] = Field(default=None, description="Signal types to subscribe to")
+    
+    # DEPRECATED: Kept for backward compatibility
+    scanner_tickers: Optional[List[str]] = Field(default=None, description="(Deprecated) Use scanner_id instead")
 
 
 class PipelineCreate(PipelineBase):
@@ -40,7 +48,9 @@ class PipelineUpdate(BaseModel):
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     trigger_mode: Optional[TriggerMode] = None
-    scanner_tickers: Optional[List[str]] = None
+    scanner_id: Optional[UUID] = None
+    signal_subscriptions: Optional[List[SignalSubscription]] = None
+    scanner_tickers: Optional[List[str]] = None  # Deprecated
 
 
 class PipelineInDB(PipelineBase):
@@ -49,7 +59,9 @@ class PipelineInDB(PipelineBase):
     user_id: UUID
     is_active: bool
     trigger_mode: TriggerMode
-    scanner_tickers: Optional[List[str]]
+    scanner_id: Optional[UUID]
+    signal_subscriptions: Optional[List[SignalSubscription]]
+    scanner_tickers: Optional[List[str]]  # Deprecated
     created_at: datetime
     updated_at: datetime
 

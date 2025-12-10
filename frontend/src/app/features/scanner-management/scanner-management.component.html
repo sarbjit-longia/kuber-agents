@@ -1,0 +1,117 @@
+<div class="scanners-page">
+  <app-navbar></app-navbar>
+
+  <div class="scanners-container">
+    <div class="page-header">
+    <div class="header-content">
+      <h1>
+        <mat-icon>filter_alt</mat-icon>
+        Scanners
+      </h1>
+      <p class="subtitle">Manage ticker lists for signal-based pipelines</p>
+    </div>
+    <button mat-raised-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      New Scanner
+    </button>
+  </div>
+
+  <div class="filters">
+    <mat-button-toggle-group [value]="filterActive === undefined ? 'all' : (filterActive ? 'active' : 'inactive')"
+                              (change)="applyFilter($event.value)">
+      <mat-button-toggle value="all">All</mat-button-toggle>
+      <mat-button-toggle value="active">Active</mat-button-toggle>
+      <mat-button-toggle value="inactive">Inactive</mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
+
+  <div class="scanner-list" *ngIf="!loading && scanners.length > 0">
+    <div class="scanner-card" *ngFor="let scanner of scanners">
+      <div class="scanner-card-header">
+        <div class="scanner-title">
+          <h3>{{ scanner.name }}</h3>
+          <mat-chip [class.active]="scanner.is_active" [class.inactive]="!scanner.is_active">
+            {{ scanner.is_active ? 'Active' : 'Inactive' }}
+          </mat-chip>
+        </div>
+        <div class="scanner-actions">
+          <button mat-icon-button [matMenuTriggerFor]="menu">
+            <mat-icon>more_vert</mat-icon>
+          </button>
+          <mat-menu #menu="matMenu">
+            <button mat-menu-item (click)="openEditDialog(scanner)">
+              <mat-icon>edit</mat-icon>
+              <span>Edit</span>
+            </button>
+            <button mat-menu-item (click)="toggleScannerStatus(scanner)">
+              <mat-icon>{{ scanner.is_active ? 'pause' : 'play_arrow' }}</mat-icon>
+              <span>{{ scanner.is_active ? 'Deactivate' : 'Activate' }}</span>
+            </button>
+            <button mat-menu-item (click)="deleteScanner(scanner)" class="danger">
+              <mat-icon>delete</mat-icon>
+              <span>Delete</span>
+            </button>
+          </mat-menu>
+        </div>
+      </div>
+
+      <p class="scanner-description" *ngIf="scanner.description">
+        {{ scanner.description }}
+      </p>
+
+      <div class="scanner-stats">
+        <div class="stat">
+          <mat-icon>label</mat-icon>
+          <span class="stat-value">{{ scanner.ticker_count || 0 }}</span>
+          <span class="stat-label">Tickers</span>
+        </div>
+        <div class="stat">
+          <mat-icon>account_tree</mat-icon>
+          <span class="stat-value">{{ scanner.pipeline_count || 0 }}</span>
+          <span class="stat-label">Pipelines</span>
+        </div>
+        <div class="stat">
+          <mat-icon>category</mat-icon>
+          <span class="stat-value">{{ scanner.scanner_type }}</span>
+          <span class="stat-label">Type</span>
+        </div>
+      </div>
+
+      <div class="scanner-tickers" *ngIf="getTickerCount(scanner) > 0">
+        <div class="tickers-label">Tickers:</div>
+        <div class="ticker-chips">
+          <mat-chip *ngFor="let ticker of getTickers(scanner).slice(0, 10)">
+            {{ ticker }}
+          </mat-chip>
+          <mat-chip *ngIf="getTickerCount(scanner) > 10" class="more-chip">
+            +{{ getTickerCount(scanner) - 10 }} more
+          </mat-chip>
+        </div>
+      </div>
+
+      <div class="scanner-footer">
+        <span class="footer-text">
+          <mat-icon class="small-icon">schedule</mat-icon>
+          Updated {{ scanner.updated_at | date: 'short' }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty-state" *ngIf="!loading && scanners.length === 0">
+    <mat-icon>filter_alt</mat-icon>
+    <h2>No scanners found</h2>
+    <p>Create your first scanner to get started with signal-based pipelines</p>
+    <button mat-raised-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      Create Scanner
+    </button>
+  </div>
+
+  <div class="loading-state" *ngIf="loading">
+    <mat-spinner></mat-spinner>
+    <p>Loading scanners...</p>
+  </div>
+  </div>
+</div>
+

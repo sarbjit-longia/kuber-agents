@@ -66,7 +66,11 @@ async def start_execution(
     
     # Validate pipeline configuration
     validator = PipelineValidator()
-    is_valid, validation_errors = validator.validate(pipeline.config)
+    is_valid, validation_errors = validator.validate(
+        pipeline.config,
+        trigger_mode=str(pipeline.trigger_mode) if pipeline.trigger_mode else "periodic",
+        scanner_id=str(pipeline.scanner_id) if pipeline.scanner_id else None
+    )
     
     if not is_valid:
         import structlog

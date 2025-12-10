@@ -38,6 +38,9 @@
         <button mat-icon-button matTooltip="Clear canvas" (click)="clearCanvas()" [disabled]="canvasNodes.length === 0">
           <mat-icon>delete_sweep</mat-icon>
         </button>
+        <button mat-icon-button matTooltip="Pipeline Settings (Trigger Mode, Scanner)" (click)="openPipelineSettings()" [disabled]="!currentPipelineId">
+          <mat-icon>settings</mat-icon>
+        </button>
         <button mat-raised-button (click)="savePipeline()" [disabled]="saving || canvasNodes.length === 0">
           <mat-icon>{{saving ? 'hourglass_empty' : 'save'}}</mat-icon>
           {{saving ? 'Saving...' : 'Save'}}

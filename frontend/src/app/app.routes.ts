@@ -49,6 +49,11 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'scanners',
+    loadComponent: () => import('./features/scanner-management/scanner-management.component').then(m => m.ScannerManagementComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: '**',
     redirectTo: '/dashboard'
   }

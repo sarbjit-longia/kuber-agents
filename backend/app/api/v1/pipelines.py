@@ -131,9 +131,17 @@ async def update_existing_pipeline(
         # Use updated config if provided, otherwise use existing
         config_to_validate = pipeline_update.config if hasattr(pipeline_update, 'config') and pipeline_update.config else existing_pipeline.config
         
+        # Get trigger mode and scanner_id (updated values or existing)
+        trigger_mode = pipeline_update.trigger_mode if hasattr(pipeline_update, 'trigger_mode') and pipeline_update.trigger_mode else existing_pipeline.trigger_mode
+        scanner_id = pipeline_update.scanner_id if hasattr(pipeline_update, 'scanner_id') and pipeline_update.scanner_id is not None else existing_pipeline.scanner_id
+        
         # Validate pipeline configuration
         validator = PipelineValidator()
-        is_valid, validation_errors = validator.validate(config_to_validate)
+        is_valid, validation_errors = validator.validate(
+            config_to_validate,
+            trigger_mode=str(trigger_mode) if trigger_mode else "periodic",
+            scanner_id=str(scanner_id) if scanner_id else None
+        )
         
         if not is_valid:
             raise HTTPException(

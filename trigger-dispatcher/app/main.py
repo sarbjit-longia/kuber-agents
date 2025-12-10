@@ -177,6 +177,7 @@ class TriggerDispatcher:
         Refresh in-memory cache of active signal-based pipelines.
         
         This runs every 30 seconds to pick up new/updated pipelines.
+        Fetches scanner tickers from scanners table.
         """
         try:
             async with AsyncSessionLocal() as session:
@@ -185,7 +186,7 @@ class TriggerDispatcher:
                 from sqlalchemy.dialects.postgresql import UUID, JSONB
                 from sqlalchemy import String, Boolean, DateTime, Text
                 
-                # Define pipeline table structure
+                # Define table structures
                 metadata = MetaData()
                 pipelines_table = Table(
                     'pipelines',
@@ -195,15 +196,32 @@ class TriggerDispatcher:
                     Column('name', String(255)),
                     Column('is_active', Boolean),
                     Column('trigger_mode', String(50)),
-                    Column('scanner_tickers', JSONB),
+                    Column('scanner_id', UUID(as_uuid=True)),
+                    Column('signal_subscriptions', JSONB),
+                    Column('scanner_tickers', JSONB),  # Fallback for backward compat
                 )
                 
-                # Query active signal-based pipelines
+                scanners_table = Table(
+                    'scanners',
+                    metadata,
+                    Column('id', UUID(as_uuid=True), primary_key=True),
+                    Column('config', JSONB),
+                )
+                
+                # Query active signal-based pipelines with their scanners
                 query = select(
                     pipelines_table.c.id,
                     pipelines_table.c.name,
                     pipelines_table.c.user_id,
-                    pipelines_table.c.scanner_tickers
+                    pipelines_table.c.scanner_id,
+                    pipelines_table.c.signal_subscriptions,
+                    pipelines_table.c.scanner_tickers,
+                    scanners_table.c.config.label('scanner_config')
+                ).select_from(
+                    pipelines_table.outerjoin(
+                        scanners_table,
+                        pipelines_table.c.scanner_id == scanners_table.c.id
+                    )
                 ).where(
                     and_(
                         pipelines_table.c.is_active == True,
@@ -217,12 +235,21 @@ class TriggerDispatcher:
                 # Build cache
                 new_cache = {}
                 for pipeline in pipelines:
-                    tickers = pipeline.scanner_tickers or []
+                    # Get tickers from scanner or fallback to scanner_tickers
+                    tickers = []
+                    if pipeline.scanner_config:
+                        # New way: Get tickers from scanner
+                        tickers = pipeline.scanner_config.get('tickers', [])
+                    elif pipeline.scanner_tickers:
+                        # Old way: Use direct scanner_tickers (deprecated)
+                        tickers = pipeline.scanner_tickers
+                    
                     if tickers:  # Only cache pipelines with tickers
                         new_cache[str(pipeline.id)] = {
                             'name': pipeline.name,
                             'user_id': str(pipeline.user_id),
-                            'tickers': set(tickers)
+                            'tickers': set(tickers),
+                            'signal_subscriptions': pipeline.signal_subscriptions or []
                         }
                 
                 self.pipeline_cache = new_cache
@@ -249,6 +276,11 @@ class TriggerDispatcher:
         """
         Match signals to pipelines using in-memory cache.
         
+        Matches on:
+        1. Ticker intersection (signal tickers ∩ pipeline tickers)
+        2. Signal type subscription (if specified)
+        3. Confidence threshold (if specified)
+        
         Args:
             signals: List of signals to match
             
@@ -265,19 +297,65 @@ class TriggerDispatcher:
             
             # Scan in-memory cache (fast!)
             for pipeline_id, pipeline_data in self.pipeline_cache.items():
-                # Set intersection: Check if any signal ticker is in pipeline tickers
-                if signal_tickers & pipeline_data['tickers']:
-                    if pipeline_id not in matches:
-                        matches[pipeline_id] = []
-                    matches[pipeline_id].append(str(signal.signal_id))
+                # Check 1: Ticker intersection
+                matched_tickers = signal_tickers & pipeline_data['tickers']
+                if not matched_tickers:
+                    continue
+                
+                # Check 2: Signal type subscription (if specified)
+                signal_subscriptions = pipeline_data.get('signal_subscriptions', [])
+                if signal_subscriptions:
+                    # Pipeline has specific signal subscriptions
+                    # Check if this signal type is subscribed
+                    subscribed = False
+                    for subscription in signal_subscriptions:
+                        if subscription.get('signal_type') == signal.signal_type.value:
+                            # Check 3: Confidence threshold (if specified)
+                            min_confidence = subscription.get('min_confidence')
+                            if min_confidence is not None:
+                                # For multi-ticker signals, check if any ticker meets threshold
+                                # Get max confidence across matched tickers
+                                max_confidence = 0
+                                for ticker_signal in signal.tickers:
+                                    if ticker_signal.ticker in matched_tickers:
+                                        max_confidence = max(max_confidence, ticker_signal.confidence or 0)
+                                
+                                if max_confidence < min_confidence:
+                                    logger.debug(
+                                        "signal_filtered_by_confidence",
+                                        signal_id=str(signal.signal_id),
+                                        pipeline_id=pipeline_id,
+                                        signal_confidence=max_confidence,
+                                        required_confidence=min_confidence
+                                    )
+                                    continue  # Signal doesn't meet confidence threshold
+                            
+                            subscribed = True
+                            break
                     
-                    logger.debug(
-                        "signal_matched_to_pipeline",
-                        signal_id=str(signal.signal_id),
-                        pipeline_id=pipeline_id,
-                        pipeline_name=pipeline_data['name'],
-                        matched_tickers=list(signal_tickers & pipeline_data['tickers'])
-                    )
+                    if not subscribed:
+                        logger.debug(
+                            "signal_filtered_by_subscription",
+                            signal_id=str(signal.signal_id),
+                            pipeline_id=pipeline_id,
+                            signal_type=signal.signal_type.value,
+                            subscriptions=[s.get('signal_type') for s in signal_subscriptions]
+                        )
+                        continue  # Pipeline not subscribed to this signal type
+                
+                # Match found!
+                if pipeline_id not in matches:
+                    matches[pipeline_id] = []
+                matches[pipeline_id].append(str(signal.signal_id))
+                
+                logger.debug(
+                    "signal_matched_to_pipeline",
+                    signal_id=str(signal.signal_id),
+                    pipeline_id=pipeline_id,
+                    pipeline_name=pipeline_data['name'],
+                    matched_tickers=list(matched_tickers),
+                    signal_type=signal.signal_type.value
+                )
         
         return matches
     

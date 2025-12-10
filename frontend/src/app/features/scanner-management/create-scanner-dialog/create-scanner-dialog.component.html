@@ -1,0 +1,81 @@
+<h2 mat-dialog-title>
+  {{ isEditMode ? 'Edit Scanner' : 'Create Scanner' }}
+</h2>
+
+<mat-dialog-content>
+  <form [formGroup]="scannerForm">
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Scanner Name</mat-label>
+      <input matInput formControlName="name" placeholder="My Watchlist" required>
+      <mat-hint>A descriptive name for your scanner</mat-hint>
+      <mat-error *ngIf="scannerForm.get('name')?.hasError('required')">
+        Name is required
+      </mat-error>
+      <mat-error *ngIf="scannerForm.get('name')?.hasError('maxlength')">
+        Name must be less than 100 characters
+      </mat-error>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Description (Optional)</mat-label>
+      <textarea matInput formControlName="description" rows="2" 
+                placeholder="A list of tech stocks"></textarea>
+      <mat-hint>Optional description for this scanner</mat-hint>
+    </mat-form-field>
+
+    <div class="form-group">
+      <label class="section-label">Ticker Symbols *</label>
+      <mat-hint class="ticker-hint">
+        Enter tickers one at a time or paste multiple (separated by commas, spaces, or newlines)
+      </mat-hint>
+
+      <mat-form-field appearance="outline" class="full-width ticker-input">
+        <mat-label>Add Tickers</mat-label>
+        <mat-chip-grid #chipGrid>
+          <mat-chip-row *ngFor="let ticker of tickers"
+                        (removed)="removeTicker(ticker)">
+            {{ ticker }}
+            <button matChipRemove>
+              <mat-icon>cancel</mat-icon>
+            </button>
+          </mat-chip-row>
+        </mat-chip-grid>
+        <input placeholder="AAPL, MSFT, GOOGL..."
+               [matChipInputFor]="chipGrid"
+               [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+               [matChipInputAddOnBlur]="true"
+               (matChipInputTokenEnd)="addTicker($event)"
+               (paste)="onPaste($event)"
+               [formControl]="tickerInputControl">
+      </mat-form-field>
+
+      <div class="ticker-count" *ngIf="tickers.length > 0">
+        <mat-icon>label</mat-icon>
+        <span>{{ tickers.length }} ticker{{ tickers.length > 1 ? 's' : '' }} added</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <mat-checkbox formControlName="is_active">
+        Active (Scanner will be available for pipelines)
+      </mat-checkbox>
+    </div>
+
+    <div class="info-box">
+      <mat-icon>info</mat-icon>
+      <div class="info-content">
+        <strong>Manual Scanner</strong>
+        <p>You can manually enter ticker symbols. These tickers will be used to match signals from signal generators.</p>
+        <p><strong>Future:</strong> Filter-based and API-based scanners coming soon!</p>
+      </div>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="onCancel()">Cancel</button>
+  <button mat-raised-button color="primary" (click)="onSubmit()" [disabled]="!scannerForm.valid || tickers.length === 0">
+    {{ isEditMode ? 'Save Changes' : 'Create Scanner' }}
+  </button>
+</mat-dialog-actions>
+

@@ -1,0 +1,143 @@
+<h2 mat-dialog-title>
+  <mat-icon>settings</mat-icon>
+  Pipeline Settings
+</h2>
+
+<mat-dialog-content>
+  <form [formGroup]="settingsForm">
+    <!-- Trigger Mode -->
+    <div class="form-group">
+      <label class="section-label">Trigger Mode</label>
+      <mat-radio-group formControlName="trigger_mode" class="trigger-mode-group">
+        <mat-radio-button [value]="TriggerMode.PERIODIC">
+          <div class="radio-option">
+            <div class="option-header">
+              <mat-icon>schedule</mat-icon>
+              <strong>Periodic (Time-Based)</strong>
+            </div>
+            <p>Pipeline runs on a fixed schedule based on time trigger configuration</p>
+          </div>
+        </mat-radio-button>
+        
+        <mat-radio-button [value]="TriggerMode.SIGNAL">
+          <div class="radio-option">
+            <div class="option-header">
+              <mat-icon>notifications_active</mat-icon>
+              <strong>Signal-Based</strong>
+            </div>
+            <p>Pipeline is triggered by external signals (e.g., Golden Cross, News, Technical Indicators)</p>
+          </div>
+        </mat-radio-button>
+      </mat-radio-group>
+    </div>
+
+    <!-- Scanner Selection (only for Signal mode) -->
+    <div class="form-group" *ngIf="isSignalMode()">
+      <label class="section-label">Scanner (Ticker List) *</label>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Select Scanner</mat-label>
+        <mat-select formControlName="scanner_id" required>
+          <mat-option *ngFor="let scanner of scanners" [value]="scanner.id">
+            <div class="scanner-option">
+              <span class="scanner-name">{{ scanner.name }}</span>
+              <mat-chip class="ticker-count">{{ scanner.ticker_count }} tickers</mat-chip>
+            </div>
+          </mat-option>
+        </mat-select>
+        <mat-hint>Signals will only trigger this pipeline for tickers in the selected scanner</mat-hint>
+        <mat-error>Please select a scanner for signal-based pipelines</mat-error>
+      </mat-form-field>
+
+      <!-- Scanner Preview -->
+      <div class="scanner-preview" *ngIf="getSelectedScanner() as scanner">
+        <div class="preview-header">
+          <mat-icon>preview</mat-icon>
+          <strong>{{ scanner.name }}</strong>
+        </div>
+        <div class="ticker-chips">
+          <mat-chip *ngFor="let ticker of scanner.config?.tickers?.slice(0, 15)">
+            {{ ticker }}
+          </mat-chip>
+          <mat-chip *ngIf="getTickerCount(scanner) > 15" class="more-chip">
+            +{{ getTickerCount(scanner) - 15 }} more
+          </mat-chip>
+        </div>
+      </div>
+
+      <div class="no-scanners-message" *ngIf="scanners.length === 0 && !loading">
+        <mat-icon>warning</mat-icon>
+        <p>No scanners found. <a href="/scanners" target="_blank">Create a scanner</a> first.</p>
+      </div>
+    </div>
+
+    <!-- Signal Subscriptions (only for Signal mode) -->
+    <div class="form-group" *ngIf="isSignalMode()">
+      <div class="section-header">
+        <label class="section-label">Signal Filters (Optional)</label>
+        <button mat-button type="button" (click)="addSignalSubscription()">
+          <mat-icon>add</mat-icon>
+          Add Filter
+        </button>
+      </div>
+      <mat-hint class="subscription-hint">
+        Subscribe to specific signal types and set confidence thresholds. Leave empty to accept all signal types.
+      </mat-hint>
+
+      <div class="subscriptions-list" *ngIf="signalSubscriptions.length > 0">
+        <div class="subscription-item" *ngFor="let sub of signalSubscriptions.controls; let i = index" [formGroup]="$any(sub)">
+          <mat-form-field appearance="outline" class="signal-type-field">
+            <mat-label>Signal Type</mat-label>
+            <mat-select formControlName="signal_type">
+              <mat-option *ngFor="let signalType of signalTypes" [value]="signalType.signal_type">
+                <div class="signal-type-option">
+                  <mat-icon>{{ signalType.icon }}</mat-icon>
+                  <div class="signal-info">
+                    <strong>{{ signalType.name }}</strong>
+                    <span class="signal-description">{{ signalType.description }}</span>
+                  </div>
+                </div>
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="confidence-field">
+            <mat-label>Min Confidence %</mat-label>
+            <input matInput type="number" formControlName="min_confidence" 
+                   placeholder="0-100" min="0" max="100">
+            <mat-hint>Optional: Filter signals below this confidence</mat-hint>
+          </mat-form-field>
+
+          <button mat-icon-button type="button" (click)="removeSignalSubscription(i)" class="remove-button">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <div class="empty-subscriptions" *ngIf="signalSubscriptions.length === 0">
+        <mat-icon>all_inclusive</mat-icon>
+        <p>Accepting all signal types (no filters applied)</p>
+      </div>
+    </div>
+
+    <!-- Info Box -->
+    <div class="info-box">
+      <mat-icon>info</mat-icon>
+      <div class="info-content">
+        <strong>How it works:</strong>
+        <ul>
+          <li><strong>Periodic Mode:</strong> Pipeline runs based on time trigger agent configuration (e.g., every 5 minutes during market hours)</li>
+          <li><strong>Signal Mode:</strong> Pipeline wakes up when a signal generator emits a signal for a ticker in your scanner</li>
+          <li><strong>Signal Filters:</strong> Further narrow down which signals trigger the pipeline (e.g., only Golden Cross signals with >80% confidence)</li>
+        </ul>
+      </div>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="onCancel()">Cancel</button>
+  <button mat-raised-button color="primary" (click)="onSubmit()" [disabled]="!settingsForm.valid">
+    Save Settings
+  </button>
+</mat-dialog-actions>
+

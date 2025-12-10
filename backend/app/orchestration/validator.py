@@ -24,19 +24,21 @@ class PipelineValidator:
     def __init__(self):
         self.agent_registry = get_registry()
     
-    def validate(self, pipeline_config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    def validate(self, pipeline_config: Dict[str, Any], trigger_mode: str = "periodic", scanner_id: str = None) -> Tuple[bool, List[str]]:
         """
         Validate a pipeline configuration.
         
         Args:
             pipeline_config: Pipeline config with nodes and edges
+            trigger_mode: Pipeline trigger mode ('periodic' or 'signal')
+            scanner_id: Scanner ID (required for signal-based pipelines)
             
         Returns:
             Tuple of (is_valid, list_of_errors)
             
         Example:
             validator = PipelineValidator()
-            is_valid, errors = validator.validate(pipeline_config)
+            is_valid, errors = validator.validate(pipeline_config, trigger_mode='signal', scanner_id='...')
             if not is_valid:
                 return {"error": errors}
         """
@@ -56,7 +58,7 @@ class PipelineValidator:
             errors.extend(node_errors)
         
         # 3. Validate pipeline structure (basic checks)
-        structure_errors = self._validate_structure(nodes, edges)
+        structure_errors = self._validate_structure(nodes, edges, trigger_mode, scanner_id)
         errors.extend(structure_errors)
         
         is_valid = len(errors) == 0
@@ -129,8 +131,8 @@ class PipelineValidator:
         
         return errors
     
-    def _validate_structure(self, nodes: List[Dict], edges: List[Dict]) -> List[str]:
-        """Validate pipeline structure."""
+    def _validate_structure(self, nodes: List[Dict], edges: List[Dict], trigger_mode: str = "periodic", scanner_id: str = None) -> List[str]:
+        """Validate pipeline structure based on trigger mode."""
         errors = []
         
         # Filter out tool nodes
@@ -140,12 +142,21 @@ class PipelineValidator:
             errors.append("Pipeline has no agents (only tools)")
             return errors
         
-        # Check for trigger agent (should be first)
-        has_trigger = any(n.get("agent_type") == "time_trigger" for n in agent_nodes)
-        if not has_trigger:
-            errors.append(
-                "Pipeline must have a Trigger Agent (e.g., Time Trigger) to initiate execution"
-            )
+        # Validate trigger configuration based on mode
+        if trigger_mode == "periodic":
+            # Periodic pipelines require a Time Trigger agent
+            has_trigger = any(n.get("agent_type") == "time_trigger" for n in agent_nodes)
+            if not has_trigger:
+                errors.append(
+                    "Periodic pipelines must have a Time Trigger agent to schedule execution"
+                )
+        elif trigger_mode == "signal":
+            # Signal-based pipelines require a scanner
+            if not scanner_id:
+                errors.append(
+                    "Signal-based pipelines must have a scanner assigned. "
+                    "Go to Pipeline Settings and select a scanner."
+                )
         
         # Check for disconnected agents (if there are edges)
         if len(edges) > 0 and len(agent_nodes) > 1:

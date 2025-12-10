@@ -2,8 +2,8 @@
 Pipeline model for storing user-created trading pipelines.
 """
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM
 from sqlalchemy.orm import relationship
 import uuid
 import enum
@@ -49,13 +49,26 @@ class Pipeline(Base):
     description = Column(Text, nullable=True)
     config = Column(JSONB, nullable=False, default=dict)
     is_active = Column(Boolean, default=False, nullable=False)
-    trigger_mode = Column(SQLEnum(TriggerMode), default=TriggerMode.PERIODIC, nullable=False, index=True)
-    scanner_tickers = Column(JSONB, nullable=True, default=list)  # List of tickers for signal-based pipelines
+    trigger_mode = Column(ENUM('signal', 'periodic', name='triggermode', create_type=False), default='periodic', nullable=False, index=True)
+    
+    # Scanner configuration (signal-based pipelines)
+    scanner_id = Column(UUID(as_uuid=True), ForeignKey("scanners.id"), nullable=True, index=True)
+    signal_subscriptions = Column(JSONB, nullable=True, default=list)
+    # Example signal_subscriptions:
+    # [
+    #   {"signal_type": "golden_cross", "min_confidence": 80},
+    #   {"signal_type": "news_sentiment", "min_confidence": 70}
+    # ]
+    
+    # DEPRECATED: Use scanner_id instead
+    scanner_tickers = Column(JSONB, nullable=True, default=list)  # Kept for backward compatibility
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="pipelines")
+    scanner = relationship("Scanner", foreign_keys=[scanner_id])
     executions = relationship("Execution", back_populates="pipeline", cascade="all, delete-orphan")
     cost_tracking = relationship("CostTracking", back_populates="pipeline")
 

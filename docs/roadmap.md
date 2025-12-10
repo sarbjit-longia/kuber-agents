@@ -410,6 +410,132 @@ This roadmap outlines the development plan for the Trading Platform from initial
 
 ---
 
+## Scanner Feature Roadmap (Integrated into MVP)
+
+### Phase 1: Manual Scanner (Current - Week 8)
+**Duration**: 1-2 days  
+**Goal**: Enable users to create reusable ticker lists
+
+#### Backend Tasks
+- [x] Scanner database model (`scanners` table)
+- [x] Pipeline model update (add `scanner_id`, `signal_subscriptions`)
+- [ ] Scanner Pydantic schemas
+- [ ] Scanner CRUD API endpoints
+- [ ] Trigger Dispatcher integration (use scanner for matching)
+- [ ] Alembic migration
+- [ ] API endpoint: Get available signal types
+- [ ] Validation: Signal-based pipelines require scanner
+
+#### Frontend Tasks
+- [ ] Scanner models and TypeScript interfaces
+- [ ] Scanner service (API calls)
+- [ ] Scanner management page (`/scanners`)
+- [ ] Scanner list component (cards view)
+- [ ] Create/Edit Scanner dialog (manual ticker input)
+- [ ] Pipeline Settings dialog (scanner selector + signal subscriptions)
+- [ ] Signal subscription selector
+- [ ] Integration in Pipeline Builder
+
+#### Features
+- Create scanner with name + manual ticker list
+- Edit scanner (add/remove tickers)
+- Delete scanner (with usage validation)
+- List all user scanners
+- Select scanner in Pipeline Builder
+- Configure signal subscriptions per pipeline
+- Preview scanner tickers
+
+#### Deliverables
+- ✅ Scanners as reusable, first-class entities
+- ✅ Users can create multi-ticker signal-based pipelines
+- ✅ Signal filtering by type and confidence threshold
+- ✅ Clean separation: Scanner → Signal → Pipeline
+
+---
+
+### Phase 2: Filter-Based Scanner (Future - Week 12+)
+**Duration**: 1-2 weeks  
+**Goal**: Dynamic scanners with market filters
+
+#### Backend Tasks
+- [ ] Ticker universe database table
+- [ ] Ticker metadata ingestion (sector, market cap, etc.)
+- [ ] Scanner execution engine (apply filters to universe)
+- [ ] Scanner result caching (auto-refresh)
+- [ ] Scanner scheduling (periodic refresh)
+- [ ] Filter query builder
+
+#### Frontend Tasks
+- [ ] Visual filter builder UI
+- [ ] Filter preview (real-time result count)
+- [ ] Scanner result history viewer
+- [ ] Filter templates (pre-built popular scanners)
+
+#### Filter Categories
+**Basic Filters**:
+- Market Cap: Min/Max
+- Price: Min/Max
+- Volume: Min/Max
+- Sector: Multi-select
+- Industry: Multi-select
+
+**Technical Filters**:
+- RSI: Range
+- Moving Averages: SMA/EMA crossovers
+- Price vs SMA: Above/Below
+- Volume: Above average
+- 52-week High/Low: Percentage range
+
+**Fundamental Filters** (if data available):
+- P/E Ratio: Min/Max
+- Dividend Yield: Min/Max
+- EPS Growth: Min/Max
+
+#### Data Source Options
+- **Option A**: Pre-downloaded ticker universe (CSV/JSON)
+  - Pros: Free, fast, offline-capable
+  - Cons: Needs periodic updates, limited data
+  
+- **Option B**: Free API (Alpha Vantage, Polygon.io)
+  - Pros: Real-time data
+  - Cons: Rate limits, cost at scale
+  
+- **Option C**: Paid API (Finviz Elite, Finnhub)
+  - Pros: Comprehensive data, fast
+  - Cons: Monthly cost ($50-200/month)
+
+**Recommendation**: Start with Option A, add Option B later
+
+#### Deliverables
+- Filter-based scanner creation
+- Real-time filter preview
+- Auto-refresh scanners on schedule
+- Scanner result history
+
+---
+
+### Phase 3: Advanced Scanners (Future - Month 3+)
+**Duration**: 2-3 weeks  
+**Goal**: External integrations and advanced features
+
+#### Features
+- **Finviz Integration**: Import screener URLs
+- **TradingView Integration**: Import scanner configurations
+- **Custom API**: User provides webhook/REST endpoint
+- **CSV Import**: Upload ticker lists
+- **Scanner Backtesting**: Historical performance
+- **Scanner Alerts**: Notify when ticker count changes
+- **Shared Scanners**: Community marketplace
+- **Scanner Templates**: Pre-built popular scanners
+- **Scanner Versioning**: Track changes over time
+
+#### Deliverables
+- Multiple scanner integrations
+- Scanner marketplace
+- Advanced scanner analytics
+
+---
+
 ## Post-MVP Roadmap (Future Phases)
 
 ### Phase 2: Enhanced Features (Weeks 11-14)

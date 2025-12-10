@@ -46,6 +46,16 @@ export interface PipelineConfig {
   edges: PipelineEdge[];
 }
 
+export enum TriggerMode {
+  SIGNAL = 'signal',
+  PERIODIC = 'periodic'
+}
+
+export interface SignalSubscription {
+  signal_type: string;
+  min_confidence?: number;
+}
+
 export interface Pipeline {
   id: string;
   user_id: string;
@@ -53,6 +63,10 @@ export interface Pipeline {
   description?: string;
   config: PipelineConfig;
   is_active: boolean;
+  trigger_mode: TriggerMode;
+  scanner_id?: string;
+  signal_subscriptions?: SignalSubscription[];
+  scanner_tickers?: string[]; // Deprecated - for backward compatibility
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +75,9 @@ export interface PipelineCreate {
   name: string;
   description?: string;
   config: PipelineConfig;
+  trigger_mode?: TriggerMode;
+  scanner_id?: string;
+  signal_subscriptions?: SignalSubscription[];
 }
 
 export interface PipelineUpdate {
@@ -68,6 +85,10 @@ export interface PipelineUpdate {
   description?: string;
   config?: PipelineConfig;
   is_active?: boolean;
+  trigger_mode?: TriggerMode;
+  scanner_id?: string;
+  signal_subscriptions?: SignalSubscription[];
+  scanner_tickers?: string[]; // Deprecated
 }
 
 export enum ExecutionStatus {
