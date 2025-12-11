@@ -1,37 +1,34 @@
 """
 Market Data Agent
 
-Fetches real-time and historical market data for the pipeline.
-This is a FREE agent (no LLM calls).
+Fetches real-time and historical market data from the Data Plane (centralized cache).
+This is a FREE agent (no LLM calls, no external API costs).
 """
 from typing import Dict, Any
 import asyncio
+import httpx
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, MarketData
-from app.tools.market_data import MarketDataTool, MockMarketDataTool
 
 
 class MarketDataAgent(BaseAgent):
     """
-    Market Data Agent fetches market data for analysis.
+    Market Data Agent fetches market data from the Data Plane (centralized cache).
     
-    This is a FREE agent (no LLM calls, no costs).
+    This is a FREE agent (no LLM calls, no costs, reads from cache).
     It fetches:
-    - Current price/quote
-    - Historical candle data for specified timeframes
-    - Technical indicators (future enhancement)
+    - Current price/quote from Redis cache (< 1 min old)
+    - Historical candle data from Data Plane API
     
     Configuration:
         - timeframes: List of timeframes to fetch (e.g., ["5m", "1h", "4h", "1d"])
         - lookback_periods: Number of periods to fetch per timeframe (default: 100)
-        - use_mock_data: Whether to use mock data (for testing)
     
     Example config:
         {
             "timeframes": ["5m", "1h", "4h", "1d"],
-            "lookback_periods": 100,
-            "use_mock_data": false
+            "lookback_periods": 100
         }
     """
     
@@ -40,20 +37,20 @@ class MarketDataAgent(BaseAgent):
         return AgentMetadata(
             agent_type="market_data_agent",
             name="Market Data Agent",
-            description="Fetches real-time and historical market data. Requires a Market Data Tool to be attached.",
+            description="Fetches real-time and historical market data from centralized Data Plane (cached, fast, free). No external API calls or tools required.",
             category="data",
-            version="1.0.0",
-            icon="show_chart",
+            version="2.0.0",  # Version 2.0 - uses Data Plane
+            icon="database",
             pricing_rate=0.0,
             is_free=True,
             requires_timeframes=[],
             requires_market_data=False,
             requires_position=False,
-            supported_tools=["market_data", "mock_market_data"],  # Supports both real and mock market data tools
+            supported_tools=[],  # No tools needed!
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Market Data Configuration",
-                description="Configure which market data to fetch",
+                description="Configure which market data to fetch from Data Plane",
                 properties={
                     "timeframes": {
                         "type": "array",
@@ -82,11 +79,10 @@ class MarketDataAgent(BaseAgent):
     
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        # No hardcoded tools - will load from config
     
     def process(self, state: PipelineState) -> PipelineState:
         """
-        Fetch market data and populate the state.
+        Fetch market data from Data Plane and populate the state.
         
         Args:
             state: Current pipeline state
@@ -96,22 +92,9 @@ class MarketDataAgent(BaseAgent):
             
         Raises:
             InsufficientDataError: If symbol is missing
-            AgentProcessingError: If data fetch fails or no market data tool attached
+            AgentProcessingError: If data fetch fails
         """
-        # Load configured tools
-        tools = self._load_tools()
-        
-        # Get market data tool (REQUIRED - must be attached by user)
-        # Accept either market_data (Finnhub) or mock_market_data (Testing)
-        market_data_tool = tools.get("market_data") or tools.get("mock_market_data")
-        
-        if not market_data_tool:
-            raise AgentProcessingError(
-                "Market Data Agent requires a Market Data Tool to be attached. "
-                "Please attach a tool like 'Finnhub Market Data' or 'Mock Market Data (Testing)' in the pipeline builder."
-            )
-        
-        self.log(state, f"Fetching market data (Using {market_data_tool.__class__.__name__})")
+        self.log(state, f"Fetching market data from Data Plane (cached)")
         
         # Validate we have a symbol
         if not state.symbol:
@@ -129,20 +112,15 @@ class MarketDataAgent(BaseAgent):
             
             self.log(state, f"Fetching data for {state.symbol} - Timeframes: {','.join(timeframes)}")
             
-            # Fetch market data (run async operation)
+            # Fetch market data from Data Plane API
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If we're already in an async context, we need to use run_coroutine_threadsafe
-                # or schedule it properly. For now, we'll use a simple approach:
+                # If we're already in an async context
                 import nest_asyncio
                 nest_asyncio.apply()
             
             market_data_dict = loop.run_until_complete(
-                market_data_tool.execute(
-                    symbol=state.symbol,
-                    timeframes=timeframes,
-                    lookback_periods=lookback_periods
-                )
+                self._fetch_from_data_plane(state.symbol, timeframes, lookback_periods)
             )
             
             # Convert to MarketData schema
@@ -151,14 +129,9 @@ class MarketDataAgent(BaseAgent):
                 current_price=market_data_dict["current_price"],
                 bid=market_data_dict.get("bid"),
                 ask=market_data_dict.get("ask"),
-                spread=(
-                    market_data_dict.get("ask", 0) - market_data_dict.get("bid", 0)
-                    if market_data_dict.get("ask") and market_data_dict.get("bid")
-                    else None
-                ),
-                timeframes=market_data_dict["timeframes"],
-                market_status="open",  # TODO: Determine actual market status
-                last_updated=market_data_dict["last_updated"]
+                timestamp=market_data_dict.get("timestamp"),
+                timeframes=market_data_dict.get("timeframes", {}),
+                last_updated=market_data_dict.get("timestamp")
             )
             
             # Log summary
@@ -166,12 +139,12 @@ class MarketDataAgent(BaseAgent):
             self.log(
                 state,
                 f"✓ Market data fetched - Price: ${state.market_data.current_price:.2f}, "
-                f"Candles: {total_candles} across {len(timeframes)} timeframes"
+                f"Candles: {total_candles} across {len(timeframes)} timeframes (from cache)"
             )
             self.record_report(
                 state,
                 title="Market data refreshed",
-                summary=f"Fetched {total_candles} candles across {len(timeframes)} timeframes",
+                summary=f"Fetched {total_candles} candles across {len(timeframes)} timeframes from Data Plane cache",
                 metrics={
                     "current_price": state.market_data.current_price,
                     "timeframes": ", ".join(timeframes),
@@ -180,7 +153,7 @@ class MarketDataAgent(BaseAgent):
                 data={
                     "timeframes": timeframes,
                     "lookback_periods": lookback_periods,
-                    "tool": market_data_tool.__class__.__name__,
+                    "source": "data-plane-cache",
                 },
             )
             
@@ -190,15 +163,8 @@ class MarketDataAgent(BaseAgent):
             return state
         
         except Exception as e:
-            error_msg = f"Failed to fetch market data: {str(e)}"
+            error_msg = f"Failed to fetch market data from Data Plane: {str(e)}"
             self.add_error(state, error_msg)
-            
-            # Capture failure report for UI/monitoring
-            tool_name = "unknown"
-            try:
-                tool_name = market_data_tool.__class__.__name__
-            except Exception:
-                pass
             
             self.record_report(
                 state,
@@ -206,11 +172,58 @@ class MarketDataAgent(BaseAgent):
                 summary=error_msg,
                 status="failed",
                 data={
-                    "tool": tool_name,
+                    "source": "data-plane",
                     "symbol": state.symbol,
                     "timeframes": timeframes if "timeframes" in locals() else self.config.get("timeframes"),
                     "lookback_periods": lookback_periods if "lookback_periods" in locals() else self.config.get("lookback_periods"),
                 },
             )
             raise AgentProcessingError(error_msg) from e
-
+    
+    async def _fetch_from_data_plane(
+        self,
+        symbol: str,
+        timeframes: list,
+        lookback_periods: int
+    ) -> Dict:
+        """
+        Fetch market data from Data Plane API (internal, cached, fast).
+        
+        Args:
+            symbol: Stock ticker symbol
+            timeframes: List of timeframes to fetch
+            lookback_periods: Number of periods to fetch per timeframe
+            
+        Returns:
+            Dictionary with market data
+        """
+        async with httpx.AsyncClient() as client:
+            # Get quote (cached in Redis)
+            quote_response = await client.get(
+                f"http://data-plane:8000/api/v1/data/quote/{symbol}",
+                timeout=5.0
+            )
+            quote_response.raise_for_status()
+            quote = quote_response.json()
+            
+            # Get candles for all required timeframes
+            timeframes_data = {}
+            for tf in timeframes:
+                candles_response = await client.get(
+                    f"http://data-plane:8000/api/v1/data/candles/{symbol}",
+                    params={"timeframe": tf, "limit": lookback_periods},
+                    timeout=10.0
+                )
+                candles_response.raise_for_status()
+                candles_data = candles_response.json()
+                timeframes_data[tf] = candles_data["candles"]
+            
+            # Format response
+            return {
+                "symbol": symbol,
+                "current_price": quote["current_price"],
+                "bid": None,  # Not provided by Data Plane yet
+                "ask": None,  # Not provided by Data Plane yet
+                "timestamp": quote.get("timestamp"),
+                "timeframes": timeframes_data
+            }

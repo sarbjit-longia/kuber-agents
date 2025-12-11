@@ -34,7 +34,23 @@ scrape_configs:
   - job_name: 'trigger-dispatcher'
     static_configs:
       - targets: ['trigger-dispatcher:8001']
+
+  - job_name: 'data-plane'
+    static_configs:
+      - targets: ['data-plane:8001']
         labels:
-          service: 'trigger-dispatcher'
-          component: 'dispatcher'
+          service: 'data-plane'
+          component: 'api'
+  
+  - job_name: 'data-plane-worker'
+    static_configs:
+      - targets: ['data-plane-worker:8001']
+        labels:
+          service: 'data-plane'
+          component: 'worker'
+  
+  - job_name: 'data-plane-universe'
+    static_configs:
+      - targets: ['data-plane:8000']
+    metrics_path: '/api/v1/data/metrics-universe'
 

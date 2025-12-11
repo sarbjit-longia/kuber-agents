@@ -35,6 +35,24 @@ services:
       timeout: 3s
       retries: 5
 
+  # TimescaleDB (Data Plane Database)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: trading-timescaledb
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: trading_data_plane
+    ports:
+      - "5434:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d trading_data_plane"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # FastAPI Backend
   backend:
     build:
@@ -235,6 +253,90 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     restart: unless-stopped
 
+  # Data Plane API
+  data-plane:
+    build:
+      context: ./data-plane
+      dockerfile: Dockerfile
+    container_name: trading-data-plane
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - SERVICE_NAME=data-plane
+      - LOG_LEVEL=INFO
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - REDIS_URL=redis://redis:6379/1
+      - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
+      - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - METRICS_PORT=8001
+    ports:
+      - "8005:8000"  # Data Plane API
+      - "8006:8001"  # Prometheus metrics
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data-plane:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Data Plane Celery Worker
+  data-plane-worker:
+    build:
+      context: ./data-plane
+      dockerfile: Dockerfile
+    container_name: trading-data-plane-worker
+    command: celery -A app.tasks.celery_tasks worker --loglevel=INFO -n data-plane-worker
+    environment:
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - REDIS_URL=redis://redis:6379/1
+      - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
+      - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - timescaledb
+      - postgres
+    volumes:
+      - ./data-plane:/app
+    restart: unless-stopped
+
+  # Data Plane Celery Beat (Scheduler)
+  data-plane-beat:
+    build:
+      context: ./data-plane
+      dockerfile: Dockerfile
+    container_name: trading-data-plane-beat
+    command: celery -A app.tasks.celery_tasks beat --loglevel=INFO
+    environment:
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - REDIS_URL=redis://redis:6379/1
+      - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
+      - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - SERVICE_NAME=data-plane-beat
+      - LOG_LEVEL=INFO
+      - METRICS_PORT=8001
+    depends_on:
+      - redis
+      - timescaledb
+      - postgres
+    volumes:
+      - ./data-plane:/app
+    restart: unless-stopped
+
   # Prometheus - Metrics Storage & Aggregation
   prometheus:
     image: prom/prometheus:v2.48.0
@@ -278,6 +380,7 @@ services:
 
 volumes:
   postgres_data:
+  timescaledb_data:
   redis_data:
   zookeeper_data:
   zookeeper_log:
