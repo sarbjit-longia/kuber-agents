@@ -35,6 +35,7 @@ import { JsonSchemaFormComponent } from '../../shared/json-schema-form/json-sche
 import { ToolSelectorComponent } from '../../shared/tool-selector/tool-selector.component';
 import { ValidationErrorDialogComponent } from '../../shared/validation-error-dialog/validation-error-dialog.component';
 import { PipelineSettingsDialogComponent } from './pipeline-settings-dialog/pipeline-settings-dialog.component';
+import { AgentInstructionsComponent } from '../../shared/agent-instructions/agent-instructions.component';
 
 // Define AgentMetadata locally since it might not be exported
 interface AgentMetadata {
@@ -96,7 +97,8 @@ interface Connection {
     MatDividerModule,
     NavbarComponent,
     JsonSchemaFormComponent,
-    ToolSelectorComponent
+    ToolSelectorComponent,
+    AgentInstructionsComponent
   ],
   templateUrl: './pipeline-builder.component.html',
   styleUrls: ['./pipeline-builder.component.scss']
@@ -498,6 +500,26 @@ export class PipelineBuilderComponent implements OnInit {
     // Just update the temporary editing config, don't save to node yet
     this.editingConfig = config;
   }
+
+  /**
+   * Handle instructions changes from agent-instructions component
+   */
+  onInstructionsChange(event: any, node: CanvasNode): void {
+    // Update config with instructions and detected tools
+    this.editingConfig = {
+      ...this.editingConfig,
+      instructions: event.instructions,
+      strategy_document_url: event.documentUrl,
+      auto_detected_tools: event.detectedTools,
+      estimated_tool_cost: event.totalCost
+    };
+
+    console.log('Instructions updated:', {
+      instructions: event.instructions.substring(0, 50) + '...',
+      tools: event.detectedTools.length,
+      cost: event.totalCost
+    });
+  }
   
   /**
    * Save configuration changes
@@ -521,8 +543,41 @@ export class PipelineBuilderComponent implements OnInit {
         console.log('⚠️ No schema found, skipping conversion');
       }
       
+      // Convert auto_detected_tools to tools array format for visual display
+      if (configToSave.auto_detected_tools && Array.isArray(configToSave.auto_detected_tools)) {
+        const autoTools = configToSave.auto_detected_tools.map((detectedTool: any) => ({
+          tool_type: detectedTool.tool,
+          config: detectedTool.params,
+          metadata: {
+            name: this.formatToolName(detectedTool.tool),
+            description: detectedTool.reasoning,
+            category: detectedTool.category,
+            icon: this.getToolIcon(detectedTool.category),
+            pricing_rate: detectedTool.cost,
+            is_auto_detected: true
+          }
+        }));
+        
+        // Merge with manually attached tools (if any)
+        const manualTools = configToSave.tools || [];
+        configToSave.tools = [...autoTools, ...manualTools];
+        
+        console.log('🔧 Converted auto_detected_tools to tools:', configToSave.tools);
+        console.log('🔧 Selected node:', this.selectedNode);
+      }
+      
       this.selectedNode.config = JSON.parse(JSON.stringify(configToSave));
       this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig)); // Keep original in local time
+      
+      // Update visual tool nodes if this is an agent
+      if (this.selectedNode.node_category === 'agent' && configToSave.tools && configToSave.tools.length > 0) {
+        console.log('🎨 Calling onToolsChange with tools:', configToSave.tools);
+        // Use setTimeout to ensure the config is fully updated before creating visual nodes
+        setTimeout(() => {
+          this.onToolsChange(configToSave.tools, this.selectedNode!);
+        }, 0);
+      }
+      
       this.showNotification('Configuration saved', 'success');
     }
   }
@@ -596,6 +651,8 @@ export class PipelineBuilderComponent implements OnInit {
    * Creates visual tool nodes on canvas and connects them to the parent agent
    */
   onToolsChange(tools: any[], node: CanvasNode): void {
+    console.log('🎨 onToolsChange called:', { tools, nodeId: node.id, nodeCategory: node.node_category });
+    
     if (!node.config) {
       node.config = {};
     }
@@ -604,14 +661,22 @@ export class PipelineBuilderComponent implements OnInit {
     const existingToolNodes = this.getToolNodesForAgent(node.id);
     const existingToolTypes = existingToolNodes.map((n: CanvasNode) => n.agent_type);
     
+    console.log('🎨 Existing tool nodes on canvas:', existingToolTypes);
+    
     // Get new tool types from the tools array
     const newToolTypes = tools.map((t: any) => t.tool_type);
+    
+    console.log('🎨 New tool types:', newToolTypes);
     
     // Find added tools (in new list but NOT on canvas)
     const addedToolTypes = newToolTypes.filter((type: string) => !existingToolTypes.includes(type));
     
+    console.log('🎨 Tools to add:', addedToolTypes);
+    
     // Find removed tools (on canvas but NOT in new list)
     const removedToolTypes = existingToolTypes.filter((type: string) => !newToolTypes.includes(type));
+    
+    console.log('🎨 Tools to remove:', removedToolTypes);
     
     // Update agent's config FIRST (so createToolNode can see the correct total count)
     node.config['tools'] = [...tools];
@@ -624,6 +689,7 @@ export class PipelineBuilderComponent implements OnInit {
     // Create visual nodes for newly added tools
     addedToolTypes.forEach((toolType: string) => {
       const toolData = tools.find((t: any) => t.tool_type === toolType);
+      console.log('🎨 Creating tool node for:', toolType, toolData);
       if (toolData) {
         this.createToolNode(toolType, node, toolData);
       }
@@ -683,12 +749,20 @@ export class PipelineBuilderComponent implements OnInit {
    * Create a visual tool node on canvas and connect it to parent agent
    */
   private createToolNode(toolType: string, parentAgent: CanvasNode, toolConfig: any): void {
-    // Find tool metadata
-    const toolMetadata = this.tools.find(t => t.tool_type === toolType);
+    // Find tool metadata - either from toolConfig (auto-detected) or from this.tools (manual)
+    let toolMetadata = toolConfig.metadata;
+    
     if (!toolMetadata) {
-      console.error('Tool metadata not found for:', toolType);
+      // Fallback: look up in available tools list (for manually attached tools)
+      toolMetadata = this.tools.find(t => t.tool_type === toolType);
+    }
+    
+    if (!toolMetadata) {
+      console.error('Tool metadata not found for:', toolType, 'toolConfig:', toolConfig);
       return;
     }
+    
+    console.log('✅ Using tool metadata:', toolMetadata);
     
     // Calculate position for tool node
     const existingToolNodes = this.getToolNodesForAgent(parentAgent.id);
@@ -1225,6 +1299,46 @@ export class PipelineBuilderComponent implements OnInit {
       verticalPosition: 'top',
       panelClass: [`snackbar-${type}`]
     });
+  }
+
+  /**
+   * Format tool name from tool_type (e.g., "rsi" -> "RSI", "fvg_detector" -> "FVG Detector")
+   */
+  private formatToolName(toolType: string): string {
+    // Special cases
+    const specialNames: Record<string, string> = {
+      'rsi': 'RSI',
+      'macd': 'MACD',
+      'sma_crossover': 'SMA Crossover',
+      'fvg_detector': 'FVG Detector',
+      'liquidity_analyzer': 'Liquidity Analyzer',
+      'market_structure': 'Market Structure',
+      'premium_discount': 'Premium/Discount Zones',
+      'bollinger_bands': 'Bollinger Bands',
+      'support_resistance': 'Support/Resistance'
+    };
+    
+    if (specialNames[toolType]) {
+      return specialNames[toolType];
+    }
+    
+    // Default: capitalize and replace underscores
+    return toolType
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Get icon for tool category
+   */
+  private getToolIcon(category: string): string {
+    const icons: Record<string, string> = {
+      'ict': 'analytics',
+      'indicator': 'show_chart',
+      'price_action': 'candlestick_chart'
+    };
+    return icons[category] || 'extension';
   }
 
   /**

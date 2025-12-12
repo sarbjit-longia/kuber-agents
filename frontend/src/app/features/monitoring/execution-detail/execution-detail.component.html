@@ -110,6 +110,12 @@
       </mat-card-content>
     </mat-card>
 
+    <!-- Strategy Visualization Chart -->
+    <app-strategy-chart 
+      *ngIf="chartData" 
+      [chartData]="chartData">
+    </app-strategy-chart>
+
     <!-- Execution Controls Info (only show for pending/running/paused) -->
     <mat-card *ngIf="execution.status === 'pending' || execution.status === 'running' || execution.status === 'paused'" class="info-card">
       <mat-card-content>

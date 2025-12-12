@@ -299,9 +299,22 @@
           
           <mat-divider></mat-divider>
           
+          <!-- Agent Instructions (ONLY for agents, shown before config form) -->
+          <div *ngIf="isAgentNode(selectedNode)" class="config-instructions">
+            <h5>Strategy Instructions</h5>
+            <app-agent-instructions
+              [agentType]="selectedNode.agent_type"
+              [initialInstructions]="editingConfig['instructions'] || ''"
+              [initialDocumentUrl]="editingConfig['strategy_document_url'] || ''"
+              (instructionsChange)="onInstructionsChange($event, selectedNode)">
+            </app-agent-instructions>
+          </div>
+          
+          <mat-divider *ngIf="isAgentNode(selectedNode)"></mat-divider>
+          
           <!-- Configuration form (for both agents and tools) -->
           <div class="config-form">
-            <h5>Configuration</h5>
+            <h5>Advanced Configuration</h5>
             <app-json-schema-form
               #jsonSchemaForm
               *ngIf="selectedNode.metadata?.config_schema"

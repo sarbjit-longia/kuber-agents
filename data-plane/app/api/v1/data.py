@@ -78,6 +78,100 @@ async def get_candles(
     }
 
 
+@router.get("/indicators/{ticker}")
+async def get_indicators(
+    ticker: str,
+    timeframe: str = Query("D", description="Timeframe: 5m, 15m, 1h, 4h, D"),
+    indicators: str = Query("sma,rsi", description="Comma-separated list of indicators"),
+    sma_period: Optional[int] = Query(20, description="SMA period (20, 50, 200)"),
+    ema_period: Optional[int] = Query(12, description="EMA period (12, 26)"),
+    rsi_period: Optional[int] = Query(14, description="RSI period"),
+    bbands_period: Optional[int] = Query(20, description="Bollinger Bands period")
+):
+    """
+    Get technical indicators for a ticker.
+    
+    Supported indicators (Tier 1):
+    - sma: Simple Moving Average (default: 20)
+    - ema: Exponential Moving Average (default: 12)
+    - rsi: Relative Strength Index (default: 14)
+    - macd: MACD (fixed params: 12/26/9)
+    - bbands: Bollinger Bands (default: 20)
+    
+    Example:
+        /data/indicators/AAPL?timeframe=D&indicators=sma,rsi,macd&sma_period=50
+    
+    Returns:
+        Dictionary with indicator results for each requested indicator
+    """
+    from app.services.data_fetcher import DataFetcher
+    from app.config import settings
+    from app.database import get_redis
+    from app.telemetry import get_meter
+    
+    indicator_list = [i.strip() for i in indicators.split(",")]
+    
+    logger.info(
+        "fetching_indicators",
+        ticker=ticker,
+        timeframe=timeframe,
+        indicators=indicator_list
+    )
+    
+    redis = await get_redis()
+    meter = get_meter()
+    fetcher = DataFetcher(settings.FINNHUB_API_KEY, redis, meter)
+    
+    results = {
+        "ticker": ticker,
+        "timeframe": timeframe,
+        "indicators": {}
+    }
+    
+    # Fetch each requested indicator
+    for indicator in indicator_list:
+        try:
+            params = {}
+            
+            # Set parameters based on indicator type
+            if indicator == "sma":
+                params["timeperiod"] = sma_period
+            elif indicator == "ema":
+                params["timeperiod"] = ema_period
+            elif indicator == "rsi":
+                params["timeperiod"] = rsi_period
+            elif indicator == "bbands":
+                params["timeperiod"] = bbands_period
+            # macd uses default params (no custom params needed)
+            
+            indicator_data = await fetcher.fetch_indicators(
+                ticker=ticker,
+                timeframe=timeframe,
+                indicator=indicator,
+                params=params if params else None
+            )
+            
+            if indicator_data:
+                results["indicators"][indicator] = indicator_data
+            else:
+                results["indicators"][indicator] = {
+                    "error": f"Failed to fetch {indicator}"
+                }
+                
+        except Exception as e:
+            logger.error(
+                "indicator_fetch_error",
+                ticker=ticker,
+                indicator=indicator,
+                error=str(e)
+            )
+            results["indicators"][indicator] = {
+                "error": str(e)
+            }
+    
+    return results
+
+
 @router.get("/batch")
 async def get_batch_data(
     tickers: str = Query(..., description="Comma-separated list of tickers"),

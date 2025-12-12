@@ -9,6 +9,9 @@ from crewai import Agent, Task, Crew, Process
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, StrategyResult
+from app.agents.schema_utils import add_standard_fields
+from app.tools.strategy_tools.tool_executor import StrategyToolExecutor
+from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.config import settings
 
 
@@ -54,7 +57,7 @@ class StrategyAgent(BaseAgent):
                 type="object",
                 title="Strategy Agent Configuration",
                 description="Configure trading strategy generation",
-                properties={
+                properties=add_standard_fields({
                     "strategy_timeframe": {
                         "type": "string",
                         "title": "Strategy Timeframe",
@@ -83,7 +86,7 @@ class StrategyAgent(BaseAgent):
                         "enum": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
                         "default": "gpt-4"
                     }
-                },
+                }),
                 required=["strategy_timeframe"]
             ),
             can_initiate_trades=True,
@@ -158,9 +161,32 @@ class StrategyAgent(BaseAgent):
             min_rr = self.config.get("risk_reward_minimum", 2.0)
             aggressive = self.config.get("aggressive_mode", False)
             
+            # Execute auto-detected tools if present
+            tool_results = None
+            auto_detected_tools = self.config.get("auto_detected_tools", [])
+            if auto_detected_tools:
+                self.log(state, f"Executing {len(auto_detected_tools)} auto-detected tools")
+                tool_executor = StrategyToolExecutor(state.symbol)
+                
+                # Use asyncio to run async tool execution
+                import asyncio
+                import nest_asyncio
+                nest_asyncio.apply()
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    tool_results = loop.run_until_complete(
+                        tool_executor.execute_tools(auto_detected_tools)
+                    )
+                    self.log(state, f"Tool execution complete. Results: {list(tool_results.keys())}")
+                finally:
+                    loop.close()
+            
             # Prepare context
             market_context = self._prepare_strategy_context(state, strategy_tf)
             bias_context = self._prepare_bias_context(state) if has_bias else "No bias information available."
+            tool_context = self._prepare_tool_context(tool_results) if tool_results else ""
             
             # Create tasks
             pattern_task = Task(
@@ -171,6 +197,8 @@ CURRENT MARKET DATA:
 
 BIAS CONTEXT:
 {bias_context}
+
+{tool_context}
 
 Your tasks:
 1. Identify any chart patterns (triangles, flags, head & shoulders, etc.)
@@ -275,6 +303,54 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
                 },
             )
             
+            # Generate chart visualization data
+            if tool_results:
+                self.log(state, "Generating strategy chart visualization...")
+                try:
+                    chart_builder = ChartAnnotationBuilder(
+                        symbol=state.symbol,
+                        timeframe=strategy_tf
+                    )
+                    
+                    # Get candles for chart
+                    chart_candles = state.get_timeframe_data(strategy_tf)
+                    if chart_candles:
+                        # Convert PipelineCandle objects to dicts for chart builder
+                        candle_dicts = [
+                            {
+                                "timestamp": c.timestamp,
+                                "open": c.open,
+                                "high": c.high,
+                                "low": c.low,
+                                "close": c.close,
+                                "volume": c.volume
+                            }
+                            for c in chart_candles
+                        ]
+                        
+                        chart_data = chart_builder.build_chart_data(
+                            candles=candle_dicts,
+                            tool_results=tool_results,
+                            strategy_result=strategy_result,
+                            instructions=self.config.get("instructions")
+                        )
+                        
+                        # Store chart data in execution artifacts
+                        state.execution_artifacts["strategy_chart"] = chart_data
+                        
+                        self.log(
+                            state,
+                            f"✓ Chart visualization generated with {len(chart_data['annotations']['shapes'])} shapes, "
+                            f"{len(chart_data['annotations']['markers'])} markers"
+                        )
+                    else:
+                        self.add_warning(state, "No candle data available for chart generation")
+                        
+                except Exception as e:
+                    # Don't fail the whole strategy if chart generation fails
+                    self.add_warning(state, f"Chart generation failed: {str(e)}")
+                    logger.error("chart_generation_failed", error=str(e), exc_info=True)
+            
             # Track cost (GPT-4 is more expensive)
             estimated_cost = 0.15
             self.track_cost(state, estimated_cost)
@@ -340,6 +416,144 @@ Last 10 Candles (oldest to newest):
                 context += f"  Key Factors: {', '.join(bias.key_factors[:3])}\n"
         
         return context
+    
+    def _prepare_tool_context(self, tool_results: Dict[str, Any]) -> str:
+        """Prepare tool execution results for LLM context."""
+        import json
+        
+        if not tool_results:
+            return ""
+        
+        context = "\n\n=== STRATEGY TOOL ANALYSIS ===\n\n"
+        
+        for tool_name, result in tool_results.items():
+            if "error" in result:
+                context += f"⚠️ {tool_name.upper()}: Error - {result['error']}\n\n"
+                continue
+            
+            context += f"📊 {tool_name.upper().replace('_', ' ')}:\n"
+            
+            # Format specific tool types
+            if tool_name == "fvg_detector":
+                context += self._format_fvg_result(result)
+            elif tool_name == "liquidity_analyzer":
+                context += self._format_liquidity_result(result)
+            elif tool_name == "market_structure":
+                context += self._format_structure_result(result)
+            elif tool_name == "premium_discount":
+                context += self._format_premium_discount_result(result)
+            elif tool_name == "rsi":
+                context += self._format_rsi_result(result)
+            elif tool_name == "macd":
+                context += self._format_macd_result(result)
+            else:
+                # Generic formatting
+                context += json.dumps(result, indent=2) + "\n"
+            
+            context += "\n"
+        
+        context += "=== END TOOL ANALYSIS ===\n\n"
+        context += "Use the above tool analysis to inform your strategy decision. "
+        context += "The tools provide objective market data to validate or refine your strategy.\n"
+        
+        return context
+    
+    def _format_fvg_result(self, result: Dict) -> str:
+        """Format FVG detector results."""
+        text = f"  • Total FVGs Found: {result['total_fvgs']} ({result['unfilled_fvgs']} unfilled)\n"
+        
+        if result.get('latest_bullish_fvg'):
+            fvg = result['latest_bullish_fvg']
+            text += f"  • Latest Bullish FVG: {fvg['low']:.5f} - {fvg['high']:.5f} "
+            text += f"(Gap: {fvg['gap_size_pips']:.1f} pips, "
+            text += "Filled)" if fvg['is_filled'] else "Unfilled)\n"
+        
+        if result.get('latest_bearish_fvg'):
+            fvg = result['latest_bearish_fvg']
+            text += f"  • Latest Bearish FVG: {fvg['low']:.5f} - {fvg['high']:.5f} "
+            text += f"(Gap: {fvg['gap_size_pips']:.1f} pips, "
+            text += "Filled)" if fvg['is_filled'] else "Unfilled)\n"
+        
+        return text
+    
+    def _format_liquidity_result(self, result: Dict) -> str:
+        """Format liquidity analyzer results."""
+        text = f"  • Swing Highs: {len(result['swing_highs'])}, Swing Lows: {len(result['swing_lows'])}\n"
+        text += f"  • Liquidity Grabs: {result['total_grabs']}\n"
+        
+        pools = result.get('active_liquidity_pools', {})
+        if pools.get('above'):
+            text += f"  • Buy-Side Liquidity (above): {', '.join(f'{p:.5f}' for p in pools['above'][:3])}\n"
+        if pools.get('below'):
+            text += f"  • Sell-Side Liquidity (below): {', '.join(f'{p:.5f}' for p in pools['below'][:3])}\n"
+        
+        if result.get('latest_grab'):
+            grab = result['latest_grab']
+            text += f"  • Latest Grab: {grab['type']} at {grab['level']:.5f} ({'Reversed' if grab['reversed'] else 'No reversal'})\n"
+        
+        return text
+    
+    def _format_structure_result(self, result: Dict) -> str:
+        """Format market structure results."""
+        text = f"  • Trend: {result['trend'].upper()}\n"
+        text += f"  • Structure Events: {len(result['structure_events'])}\n"
+        text += f"  • HH: {result['higher_highs']}, HL: {result['higher_lows']}, "
+        text += f"LH: {result['lower_highs']}, LL: {result['lower_lows']}\n"
+        
+        if result.get('latest_bos'):
+            bos = result['latest_bos']
+            text += f"  • Latest BOS: {bos['direction'].upper()} at {bos['level']:.5f}\n"
+        
+        if result.get('latest_choch'):
+            choch = result['latest_choch']
+            text += f"  • Latest CHoCH: {choch['direction'].upper()} at {choch['level']:.5f}\n"
+        
+        return text
+    
+    def _format_premium_discount_result(self, result: Dict) -> str:
+        """Format premium/discount zone results."""
+        text = f"  • Current Zone: {result['zone'].upper()}\n"
+        text += f"  • Price Level: {result['price_level_percent']:.1f}% of range\n"
+        text += f"  • Range: {result['range_low']:.5f} - {result['range_high']:.5f} "
+        text += f"({result['range_size_pips']:.1f} pips)\n"
+        
+        if result['is_in_discount']:
+            text += "  ✅ IDEAL FOR BUYS (in discount zone)\n"
+        elif result['is_in_premium']:
+            text += "  ✅ IDEAL FOR SELLS (in premium zone)\n"
+        else:
+            text += "  ⚠️  In equilibrium - wait for better price\n"
+        
+        return text
+    
+    def _format_rsi_result(self, result: Dict) -> str:
+        """Format RSI indicator results."""
+        text = f"  • Current RSI: {result['current_rsi']:.1f}\n"
+        
+        if result['is_oversold']:
+            text += "  ✅ OVERSOLD (<30) - potential buy signal\n"
+        elif result['is_overbought']:
+            text += "  ✅ OVERBOUGHT (>70) - potential sell signal\n"
+        else:
+            text += "  • Status: Neutral\n"
+        
+        return text
+    
+    def _format_macd_result(self, result: Dict) -> str:
+        """Format MACD indicator results."""
+        text = f"  • MACD: {result['current_macd']:.5f}, Signal: {result['current_signal']:.5f}\n"
+        text += f"  • Histogram: {result['current_histogram']:.5f}\n"
+        
+        if result['is_bullish_crossover']:
+            text += "  ✅ BULLISH CROSSOVER - buy signal\n"
+        elif result['is_bearish_crossover']:
+            text += "  ✅ BEARISH CROSSOVER - sell signal\n"
+        elif result['is_bullish']:
+            text += "  • Status: Bullish (MACD above signal)\n"
+        elif result['is_bearish']:
+            text += "  • Status: Bearish (MACD below signal)\n"
+        
+        return text
     
     def _parse_crew_result(self, result: Any, state: PipelineState) -> StrategyResult:
         """Parse CrewAI result into StrategyResult."""

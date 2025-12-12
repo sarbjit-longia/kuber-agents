@@ -1,11 +1,11 @@
 # Data Plane Service
 
-**Version**: 1.0.0  
-**Status**: Phase 1 Complete
+**Version**: 2.0.0  
+**Status**: Phase 2 Complete ✅
 
 ## Overview
 
-The Data Plane is a centralized market data service that provides cached, fast access to real-time and historical market data for all pipelines. It eliminates redundant API calls and dramatically reduces costs.
+The Data Plane is a centralized market data service that provides cached, fast access to real-time quotes, historical candles, and **pre-computed technical indicators** for all pipelines. It eliminates redundant API calls and dramatically reduces costs.
 
 ### Key Benefits
 
@@ -14,6 +14,7 @@ The Data Plane is a centralized market data service that provides cached, fast a
 - ✅ **No User API Keys**: Centralized Finnhub integration
 - ✅ **Scalable**: 1,000 users = same API call volume
 - ✅ **Free Market Data Agent**: No costs for users
+- ✅ **Pre-Computed Indicators**: SMA, EMA, RSI, MACD, Bollinger Bands cached and ready
 
 ### Architecture
 
@@ -27,6 +28,7 @@ The Data Plane is a centralized market data service that provides cached, fast a
 │                                                                   │
 │  Hot Tickers (RUNNING): Fetch every 1 min                        │
 │  Warm Tickers (ACTIVE): Fetch every 5 min                        │
+│  Indicators: Pre-fetch every 5 min (Tier 1)                      │
 │                                                                   │
 └───────────────────────────────┬───────────────────────────────────┘
                                 │
@@ -82,6 +84,9 @@ curl http://localhost:8005/api/v1/data/quote/AAPL
 
 # Get candles
 curl "http://localhost:8005/api/v1/data/candles/AAPL?timeframe=5m&limit=100"
+
+# Get technical indicators
+curl "http://localhost:8005/api/v1/data/indicators/AAPL?timeframe=D&indicators=sma,rsi,macd"
 ```
 
 ---
@@ -145,6 +150,75 @@ curl "http://localhost:8005/api/v1/data/candles/AAPL?timeframe=5m&limit=50"
       "volume": 125000
     }
   ]
+}
+```
+
+---
+
+### **GET `/api/v1/data/indicators/{ticker}`**
+
+Get pre-computed technical indicators (Tier 1).
+
+**Supported Indicators**:
+- `sma`: Simple Moving Average (periods: 20, 50, 200)
+- `ema`: Exponential Moving Average (periods: 12, 26)
+- `rsi`: Relative Strength Index (period: 14)
+- `macd`: MACD (fixed params: 12/26/9)
+- `bbands`: Bollinger Bands (period: 20)
+
+**Query Parameters**:
+- `timeframe`: 5m, 15m, 1h, 4h, D (default: D)
+- `indicators`: Comma-separated list (default: sma,rsi)
+- `sma_period`: SMA period (default: 20)
+- `ema_period`: EMA period (default: 12)
+- `rsi_period`: RSI period (default: 14)
+- `bbands_period`: Bollinger Bands period (default: 20)
+
+**Example**:
+```bash
+curl "http://localhost:8005/api/v1/data/indicators/AAPL?timeframe=D&indicators=sma,rsi,macd&sma_period=50"
+```
+
+**Response**:
+```json
+{
+  "ticker": "AAPL",
+  "timeframe": "D",
+  "indicators": {
+    "sma": {
+      "indicator": "sma",
+      "timeframe": "D",
+      "ticker": "AAPL",
+      "timestamp": "2025-12-10T20:00:00Z",
+      "values": {
+        "sma": 175.32,
+        "sma_history": [172.45, 173.12, ..., 175.32]
+      }
+    },
+    "rsi": {
+      "indicator": "rsi",
+      "timeframe": "D",
+      "ticker": "AAPL",
+      "timestamp": "2025-12-10T20:00:00Z",
+      "values": {
+        "rsi": 62.5,
+        "rsi_history": [58.3, 60.1, ..., 62.5]
+      }
+    },
+    "macd": {
+      "indicator": "macd",
+      "timeframe": "D",
+      "ticker": "AAPL",
+      "timestamp": "2025-12-10T20:00:00Z",
+      "values": {
+        "macd": 2.45,
+        "macd_signal": 1.89,
+        "macd_hist": 0.56,
+        "macd_history": [1.23, 1.56, ..., 2.45],
+        "macd_signal_history": [1.01, 1.34, ..., 1.89]
+      }
+    }
+  }
 }
 ```
 
@@ -234,6 +308,8 @@ curl http://localhost:8006/metrics
 - `quotes_cached_total{tier}` - Quotes cached by tier
 - `quotes_fetch_failures_total` - Failed fetches
 - `candles_fetched_total` - Candles fetched
+- `indicators_fetched_total{indicator, ticker, timeframe}` - Indicators fetched
+- `indicator_fetch_failures_total{indicator, ticker, timeframe}` - Indicator failures
 
 ### Grafana Dashboard
 
@@ -245,6 +321,8 @@ Add a new row in the Grafana dashboard:
 - Cache Hit Rate
 - Fetch Failures
 - API Call Savings
+- Indicator Fetch Rate
+- Indicators by Type
 
 ---
 
@@ -328,13 +406,14 @@ If low, check:
 - On-demand candle fetching
 - Market Data Agent integration
 
-### Phase 2: Derived Indicators (Week 3)
-- Pre-compute SMA (20, 50, 200)
-- Pre-compute RSI (14), MACD
-- Cache indicators in Redis
+### Phase 2: Technical Indicators (✅ Complete)
+- Finnhub-based indicators (SMA, EMA, RSI, MACD, Bollinger Bands)
+- Indicator caching (5min TTL)
 - `/data/indicators/{ticker}` endpoint
+- Pre-fetch indicators for universe tickers
+- Grafana dashboard metrics
 
-### Phase 3: TimescaleDB Storage (Week 4)
+### Phase 3: TimescaleDB Storage (Future)
 - Store historical OHLCV data
 - Continuous aggregates (5m from 1m)
 - Data compression

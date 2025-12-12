@@ -76,9 +76,12 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
       - ENFORCE_SUBSCRIPTION_LIMITS=${ENFORCE_SUBSCRIPTION_LIMITS:-false}
       - DEFAULT_SUBSCRIPTION_TIER=${DEFAULT_SUBSCRIPTION_TIER:-enterprise}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - LOCAL_STORAGE_PATH=${LOCAL_STORAGE_PATH:-/app/storage/uploads}
     volumes:
       - ./backend:/app
       - /app/__pycache__
+      - file_storage:/app/storage  # Local file storage volume
     depends_on:
       postgres:
         condition: service_healthy
@@ -387,4 +390,5 @@ volumes:
   kafka_data:
   prometheus_data:
   grafana_data:
+  file_storage:  # Local file storage for uploads (dev)
 

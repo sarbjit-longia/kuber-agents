@@ -684,6 +684,30 @@ ENTERPRISE ($299/month):
 
 ## Post-MVP Roadmap (Future Phases)
 
+### Data Plane Service
+**Status**: ✅ Phase 1 & 2 COMPLETE
+
+#### Phase 1: Basic Caching (✅ Complete)
+- [x] Universe discovery (hot/warm tickers)
+- [x] Quote caching with smart TTL
+- [x] On-demand candle fetching
+- [x] Market Data Agent integration (v2.0 - FREE)
+- [x] OpenTelemetry metrics
+- [x] Grafana dashboard
+
+#### Phase 2: Technical Indicators (✅ Complete)
+- [x] Finnhub-based indicators (SMA, EMA, RSI, MACD, Bollinger Bands)
+- [x] Indicator caching (5min TTL)
+- [x] `/data/indicators/{ticker}` API endpoint
+- [x] Pre-fetch task for universe tickers
+- [x] Grafana indicator metrics (3 new panels)
+
+#### Phase 3: TimescaleDB Storage (Future)
+- [ ] Store historical OHLCV in TimescaleDB
+- [ ] Continuous aggregates (5m from 1m candles)
+- [ ] Data compression and retention policies
+- [ ] Backfill 500 days of historical data
+
 ### Phase 2: Enhanced Features (Weeks 11-14)
 - [ ] News-Based Trigger Agent
 - [ ] Local LLM integration for simple tasks

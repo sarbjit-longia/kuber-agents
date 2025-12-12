@@ -1,0 +1,100 @@
+<mat-card *ngIf="chartData" class="strategy-chart-card">
+  <!-- Chart Header with Decision Summary -->
+  <mat-card-header class="chart-header">
+    <div class="header-content">
+      <div class="title-section">
+        <h2>
+          <mat-icon [style.color]="getActionColor()">
+            {{ chartData.decision.action === 'BUY' ? 'trending_up' : chartData.decision.action === 'SELL' ? 'trending_down' : 'remove' }}
+          </mat-icon>
+          {{ chartData.decision.summary.title }}
+        </h2>
+        <p class="subtitle">{{ chartData.decision.summary.subtitle }}</p>
+      </div>
+      
+      <div class="stats-section">
+        <div class="stat-item">
+          <span class="stat-label">Confidence</span>
+          <mat-chip class="confidence-chip" [style.background-color]="getActionColor()">
+            {{ chartData.decision.confidence * 100 | number:'1.0-0' }}%
+          </mat-chip>
+        </div>
+        
+        <div class="stat-item">
+          <span class="stat-label">Conditions</span>
+          <mat-chip class="conditions-chip">
+            {{ chartData.decision.conditions_met }} / {{ chartData.decision.conditions_total }}
+          </mat-chip>
+        </div>
+        
+        <button mat-icon-button (click)="toggleExpand()" matTooltip="Toggle fullscreen">
+          <mat-icon>{{ expanded ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+        </button>
+      </div>
+    </div>
+  </mat-card-header>
+
+  <mat-card-content>
+    <!-- Trading View Chart -->
+    <div class="chart-wrapper" [class.expanded]="expanded">
+      <div #chartContainer class="chart-container"></div>
+    </div>
+
+    <!-- Decision Reasoning -->
+    <div class="decision-reasoning">
+      <h3>
+        <mat-icon>psychology</mat-icon>
+        Agent Reasoning
+      </h3>
+      
+      <div class="reasoning-steps">
+        <div *ngFor="let step of chartData.decision.reasoning_steps" class="reasoning-step">
+          <span [class.success]="step.startsWith('✅')" 
+                [class.warning]="step.startsWith('⚠️')"
+                [class.target]="step.startsWith('🎯')">
+            {{ step }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Trade Details -->
+      <div *ngIf="chartData.decision.action !== 'HOLD'" class="trade-details">
+        <div class="detail-row">
+          <span class="label">Entry Price:</span>
+          <span class="value">${{ chartData.decision.entry_price | number:'1.2-5' }}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="label">Stop Loss:</span>
+          <span class="value stop-loss">${{ chartData.decision.stop_loss | number:'1.2-5' }}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="label">Take Profit:</span>
+          <span class="value take-profit">${{ chartData.decision.take_profit | number:'1.2-5' }}</span>
+        </div>
+        
+        <div class="detail-row" *ngIf="chartData.decision.pattern">
+          <span class="label">Pattern:</span>
+          <span class="value">{{ chartData.decision.pattern }}</span>
+        </div>
+      </div>
+
+      <!-- Original Instructions -->
+      <div *ngIf="chartData.decision.instructions" class="original-instructions">
+        <h4>
+          <mat-icon>description</mat-icon>
+          User Strategy
+        </h4>
+        <p>{{ chartData.decision.instructions }}</p>
+      </div>
+    </div>
+  </mat-card-content>
+</mat-card>
+
+<!-- Loading/Error States -->
+<div *ngIf="!chartData" class="chart-placeholder">
+  <mat-icon>show_chart</mat-icon>
+  <p>No chart data available</p>
+</div>
+

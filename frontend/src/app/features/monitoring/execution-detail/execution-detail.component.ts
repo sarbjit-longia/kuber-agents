@@ -21,6 +21,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MonitoringService } from '../../../core/services/monitoring.service';
 import { Execution, AgentState, ExecutionLog, AgentReport, AgentReportMetric } from '../../../core/models/execution.model';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
+import { StrategyChartComponent } from '../../../shared/strategy-chart/strategy-chart.component';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -38,7 +39,8 @@ import { Subscription } from 'rxjs';
     MatExpansionModule,
     MatSnackBarModule,
     MatTabsModule,
-    NavbarComponent
+    NavbarComponent,
+    StrategyChartComponent
   ],
   templateUrl: './execution-detail.component.html',
   styleUrls: ['./execution-detail.component.scss']
@@ -47,6 +49,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
   execution: Execution | null = null;
   logs: ExecutionLog[] = [];
   reports: AgentReport[] = [];
+  chartData: any = null;
   loading = true;
   executionId: string = '';
   private executionSub?: Subscription;
@@ -67,6 +70,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
       if (execution) {
         this.execution = execution;
         this.reports = this.extractReports(execution);
+        this.chartData = this.extractChartData(execution);
         this.loading = false;
 
         if (['running', 'pending'].includes(execution.status)) {
@@ -86,6 +90,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
       next: (execution) => {
         this.execution = execution;
         this.reports = this.extractReports(execution);
+        this.chartData = this.extractChartData(execution);
         this.loading = false;
       },
       error: (error) => {
@@ -94,6 +99,16 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
         this.showNotification('Failed to load execution details', 'error');
       }
     });
+  }
+
+  extractChartData(execution: Execution): any {
+    if (!execution.execution_artifacts || typeof execution.execution_artifacts !== 'object') {
+      return null;
+    }
+    
+    // Check if strategy_chart exists in artifacts
+    const artifacts = execution.execution_artifacts as any;
+    return artifacts.strategy_chart || null;
   }
 
   loadLogs(): void {

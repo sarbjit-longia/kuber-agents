@@ -164,6 +164,102 @@ def fetch_warm_tickers_task():
         raise
 
 
+@celery_app.task(name="data_plane.prefetch_indicators")
+def prefetch_indicators_task():
+    """
+    Pre-fetch key indicators for universe tickers.
+    
+    Fetches Tier 1 indicators for all hot + warm tickers across key timeframes.
+    This reduces on-demand fetching latency for agents.
+    
+    Runs every 5 minutes (indicators change slowly).
+    """
+    logger.info("task_prefetch_indicators_starting")
+    
+    try:
+        from app.services.data_fetcher import DataFetcher
+        from app.config import settings
+        from app.database import get_redis
+        from app.telemetry import get_meter
+        
+        # Tier 1 indicators with their default params
+        INDICATORS = [
+            ("sma", {"timeperiod": 20}),
+            ("sma", {"timeperiod": 50}),
+            ("sma", {"timeperiod": 200}),
+            ("ema", {"timeperiod": 12}),
+            ("ema", {"timeperiod": 26}),
+            ("rsi", {"timeperiod": 14}),
+            ("macd", {}),
+            ("bbands", {"timeperiod": 20}),
+        ]
+        
+        # Key timeframes (skip 5m and 15m to reduce API calls)
+        TIMEFRAMES = ["1h", "4h", "D"]
+        
+        async def _prefetch():
+            redis = await get_redis()
+            
+            # Get all tickers (hot + warm)
+            hot = await redis.smembers("tickers:hot")
+            warm = await redis.smembers("tickers:warm")
+            tickers = list((hot or set()) | (warm or set()))
+            
+            if not tickers:
+                logger.info("no_tickers_to_prefetch")
+                return {"tickers": 0, "indicators": 0}
+            
+            meter = get_meter()
+            fetcher = DataFetcher(settings.FINNHUB_API_KEY, redis, meter)
+            
+            total_fetched = 0
+            
+            # Fetch indicators for each ticker/timeframe combination
+            for ticker in tickers:
+                for timeframe in TIMEFRAMES:
+                    for indicator, params in INDICATORS:
+                        try:
+                            await fetcher.fetch_indicators(
+                                ticker=ticker,
+                                timeframe=timeframe,
+                                indicator=indicator,
+                                params=params
+                            )
+                            total_fetched += 1
+                            
+                            # Small delay to avoid rate limits
+                            await asyncio.sleep(0.1)
+                            
+                        except Exception as e:
+                            logger.warning(
+                                "indicator_prefetch_failed",
+                                ticker=ticker,
+                                timeframe=timeframe,
+                                indicator=indicator,
+                                error=str(e)
+                            )
+                            continue
+            
+            return {
+                "tickers": len(tickers),
+                "indicators": total_fetched
+            }
+        
+        result = run_async(_prefetch())
+        
+        logger.info(
+            "task_prefetch_indicators_completed",
+            tickers=result["tickers"],
+            indicators_fetched=result["indicators"]
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error("task_prefetch_indicators_failed", error=str(e))
+        raise
+
+
 # Celery Beat Schedule
 celery_app.conf.beat_schedule = {
     "refresh-universe": {
@@ -176,6 +272,10 @@ celery_app.conf.beat_schedule = {
     },
     "fetch-warm-tickers": {
         "task": "data_plane.fetch_warm_tickers",
+        "schedule": 300.0,  # Every 5 minutes
+    },
+    "prefetch-indicators": {
+        "task": "data_plane.prefetch_indicators",
         "schedule": 300.0,  # Every 5 minutes
     },
 }

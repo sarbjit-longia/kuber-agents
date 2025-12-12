@@ -22,6 +22,7 @@ export interface Execution {
   agent_states?: AgentState[];
   logs?: ExecutionLog[];
   reports?: { [agentId: string]: AgentReport };
+  execution_artifacts?: any; // Chart data and other execution outputs
   created_at: string;
   updated_at: string;
 }

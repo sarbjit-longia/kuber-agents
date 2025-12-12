@@ -200,4 +200,166 @@ class DataFetcher:
             "1M": 2592000,  # Approximate
         }
         return periods.get(timeframe, 86400)
+    
+    async def fetch_indicators(
+        self,
+        ticker: str,
+        timeframe: str,
+        indicator: str,
+        params: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Fetch technical indicators from Finnhub and cache in Redis.
+        
+        Supported indicators (Tier 1):
+        - sma: Simple Moving Average (timeperiod: 20, 50, 200)
+        - ema: Exponential Moving Average (timeperiod: 12, 26)
+        - rsi: Relative Strength Index (timeperiod: 14)
+        - macd: MACD (default params)
+        - bbands: Bollinger Bands (timeperiod: 20)
+        
+        Args:
+            ticker: Stock symbol
+            timeframe: Timeframe (5m, 15m, 1h, 4h, D)
+            indicator: Indicator name (sma, ema, rsi, macd, bbands)
+            params: Optional parameters for the indicator
+            
+        Returns:
+            Dictionary with indicator values and metadata
+        """
+        # Create cache key with params
+        params_str = json.dumps(params or {}, sort_keys=True)
+        cache_key = f"indicator:{ticker}:{timeframe}:{indicator}:{params_str}"
+        
+        try:
+            # Check cache first (5 minute TTL)
+            cached = await self.redis.get(cache_key)
+            if cached:
+                logger.debug(
+                    "indicator_cache_hit",
+                    ticker=ticker,
+                    indicator=indicator,
+                    timeframe=timeframe
+                )
+                return json.loads(cached)
+            
+            # Cache miss - fetch from Finnhub
+            logger.info(
+                "fetching_indicator",
+                ticker=ticker,
+                indicator=indicator,
+                timeframe=timeframe,
+                params=params
+            )
+            
+            # Convert timeframe to Finnhub resolution
+            resolution_map = {
+                "5m": "5",
+                "15m": "15",
+                "1h": "60",
+                "4h": "240",
+                "D": "D",
+            }
+            resolution = resolution_map.get(timeframe, "D")
+            
+            # Calculate time range (need enough history for indicators)
+            to_timestamp = int(datetime.utcnow().timestamp())
+            # Use 1 year of data for daily, 90 days for intraday
+            lookback = 365 * 86400 if timeframe == "D" else 90 * 86400
+            from_timestamp = to_timestamp - lookback
+            
+            # Fetch from Finnhub (synchronous call, use executor)
+            loop = asyncio.get_event_loop()
+            indicator_data = await loop.run_in_executor(
+                None,
+                self.client.technical_indicator,
+                ticker,
+                resolution,
+                from_timestamp,
+                to_timestamp,
+                indicator,
+                params or {}
+            )
+            
+            if not indicator_data or indicator_data.get("s") != "ok":
+                logger.warning(
+                    "indicator_not_found",
+                    ticker=ticker,
+                    indicator=indicator,
+                    response=indicator_data
+                )
+                return {}
+            
+            # Extract indicator values (exclude OHLCV keys)
+            result = {
+                "indicator": indicator,
+                "timeframe": timeframe,
+                "ticker": ticker,
+                "timestamp": datetime.utcnow().isoformat(),
+                "values": {}
+            }
+            
+            excluded_keys = {"s", "t", "o", "h", "l", "c", "v"}
+            
+            for key, values in indicator_data.items():
+                if key not in excluded_keys and values:
+                    # Get latest value
+                    if isinstance(values, list) and len(values) > 0:
+                        result["values"][key] = values[-1]
+                        # Also store last 50 values for charting
+                        result["values"][f"{key}_history"] = values[-50:]
+                    else:
+                        result["values"][key] = values
+            
+            # Cache for 5 minutes (indicators don't change frequently)
+            await self.redis.setex(
+                cache_key,
+                300,  # 5 minutes
+                json.dumps(result)
+            )
+            
+            # Metrics
+            if self.meter:
+                indicators_counter = self.meter.create_counter(
+                    name="indicators_fetched_total",
+                    description="Total indicators fetched from Finnhub"
+                )
+                indicators_counter.add(1, {
+                    "ticker": ticker,
+                    "timeframe": timeframe,
+                    "indicator": indicator
+                })
+            
+            logger.info(
+                "indicator_fetched",
+                ticker=ticker,
+                indicator=indicator,
+                timeframe=timeframe,
+                keys=list(result["values"].keys())
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(
+                "indicator_fetch_failed",
+                ticker=ticker,
+                indicator=indicator,
+                timeframe=timeframe,
+                error=str(e)
+            )
+            
+            # Metrics
+            if self.meter:
+                failures_counter = self.meter.create_counter(
+                    name="indicator_fetch_failures_total",
+                    description="Total indicator fetch failures"
+                )
+                failures_counter.add(1, {
+                    "ticker": ticker,
+                    "timeframe": timeframe,
+                    "indicator": indicator
+                })
+            
+            return {}
 

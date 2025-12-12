@@ -1,0 +1,136 @@
+<div class="agent-instructions-container">
+  <!-- Instructions Textarea -->
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>What should this agent do?</mat-label>
+    <textarea
+      matInput
+      [(ngModel)]="instructions"
+      (ngModelChange)="onInstructionsInput($event)"
+      placeholder="Describe your strategy in plain English...
+
+Examples:
+• Buy when bullish FVG forms in discount zone with RSI < 30
+• Enter long when price crosses above 50 SMA with MACD bullish
+• Buy after liquidity grab below with market structure BOS confirmed"
+      rows="8"
+      class="instructions-textarea"
+    ></textarea>
+    <mat-hint>Enter at least 20 characters for tool detection</mat-hint>
+  </mat-form-field>
+
+  <!-- PDF Upload -->
+  <div class="file-upload-section">
+    <div class="upload-header">
+      <span class="upload-label">Or upload a strategy document (PDF)</span>
+    </div>
+    
+    <div class="upload-controls">
+      <input 
+        #fileInput 
+        type="file" 
+        accept=".pdf" 
+        (change)="onFileSelected($event)"
+        style="display: none"
+      >
+      
+      <button 
+        mat-stroked-button 
+        (click)="fileInput.click()"
+        [disabled]="uploading"
+      >
+        <mat-icon>attach_file</mat-icon>
+        {{ uploadedFileName ? 'Change Document' : 'Upload PDF' }}
+      </button>
+
+      <span *ngIf="uploading" class="uploading-indicator">
+        <mat-spinner diameter="20"></mat-spinner>
+        <span>Uploading...</span>
+      </span>
+
+      <span *ngIf="uploadedFileName && !uploading" class="uploaded-file">
+        <mat-icon>description</mat-icon>
+        {{ uploadedFileName }}
+        <button mat-icon-button (click)="removeDocument()" matTooltip="Remove document">
+          <mat-icon>close</mat-icon>
+        </button>
+      </span>
+    </div>
+  </div>
+
+  <!-- Tool Detection Status -->
+  <div *ngIf="detecting" class="detection-status detecting">
+    <mat-spinner diameter="20"></mat-spinner>
+    <span>Analyzing strategy and detecting tools...</span>
+  </div>
+
+  <!-- Detection Results -->
+  <div *ngIf="!detecting && detectionStatus !== 'none'" class="detection-results">
+    
+    <!-- Success/Partial -->
+    <div *ngIf="detectionStatus === 'success' || detectionStatus === 'partial'" class="tools-detected">
+      <div class="detection-header" [class.partial]="detectionStatus === 'partial'">
+        <mat-icon [color]="getStatusColor()">{{ getStatusIcon() }}</mat-icon>
+        <h4>{{ detectionStatus === 'success' ? 'Tools Auto-Detected' : 'Partial Detection' }}</h4>
+      </div>
+
+      <!-- Strategy Summary -->
+      <div *ngIf="summary" class="strategy-summary">
+        <strong>Strategy:</strong> {{ summary }}
+        <span *ngIf="confidence > 0" class="confidence">({{(confidence * 100).toFixed(0)}}% confident)</span>
+      </div>
+
+      <!-- Detected Tools List -->
+      <div class="tools-list">
+        <div *ngFor="let tool of detectedTools" class="tool-item">
+          <div class="tool-info">
+            <mat-icon [matTooltip]="tool.category">{{ getCategoryIcon(tool.category) }}</mat-icon>
+            <div class="tool-details">
+              <span class="tool-name">{{ tool.tool | titlecase }}</span>
+              <span class="tool-params">{{ formatParams(tool.params) }}</span>
+            </div>
+          </div>
+          <span class="tool-cost">${{ tool.cost.toFixed(3) }}</span>
+        </div>
+      </div>
+
+      <!-- Cost Summary -->
+      <div class="cost-summary">
+        <div class="cost-row">
+          <span>Tools Cost:</span>
+          <span class="cost-value">${{ totalCost.toFixed(3) }}/execution</span>
+        </div>
+        <div class="cost-row" *ngIf="llmCost > 0">
+          <span>LLM Cost (execution):</span>
+          <span class="cost-value">~${{ llmCost.toFixed(3) }}/execution</span>
+        </div>
+        <div class="cost-row total">
+          <span><strong>Estimated Total:</strong></span>
+          <span class="cost-value"><strong>${{ (totalCost + llmCost).toFixed(3) }}/execution</strong></span>
+        </div>
+      </div>
+
+      <!-- Unsupported Features Warning -->
+      <div *ngIf="unsupportedFeatures.length > 0" class="unsupported-warning">
+        <mat-icon color="warn">warning</mat-icon>
+        <div class="warning-content">
+          <strong>Some features are not yet supported:</strong>
+          <ul>
+            <li *ngFor="let feature of unsupportedFeatures">{{ feature }}</li>
+          </ul>
+          <p class="warning-note">Please modify your strategy or these features will be ignored.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div *ngIf="detectionStatus === 'error'" class="detection-error">
+      <mat-icon color="warn">error</mat-icon>
+      <div class="error-content">
+        <strong>Could not detect tools</strong>
+        <p>{{ errorMessage }}</p>
+        <p class="error-hint">Try being more specific about your strategy, or check the examples above.</p>
+      </div>
+    </div>
+  </div>
+</div>
+

@@ -1,0 +1,248 @@
+.strategy-chart-card {
+  margin: 16px 0;
+  background: #1e1e1e;
+  color: #ffffff;
+
+  .chart-header {
+    background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    padding: 20px;
+    border-bottom: 1px solid #333;
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+
+      .title-section {
+        flex: 1;
+
+        h2 {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin: 0 0 8px 0;
+          font-size: 24px;
+          font-weight: 600;
+
+          mat-icon {
+            font-size: 32px;
+            width: 32px;
+            height: 32px;
+          }
+        }
+
+        .subtitle {
+          margin: 0;
+          font-size: 14px;
+          color: #999;
+        }
+      }
+
+      .stats-section {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+
+        .stat-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+
+          .stat-label {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+          }
+
+          mat-chip {
+            font-weight: 600;
+            color: #fff;
+          }
+
+          .confidence-chip {
+            min-width: 60px;
+            text-align: center;
+          }
+
+          .conditions-chip {
+            background: #3b82f6;
+            min-width: 60px;
+            text-align: center;
+          }
+        }
+      }
+    }
+  }
+
+  mat-card-content {
+    padding: 0;
+  }
+
+  .chart-wrapper {
+    height: 600px;
+    width: 100%;
+    background: #131722;
+    position: relative;
+
+    &.expanded {
+      height: 90vh;
+    }
+
+    .chart-container {
+      height: 100%;
+      width: 100%;
+    }
+  }
+
+  .decision-reasoning {
+    padding: 24px;
+    background: #1a1a1a;
+
+    h3 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+
+      mat-icon {
+        color: #3b82f6;
+      }
+    }
+
+    .reasoning-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+
+      .reasoning-step {
+        padding: 12px 16px;
+        background: #252525;
+        border-radius: 8px;
+        border-left: 3px solid #3b82f6;
+        font-size: 14px;
+        line-height: 1.6;
+
+        span {
+          display: block;
+
+          &.success {
+            color: #22c55e;
+            border-left-color: #22c55e;
+          }
+
+          &.warning {
+            color: #f59e0b;
+            border-left-color: #f59e0b;
+          }
+
+          &.target {
+            color: #3b82f6;
+            border-left-color: #3b82f6;
+            font-weight: 600;
+            font-size: 15px;
+          }
+        }
+      }
+    }
+
+    .trade-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 20px;
+      background: #252525;
+      border-radius: 8px;
+      margin-bottom: 24px;
+
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: #1e1e1e;
+        border-radius: 6px;
+
+        .label {
+          font-size: 13px;
+          color: #999;
+          font-weight: 500;
+        }
+
+        .value {
+          font-size: 15px;
+          font-weight: 600;
+          color: #fff;
+
+          &.stop-loss {
+            color: #ef4444;
+          }
+
+          &.take-profit {
+            color: #22c55e;
+          }
+        }
+      }
+    }
+
+    .original-instructions {
+      padding: 20px;
+      background: #252525;
+      border-radius: 8px;
+      border: 1px solid #333;
+
+      h4 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 12px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #999;
+        text-transform: uppercase;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
+
+      p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.8;
+        color: #ccc;
+        white-space: pre-wrap;
+      }
+    }
+  }
+}
+
+.chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: #666;
+
+  mat-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  p {
+    font-size: 16px;
+    margin: 0;
+  }
+}
+
