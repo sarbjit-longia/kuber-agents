@@ -4,6 +4,7 @@ Storage Service - Abstraction for Local Disk (dev) and S3 (prod)
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, Optional
+import asyncio
 import structlog
 import uuid
 import os
@@ -87,14 +88,12 @@ class LocalDiskStorage(StorageService):
         # Create subdirectory by content type
         subdir = self._get_subdir(content_type)
         upload_dir = self.base_path / subdir
-        upload_dir.mkdir(parents=True, exist_ok=True)
         
-        # Write file
-        file_path = upload_dir / unique_name
+        # Read file content first (can be sync, it's in-memory)
         content = file_content.read()
         
-        with open(file_path, "wb") as f:
-            f.write(content)
+        # Offload blocking file I/O to thread pool
+        await asyncio.to_thread(self._write_file_sync, upload_dir, unique_name, content)
         
         # Return relative path
         relative_path = f"uploads/{subdir}/{unique_name}"
@@ -109,12 +108,25 @@ class LocalDiskStorage(StorageService):
         
         return relative_path
     
+    def _write_file_sync(self, upload_dir: Path, filename: str, content: bytes):
+        """Synchronous file write (called from thread pool)."""
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path = upload_dir / filename
+        with open(file_path, "wb") as f:
+            f.write(content)
+    
     async def download_file(self, file_url: str) -> bytes:
         """Read file from local disk."""
         
         # file_url is relative path like "uploads/pdfs/uuid.pdf"
-        file_path = self.base_path.parent / file_url
+        # Construct absolute path: /app/storage + /uploads/pdfs/uuid.pdf
+        file_path = Path("/app/storage") / file_url
         
+        # Offload blocking file I/O to thread pool
+        return await asyncio.to_thread(self._read_file_sync, file_path, file_url)
+    
+    def _read_file_sync(self, file_path: Path, file_url: str) -> bytes:
+        """Synchronous file read (called from thread pool)."""
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_url}")
         
@@ -122,14 +134,19 @@ class LocalDiskStorage(StorageService):
             content = f.read()
         
         logger.debug("file_downloaded_local", path=file_url, size_bytes=len(content))
-        
         return content
     
     async def delete_file(self, file_url: str) -> bool:
         """Delete file from local disk."""
         
-        file_path = self.base_path.parent / file_url
+        # Construct absolute path
+        file_path = Path("/app/storage") / file_url
         
+        # Offload blocking file I/O to thread pool
+        return await asyncio.to_thread(self._delete_file_sync, file_path, file_url)
+    
+    def _delete_file_sync(self, file_path: Path, file_url: str) -> bool:
+        """Synchronous file delete (called from thread pool)."""
         if file_path.exists():
             file_path.unlink()
             logger.info("file_deleted_local", path=file_url)
@@ -201,10 +218,12 @@ class S3Storage(StorageService):
         prefix = self._get_prefix(content_type)
         s3_key = f"{prefix}/{unique_name}"
         
-        # Upload to S3
+        # Read file content
         content = file_content.read()
         
-        self.s3_client.put_object(
+        # Offload blocking boto3 call to thread pool
+        await asyncio.to_thread(
+            self.s3_client.put_object,
             Bucket=self.bucket_name,
             Key=s3_key,
             Body=content,
@@ -235,7 +254,12 @@ class S3Storage(StorageService):
         bucket = parts[0]
         key = parts[1]
         
-        response = self.s3_client.get_object(Bucket=bucket, Key=key)
+        # Offload blocking boto3 call to thread pool
+        response = await asyncio.to_thread(
+            self.s3_client.get_object,
+            Bucket=bucket,
+            Key=key
+        )
         content = response["Body"].read()
         
         logger.debug("file_downloaded_s3", url=file_url, size_bytes=len(content))
@@ -254,7 +278,12 @@ class S3Storage(StorageService):
         key = parts[1]
         
         try:
-            self.s3_client.delete_object(Bucket=bucket, Key=key)
+            # Offload blocking boto3 call to thread pool
+            await asyncio.to_thread(
+                self.s3_client.delete_object,
+                Bucket=bucket,
+                Key=key
+            )
             logger.info("file_deleted_s3", url=file_url)
             return True
         except Exception as e:

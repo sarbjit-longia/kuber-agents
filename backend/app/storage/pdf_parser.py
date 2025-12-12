@@ -1,6 +1,7 @@
 """
 PDF Parser - Extract text from PDF documents
 """
+import asyncio
 import structlog
 from typing import Optional
 
@@ -23,6 +24,21 @@ class PDFParser:
     async def extract_text(self, pdf_content: bytes) -> str:
         """
         Extract text from PDF bytes.
+        
+        Uses asyncio.to_thread() to offload blocking I/O to thread pool.
+        
+        Args:
+            pdf_content: PDF file content as bytes
+            
+        Returns:
+            Extracted text as string
+        """
+        # Offload blocking PDF parsing to thread pool
+        return await asyncio.to_thread(self._extract_text_sync, pdf_content)
+    
+    def _extract_text_sync(self, pdf_content: bytes) -> str:
+        """
+        Synchronous PDF text extraction (called from thread pool).
         
         Args:
             pdf_content: PDF file content as bytes

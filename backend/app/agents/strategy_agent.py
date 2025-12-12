@@ -466,13 +466,13 @@ Last 10 Candles (oldest to newest):
             fvg = result['latest_bullish_fvg']
             text += f"  • Latest Bullish FVG: {fvg['low']:.5f} - {fvg['high']:.5f} "
             text += f"(Gap: {fvg['gap_size_pips']:.1f} pips, "
-            text += "Filled)" if fvg['is_filled'] else "Unfilled)\n"
+            text += ("Filled)" if fvg['is_filled'] else "Unfilled)") + "\n"
         
         if result.get('latest_bearish_fvg'):
             fvg = result['latest_bearish_fvg']
             text += f"  • Latest Bearish FVG: {fvg['low']:.5f} - {fvg['high']:.5f} "
             text += f"(Gap: {fvg['gap_size_pips']:.1f} pips, "
-            text += "Filled)" if fvg['is_filled'] else "Unfilled)\n"
+            text += ("Filled)" if fvg['is_filled'] else "Unfilled)") + "\n"
         
         return text
     
