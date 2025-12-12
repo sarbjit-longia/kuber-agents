@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     
     # Market Data
     FINNHUB_API_KEY: Optional[str] = None
+    MARKET_DATA_PROVIDER: str = "finnhub"  # Options: finnhub, alpha_vantage, yahoo_finance, polygon
     
     # Generator Settings
     MOCK_GENERATOR_INTERVAL_SECONDS: int = 60  # Emit every 60 seconds
@@ -32,6 +33,119 @@ class Settings(BaseSettings):
     GOLDEN_CROSS_SMA_SHORT: int = 50
     GOLDEN_CROSS_SMA_LONG: int = 200
     GOLDEN_CROSS_TIMEFRAME: str = "1d"
+    
+    # Death Cross Settings
+    DEATH_CROSS_CHECK_INTERVAL_SECONDS: int = 300  # Check every 5 minutes
+    DEATH_CROSS_SMA_SHORT: int = 50
+    DEATH_CROSS_SMA_LONG: int = 200
+    DEATH_CROSS_TIMEFRAME: str = "1d"
+    
+    # RSI Settings
+    RSI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    RSI_PERIOD: int = 14
+    RSI_OVERSOLD_THRESHOLD: float = 30.0
+    RSI_OVERBOUGHT_THRESHOLD: float = 70.0
+    RSI_TIMEFRAME: str = "1d"
+    
+    # MACD Settings
+    MACD_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    MACD_FAST_PERIOD: int = 12
+    MACD_SLOW_PERIOD: int = 26
+    MACD_SIGNAL_PERIOD: int = 9
+    MACD_TIMEFRAME: str = "1d"
+    
+    # Volume Spike Settings
+    VOLUME_SPIKE_CHECK_INTERVAL_SECONDS: int = 120  # Check every 2 minutes
+    VOLUME_SPIKE_PERIOD: int = 20
+    VOLUME_SPIKE_THRESHOLD: float = 2.0  # 2x average volume
+    VOLUME_SPIKE_TIMEFRAME: str = "1d"
+    
+    # Bollinger Bands Settings
+    BBANDS_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    BBANDS_TIMEPERIOD: int = 20
+    BBANDS_NBDEVUP: int = 2
+    BBANDS_NBDEVDN: int = 2
+    BBANDS_TIMEFRAME: str = "1d"
+    BBANDS_SIGNAL_TYPE: str = "breakout"  # "breakout" or "bounce"
+    
+    # Stochastic Settings
+    STOCH_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    STOCH_FASTK_PERIOD: int = 14
+    STOCH_SLOWK_PERIOD: int = 3
+    STOCH_SLOWD_PERIOD: int = 3
+    STOCH_OVERBOUGHT: float = 80
+    STOCH_OVERSOLD: float = 20
+    STOCH_TIMEFRAME: str = "1d"
+    
+    # ADX Settings
+    ADX_CHECK_INTERVAL_SECONDS: int = 240  # Check every 4 minutes
+    ADX_TIMEPERIOD: int = 14
+    ADX_STRONG_TREND: float = 25
+    ADX_WEAK_TREND: float = 20
+    ADX_TIMEFRAME: str = "1d"
+    
+    # EMA Crossover Settings
+    EMA_CHECK_INTERVAL_SECONDS: int = 300  # Check every 5 minutes
+    EMA_FAST: int = 12
+    EMA_SLOW: int = 26
+    EMA_TIMEFRAME: str = "1d"
+    
+    # ATR Settings
+    ATR_CHECK_INTERVAL_SECONDS: int = 240  # Check every 4 minutes
+    ATR_TIMEPERIOD: int = 14
+    ATR_SPIKE_MULTIPLIER: float = 1.5
+    ATR_COMPRESSION_MULTIPLIER: float = 0.7
+    ATR_LOOKBACK_FOR_AVERAGE: int = 30
+    ATR_TIMEFRAME: str = "1d"
+    
+    # CCI Settings
+    CCI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    CCI_TIMEPERIOD: int = 20
+    CCI_OVERBOUGHT: float = 100
+    CCI_OVERSOLD: float = -100
+    CCI_TIMEFRAME: str = "1d"
+    
+    # Stochastic RSI Settings
+    STOCHRSI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    STOCHRSI_TIMEPERIOD: int = 14
+    STOCHRSI_FASTK_PERIOD: int = 14
+    STOCHRSI_FASTD_PERIOD: int = 3
+    STOCHRSI_OVERBOUGHT: float = 80
+    STOCHRSI_OVERSOLD: float = 20
+    STOCHRSI_TIMEFRAME: str = "1d"
+    
+    # Williams %R Settings
+    WILLR_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    WILLR_TIMEPERIOD: int = 14
+    WILLR_OVERBOUGHT: float = -20
+    WILLR_OVERSOLD: float = -80
+    WILLR_TIMEFRAME: str = "1d"
+    
+    # AROON Settings
+    AROON_CHECK_INTERVAL_SECONDS: int = 240  # Check every 4 minutes
+    AROON_TIMEPERIOD: int = 25
+    AROON_TREND_THRESHOLD: float = 70
+    AROON_TIMEFRAME: str = "1d"
+    
+    # MFI Settings
+    MFI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    MFI_TIMEPERIOD: int = 14
+    MFI_OVERBOUGHT: float = 80
+    MFI_OVERSOLD: float = 20
+    MFI_TIMEFRAME: str = "1d"
+    
+    # OBV Settings
+    OBV_CHECK_INTERVAL_SECONDS: int = 240  # Check every 4 minutes
+    OBV_SMA_PERIOD: int = 20
+    OBV_DIVERGENCE_LOOKBACK: int = 10
+    OBV_MIN_PRICE_CHANGE: float = 2.0
+    OBV_TIMEFRAME: str = "1d"
+    
+    # SAR Settings
+    SAR_CHECK_INTERVAL_SECONDS: int = 300  # Check every 5 minutes
+    SAR_ACCELERATION: float = 0.02
+    SAR_MAXIMUM: float = 0.20
+    SAR_TIMEFRAME: str = "1d"
     
     # Config file paths
     WATCHLIST_CONFIG_PATH: str = "config/watchlist.json"

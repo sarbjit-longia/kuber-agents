@@ -134,10 +134,29 @@ This roadmap outlines the development plan for the Trading Platform from initial
   - [x] Multi-timeframe analysis (1h, 4h, 1d)
   - [x] Market analyst sub-agent
   - [x] Comprehensive bias reasoning
-- [x] Strategy Agent (CrewAI crew)
+  - [x] LLM-powered tool detection from instructions
+  - [x] Auto-detected tools integration
+- [x] Strategy Agent (CrewAI crew + LLM Tools)
   - [x] Entry/stop/target calculation
   - [x] Complete trade plan generation
   - [x] Risk/reward analysis
+  - [x] **ICT Strategy Tools** (FVG, Liquidity, Market Structure, Premium/Discount)
+  - [x] **Indicator Tools** (RSI, SMA, MACD, Bollinger Bands)
+  - [x] **Tool Executor** (dynamic tool invocation based on instructions)
+  - [x] **Chart Data Generation** (TradingView annotations)
+  - [x] **Instructions-based strategy** (plain English → tool detection)
+
+**LLM-Powered Strategy System (NEW)** 🆕
+- [x] Tool Detection Service (auto-detect tools from user instructions)
+- [x] Strategy Tools Registry (OpenAI function calling format)
+- [x] ICT Concepts Implementation:
+  - [x] Fair Value Gap (FVG) Detector
+  - [x] Liquidity Analyzer (pools, grabs, hunts)
+  - [x] Market Structure (BOS/CHoCH, trends)
+  - [x] Premium/Discount Zones
+- [x] Indicator Tools (wrapper for Data Plane indicators)
+- [x] Tool cost estimation and pricing model
+- [x] Unsupported feature detection
 
 **Testing**
 - [x] Mock market data tool for development
@@ -149,6 +168,8 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - ✅ Agent framework with serialization and metadata
 - ✅ Tools framework with user-configurable attachments
 - ✅ Mock tools for development/testing
+- ✅ **LLM-powered strategy system with ICT tools** 🆕
+- ✅ **Instruction-based strategy creation** 🆕
 
 ---
 
@@ -211,6 +232,7 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Node selection and highlighting
 - [x] Node deletion
 - [x] Tool attachment UI (attach tools to agents)
+- [x] **Auto-detected tools visual representation** 🆕
 
 ### Agent Configuration
 - [x] Fetch agent metadata from API (`/api/v1/agents`)
@@ -220,6 +242,10 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Form validation
 - [x] Save/Cancel buttons for config changes
 - [x] Tool configuration panel
+- [x] **Agent Instructions Component** (plain English input) 🆕
+- [x] **PDF Strategy Document Upload** 🆕
+- [x] **Tool Detection Integration** (frontend) 🆕
+- [x] **Auto-detected tools display with cost** 🆕
 
 ### Pipeline Management
 - [x] Pipeline list view (card-based)
@@ -230,12 +256,23 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Pipeline settings dialog (name, description, trigger mode, scanner, signals)
 - [x] Pipeline validation (ensure all agents configured, tools attached)
 
+### File Management (NEW) 🆕
+- [x] Storage abstraction layer (LocalDisk for dev, S3 for prod)
+- [x] PDF Parser (async with pdfplumber)
+- [x] File Upload API (`/api/v1/files/upload`)
+- [x] File Download API (`/api/v1/files/download`)
+- [x] File Delete API (`/api/v1/files/delete`)
+- [x] Strategy document storage and retrieval
+
 ### Deliverables
 - ✅ Working visual pipeline builder with intuitive UX
 - ✅ User can drag-drop agents onto canvas
 - ✅ Dynamic config forms for each agent and tool
 - ✅ Save/load pipelines from database
 - ✅ Scanner and signal subscription configuration
+- ✅ **Instructions-based agent configuration** 🆕
+- ✅ **PDF strategy document support** 🆕
+- ✅ **Visual tool detection and cost estimation** 🆕
 
 ---
 
@@ -277,9 +314,20 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Reasoning chain display per agent
 - [x] Error display for failed agents
 - [x] Execution artifacts stored in database (JSONB)
+- [x] **Strategy Visualization** (interactive TradingView charts) 🆕
+- [x] **Chart Annotation Builder** (convert tool results to chart data) 🆕
+- [x] **Chart Component** (TradingView integration) 🆕
 - [ ] Report list view (separate page) - Future
 - [ ] Export reports (PDF/JSON) - Future
-- [ ] Trade outcome visualization - Future
+
+### Strategy Visualization (NEW) 🆕
+- [x] Chart Annotation Builder Service
+- [x] Convert FVG/Liquidity/Indicator data to chart annotations
+- [x] TradingView Charting Library integration
+- [x] Interactive chart rendering (candles + annotations)
+- [x] Strategy decision visualization (entry/stop/target)
+- [x] Agent reasoning display on charts
+- [x] Chart data storage in execution_artifacts
 
 ### Deliverables
 - ✅ Real-time monitoring dashboard with execution list
@@ -287,10 +335,140 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - ✅ Execution detail view with agent reports
 - ✅ Timezone-aware UI (local time display)
 - ✅ Structured reporting system
+- ✅ **Interactive strategy visualization with charts** 🆕
 
 ---
 
-## Milestone 6: Cost Tracking & Billing ⚠️ PARTIAL
+## Milestone 6.5: LLM-Powered Strategy System & Visualization ✅ COMPLETE 🆕
+**Duration**: Recent sprint  
+**Status**: ✅ **COMPLETED**
+
+### LLM-Powered Tool Detection & Execution
+- [x] Tool Detection Service (GPT-4 function calling)
+  - [x] Auto-detect required tools from plain English instructions
+  - [x] Parameter inference for each tool
+  - [x] Cost estimation before execution
+  - [x] Unsupported feature detection
+  - [x] Confidence scoring
+- [x] Strategy Tools Registry (OpenAI function calling format)
+- [x] Tool pricing model (per-execution costs)
+- [x] Tool Executor (dynamic tool invocation)
+
+### ICT Strategy Tools Implementation
+- [x] Fair Value Gap (FVG) Detector
+  - [x] Bullish/Bearish FVG detection
+  - [x] Gap size calculation
+  - [x] Fill status tracking
+  - [x] Historical FVG analysis
+- [x] Liquidity Analyzer
+  - [x] Swing high/low detection
+  - [x] Liquidity pool identification
+  - [x] Liquidity grab detection
+  - [x] Hunt pattern recognition
+- [x] Market Structure Tool
+  - [x] BOS (Break of Structure) detection
+  - [x] CHoCH (Change of Character) detection
+  - [x] Trend identification (bullish/bearish)
+  - [x] Structure level tracking
+- [x] Premium/Discount Zones
+  - [x] Daily range calculation
+  - [x] Equilibrium identification
+  - [x] Zone classification (premium/discount/equilibrium)
+
+### Technical Indicator Tools
+- [x] RSI Tool (Data Plane integration)
+- [x] SMA Tool (multiple periods: 20, 50, 200)
+- [x] MACD Tool (12/26/9)
+- [x] Bollinger Bands Tool (period: 20)
+- [x] Indicator data fetching from Data Plane
+- [x] Caching and performance optimization
+
+### Strategy Agent Enhancements
+- [x] Instructions-based strategy configuration
+- [x] PDF strategy document support
+- [x] Auto-detected tool integration
+- [x] Tool execution during agent processing
+- [x] Chart data generation from tool results
+- [x] Structured output with visualizations
+
+### File Management & Storage
+- [x] Storage Service abstraction layer
+  - [x] LocalDiskStorage (development)
+  - [x] S3Storage (production)
+  - [x] Async file I/O with thread pools
+- [x] PDF Parser
+  - [x] Text extraction with pdfplumber
+  - [x] Async processing
+  - [x] Clean text output
+- [x] File Upload API (`/api/v1/files/upload`)
+- [x] File Download API (`/api/v1/files/download`)
+- [x] File Delete API (`/api/v1/files/delete`)
+- [x] Strategy document storage
+
+### Strategy Visualization
+- [x] Chart Annotation Builder Service
+  - [x] FVG annotations (rectangles)
+  - [x] Liquidity annotations (horizontal lines)
+  - [x] Market structure annotations (BOS/CHoCH markers)
+  - [x] Premium/Discount zones (filled areas)
+  - [x] Indicator overlays (RSI, SMA, etc.)
+  - [x] Entry/Stop/Target markers
+- [x] TradingView Charting Library integration
+- [x] Strategy Chart Component (Angular)
+  - [x] Interactive candlestick charts
+  - [x] Annotation rendering
+  - [x] Decision summary display
+  - [x] Reasoning steps visualization
+  - [x] Trade details panel
+- [x] Chart data storage in execution_artifacts
+
+### Frontend Components
+- [x] Agent Instructions Component
+  - [x] Plain English instructions textarea
+  - [x] PDF strategy document upload
+  - [x] Tool detection trigger
+  - [x] Auto-detected tools display
+  - [x] Cost estimation display
+  - [x] Error handling and validation
+- [x] Tool Detection Service (Angular)
+- [x] File Upload Service (Angular)
+- [x] Strategy Chart Component
+- [x] Auto-detected tools visual on canvas
+  - [x] Tool nodes attached to agents
+  - [x] Visual representation with metadata
+  - [x] Tooltip information
+
+### Backend API Enhancements
+- [x] Tool Validation Endpoint (`/api/v1/agents/validate-instructions`)
+- [x] Available Tools Endpoint (`/api/v1/agents/tools/available`)
+- [x] User Profile Endpoint (`/api/v1/users/me`)
+- [x] Fixed async/sync dependency issues
+  - [x] Proper async/await patterns
+  - [x] Thread pool for blocking I/O
+  - [x] Consistent AsyncSession usage
+
+### Bug Fixes & Code Quality
+- [x] Fixed async PDF parsing (no event loop blocking)
+- [x] Fixed async storage operations (LocalDisk & S3)
+- [x] Fixed path construction in file downloads
+- [x] Fixed inconsistent newline formatting in FVG output
+- [x] Fixed async/sync dependency mismatch in user endpoints
+- [x] Error handling improvements
+- [x] Type safety enhancements
+
+### Deliverables
+- ✅ **LLM-powered strategy system** with automatic tool detection
+- ✅ **ICT trading concepts** fully implemented (FVG, Liquidity, Market Structure)
+- ✅ **Instruction-based strategy creation** (no coding required)
+- ✅ **Interactive strategy visualization** with TradingView charts
+- ✅ **PDF strategy document support** with text extraction
+- ✅ **Tool-based pricing model** with pre-execution cost estimates
+- ✅ **Production-ready async patterns** throughout the stack
+- ✅ **Visual tool representation** on canvas with auto-detection
+
+---
+
+## Milestone 7: Cost Tracking & Billing ⚠️ PARTIAL
 **Duration**: Week 7 (parallel with Milestone 5)  
 **Status**: ⚠️ **PARTIALLY COMPLETE**
 
@@ -316,21 +494,30 @@ This roadmap outlines the development plan for the Trading Platform from initial
 - [x] Real-time cost display during execution (monitoring page)
 - [x] Total cost in execution list
 - [x] Subscription info API (`/api/v1/users/me/subscription`)
+- [x] **User profile endpoint** (`/api/v1/users/me`) 🆕
+- [x] **Tool-based cost estimation** (before execution) 🆕
 - [ ] Cost dashboard page - Future
 - [ ] Usage charts - Future
 - [ ] Budget settings - Future
 - [ ] Cost projections - Future
 
+### API Enhancements (NEW) 🆕
+- [x] Tool validation API (`/api/v1/agents/validate-instructions`)
+- [x] Available tools API (`/api/v1/agents/tools/available`)
+- [x] Async user endpoints (proper async/await patterns)
+- [x] Fixed async/sync dependency issues in endpoints
+
 ### Deliverables
 - ✅ Basic cost tracking (per execution total)
 - ✅ Agent pricing configured
 - ✅ Subscription tier data model (Phase 1)
+- ✅ **Tool-based pricing with pre-execution estimates** 🆕
 - ⚠️ Budget enforcement - Deferred
 - ⚠️ Cost analytics dashboard - Deferred
 
 ---
 
-## Milestone 7: Demo Mode & Polishing
+## Milestone 8: Demo Mode & Polishing
 **Duration**: Week 8  
 **Goal**: Demo mode, testing, and bug fixes
 
@@ -372,7 +559,7 @@ This roadmap outlines the development plan for the Trading Platform from initial
 
 ---
 
-## Milestone 8: MVP Deployment & Beta Launch
+## Milestone 9: MVP Deployment & Beta Launch
 **Duration**: Weeks 9-10  
 **Goal**: Production deployment and beta user testing
 

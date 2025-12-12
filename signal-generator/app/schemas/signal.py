@@ -15,6 +15,61 @@ class SignalType(str, Enum):
     NEWS = "news"
     GOLDEN_CROSS = "golden_cross"
     DEATH_CROSS = "death_cross"
+    RSI_OVERSOLD = "rsi_oversold"
+    RSI_OVERBOUGHT = "rsi_overbought"
+    MACD_BULLISH = "macd_bullish"
+    MACD_BEARISH = "macd_bearish"
+    VOLUME_SPIKE = "volume_spike"
+    # Bollinger Bands
+    BBANDS_UPPER_BREAKOUT = "bbands_upper_breakout"
+    BBANDS_LOWER_BREAKOUT = "bbands_lower_breakout"
+    BBANDS_UPPER_BOUNCE = "bbands_upper_bounce"
+    BBANDS_LOWER_BOUNCE = "bbands_lower_bounce"
+    # Stochastic
+    STOCH_BULLISH = "stoch_bullish"
+    STOCH_BEARISH = "stoch_bearish"
+    # ADX
+    ADX_STRONG_TREND = "adx_strong_trend"
+    ADX_WEAK_TREND = "adx_weak_trend"
+    # EMA Crossover
+    EMA_BULLISH_CROSSOVER = "ema_bullish_crossover"
+    EMA_BEARISH_CROSSOVER = "ema_bearish_crossover"
+    # ATR
+    ATR_VOLATILITY_SPIKE = "atr_volatility_spike"
+    ATR_VOLATILITY_COMPRESSION = "atr_volatility_compression"
+    # CCI
+    CCI_OVERSOLD = "cci_oversold"
+    CCI_OVERBOUGHT = "cci_overbought"
+    CCI_BULLISH_ZERO_CROSS = "cci_bullish_zero_cross"
+    CCI_BEARISH_ZERO_CROSS = "cci_bearish_zero_cross"
+    # Stochastic RSI
+    STOCHRSI_OVERSOLD = "stochrsi_oversold"
+    STOCHRSI_OVERBOUGHT = "stochrsi_overbought"
+    STOCHRSI_BULLISH_CROSS = "stochrsi_bullish_cross"
+    STOCHRSI_BEARISH_CROSS = "stochrsi_bearish_cross"
+    # Williams %R
+    WILLR_OVERSOLD = "willr_oversold"
+    WILLR_OVERBOUGHT = "willr_overbought"
+    WILLR_BULLISH_MOMENTUM = "willr_bullish_momentum"
+    WILLR_BEARISH_MOMENTUM = "willr_bearish_momentum"
+    # AROON
+    AROON_UPTREND = "aroon_uptrend"
+    AROON_DOWNTREND = "aroon_downtrend"
+    AROON_BULLISH_CROSS = "aroon_bullish_cross"
+    AROON_BEARISH_CROSS = "aroon_bearish_cross"
+    AROON_CONSOLIDATION = "aroon_consolidation"
+    # MFI
+    MFI_OVERSOLD = "mfi_oversold"
+    MFI_OVERBOUGHT = "mfi_overbought"
+    # OBV
+    OBV_BULLISH_DIVERGENCE = "obv_bullish_divergence"
+    OBV_BEARISH_DIVERGENCE = "obv_bearish_divergence"
+    OBV_BULLISH_BREAKOUT = "obv_bullish_breakout"
+    OBV_BEARISH_BREAKDOWN = "obv_bearish_breakdown"
+    # SAR
+    SAR_BULLISH_REVERSAL = "sar_bullish_reversal"
+    SAR_BEARISH_REVERSAL = "sar_bearish_reversal"
+    # Generic
     PRICE_LEVEL = "price_level"
     VOLATILITY = "volatility"
     EXTERNAL = "external"

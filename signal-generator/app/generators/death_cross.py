@@ -1,7 +1,7 @@
 """
-Golden Cross Signal Generator
+Death Cross Signal Generator
 
-Monitors for golden cross patterns (short SMA crossing above long SMA).
+Monitors for death cross patterns (bearish crossover) using Finnhub's SMA indicator.
 """
 from typing import Dict, Any, List
 import structlog
@@ -14,13 +14,15 @@ from app.utils.market_data import MarketDataFetcher
 logger = structlog.get_logger()
 
 
-class GoldenCrossSignalGenerator(BaseSignalGenerator):
+class DeathCrossSignalGenerator(BaseSignalGenerator):
     """
-    Golden Cross signal generator.
+    Death Cross signal generator.
     
-    Monitors a watchlist of tickers for golden cross patterns:
-    - Short-term SMA (default 50-day) crosses above long-term SMA (default 200-day)
-    - Generates BULLISH bias signals when detected
+    Monitors a watchlist of tickers for death cross patterns:
+    - Short-term SMA (default 50-day) crosses below long-term SMA (default 200-day)
+    - Generates BEARISH bias signals when detected
+    
+    This is the opposite of the Golden Cross and indicates potential downtrend.
     
     Configuration:
         - tickers: List of tickers to monitor
@@ -51,7 +53,7 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
         self.confidence = self.config.get("confidence", 0.85)
     
     def _validate_config(self):
-        """Validate golden cross generator configuration."""
+        """Validate death cross generator configuration."""
         sma_short = self.config.get("sma_short", 50)
         sma_long = self.config.get("sma_long", 200)
         
@@ -66,16 +68,16 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
     
     async def generate(self) -> List[Signal]:
         """
-        Check for golden cross patterns and generate signals.
+        Check for death cross patterns and generate signals.
         
         Returns:
-            List of Signal objects for tickers with golden cross detected
+            List of Signal objects for tickers with death cross detected
         """
         tickers = self.config.get("tickers", ["AAPL"])
         signals = []
         
         logger.info(
-            "golden_cross_scan_started",
+            "death_cross_scan_started",
             tickers=tickers,
             sma_short=self.sma_short,
             sma_long=self.sma_long
@@ -128,15 +130,15 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
                 
                 if min_len < self.lookback_days + 1:
                     logger.warning(
-                        "insufficient_data_for_golden_cross",
+                        "insufficient_data_for_death_cross",
                         ticker=ticker,
                         required=self.lookback_days + 1,
                         available=min_len
                     )
                     continue
                 
-                # Check recent data for golden cross
-                has_golden_cross = False
+                # Check recent data for death cross
+                has_death_cross = False
                 for i in range(1, min(self.lookback_days + 1, min_len)):
                     idx = -i
                     prev_idx = -(i + 1)
@@ -146,11 +148,11 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
                     prev_short = sma_short_values[prev_idx]
                     prev_long = sma_long_values[prev_idx]
                     
-                    # Golden cross: short was below, now above
-                    if prev_short <= prev_long and current_short > current_long:
-                        has_golden_cross = True
+                    # Death cross: short was above, now below
+                    if prev_short >= prev_long and current_short < current_long:
+                        has_death_cross = True
                         logger.debug(
-                            "golden_cross_detected",
+                            "death_cross_detected",
                             days_ago=i - 1,
                             prev_short=round(prev_short, 2),
                             prev_long=round(prev_long, 2),
@@ -159,7 +161,7 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
                         )
                         break
                 
-                if has_golden_cross:
+                if has_death_cross:
                     # Get current values
                     current_short_sma = sma_short_values[-1]
                     current_long_sma = sma_long_values[-1]
@@ -167,17 +169,17 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
                     
                     ticker_signal = TickerSignal(
                         ticker=ticker,
-                        signal=BiasType.BULLISH,
+                        signal=BiasType.BEARISH,
                         confidence=self.confidence * 100,
                         reasoning=(
-                            f"Golden cross detected: {self.sma_short}-day SMA "
-                            f"crossed above {self.sma_long}-day SMA"
+                            f"Death cross detected: {self.sma_short}-day SMA "
+                            f"crossed below {self.sma_long}-day SMA"
                         )
                     )
                     
                     signal = Signal(
-                        signal_type=SignalType.GOLDEN_CROSS,
-                        source="golden_cross_generator",
+                        signal_type=SignalType.DEATH_CROSS,
+                        source="death_cross_generator",
                         tickers=[ticker_signal],
                         metadata={
                             "sma_short": self.sma_short,
@@ -193,7 +195,7 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
                     signals.append(signal)
                     
                     logger.info(
-                        "golden_cross_signal_generated",
+                        "death_cross_signal_generated",
                         signal_id=str(signal.signal_id),
                         ticker=ticker,
                         sma_short_value=round(current_short_sma, 2),
@@ -202,7 +204,7 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
             
             except Exception as e:
                 logger.error(
-                    "golden_cross_check_failed",
+                    "death_cross_check_failed",
                     ticker=ticker,
                     error=str(e),
                     exc_info=True
@@ -211,16 +213,15 @@ class GoldenCrossSignalGenerator(BaseSignalGenerator):
         
         if signals:
             logger.info(
-                "golden_cross_scan_completed",
+                "death_cross_scan_completed",
                 signals_generated=len(signals),
                 tickers_with_signal=[s.tickers[0].ticker for s in signals]
             )
         else:
             logger.info(
-                "golden_cross_scan_completed",
+                "death_cross_scan_completed",
                 signals_generated=0,
-                message="No golden crosses detected"
+                message="No death crosses detected"
             )
         
         return signals
-
