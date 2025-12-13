@@ -1,6 +1,12 @@
 """
 CrewAI Flow Integration
 
+⚠️ DEPRECATED: This file uses CrewAI Flows which have hardcoded agent references.
+Use executor.py instead for flexible pipeline execution.
+
+This file references obsolete agents (TimeTriggerAgent, MarketDataAgent) that have
+been removed. Agents should use tools (MarketDataTool, etc.) directly instead.
+
 Provides advanced pipeline orchestration using CrewAI Flows.
 This enables complex agent coordination, conditional branching, and state management.
 

@@ -302,9 +302,7 @@ class PipelineExecutor:
         """
         # Critical agents that must succeed
         critical_agents = [
-            "time_trigger",
-            "market_data_agent",
-            "risk_manager_agent"
+            "risk_manager_agent"  # Risk manager must succeed to prevent bad trades
         ]
         
         if agent_type in critical_agents:

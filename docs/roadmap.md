@@ -869,6 +869,112 @@ ENTERPRISE ($299/month):
 
 ---
 
+## Milestone 10: Signal Generator Service ✅ COMPLETE 🆕
+**Duration**: Recent sprint  
+**Status**: ✅ **COMPLETED**
+
+### Signal Generation Infrastructure
+- [x] Standalone signal-generator microservice
+- [x] 18 technical indicator generators (RSI, MACD, Bollinger Bands, etc.)
+- [x] Mock signal generator (for testing)
+- [x] Kafka integration for signal publishing
+- [x] OpenTelemetry metrics instrumentation
+- [x] Prometheus metrics endpoint
+- [x] Grafana dashboard (signal-specific metrics)
+
+### Technical Indicator Generators Implemented
+- [x] Golden Cross Signal Generator (SMA 50/200 crossover)
+- [x] Death Cross Signal Generator (SMA 50/200 crossover)
+- [x] RSI Signal Generator (oversold/overbought)
+- [x] MACD Signal Generator (crossovers)
+- [x] Volume Spike Signal Generator
+- [x] Bollinger Bands Signal Generator (breakouts/squeezes)
+- [x] Stochastic Signal Generator (%K/%D crossovers)
+- [x] ADX Signal Generator (trend strength)
+- [x] EMA Crossover Signal Generator (12/26 crossover)
+- [x] ATR Signal Generator (volatility spikes)
+- [x] CCI Signal Generator (overbought/oversold)
+- [x] Stochastic RSI Signal Generator
+- [x] Williams %R Signal Generator
+- [x] Aroon Signal Generator (trend direction)
+- [x] MFI Signal Generator (money flow)
+- [x] OBV Signal Generator (on-balance volume)
+- [x] SAR Signal Generator (parabolic SAR reversals)
+
+### Market Data Provider Abstraction
+- [x] Provider abstraction layer (Strategy pattern)
+- [x] MarketDataProvider interface
+- [x] FinnhubProvider implementation
+  - [x] Official finnhub-python SDK integration
+  - [x] Async/await patterns (thread pool for blocking calls)
+  - [x] Proper resolution format (D/W/M instead of 1d/1w/1m)
+  - [x] Comprehensive error handling
+- [x] MarketDataFactory (singleton pattern)
+- [x] Backward-compatible MarketDataFetcher wrapper
+- [x] Environment-based provider selection
+- [x] Easy provider switching (MARKET_DATA_PROVIDER env var)
+
+### Provider Monitoring & Metrics
+- [x] provider_api_calls_total (counter by endpoint, status)
+- [x] provider_api_call_duration_seconds (histogram by endpoint)
+- [x] provider_api_errors_total (counter by error type)
+- [x] Rate limit tracking (timestamp-based calculation)
+- [x] Grafana dashboard panels:
+  - [x] Data Provider display
+  - [x] Rate Limit Remaining gauge
+  - [x] Rate Limit Usage gauge
+  - [x] API Calls Rate timeseries
+  - [x] API Call Duration (p50/p95)
+  - [x] Rate Limit Usage Over Time
+
+### Signal-Specific Metrics
+- [x] signals_generated_total (by generator, type, source)
+- [x] generator_scans_total (by generator)
+- [x] generator_scan_errors_total (by generator)
+- [x] generator_scan_duration_seconds (histogram)
+- [x] Grafana dashboard panels:
+  - [x] Signals by Generator (5min)
+  - [x] Signals by Type (5min)
+  - [x] Total Signals Distribution (pie charts)
+  - [x] Generator Performance Summary (table)
+  - [x] Generator Scan Duration (p50/p95)
+  - [x] Generator Scan Errors
+
+### Configuration & Deployment
+- [x] Configurable scan intervals per generator (2-5 min)
+- [x] Configurable timeframes (D, W, M)
+- [x] Watchlist configuration (config/watchlist.json)
+- [x] Docker containerization
+- [x] Docker Compose integration
+- [x] Health check endpoint
+- [x] Graceful shutdown handling
+
+### Documentation
+- [x] Provider abstraction architecture document
+- [x] Benefits and design rationale
+- [x] Usage examples and migration guide
+- [x] Configuration documentation
+- [x] Supported resolutions and indicators
+- [x] Future provider addition guide
+
+### Bug Fixes & Improvements
+- [x] Fixed Finnhub resolution format (1d → D, 1w → W, etc.)
+- [x] Fixed rate limiting on startup (natural staggering)
+- [x] Fixed 422 "Wrong resolution" errors
+- [x] Improved error handling for API failures
+- [x] Added retry logic with graceful degradation
+
+### Deliverables
+- ✅ **18 working signal generators** with technical indicators
+- ✅ **Provider abstraction layer** for easy data source switching
+- ✅ **Comprehensive monitoring** with Grafana dashboards
+- ✅ **Kafka integration** for signal publishing
+- ✅ **Rate limit tracking** with real-time metrics
+- ✅ **Production-ready signal generation** microservice
+- ✅ **Extensible architecture** ready for additional providers (Alpha Vantage, Yahoo Finance, etc.)
+
+---
+
 ## Post-MVP Roadmap (Future Phases)
 
 ### Data Plane Service

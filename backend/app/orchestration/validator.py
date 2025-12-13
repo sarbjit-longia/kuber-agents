@@ -100,9 +100,8 @@ class PipelineValidator:
             
             if not has_required_tool and required_tool_categories:
                 # Only require tools for agents that truly need them
-                # Market Data Agent needs market data tool
                 # Trade Manager Agent needs broker tool
-                if agent_type in ["market_data_agent", "trade_manager_agent"]:
+                if agent_type in ["trade_manager_agent"]:
                     tool_names = ", ".join(required_tool_categories)
                     errors.append(
                         f"Agent '{metadata.name}' requires a tool to be attached. "

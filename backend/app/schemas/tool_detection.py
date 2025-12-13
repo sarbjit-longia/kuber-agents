@@ -18,7 +18,7 @@ class ValidateInstructionsRequest(BaseModel):
     agent_type: str = Field(
         default="strategy_agent",
         description="Type of agent (strategy_agent, bias_agent, risk_manager_agent, trade_manager_agent)",
-        pattern="^(strategy_agent|bias_agent|risk_manager_agent|trade_manager_agent|market_data_agent|time_trigger)$"
+        pattern="^(strategy_agent|bias_agent|risk_manager_agent|trade_manager_agent)$"
     )
 
 
