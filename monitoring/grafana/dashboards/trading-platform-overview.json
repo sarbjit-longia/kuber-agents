@@ -1749,23 +1749,24 @@
       },
       "id": 421,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^provider$/",
           "values": false
         },
-        "textMode": "name"
+        "textMode": "name",
+        "text": {}
       },
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "provider_info",
+          "expr": "max(provider_api_calls_total) by (provider)",
           "instant": true,
           "legendFormat": "{{provider}}",
           "refId": "A"

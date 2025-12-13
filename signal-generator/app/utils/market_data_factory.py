@@ -27,23 +27,10 @@ _provider_info_gauge = None
 
 
 def _setup_provider_info_metric():
-    """Setup provider info metric (called once)."""
-    global _provider_info_gauge
-    
-    if _provider_info_gauge:
-        return _provider_info_gauge
-    
-    try:
-        meter = get_meter()
-        _provider_info_gauge = meter.create_gauge(
-            "provider_info",
-            description="Current market data provider information (value is rate limit)"
-        )
-        logger.info("provider_info_metric_initialized")
-    except Exception as e:
-        logger.warning("provider_info_metric_failed", error=str(e))
-    
-    return _provider_info_gauge
+    """Log provider info (OpenTelemetry Python doesn't support simple gauges)."""
+    # Provider info will be shown in Grafana dashboard as a static annotation
+    # Actual provider is logged at startup
+    pass
 
 
 def get_market_data_provider(

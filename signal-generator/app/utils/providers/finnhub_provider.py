@@ -62,15 +62,11 @@ class FinnhubProvider(MarketDataProvider):
                 description="Total API errors by provider and error type"
             )
             
-            self.rate_limit_remaining = meter.create_gauge(
-                "provider_rate_limit_remaining",
-                description="Estimated API calls remaining before rate limit"
-            )
-            
-            self.rate_limit_usage_percent = meter.create_gauge(
-                "provider_rate_limit_usage_percent",
-                description="Percentage of rate limit used"
-            )
+            # Note: OpenTelemetry Python doesn't support simple gauges with .set()
+            # We'll calculate rate limit metrics in Grafana using provider_api_calls_total
+            # No separate gauge metrics needed - derived from counters
+            self.rate_limit_remaining = None
+            self.rate_limit_usage_percent = None
             
             logger.info("finnhub_provider_metrics_initialized")
         except Exception as e:
@@ -116,15 +112,14 @@ class FinnhubProvider(MarketDataProvider):
         cutoff = now - timedelta(seconds=self._rate_limit_window)
         self._call_timestamps = [ts for ts in self._call_timestamps if ts > cutoff]
         
-        # Calculate rate limit metrics
+        # Calculate rate limit metrics (for logging only)
         calls_in_window = len(self._call_timestamps)
         rate_limit = self.rate_limit_per_minute
         remaining = max(0, rate_limit - calls_in_window)
         usage_percent = (calls_in_window / rate_limit) * 100
         
-        # Update gauges
-        self.rate_limit_remaining.set(remaining, {"provider": "finnhub"})
-        self.rate_limit_usage_percent.set(usage_percent, {"provider": "finnhub"})
+        # Note: Rate limit gauges removed - calculate from provider_api_calls_total in Grafana
+        # Use: rate(provider_api_calls_total[1m]) * 60 for calls/min
     
     def _track_api_error(self, endpoint: str, error_type: str):
         """Track API error."""
