@@ -37,6 +37,7 @@ export class LoginComponent implements OnInit {
   loading = false;
   error: string | null = null;
   returnUrl: string = '/';
+  sessionExpiredMessage: string | null = null;
 
   constructor(
     private formBuilder: FormBuilder,
@@ -53,6 +54,12 @@ export class LoginComponent implements OnInit {
 
     // Get return URL from route parameters or default to '/'
     this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
+    
+    // Check if redirected due to session expiry
+    const reason = this.route.snapshot.queryParams['reason'];
+    if (reason === 'session_expired') {
+      this.sessionExpiredMessage = 'Your session has expired. Please log in again.';
+    }
   }
 
   onSubmit(): void {

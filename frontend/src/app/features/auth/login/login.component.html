@@ -8,6 +8,11 @@
     </mat-card-header>
     
     <mat-card-content>
+      <!-- Session Expired Message -->
+      <div class="info-message" *ngIf="sessionExpiredMessage">
+        {{ sessionExpiredMessage }}
+      </div>
+
       <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
         <mat-form-field appearance="fill" class="full-width">
           <mat-label>Email</mat-label>
