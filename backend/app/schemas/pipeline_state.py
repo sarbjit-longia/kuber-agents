@@ -126,6 +126,29 @@ class Position(BaseModel):
     opened_at: datetime
 
 
+class SignalData(BaseModel):
+    """
+    Signal data that triggered the pipeline execution.
+    
+    This is populated when a pipeline is triggered by a signal (from signal-generator).
+    Contains the original signal information including metadata and market data.
+    """
+    signal_id: str
+    signal_type: str  # e.g., "rsi_oversold", "golden_cross", "mock"
+    source: str  # e.g., "rsi_signal_generator", "mock_generator"
+    confidence: float  # 0.0 to 1.0
+    timestamp: datetime
+    
+    # Ticker(s) that triggered the signal
+    tickers: List[str]
+    
+    # Signal-specific data (e.g., RSI value, MACD values, etc.)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Market data at time of signal (optional - can be used by agents)
+    market_data: Optional[Dict[str, Any]] = None
+
+
 class PipelineState(BaseModel):
     """
     The complete state object passed between agents in a pipeline.
@@ -142,7 +165,10 @@ class PipelineState(BaseModel):
     symbol: str
     mode: str = "paper"  # "live", "paper", "simulation", "validation"
     
-    # Market data (populated by Market Data Agent)
+    # Signal context (populated when triggered by signal)
+    signal_data: Optional[SignalData] = None
+    
+    # Market data (populated by tools or from signal)
     market_data: Optional[MarketData] = None
     
     # Agent outputs

@@ -58,11 +58,21 @@ class Settings(BaseSettings):
     
     # OpenAI
     OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
+    OPENAI_BASE_URL: Optional[str] = Field(
+        default=None, 
+        description="OpenAI API base URL (use http://host.docker.internal:1234/v1 for LM Studio)"
+    )
     OPENAI_MODEL: str = Field(default="gpt-4", description="Default OpenAI model")
     OPENAI_TEMPERATURE: float = Field(default=0.7, description="OpenAI temperature")
     
     # Market Data (Finnhub)
     FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
+    
+    # Data Plane
+    DATA_PLANE_URL: str = Field(
+        default="http://data-plane:8001",
+        description="Data Plane service URL"
+    )
     
     # Broker (Alpaca)
     ALPACA_API_KEY: Optional[str] = Field(default=None, description="Alpaca API key")

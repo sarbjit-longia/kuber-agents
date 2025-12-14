@@ -23,7 +23,7 @@ class IndicatorTools:
             ticker: Stock symbol to fetch indicators for
         """
         self.ticker = ticker
-        self.data_plane_url = settings.DATA_PLANE_URL or "http://data-plane:8001"
+        self.data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8001")
     
     async def get_rsi(
         self,

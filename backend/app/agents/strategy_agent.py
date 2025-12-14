@@ -349,7 +349,7 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
                 except Exception as e:
                     # Don't fail the whole strategy if chart generation fails
                     self.add_warning(state, f"Chart generation failed: {str(e)}")
-                    logger.error("chart_generation_failed", error=str(e), exc_info=True)
+                    self.logger.error("chart_generation_failed", error=str(e), exc_info=True)
             
             # Track cost (GPT-4 is more expensive)
             estimated_cost = 0.15

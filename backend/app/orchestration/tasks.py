@@ -9,7 +9,7 @@ Defines asynchronous tasks for:
 import structlog
 from uuid import UUID
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from app.orchestration.celery_app import celery_app
 from app.database import SessionLocal
@@ -28,7 +28,8 @@ def execute_pipeline(
     pipeline_id: str,
     user_id: str,
     mode: str = "paper",
-    execution_id: Optional[str] = None
+    execution_id: Optional[str] = None,
+    signal_context: Optional[Dict[str, Any]] = None
 ):
     """
     Execute a trading pipeline asynchronously.
@@ -40,6 +41,7 @@ def execute_pipeline(
         user_id: UUID of user
         mode: Execution mode ("live", "paper", "simulation", "validation")
         execution_id: Optional pre-created execution ID
+        signal_context: Optional signal data that triggered this execution
         
     Returns:
         Dict with execution results
@@ -49,7 +51,8 @@ def execute_pipeline(
         task_id=self.request.id,
         pipeline_id=pipeline_id,
         user_id=user_id,
-        mode=mode
+        mode=mode,
+        has_signal_context=bool(signal_context)
     )
     
     try:
@@ -77,12 +80,13 @@ def execute_pipeline(
                     logger.warning("budget_exceeded", user_id=user_id, reason=reason)
                     return {"status": "skipped", "reason": reason}
             
-            # Create executor
+            # Create executor with signal context
             executor = PipelineExecutor(
                 pipeline=pipeline,
                 user_id=UUID(user_id),
                 mode=mode,
-                execution_id=UUID(execution_id) if execution_id else None
+                execution_id=UUID(execution_id) if execution_id else None,
+                signal_context=signal_context
             )
             
             # Execute pipeline synchronously for Celery

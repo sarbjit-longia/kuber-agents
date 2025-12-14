@@ -456,13 +456,30 @@ class TriggerDispatcher:
                     )
                     continue
                 
-                # Enqueue Celery task
+                # Get signal data for context (use first signal as primary)
+                signal_context = None
+                if signal_ids:
+                    # Find the first signal in our buffer
+                    for signal in self.signal_buffer:
+                        if signal.signal_id in signal_ids:
+                            signal_context = {
+                                'signal_id': signal.signal_id,
+                                'signal_type': signal.signal_type,
+                                'source': signal.source,
+                                'timestamp': signal.timestamp,
+                                'tickers': signal.tickers,
+                                'metadata': signal.metadata
+                            }
+                            break
+                
+                # Enqueue Celery task with signal context
                 celery_app.send_task(
                     'app.orchestration.tasks.execute_pipeline',
                     kwargs={
                         'pipeline_id': pipeline_id,
                         'user_id': str(user_id),
-                        'mode': 'paper'  # Signal-triggered pipelines use paper mode by default
+                        'mode': 'paper',  # Signal-triggered pipelines use paper mode by default
+                        'signal_context': signal_context  # Pass signal data to pipeline
                     }
                 )
                 

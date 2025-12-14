@@ -12,7 +12,7 @@ import structlog
 import time
 from typing import Dict, Any, List, Optional
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.schemas.pipeline_state import PipelineState
 from app.models.pipeline import Pipeline
@@ -59,7 +59,8 @@ class PipelineExecutor:
         pipeline: Pipeline,
         user_id: UUID,
         mode: str = "paper",
-        execution_id: Optional[UUID] = None
+        execution_id: Optional[UUID] = None,
+        signal_context: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the pipeline executor.
@@ -69,11 +70,13 @@ class PipelineExecutor:
             user_id: ID of user executing the pipeline
             mode: Execution mode ("live", "paper", "simulation", "validation")
             execution_id: Optional pre-created execution ID
+            signal_context: Optional signal data that triggered this execution
         """
         self.pipeline = pipeline
         self.user_id = user_id
         self.mode = mode
         self.execution_id = execution_id or uuid4()
+        self.signal_context = signal_context
         
         self.registry = get_registry()
         self.logger = logger.bind(
@@ -159,6 +162,229 @@ class PipelineExecutor:
         self.logger.info("execution_order_built", steps=len(execution_order))
         return execution_order
     
+    async def _fetch_market_data_for_pipeline(self, state: PipelineState):
+        """
+        Fetch market data for the pipeline and populate state.market_data.
+        
+        In paper/test mode, generates mock data.
+        In live mode, fetches from data plane.
+        
+        Args:
+            state: Pipeline state to populate with market data
+        """
+        # Determine which timeframes are needed by agents
+        required_timeframes = self._get_required_timeframes()
+        
+        if not required_timeframes:
+            self.logger.debug("no_timeframes_required")
+            return
+        
+        self.logger.info(
+            "fetching_market_data",
+            symbol=state.symbol,
+            timeframes=required_timeframes,
+            mode=self.mode
+        )
+        
+        # Use mock data for paper/test/simulation modes
+        if self.mode in ["paper", "simulation", "validation"]:
+            state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
+            self.logger.info("using_mock_market_data")
+        else:
+            # Fetch real data from data plane
+            try:
+                state.market_data = await self._fetch_from_data_plane(state.symbol, required_timeframes)
+                self.logger.info("market_data_fetched_from_data_plane")
+            except Exception as e:
+                self.logger.error("data_plane_fetch_failed", error=str(e), exc_info=True)
+                # Fallback to mock data
+                self.logger.warning("falling_back_to_mock_data")
+                state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
+    
+    def _get_required_timeframes(self) -> List[str]:
+        """
+        Determine which timeframes are required by agents in the pipeline.
+        
+        Returns:
+            List of unique timeframe strings
+        """
+        timeframes = set()
+        
+        for node in self.nodes:
+            agent_type = node.get("agent_type")
+            
+            # Skip tools
+            if node.get("node_category") == "tool":
+                continue
+            
+            # Get agent metadata
+            try:
+                metadata = self.registry.get_metadata(agent_type)
+                if metadata and metadata.requires_timeframes:
+                    timeframes.update(metadata.requires_timeframes)
+                
+                # Also check agent config for explicit timeframe requirements
+                config = node.get("config", {})
+                if "primary_timeframe" in config:
+                    timeframes.add(config["primary_timeframe"])
+                if "secondary_timeframes" in config:
+                    timeframes.update(config["secondary_timeframes"])
+                if "strategy_timeframe" in config:
+                    timeframes.add(config["strategy_timeframe"])
+                    
+            except Exception as e:
+                self.logger.warning(
+                    "failed_to_get_timeframes_for_agent",
+                    agent_type=agent_type,
+                    error=str(e)
+                )
+        
+        return list(timeframes)
+    
+    def _generate_mock_market_data(self, symbol: str, timeframes: List[str]):
+        """
+        Generate mock market data for testing.
+        
+        Args:
+            symbol: Trading symbol
+            timeframes: List of timeframes to generate
+            
+        Returns:
+            MarketData object with mock data
+        """
+        import random
+        from app.schemas.pipeline_state import MarketData, TimeframeData
+        
+        # Generate realistic mock price
+        base_price = random.uniform(50, 500)
+        
+        # Generate mock timeframe data
+        timeframe_data = {}
+        for tf in timeframes:
+            candles = []
+            price = base_price
+            
+            # Generate 100 candles with random walk
+            for i in range(100):
+                change = random.uniform(-0.02, 0.02)  # ±2% change
+                price = price * (1 + change)
+                
+                high = price * (1 + random.uniform(0, 0.01))
+                low = price * (1 - random.uniform(0, 0.01))
+                open_price = price * (1 + random.uniform(-0.005, 0.005))
+                close_price = price
+                
+                candle = TimeframeData(
+                    timeframe=tf,
+                    timestamp=datetime.utcnow() - timedelta(minutes=(100-i) * 5),
+                    open=round(open_price, 2),
+                    high=round(high, 2),
+                    low=round(low, 2),
+                    close=round(close_price, 2),
+                    volume=random.randint(100000, 10000000)
+                )
+                candles.append(candle)
+            
+            timeframe_data[tf] = candles
+        
+        market_data = MarketData(
+            symbol=symbol,
+            current_price=round(price, 2),
+            bid=round(price * 0.999, 2),
+            ask=round(price * 1.001, 2),
+            spread=round(price * 0.002, 2),
+            timeframes=timeframe_data,
+            market_status="open" if self.mode == "live" else "mock",
+            last_updated=datetime.utcnow()
+        )
+        
+        self.logger.debug(
+            "mock_market_data_generated",
+            symbol=symbol,
+            price=price,
+            timeframes=len(timeframes)
+        )
+        
+        return market_data
+    
+    async def _fetch_from_data_plane(self, symbol: str, timeframes: List[str]):
+        """
+        Fetch market data from data plane service.
+        
+        Args:
+            symbol: Trading symbol
+            timeframes: List of timeframes to fetch
+            
+        Returns:
+            MarketData object
+        """
+        import httpx
+        from app.config import settings
+        from app.schemas.pipeline_state import MarketData, TimeframeData
+        
+        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8001")
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Fetch quote
+            quote_response = await client.get(f"{data_plane_url}/data/quote/{symbol}")
+            quote_response.raise_for_status()
+            quote_data = quote_response.json()
+            
+            # Fetch candles for each timeframe
+            timeframe_data = {}
+            for tf in timeframes:
+                candle_response = await client.get(
+                    f"{data_plane_url}/data/candles/{symbol}",
+                    params={"timeframe": tf, "limit": 100}
+                )
+                candle_response.raise_for_status()
+                candle_data = candle_response.json()
+                
+                # Convert to TimeframeData objects
+                candles = [
+                    TimeframeData(**candle) for candle in candle_data.get("candles", [])
+                ]
+                timeframe_data[tf] = candles
+            
+            market_data = MarketData(
+                symbol=symbol,
+                current_price=quote_data.get("c", 0),
+                bid=quote_data.get("b"),
+                ask=quote_data.get("a"),
+                spread=quote_data.get("a", 0) - quote_data.get("b", 0) if quote_data.get("a") and quote_data.get("b") else None,
+                timeframes=timeframe_data,
+                market_status=quote_data.get("market_status", "unknown"),
+                last_updated=datetime.utcnow()
+            )
+            
+            return market_data
+    
+    def _fetch_market_data_sync(self, state: PipelineState):
+        """
+        Synchronous version of _fetch_market_data_for_pipeline for use in Celery tasks.
+        
+        Args:
+            state: Pipeline state to populate with market data
+        """
+        # Determine which timeframes are needed by agents
+        required_timeframes = self._get_required_timeframes()
+        
+        if not required_timeframes:
+            self.logger.debug("no_timeframes_required")
+            return
+        
+        self.logger.info(
+            "fetching_market_data",
+            symbol=state.symbol,
+            timeframes=required_timeframes,
+            mode=self.mode
+        )
+        
+        # Always use mock data for now (data plane client would need async anyway)
+        # In future, could use synchronous http library or run async in thread
+        state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
+        self.logger.info("using_mock_market_data")
+    
     async def execute(self) -> PipelineState:
         """
         Execute the complete pipeline.
@@ -173,13 +399,24 @@ class PipelineExecutor:
         self.logger.info("pipeline_execution_started")
         
         # Initialize pipeline state
+        # Create pipeline state with signal context if available
+        from app.schemas.pipeline_state import SignalData
+        
+        signal_data = None
+        if self.signal_context:
+            signal_data = SignalData(**self.signal_context)
+        
         state = PipelineState(
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
             symbol=self.config.get("symbol", "UNKNOWN"),
-            mode=self.mode
+            mode=self.mode,
+            signal_data=signal_data
         )
+        
+        # Fetch market data before running agents
+        await self._fetch_market_data_for_pipeline(state)
         
         # Get execution order
         execution_order = self._build_execution_order()
@@ -351,13 +588,24 @@ class PipelineExecutor:
             )
         
         # Initialize state
+        # Create pipeline state with signal context if available
+        from app.schemas.pipeline_state import SignalData
+        
+        signal_data = None
+        if self.signal_context:
+            signal_data = SignalData(**self.signal_context)
+        
         state = PipelineState(
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
             symbol=self.config.get("symbol", "UNKNOWN"),
-            mode=self.mode
+            mode=self.mode,
+            signal_data=signal_data
         )
+        
+        # Fetch market data before running agents (synchronous version)
+        self._fetch_market_data_sync(state)
         
         # Get execution order
         execution_order = self._build_execution_order()
@@ -572,12 +820,20 @@ class PipelineExecutor:
             Updated PipelineState
         """
         # Initialize state
+        # Create pipeline state with signal context if available
+        from app.schemas.pipeline_state import SignalData
+        
+        signal_data = None
+        if self.signal_context:
+            signal_data = SignalData(**self.signal_context)
+        
         state = PipelineState(
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
             symbol=self.config.get("symbol", "UNKNOWN"),
-            mode=self.mode
+            mode=self.mode,
+            signal_data=signal_data
         )
         
         # Get execution order
