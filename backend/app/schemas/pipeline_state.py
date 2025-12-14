@@ -180,6 +180,9 @@ class PipelineState(BaseModel):
     # Position management
     current_position: Optional[Position] = None
     
+    # Execution artifacts (charts, visualizations, etc.)
+    execution_artifacts: Dict[str, Any] = Field(default_factory=dict)
+    
     # Trigger status
     trigger_met: bool = False
     trigger_reason: Optional[str] = None
