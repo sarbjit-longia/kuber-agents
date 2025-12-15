@@ -31,7 +31,12 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/assets"
+              "src/assets",
+              {
+                "glob": "**/*",
+                "input": "libs/",
+                "output": "/libs/"
+              }
             ],
             "styles": [
               "src/styles.scss"
@@ -91,7 +96,12 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/assets"
+              "src/assets",
+              {
+                "glob": "**/*",
+                "input": "libs/",
+                "output": "/libs/"
+              }
             ],
             "styles": [
               "src/styles.scss"

@@ -10,10 +10,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 
 export interface ChartData {
-  symbol: string;
-  timeframe: string;
+  meta?: {
+    symbol: string;
+    timeframe: string;
+    generated_at?: string;
+    candle_count?: number;
+  };
+  symbol?: string; // Fallback for direct symbol
+  timeframe?: string; // Fallback for direct timeframe
   candles: Array<{
-    timestamp: string;
+    time?: string | number; // Backend uses "time"
+    timestamp?: string | number; // Alternative field name
     open: number;
     high: number;
     low: number;
@@ -59,10 +66,18 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     if (this.chartData && this.chartData.candles && this.chartData.candles.length > 0) {
+      console.log('Chart data received:', {
+        symbol: this.chartData.meta?.symbol || this.chartData.symbol,
+        timeframe: this.chartData.meta?.timeframe || this.chartData.timeframe,
+        candlesCount: this.chartData.candles.length,
+        firstCandle: this.chartData.candles[0],
+        lastCandle: this.chartData.candles[this.chartData.candles.length - 1]
+      });
       this.loadTradingViewLibrary();
     } else {
       this.error = 'Invalid or empty chart data';
       this.loading = false;
+      console.error('Invalid chart data:', this.chartData);
     }
   }
 
@@ -92,13 +107,25 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private initializeChart(): void {
     try {
+      // Get symbol and timeframe with fallbacks
+      const symbol = this.chartData.meta?.symbol || this.chartData.symbol || 'UNKNOWN';
+      const timeframe = this.chartData.meta?.timeframe || this.chartData.timeframe || '5m';
+      
+      // Validate chart data
+      if (!symbol || symbol === 'UNKNOWN' || !this.chartData.candles || this.chartData.candles.length === 0) {
+        this.error = 'Invalid chart data: missing symbol or candles';
+        this.loading = false;
+        console.error('Chart data validation failed:', { symbol, candlesCount: this.chartData.candles?.length });
+        return;
+      }
+
       const datafeed = this.createDatafeed();
       
       this.widget = new (window as any).TradingView.widget({
         container: this.chartContainer.nativeElement,
         datafeed: datafeed,
-        symbol: this.chartData.symbol,
-        interval: this.timeframeToInterval(this.chartData.timeframe),
+        symbol: symbol,
+        interval: this.timeframeToInterval(timeframe),
         library_path: '/libs/charting_library-master/charting_library/',
         locale: 'en',
         disabled_features: [
@@ -106,6 +133,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           'volume_force_overlay',
           'header_symbol_search',
           'symbol_search_hot_key',
+          'create_volume_indicator_by_default', // Disable volume by default
         ],
         enabled_features: ['study_templates'],
         charts_storage_api_version: '1.1',
@@ -121,6 +149,14 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
           'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
           'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350',
+          'paneProperties.background': '#ffffff',
+          'paneProperties.vertGridProperties.color': '#f0f0f0',
+          'paneProperties.horzGridProperties.color': '#f0f0f0',
+        },
+        studies_overrides: {
+          'volume.volume.color.0': '#ef5350',
+          'volume.volume.color.1': '#26a69a',
+          'volume.volume.transparency': 50,
         },
       });
 
@@ -131,20 +167,22 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
     } catch (error) {
       console.error('Error initializing chart:', error);
-      this.error = 'Failed to initialize chart';
+      this.error = 'Failed to initialize chart: ' + (error as Error).message;
       this.loading = false;
     }
   }
 
   private createDatafeed(): any {
     const candles = this.chartData.candles;
+    let isFirstCall = true; // Track first call to prevent infinite loops
     
     return {
       onReady: (callback: any) => {
         setTimeout(() => callback({
           supported_resolutions: ['1', '5', '15', '30', '60', '240', 'D', 'W', 'M'],
-          supports_marks: true,
-          supports_timescale_marks: true,
+          supports_marks: false,
+          supports_timescale_marks: false,
+          supports_time: true,
         }), 0);
       },
       
@@ -160,34 +198,90 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           minmov: 1,
           pricescale: 100,
           has_intraday: true,
+          has_no_volume: false,
           has_weekly_and_monthly: false,
           supported_resolutions: ['1', '5', '15', '30', '60', '240', 'D'],
           volume_precision: 2,
-          data_status: 'streaming',
+          data_status: 'endofday',
         };
         setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
       },
 
       getBars: (symbolInfo: any, resolution: string, periodParams: any, onHistoryCallback: any, onErrorCallback: any) => {
         try {
-          const bars = candles.map(candle => ({
-            time: new Date(candle.timestamp).getTime(),
-            open: candle.open,
-            high: candle.high,
-            low: candle.low,
-            close: candle.close,
-            volume: candle.volume,
-          }));
+          // Only return data on first call, then indicate no more data
+          if (!isFirstCall) {
+            console.log('getBars: No more historical data');
+            onHistoryCallback([], { noData: true });
+            return;
+          }
 
-          onHistoryCallback(bars, { noData: bars.length === 0 });
+          isFirstCall = false;
+
+          const bars = candles
+            .map(candle => {
+              // Get timestamp - backend uses "time" field, but check both
+              const rawTime = candle.time || candle.timestamp;
+              
+              if (!rawTime) {
+                console.warn('Candle missing time field:', candle);
+                return null;
+              }
+
+              // Parse timestamp - handle both ISO string and Unix timestamp
+              let timestamp: number;
+              if (typeof rawTime === 'number') {
+                // If it's already a number, assume it's milliseconds
+                timestamp = rawTime;
+              } else {
+                // Parse as date string
+                const date = new Date(rawTime);
+                timestamp = date.getTime();
+              }
+
+              // Validate timestamp
+              if (isNaN(timestamp) || timestamp <= 0) {
+                console.warn('Invalid timestamp:', rawTime, 'for candle:', candle);
+                return null;
+              }
+
+              return {
+                time: timestamp,
+                open: Number(candle.open),
+                high: Number(candle.high),
+                low: Number(candle.low),
+                close: Number(candle.close),
+                volume: Number(candle.volume || 0),
+              };
+            })
+            .filter(bar => bar !== null) as any[]; // Remove invalid bars
+
+          if (bars.length === 0) {
+            console.error('No valid candle data after filtering. Sample candle:', candles[0]);
+            onHistoryCallback([], { noData: true });
+            return;
+          }
+
+          // Sort bars by time (oldest first)
+          bars.sort((a, b) => a.time - b.time);
+
+          console.log('getBars: Loaded bars:', bars.length, 'First:', new Date(bars[0].time), 'Last:', new Date(bars[bars.length - 1].time));
+          
+          // Return all bars and indicate no more data available
+          onHistoryCallback(bars, { noData: false });
         } catch (error) {
           console.error('Error getting bars:', error);
-          onErrorCallback('Failed to load chart data');
+          onErrorCallback('Failed to load chart data: ' + (error as Error).message);
         }
       },
 
-      subscribeBars: () => {},
-      unsubscribeBars: () => {},
+      subscribeBars: () => {
+        // No real-time updates
+      },
+      
+      unsubscribeBars: () => {
+        // No real-time updates
+      },
     };
   }
 
@@ -199,32 +293,44 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const chart = this.widget.activeChart();
       
-      // Add shapes (rectangles, etc.)
-      if (this.chartData.annotations.shapes) {
-        this.chartData.annotations.shapes.forEach(shape => {
-          chart.createShape(shape.points, {
-            shape: shape.type || 'rectangle',
-            overrides: shape.style || {},
-          });
+      // Add shapes (rectangles, triangles, etc.)
+      if (this.chartData.annotations.shapes && this.chartData.annotations.shapes.length > 0) {
+        this.chartData.annotations.shapes.forEach((shape: any) => {
+          try {
+            chart.createMultipointShape(shape.points || [], {
+              shape: shape.type || 'rectangle',
+              overrides: shape.style || {},
+            });
+          } catch (err) {
+            console.warn('Failed to add shape:', err);
+          }
         });
       }
 
-      // Add markers
-      if (this.chartData.annotations.markers) {
-        this.chartData.annotations.markers.forEach(marker => {
-          chart.createMarker({
-            time: new Date(marker.timestamp).getTime() / 1000,
-            color: marker.color || '#2196F3',
-            text: marker.text || '',
-            label: marker.label || '',
-            labelFontColor: '#FFFFFF',
-            minSize: 14,
-          });
+      // Add markers/points using createExecutionShape
+      if (this.chartData.annotations.markers && this.chartData.annotations.markers.length > 0) {
+        this.chartData.annotations.markers.forEach((marker: any) => {
+          try {
+            const time = new Date(marker.timestamp).getTime() / 1000; // Convert to seconds
+            const price = marker.price || 0;
+            
+            chart.createExecutionShape({
+              time: time,
+              price: price,
+              direction: marker.direction || 'buy',
+              text: marker.text || marker.label || '',
+              arrowHeight: 10,
+              font: 'bold 12px Arial',
+            });
+          } catch (err) {
+            console.warn('Failed to add marker:', err);
+          }
         });
       }
 
     } catch (error) {
       console.error('Error adding annotations:', error);
+      // Don't fail the whole chart if annotations fail
     }
   }
 
