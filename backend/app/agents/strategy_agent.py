@@ -13,6 +13,7 @@ from app.agents.schema_utils import add_standard_fields
 from app.tools.strategy_tools.tool_executor import StrategyToolExecutor
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.config import settings
+from app.services.langfuse_service import trace_agent_execution, trace_llm_call, flush_langfuse
 
 
 class StrategyAgent(BaseAgent):
@@ -143,6 +144,15 @@ class StrategyAgent(BaseAgent):
             InsufficientDataError: If required data missing
             AgentProcessingError: If strategy generation fails
         """
+        # Create Langfuse trace for this agent execution
+        trace = trace_agent_execution(
+            execution_id=str(state.execution_id),
+            agent_type=self.metadata.agent_type,
+            agent_id=self.agent_id,
+            pipeline_id=str(state.pipeline_id),
+            user_id=str(state.user_id),
+        )
+        
         self.log(state, "Starting AI-powered strategy generation with CrewAI")
         
         # Validate inputs
@@ -263,6 +273,17 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
             
             result = crew.kickoff()
             
+            # Trace the LLM call to Langfuse
+            if trace and result:
+                trace_llm_call(
+                    trace=trace,
+                    model=self.model,
+                    prompt=f"Strategy generation for {state.symbol} on {strategy_tf}",
+                    response=str(result),
+                    tokens_used=None,
+                    cost=0.15,  # Estimated
+                )
+            
             # Parse result
             strategy_result = self._parse_crew_result(result, state)
             
@@ -304,62 +325,69 @@ IMPORTANT: Only suggest trades with positive risk/reward ratios that meet the mi
             )
             
             # Generate chart visualization data
-            if tool_results:
-                self.log(state, "Generating strategy chart visualization...")
-                try:
-                    chart_builder = ChartAnnotationBuilder(
-                        symbol=state.symbol,
-                        timeframe=strategy_tf
+            # Generate chart even without tools, using strategy result and market data
+            self.log(state, "Generating strategy chart visualization...")
+            try:
+                chart_builder = ChartAnnotationBuilder(
+                    symbol=state.symbol,
+                    timeframe=strategy_tf
+                )
+                
+                # Get candles for chart
+                chart_candles = state.get_timeframe_data(strategy_tf)
+                if chart_candles:
+                    # Convert PipelineCandle objects to dicts for chart builder
+                    candle_dicts = [
+                        {
+                            "timestamp": c.timestamp,
+                            "open": c.open,
+                            "high": c.high,
+                            "low": c.low,
+                            "close": c.close,
+                            "volume": c.volume
+                        }
+                        for c in chart_candles
+                    ]
+                    
+                    chart_data = chart_builder.build_chart_data(
+                        candles=candle_dicts,
+                        tool_results=tool_results,
+                        strategy_result=strategy_result,
+                        instructions=self.config.get("instructions")
                     )
                     
-                    # Get candles for chart
-                    chart_candles = state.get_timeframe_data(strategy_tf)
-                    if chart_candles:
-                        # Convert PipelineCandle objects to dicts for chart builder
-                        candle_dicts = [
-                            {
-                                "timestamp": c.timestamp,
-                                "open": c.open,
-                                "high": c.high,
-                                "low": c.low,
-                                "close": c.close,
-                                "volume": c.volume
-                            }
-                            for c in chart_candles
-                        ]
-                        
-                        chart_data = chart_builder.build_chart_data(
-                            candles=candle_dicts,
-                            tool_results=tool_results,
-                            strategy_result=strategy_result,
-                            instructions=self.config.get("instructions")
-                        )
-                        
-                        # Store chart data in execution artifacts
-                        state.execution_artifacts["strategy_chart"] = chart_data
-                        
-                        self.log(
-                            state,
-                            f"✓ Chart visualization generated with {len(chart_data['annotations']['shapes'])} shapes, "
-                            f"{len(chart_data['annotations']['markers'])} markers"
-                        )
-                    else:
-                        self.add_warning(state, "No candle data available for chart generation")
-                        
-                except Exception as e:
-                    # Don't fail the whole strategy if chart generation fails
-                    self.add_warning(state, f"Chart generation failed: {str(e)}")
-                    self.logger.error("chart_generation_failed", error=str(e), exc_info=True)
+                    # Store chart data in execution artifacts
+                    state.execution_artifacts["strategy_chart"] = chart_data
+                    
+                    self.log(
+                        state,
+                        f"✓ Chart visualization generated with {len(chart_data['annotations']['shapes'])} shapes, "
+                        f"{len(chart_data['annotations']['markers'])} markers"
+                    )
+                else:
+                    self.add_warning(state, "No candle data available for chart generation")
+                    
+            except Exception as e:
+                # Don't fail the whole strategy if chart generation fails
+                self.add_warning(state, f"Chart generation failed: {str(e)}")
+                self.logger.error("chart_generation_failed", error=str(e), exc_info=True)
             
             # Track cost (GPT-4 is more expensive)
             estimated_cost = 0.15
             self.track_cost(state, estimated_cost)
+            
+            # Flush Langfuse data
+            flush_langfuse()
             
             return state
         
         except Exception as e:
             error_msg = f"Strategy generation failed: {str(e)}"
             self.add_error(state, error_msg)
+            
+            # Flush Langfuse on error too
+            flush_langfuse()
+            
             raise AgentProcessingError(error_msg) from e
     
     def _prepare_strategy_context(self, state: PipelineState, timeframe: str) -> str:

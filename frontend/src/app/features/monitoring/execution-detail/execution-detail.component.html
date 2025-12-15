@@ -1,308 +1,221 @@
 <div class="execution-detail-page">
   <app-navbar></app-navbar>
 
-<div class="execution-detail-container">
-  <div class="header">
-    <div class="header-left">
-      <button mat-icon-button (click)="back()">
+  <div class="execution-detail-container">
+    <!-- Loading State -->
+    <div *ngIf="loading" class="loading-container">
+      <mat-spinner diameter="60"></mat-spinner>
+      <p>Loading execution details...</p>
+    </div>
+
+    <!-- Error State -->
+    <div *ngIf="error && !loading" class="error-container">
+      <mat-icon>error</mat-icon>
+      <h2>{{ error }}</h2>
+      <button mat-raised-button color="primary" (click)="goBack()">
         <mat-icon>arrow_back</mat-icon>
-      </button>
-      <h1>Execution Details</h1>
-    </div>
-    <div class="header-actions" *ngIf="execution">
-      <!-- Resume button for paused executions -->
-      <button mat-raised-button color="primary" 
-              *ngIf="execution.status === 'paused'"
-              (click)="resumeExecution()"
-              matTooltip="Resume execution">
-        <mat-icon>play_arrow</mat-icon>
-        Resume
-      </button>
-      
-      <!-- Pause button for running executions -->
-      <button mat-raised-button color="accent"
-              *ngIf="execution.status === 'running'"
-              (click)="pauseExecution()"
-              matTooltip="Pause execution temporarily">
-        <mat-icon>pause</mat-icon>
-        Pause
-      </button>
-      
-      <!-- Stop button for running or paused executions -->
-      <button mat-raised-button color="warn"
-              *ngIf="execution.status === 'running' || execution.status === 'paused'"
-              (click)="stopExecution()"
-              matTooltip="Stop execution permanently">
-        <mat-icon>stop</mat-icon>
-        Stop
-      </button>
-      
-      <!-- Cancel button for pending executions -->
-      <button mat-raised-button color="warn"
-              *ngIf="execution.status === 'pending'"
-              (click)="cancelExecution()"
-              matTooltip="Cancel pending execution">
-        <mat-icon>cancel</mat-icon>
-        Cancel
+        Back to Monitoring
       </button>
     </div>
-  </div>
 
-  <div *ngIf="loading" class="loading-container">
-    <mat-spinner></mat-spinner>
-    <p>Loading execution details...</p>
-  </div>
-
-  <div *ngIf="!loading && execution" class="content">
-    <!-- Execution Summary -->
-    <mat-card class="summary-card">
-      <mat-card-content>
-        <div class="summary-grid">
-          <div class="summary-item">
-            <div class="summary-label">Pipeline</div>
-            <div class="summary-value">
-              <mat-icon>account_tree</mat-icon>
-              {{ execution.pipeline_name || 'Unknown Pipeline' }}
-            </div>
+    <!-- Execution Details -->
+    <div *ngIf="execution && !loading" class="execution-content">
+      <!-- Header -->
+      <div class="header">
+        <div class="title-section">
+          <button mat-icon-button (click)="goBack()" class="back-button">
+            <mat-icon>arrow_back</mat-icon>
+          </button>
+          <div>
+            <h1>{{ execution.pipeline_name }}</h1>
+            <p class="subtitle">Execution Details</p>
           </div>
+        </div>
+        <div class="actions">
+          <button mat-raised-button color="primary" (click)="openFinalReport()">
+            <mat-icon>summarize</mat-icon>
+            View Final Report
+          </button>
+        </div>
+      </div>
 
-          <div class="summary-item">
-            <div class="summary-label">Status</div>
-            <div class="summary-value">
-              <mat-chip [color]="getAgentStatusColor(execution.status)" selected>
-                <mat-icon>{{ getAgentStatusIcon(execution.status) }}</mat-icon>
-                {{ execution.status | uppercase }}
+      <!-- Summary Cards -->
+      <div class="summary-grid">
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <div class="summary-item">
+              <span class="label">Status</span>
+              <mat-chip [ngClass]="'status-' + execution.status.toLowerCase()">
+                {{ execution.status }}
               </mat-chip>
             </div>
-          </div>
+          </mat-card-content>
+        </mat-card>
 
-          <div class="summary-item">
-            <div class="summary-label">Mode</div>
-            <div class="summary-value">
-              <mat-chip color="primary" selected>
-                {{ execution.mode | uppercase }}
-              </mat-chip>
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <div class="summary-item">
+              <span class="label">Symbol</span>
+              <span class="value">{{ execution.symbol }}</span>
             </div>
-          </div>
+          </mat-card-content>
+        </mat-card>
 
-          <div class="summary-item">
-            <div class="summary-label">Source</div>
-            <div class="summary-value">{{ getSource() }}</div>
-          </div>
-
-          <div class="summary-item">
-            <div class="summary-label">Started</div>
-            <div class="summary-value">{{ formatDate(execution.started_at) }}</div>
-          </div>
-
-          <div class="summary-item">
-            <div class="summary-label">Total Cost</div>
-            <div class="summary-value cost">{{ formatCost(execution.cost_breakdown?.total_cost) }}</div>
-          </div>
-        </div>
-
-        <mat-progress-bar 
-          *ngIf="execution.status === 'running'"
-          mode="determinate" 
-          [value]="getAgentProgress()"
-          class="progress-bar">
-        </mat-progress-bar>
-      </mat-card-content>
-    </mat-card>
-
-    <!-- Strategy Visualization Chart -->
-    <app-strategy-chart 
-      *ngIf="chartData" 
-      [chartData]="chartData">
-    </app-strategy-chart>
-
-    <!-- Execution Controls Info (only show for pending/running/paused) -->
-    <mat-card *ngIf="execution.status === 'pending' || execution.status === 'running' || execution.status === 'paused'" class="info-card">
-      <mat-card-content>
-        <div class="info-header">
-          <mat-icon>info</mat-icon>
-          <strong>Execution Controls</strong>
-        </div>
-        <div class="info-text">
-          <p *ngIf="execution.status === 'pending'">
-            <mat-icon>cancel</mat-icon> <strong>Cancel:</strong> Stop the execution before it starts
-          </p>
-          <p *ngIf="execution.status === 'running'">
-            <mat-icon>pause</mat-icon> <strong>Pause:</strong> Temporarily pause execution (can be resumed later)
-            <br>
-            <mat-icon>stop</mat-icon> <strong>Stop:</strong> Permanently stop execution (cannot be resumed)
-          </p>
-          <p *ngIf="execution.status === 'paused'">
-            <mat-icon>play_arrow</mat-icon> <strong>Resume:</strong> Continue paused execution
-            <br>
-            <mat-icon>stop</mat-icon> <strong>Stop:</strong> Permanently stop execution
-          </p>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <!-- Tabs -->
-    <mat-card class="tabs-card">
-      <mat-tab-group>
-        <!-- Agent Progress Tab -->
-        <mat-tab label="Agent Progress">
-          <div class="tab-content">
-            <div *ngIf="!execution.agent_states || execution.agent_states.length === 0" class="empty-state">
-              <mat-icon>hourglass_empty</mat-icon>
-              <p>No agent data yet</p>
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <div class="summary-item">
+              <span class="label">Duration</span>
+              <span class="value">{{ formatDuration(execution.duration_seconds) }}</span>
             </div>
+          </mat-card-content>
+        </mat-card>
 
-            <div *ngIf="execution.agent_states && execution.agent_states.length > 0" class="agents-list">
-              <mat-card *ngFor="let agent of execution.agent_states" class="agent-card">
-                <mat-card-content>
-                  <div class="agent-header">
-                    <div class="agent-info">
-                      <mat-icon [ngClass]="'status-' + agent.status">
-                        {{ getAgentStatusIcon(agent.status) }}
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <div class="summary-item">
+              <span class="label">Cost</span>
+              <span class="value">{{ formatCost(execution.cost) }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- Main Content Tabs -->
+      <mat-card class="content-card">
+        <mat-tab-group>
+          <!-- Agent Reports Tab -->
+          <mat-tab label="Agent Reports">
+            <div class="tab-content">
+              <mat-accordion *ngIf="execution.agent_states && execution.agent_states.length > 0">
+                <mat-expansion-panel *ngFor="let agent of execution.agent_states" class="agent-panel">
+                  <mat-expansion-panel-header>
+                    <mat-panel-title>
+                      <mat-icon [style.color]="getAgentStateColor(agent.status)">
+                        {{ getAgentIcon(agent.agent_type) }}
                       </mat-icon>
-                      <div>
-                        <div class="agent-name">{{ agent.agent_name || agent.agent_type }}</div>
-                        <div class="agent-type">{{ agent.agent_type }}</div>
+                      <span>{{ agent.agent_type | titlecase }}</span>
+                    </mat-panel-title>
+                    <mat-panel-description>
+                      <mat-chip [ngClass]="'status-' + agent.status">{{ agent.status | uppercase }}</mat-chip>
+                      <span *ngIf="agent.cost > 0" class="cost-badge">${{ agent.cost.toFixed(4) }}</span>
+                    </mat-panel-description>
+                  </mat-expansion-panel-header>
+
+                  <div class="agent-content">
+                    <!-- Agent Report Data -->
+                    <div *ngIf="execution.reports && execution.reports[agent.agent_id]" class="report-section">
+                      <h3>{{ execution.reports[agent.agent_id].title }}</h3>
+                      <p class="summary">{{ execution.reports[agent.agent_id].summary }}</p>
+                      
+                      <!-- Show Chart if this is Strategy Agent -->
+                      <div *ngIf="hasChart(agent)" class="chart-section">
+                        <h4>Strategy Visualization</h4>
+                        <app-trading-chart [chartData]="getChartData()" [height]="500"></app-trading-chart>
+                      </div>
+
+                      <!-- Report Metrics -->
+                      <div *ngIf="execution.reports[agent.agent_id].metrics" class="metrics-grid">
+                        <!-- If metrics is an object (key-value pairs) -->
+                        <ng-container *ngIf="!isArray(execution.reports[agent.agent_id].metrics)">
+                          <div *ngFor="let metric of execution.reports[agent.agent_id].metrics | keyvalue" class="metric-item">
+                            <span class="metric-label">{{ metric.key }}:</span>
+                            <span class="metric-value">
+                              <ng-container *ngIf="isArray(metric.value); else scalarValue">
+                                <ul class="metric-list">
+                                  <li *ngFor="let item of $any(metric.value)">{{ item }}</li>
+                                </ul>
+                              </ng-container>
+                              <ng-template #scalarValue>{{ metric.value }}</ng-template>
+                            </span>
+                          </div>
+                        </ng-container>
+                        
+                        <!-- If metrics is an array -->
+                        <ng-container *ngIf="isArray(execution.reports[agent.agent_id].metrics)">
+                          <div *ngFor="let item of $any(execution.reports[agent.agent_id].metrics)" class="metric-item full-width">
+                            <span class="metric-value">
+                              <ng-container *ngIf="isObject(item)">
+                                <pre>{{ item | json }}</pre>
+                              </ng-container>
+                              <ng-container *ngIf="!isObject(item)">{{ item }}</ng-container>
+                            </span>
+                          </div>
+                        </ng-container>
+                      </div>
+
+                      <!-- Report Data -->
+                      <div *ngIf="execution.reports[agent.agent_id].data" class="data-section">
+                        <h4>Additional Details</h4>
+                        <div *ngFor="let item of execution.reports[agent.agent_id].data | keyvalue" class="data-item">
+                          <strong>{{ item.key }}:</strong>
+                          <ng-container *ngIf="isArray(item.value); else dataScalar">
+                            <ul class="data-list">
+                              <li *ngFor="let val of $any(item.value)">{{ val }}</li>
+                            </ul>
+                          </ng-container>
+                          <ng-template #dataScalar>
+                            <span *ngIf="!isObject(item.value)">{{ item.value }}</span>
+                            <pre *ngIf="isObject(item.value)">{{ item.value | json }}</pre>
+                          </ng-template>
+                        </div>
                       </div>
                     </div>
-                    <mat-chip [color]="getAgentStatusColor(agent.status)" selected class="agent-status">
-                      {{ agent.status | uppercase }}
-                    </mat-chip>
-                  </div>
 
-                  <div class="agent-meta">
-                    <div class="meta-item" *ngIf="agent.started_at">
-                      <mat-icon>schedule</mat-icon>
-                      <span>Duration: {{ formatDuration(agent) }}</span>
+                    <!-- Execution Timing -->
+                    <div class="timing-section">
+                      <div class="timing-item">
+                        <mat-icon>schedule</mat-icon>
+                        <span>Started: {{ formatDate(agent.started_at) }}</span>
+                      </div>
+                      <div class="timing-item" *ngIf="agent.completed_at">
+                        <mat-icon>check_circle</mat-icon>
+                        <span>Completed: {{ formatDate(agent.completed_at) }}</span>
+                      </div>
                     </div>
-                    <div class="meta-item" *ngIf="agent.cost">
-                      <mat-icon>attach_money</mat-icon>
-                      <span>Cost: {{ formatCost(agent.cost) }}</span>
+
+                    <!-- Error Message -->
+                    <div *ngIf="agent.error" class="error-message">
+                      <mat-icon>error</mat-icon>
+                      <span>{{ agent.error }}</span>
                     </div>
                   </div>
+                </mat-expansion-panel>
+              </mat-accordion>
 
-                  <div *ngIf="agent.error_message" class="agent-error">
-                    <mat-icon>error</mat-icon>
-                    <span>{{ agent.error_message }}</span>
-                  </div>
-
-                  <mat-expansion-panel *ngIf="agent.output" class="agent-output">
-                    <mat-expansion-panel-header>
-                      <mat-panel-title>View Output</mat-panel-title>
-                    </mat-expansion-panel-header>
-                    <pre>{{ agent.output | json }}</pre>
-                  </mat-expansion-panel>
-                </mat-card-content>
-              </mat-card>
+              <div *ngIf="!execution.agent_states || execution.agent_states.length === 0" class="empty-state">
+                <mat-icon>info</mat-icon>
+                <p>No agent execution data available</p>
+              </div>
             </div>
-          </div>
-        </mat-tab>
+          </mat-tab>
 
-        <!-- Logs Tab -->
-        <mat-tab label="Logs">
-          <div class="tab-content">
-            <div *ngIf="logs.length === 0" class="empty-state">
-              <mat-icon>description</mat-icon>
-              <p>No logs yet</p>
-            </div>
-
-            <div *ngIf="logs.length > 0" class="logs-list">
-              <div *ngFor="let log of logs" class="log-entry" [ngClass]="getLogLevelClass(log.level)">
-                <div class="log-header">
-                  <mat-icon>{{ getLogLevelIcon(log.level) }}</mat-icon>
-                  <span class="log-timestamp">{{ formatDate(log.timestamp) }}</span>
+          <!-- Execution Logs Tab -->
+          <mat-tab label="Execution Logs">
+            <div class="tab-content logs-content">
+              <div *ngIf="execution.logs && execution.logs.length > 0" class="logs-list">
+                <div *ngFor="let log of execution.logs" class="log-entry" [ngClass]="'log-' + log.level">
+                  <span class="log-time">{{ formatDate(log.timestamp) }}</span>
                   <span class="log-level">{{ log.level | uppercase }}</span>
-                  <span class="log-agent" *ngIf="log.agent_type">{{ log.agent_type }}</span>
+                  <span class="log-agent">{{ log.agent_id }}</span>
+                  <span class="log-message">{{ log.message }}</span>
                 </div>
-                <div class="log-message">{{ log.message }}</div>
-                <pre *ngIf="log.details" class="log-details">{{ log.details | json }}</pre>
+              </div>
+
+              <div *ngIf="!execution.logs || execution.logs.length === 0" class="empty-state">
+                <mat-icon>description</mat-icon>
+                <p>No logs available</p>
               </div>
             </div>
-          </div>
-        </mat-tab>
+          </mat-tab>
 
-        <!-- Reports Tab -->
-        <mat-tab label="Agent Reports">
-          <div class="tab-content">
-            <div *ngIf="!reports.length" class="empty-state">
-              <mat-icon>fact_check</mat-icon>
-              <p>No reports generated yet</p>
+          <!-- Raw Data Tab -->
+          <mat-tab label="Raw Data">
+            <div class="tab-content">
+              <pre class="raw-data">{{ execution | json }}</pre>
             </div>
-
-            <div *ngIf="reports.length" class="reports-list">
-              <mat-card *ngFor="let report of reports" class="report-card">
-                <mat-card-content>
-                  <div class="report-header">
-                    <div>
-                      <h3>{{ report.title }}</h3>
-                      <p class="report-subtitle">
-                        {{ report.agent_type }} • {{ formatReportDate(report.created_at) }}
-                      </p>
-                    </div>
-                    <mat-chip [color]="report.status === 'completed' ? 'accent' : 'warn'" selected>
-                      {{ report.status | uppercase }}
-                    </mat-chip>
-                  </div>
-
-                  <p class="report-summary">{{ report.summary }}</p>
-
-                  <div class="report-metrics" *ngIf="report.metrics?.length">
-                    <div class="metric-chip" *ngFor="let metric of report.metrics">
-                      <span class="metric-name">{{ metric.name }}:</span>
-                      <span class="metric-value">
-                        {{ metric.value }}<span *ngIf="metric.unit"> {{ metric.unit }}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <pre *ngIf="report.details" class="report-details">{{ report.details }}</pre>
-
-                  <mat-expansion-panel *ngIf="report.data">
-                    <mat-expansion-panel-header>
-                      <mat-panel-title>Additional Data</mat-panel-title>
-                    </mat-expansion-panel-header>
-                    <pre>{{ report.data | json }}</pre>
-                  </mat-expansion-panel>
-                </mat-card-content>
-              </mat-card>
-            </div>
-          </div>
-        </mat-tab>
-
-        <!-- Cost Breakdown Tab -->
-        <mat-tab label="Cost Breakdown" *ngIf="execution.cost_breakdown">
-          <div class="tab-content">
-            <div class="cost-summary">
-              <div class="cost-item total">
-                <span>Total Cost</span>
-                <span class="cost-value">{{ formatCost(execution.cost_breakdown.total_cost) }}</span>
-              </div>
-              <div class="cost-item">
-                <span>LLM Cost</span>
-                <span class="cost-value">{{ formatCost(execution.cost_breakdown.llm_cost) }}</span>
-              </div>
-              <div class="cost-item">
-                <span>Agent Rental Cost</span>
-                <span class="cost-value">{{ formatCost(execution.cost_breakdown.agent_rental_cost) }}</span>
-              </div>
-              <div class="cost-item">
-                <span>API Call Cost</span>
-                <span class="cost-value">{{ formatCost(execution.cost_breakdown.api_call_cost) }}</span>
-              </div>
-            </div>
-
-            <h3 *ngIf="execution.cost_breakdown.by_agent">Cost by Agent</h3>
-            <div *ngIf="execution.cost_breakdown.by_agent" class="cost-by-agent">
-              <div *ngFor="let item of execution.cost_breakdown.by_agent | keyvalue" class="cost-item">
-                <span>{{ item.key }}</span>
-                <span class="cost-value">{{ formatCost(item.value) }}</span>
-              </div>
-            </div>
-          </div>
-        </mat-tab>
-      </mat-tab-group>
-    </mat-card>
+          </mat-tab>
+        </mat-tab-group>
+      </mat-card>
+    </div>
   </div>
 </div>
-</div>
-

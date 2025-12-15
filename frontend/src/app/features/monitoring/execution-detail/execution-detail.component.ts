@@ -1,28 +1,25 @@
 /**
  * Execution Detail Component
  * 
- * Detailed view of a single pipeline execution with agent progress and logs
+ * Displays detailed information about a pipeline execution including agent reports and charts
  */
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatExpansionModule } from '@angular/material/expansion';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { MonitoringService } from '../../../core/services/monitoring.service';
-import { Execution, AgentState, ExecutionLog, AgentReport, AgentReportMetric } from '../../../core/models/execution.model';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
-import { StrategyChartComponent } from '../../../shared/strategy-chart/strategy-chart.component';
-import { Subscription } from 'rxjs';
+import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
+import { ExecutionReportModalComponent } from '../execution-report-modal/execution-report-modal.component';
 
 @Component({
   selector: 'app-execution-detail',
@@ -33,256 +30,133 @@ import { Subscription } from 'rxjs';
     MatButtonModule,
     MatIconModule,
     MatChipsModule,
-    MatProgressBarModule,
     MatProgressSpinnerModule,
-    MatTooltipModule,
-    MatExpansionModule,
-    MatSnackBarModule,
     MatTabsModule,
+    MatExpansionModule,
+    MatDialogModule,
     NavbarComponent,
-    StrategyChartComponent
+    TradingChartComponent,
   ],
   templateUrl: './execution-detail.component.html',
   styleUrls: ['./execution-detail.component.scss']
 })
-export class ExecutionDetailComponent implements OnInit, OnDestroy {
-  execution: Execution | null = null;
-  logs: ExecutionLog[] = [];
-  reports: AgentReport[] = [];
-  chartData: any = null;
+export class ExecutionDetailComponent implements OnInit {
+  execution: any = null;
   loading = true;
-  executionId: string = '';
-  private executionSub?: Subscription;
+  error: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
     private router: Router,
     private monitoringService: MonitoringService,
-    private snackBar: MatSnackBar
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
-    this.executionId = this.route.snapshot.paramMap.get('id') || '';
-    this.loadExecution();
-    this.loadLogs();
-
-    this.executionSub = this.monitoringService.currentExecution$.subscribe(execution => {
-      if (execution) {
-        this.execution = execution;
-        this.reports = this.extractReports(execution);
-        this.chartData = this.extractChartData(execution);
-        this.loading = false;
-
-        if (['running', 'pending'].includes(execution.status)) {
-          this.monitoringService.startPolling(this.executionId);
-        }
-      }
-    });
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.loadExecution(id);
+    } else {
+      this.error = 'No execution ID provided';
+      this.loading = false;
+    }
   }
 
-  ngOnDestroy(): void {
-    this.monitoringService.stopPolling();
-    this.executionSub?.unsubscribe();
-  }
-
-  loadExecution(): void {
-    this.monitoringService.getExecution(this.executionId).subscribe({
-      next: (execution) => {
-        this.execution = execution;
-        this.reports = this.extractReports(execution);
-        this.chartData = this.extractChartData(execution);
+  loadExecution(id: string): void {
+    this.monitoringService.getExecutionDetail(id).subscribe({
+      next: (data) => {
+        this.execution = data;
         this.loading = false;
       },
       error: (error) => {
         console.error('Failed to load execution:', error);
+        this.error = 'Failed to load execution details';
         this.loading = false;
-        this.showNotification('Failed to load execution details', 'error');
       }
     });
   }
 
-  extractChartData(execution: Execution): any {
-    if (!execution.execution_artifacts || typeof execution.execution_artifacts !== 'object') {
-      return null;
-    }
-    
-    // Check if strategy_chart exists in artifacts
-    const artifacts = execution.execution_artifacts as any;
-    return artifacts.strategy_chart || null;
+  goBack(): void {
+    this.router.navigate(['/monitoring']);
   }
 
-  loadLogs(): void {
-    this.monitoringService.getExecutionLogs(this.executionId, 100).subscribe({
-      next: (logs) => {
-        this.logs = logs;
-      },
-      error: (error) => {
-        console.error('Failed to load logs:', error);
-      }
+  openFinalReport(): void {
+    this.dialog.open(ExecutionReportModalComponent, {
+      width: '800px',
+      maxHeight: '90vh',
+      data: { execution: this.execution }
     });
   }
 
-  stopExecution(): void {
-    if (confirm('Stop this execution?')) {
-      this.monitoringService.stopExecution(this.executionId).subscribe({
-        next: () => {
-          this.showNotification('Execution stopped', 'success');
-          this.loadExecution();
-        },
-        error: (error) => {
-          console.error('Failed to stop execution:', error);
-          this.showNotification('Failed to stop execution', 'error');
-        }
-      });
-    }
-  }
-
-  pauseExecution(): void {
-    this.monitoringService.pauseExecution(this.executionId).subscribe({
-      next: () => {
-        this.showNotification('Execution paused', 'success');
-        this.loadExecution();
-      },
-      error: (error) => {
-        console.error('Failed to pause execution:', error);
-        this.showNotification('Failed to pause execution', 'error');
-      }
-    });
-  }
-
-  resumeExecution(): void {
-    this.monitoringService.resumeExecution(this.executionId).subscribe({
-      next: () => {
-        this.showNotification('Execution resumed', 'success');
-        this.loadExecution();
-      },
-      error: (error) => {
-        console.error('Failed to resume execution:', error);
-        this.showNotification('Failed to resume execution', 'error');
-      }
-    });
-  }
-
-  cancelExecution(): void {
-    if (confirm('Cancel this pending execution?')) {
-      console.log('🚫 Cancelling execution:', this.executionId);
-      this.monitoringService.cancelExecution(this.executionId).subscribe({
-        next: (response) => {
-          console.log('✅ Execution cancelled:', response);
-          this.showNotification('Execution cancelled', 'success');
-          this.loadExecution();
-        },
-        error: (error) => {
-          console.error('❌ Failed to cancel execution:', error);
-          console.error('Error details:', error.error);
-          const errorMsg = error.error?.detail || 'Failed to cancel execution';
-          this.showNotification(errorMsg, 'error');
-        }
-      });
-    }
-  }
-
-  getAgentProgress(): number {
-    if (!this.execution || !this.execution.agent_states) return 0;
-    const completed = this.execution.agent_states.filter(a => a.status === 'completed').length;
-    return (completed / this.execution.agent_states.length) * 100;
-  }
-
-  getAgentStatusIcon(status: string): string {
-    const icons: any = {
-      'pending': 'schedule',
-      'running': 'play_circle',
-      'completed': 'check_circle',
-      'failed': 'error',
-      'skipped': 'skip_next'
-    };
-    return icons[status] || 'help';
-  }
-
-  getAgentStatusColor(status: string): string {
+  getStatusColor(status: string): string {
     const colors: any = {
-      'pending': 'default',
-      'running': 'primary',
-      'completed': 'accent',
-      'failed': 'warn',
-      'skipped': 'default'
+      'COMPLETED': 'success',
+      'FAILED': 'error',
+      'RUNNING': 'primary',
+      'PENDING': 'warning'
     };
     return colors[status] || 'default';
   }
 
-  getLogLevelIcon(level: string): string {
-    const icons: any = {
-      'debug': 'bug_report',
-      'info': 'info',
-      'warning': 'warning',
-      'error': 'error',
-      'critical': 'report_problem'
-    };
-    return icons[level] || 'info';
+  formatDuration(seconds: number | undefined): string {
+    if (!seconds) return '-';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
   }
 
-  getLogLevelClass(level: string): string {
-    return `log-${level}`;
+  formatCost(cost: number): string {
+    return `$${cost.toFixed(4)}`;
   }
 
   formatDate(dateString: string): string {
+    if (!dateString) return '-';
     return new Date(dateString).toLocaleString();
   }
 
-  formatDuration(agent: AgentState): string {
-    if (!agent.started_at) return '-';
-    const start = new Date(agent.started_at).getTime();
-    const end = agent.completed_at ? new Date(agent.completed_at).getTime() : Date.now();
-    const duration = Math.floor((end - start) / 1000);
-    return `${duration}s`;
+  getAgentIcon(agentType: string): string {
+    const icons: any = {
+      'bias_agent': 'analytics',
+      'strategy_agent': 'psychology',
+      'risk_manager_agent': 'security',
+      'trade_manager_agent': 'swap_horiz',
+    };
+    return icons[agentType] || 'smart_toy';
   }
 
-  formatCost(cost: number | undefined): string {
-    return cost ? `$${cost.toFixed(4)}` : '$0.0000';
+  getAgentStateColor(status: string): string {
+    const colors: any = {
+      'completed': '#4caf50',
+      'failed': '#f44336',
+      'running': '#2196f3',
+      'pending': '#ff9800',
+    };
+    return colors[status] || '#9e9e9e';
   }
 
-  formatReportDate(date: string | undefined): string {
-    return date ? new Date(date).toLocaleString() : '';
+  hasChart(agent: any): boolean {
+    return agent.agent_type === 'strategy_agent' && 
+           this.execution?.result?.execution_artifacts?.strategy_chart;
   }
 
-  getReportMetrics(report: AgentReport): AgentReportMetric[] {
-    return report.metrics || [];
+  getChartData(): any {
+    return this.execution?.result?.execution_artifacts?.strategy_chart;
   }
 
-  private extractReports(execution: Execution | null): AgentReport[] {
-    if (!execution?.reports) {
-      return [];
-    }
-
-    return Object.values(execution.reports).sort((a, b) => {
-      const aTime = new Date(a.created_at).getTime();
-      const bTime = new Date(b.created_at).getTime();
-      return bTime - aTime;
-    });
+  isArray(value: any): boolean {
+    return Array.isArray(value);
   }
 
-  back(): void {
-    this.router.navigate(['/monitoring']);
-  }
-
-  showNotification(message: string, type: 'success' | 'error' | 'info'): void {
-    this.snackBar.open(message, 'Close', {
-      duration: 3000,
-      horizontalPosition: 'right',
-      verticalPosition: 'top',
-      panelClass: [`snackbar-${type}`]
-    });
-  }
-
-  getSource(): string {
-    if (!this.execution) return '—';
-    
-    if (this.execution.trigger_mode === 'signal' && this.execution.scanner_name) {
-      return this.execution.scanner_name;
-    } else if (this.execution.trigger_mode === 'periodic') {
-      return 'Periodic';
-    }
-    return '—';
+  isObject(value: any): boolean {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 }
-

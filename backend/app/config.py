@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = Field(default="gpt-4", description="Default OpenAI model")
     OPENAI_TEMPERATURE: float = Field(default=0.7, description="OpenAI temperature")
     
+    # Langfuse (Tracing & Observability)
+    LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, description="Langfuse secret key")
+    LANGFUSE_PUBLIC_KEY: Optional[str] = Field(default=None, description="Langfuse public key")
+    LANGFUSE_BASE_URL: Optional[str] = Field(
+        default="https://cloud.langfuse.com",
+        description="Langfuse API base URL"
+    )
+    LANGFUSE_ENABLED: bool = Field(default=False, description="Enable Langfuse tracing")
+    
     # Market Data (Finnhub)
     FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
     

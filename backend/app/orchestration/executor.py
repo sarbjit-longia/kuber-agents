@@ -774,6 +774,17 @@ class PipelineExecutor:
                     data[key] = value.isoformat()
             return data
         
+        def serialize_artifacts(artifacts):
+            """Recursively serialize artifacts, converting datetime objects to ISO strings."""
+            if isinstance(artifacts, dict):
+                return {k: serialize_artifacts(v) for k, v in artifacts.items()}
+            elif isinstance(artifacts, list):
+                return [serialize_artifacts(item) for item in artifacts]
+            elif isinstance(artifacts, datetime):
+                return artifacts.isoformat()
+            else:
+                return artifacts
+        
         execution.result = {
             "trigger_met": state.trigger_met,
             "trigger_reason": state.trigger_reason,
@@ -783,6 +794,7 @@ class PipelineExecutor:
             "errors": state.errors,
             "warnings": state.warnings,
             "agent_reports": self._serialize_reports(state.agent_reports),
+            "execution_artifacts": serialize_artifacts(state.execution_artifacts),
         }
         execution.agent_states = agent_states
         execution.logs = self._serialize_logs(state.execution_log)
@@ -1063,6 +1075,17 @@ class PipelineExecutor:
                     serialized.append(serialized_entry)
                 return serialized
             
+            def serialize_artifacts(artifacts):
+                """Recursively serialize artifacts, converting datetime objects to ISO strings."""
+                if isinstance(artifacts, dict):
+                    return {k: serialize_artifacts(v) for k, v in artifacts.items()}
+                elif isinstance(artifacts, list):
+                    return [serialize_artifacts(item) for item in artifacts]
+                elif isinstance(artifacts, datetime):
+                    return artifacts.isoformat()
+                else:
+                    return artifacts
+            
             execution.result = {
                 "trigger_met": state.trigger_met,
                 "trigger_reason": state.trigger_reason,
@@ -1072,6 +1095,7 @@ class PipelineExecutor:
                 "errors": state.errors,
                 "warnings": state.warnings,
                 "agent_reports": self._serialize_reports(state.agent_reports),
+                "execution_artifacts": serialize_artifacts(state.execution_artifacts),
             }
             execution.cost = state.total_cost
             execution.logs = serialize_logs(state.execution_log)

@@ -42,6 +42,13 @@ export class MonitoringService {
   }
 
   /**
+   * Get detailed execution data (alias for getExecution)
+   */
+  getExecutionDetail(id: string): Observable<any> {
+    return this.getExecution(id);
+  }
+
+  /**
    * Get execution logs
    */
   getExecutionLogs(executionId: string, limit?: number): Observable<ExecutionLog[]> {

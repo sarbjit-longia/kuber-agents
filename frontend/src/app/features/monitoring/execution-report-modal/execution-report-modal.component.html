@@ -1,0 +1,129 @@
+<div class="report-modal">
+  <div class="modal-header">
+    <h2>
+      <mat-icon>summarize</mat-icon>
+      Execution Report
+    </h2>
+    <button mat-icon-button (click)="close()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <div class="modal-content">
+    <!-- Summary Section -->
+    <div class="report-section">
+      <h3>Summary</h3>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <span class="label">Pipeline</span>
+          <span class="value">{{ execution.pipeline_name }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Symbol</span>
+          <span class="value">{{ execution.symbol }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Status</span>
+          <mat-chip [ngClass]="getStatusClass()">{{ execution.status }}</mat-chip>
+        </div>
+        <div class="summary-item">
+          <span class="label">Duration</span>
+          <span class="value">{{ formatDuration(execution.duration_seconds) }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Cost</span>
+          <span class="value">{{ formatCost(execution.cost) }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Started</span>
+          <span class="value">{{ execution.started_at | date:'short' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Recommendation Section -->
+    <div class="report-section recommendation-section" *ngIf="execution.result?.strategy">
+      <h3>
+        <mat-icon>lightbulb</mat-icon>
+        Recommendation
+      </h3>
+      <p class="recommendation-text">{{ getRecommendation() }}</p>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Key Insights -->
+    <div class="report-section">
+      <h3>
+        <mat-icon>insights</mat-icon>
+        Key Insights
+      </h3>
+      <ul class="insights-list">
+        <li *ngFor="let insight of getKeyInsights()">
+          <mat-icon>check_circle</mat-icon>
+          <span>{{ insight }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Agent Execution Summary -->
+    <div class="report-section" *ngIf="execution.agent_states">
+      <h3>
+        <mat-icon>psychology</mat-icon>
+        Agent Execution Summary
+      </h3>
+      <div class="agents-summary">
+        <div *ngFor="let agent of execution.agent_states" class="agent-summary-item">
+          <div class="agent-header">
+            <span class="agent-name">{{ agent.agent_type | titlecase }}</span>
+            <mat-chip [ngClass]="'status-' + agent.status">{{ agent.status }}</mat-chip>
+          </div>
+          <div class="agent-details" *ngIf="execution.reports && execution.reports[agent.agent_id]">
+            <p>{{ execution.reports[agent.agent_id].summary }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Errors/Warnings -->
+    <div class="report-section" *ngIf="execution.result?.errors?.length > 0 || execution.result?.warnings?.length > 0">
+      <h3>
+        <mat-icon>warning</mat-icon>
+        Issues
+      </h3>
+      
+      <div *ngIf="execution.result.errors?.length > 0" class="issues-list errors">
+        <h4>Errors</h4>
+        <div *ngFor="let error of execution.result.errors" class="issue-item">
+          <mat-icon>error</mat-icon>
+          <span>{{ error }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="execution.result.warnings?.length > 0" class="issues-list warnings">
+        <h4>Warnings</h4>
+        <div *ngFor="let warning of execution.result.warnings" class="issue-item">
+          <mat-icon>warning</mat-icon>
+          <span>{{ warning }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <div class="modal-footer">
+    <button mat-button (click)="close()">Close</button>
+    <button mat-raised-button color="primary" (click)="downloadReport()">
+      <mat-icon>download</mat-icon>
+      Download Report
+    </button>
+  </div>
+</div>
+

@@ -10,6 +10,7 @@ from crewai import Agent, Task, Crew, Process
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, BiasResult
 from app.config import settings
+from app.services.langfuse_service import trace_agent_execution, trace_llm_call, flush_langfuse
 
 
 class BiasAgent(BaseAgent):
@@ -147,6 +148,15 @@ class BiasAgent(BaseAgent):
             InsufficientDataError: If required data missing
             AgentProcessingError: If analysis fails
         """
+        # Create Langfuse trace for this agent execution
+        trace = trace_agent_execution(
+            execution_id=str(state.execution_id),
+            agent_type=self.metadata.agent_type,
+            agent_id=self.agent_id,
+            pipeline_id=str(state.pipeline_id),
+            user_id=str(state.user_id),
+        )
+        
         self.log(state, "Starting multi-timeframe bias analysis with CrewAI")
         
         # Validate inputs
@@ -236,6 +246,17 @@ class BiasAgent(BaseAgent):
             # Execute the crew
             result = crew.kickoff()
             
+            # Trace the LLM call to Langfuse
+            if trace and result:
+                trace_llm_call(
+                    trace=trace,
+                    model=self.model,
+                    prompt=f"Bias analysis for {state.symbol} on {primary_tf}",
+                    response=str(result),
+                    tokens_used=None,  # CrewAI doesn't expose token counts easily
+                    cost=0.05,  # Estimated
+                )
+            
             # Parse the result
             bias_result = self._parse_crew_result(result, primary_tf)
             
@@ -272,11 +293,18 @@ class BiasAgent(BaseAgent):
             estimated_cost = 0.05  # Rough estimate
             self.track_cost(state, estimated_cost)
             
+            # Flush Langfuse data
+            flush_langfuse()
+            
             return state
         
         except Exception as e:
             error_msg = f"Bias analysis failed: {str(e)}"
             self.add_error(state, error_msg)
+            
+            # Flush Langfuse on error too
+            flush_langfuse()
+            
             raise AgentProcessingError(error_msg) from e
     
     def _prepare_market_context(

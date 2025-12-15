@@ -1,0 +1,31 @@
+<div class="chart-wrapper">
+  <div *ngIf="loading" class="loading-container">
+    <mat-spinner diameter="40"></mat-spinner>
+    <p>Loading chart...</p>
+  </div>
+
+  <div *ngIf="error" class="error-container">
+    <mat-icon>error</mat-icon>
+    <p>{{ error }}</p>
+  </div>
+
+  <div 
+    #chartContainer 
+    class="chart-container"
+    [style.height.px]="height"
+    [class.hidden]="loading || error">
+  </div>
+
+  <div *ngIf="chartData?.metadata" class="chart-metadata">
+    <span class="strategy" *ngIf="chartData.metadata?.strategy">
+      {{ chartData.metadata?.strategy }}
+    </span>
+    <span class="action" [class]="'action-' + chartData.metadata?.action?.toLowerCase()" *ngIf="chartData.metadata?.action">
+      {{ chartData.metadata?.action }}
+    </span>
+    <span class="confidence" *ngIf="chartData.metadata?.confidence !== undefined">
+      Confidence: {{ (chartData.metadata?.confidence! * 100).toFixed(0) }}%
+    </span>
+  </div>
+</div>
+
