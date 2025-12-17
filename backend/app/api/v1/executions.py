@@ -6,6 +6,7 @@ Provides endpoints for:
 - Getting execution status
 - Listing executions
 - Stopping running executions
+- Generating executive reports
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,8 @@ from app.schemas.execution import ExecutionInDB, ExecutionCreate, ExecutionSumma
 from app.api.dependencies import get_current_user
 from app.orchestration.tasks import execute_pipeline, stop_execution
 from app.orchestration.validator import PipelineValidator
+from app.services.executive_report_generator import executive_report_generator
+from app.services.langfuse_service import get_langfuse_client
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
@@ -249,6 +252,46 @@ async def list_executions(
         agent_count = len(agent_states)
         agents_completed = len([a for a in agent_states if a.get('status') == 'completed'])
         
+        # Extract strategy result for quick view
+        strategy_action = None
+        strategy_confidence = None
+        trade_outcome = None
+        
+        if execution.result and isinstance(execution.result, dict):
+            strategy = execution.result.get('strategy')
+            if strategy:
+                strategy_action = strategy.get('action')
+                strategy_confidence = strategy.get('confidence')
+            
+            # Determine trade outcome
+            trade_execution = execution.result.get('trade_execution')
+            risk_assessment = execution.result.get('risk_assessment')
+            
+            if trade_execution:
+                # Has trade execution data
+                exec_status = trade_execution.get('status', '').lower()
+                if exec_status in ['filled', 'partially_filled']:
+                    trade_outcome = 'executed'
+                elif exec_status == 'rejected':
+                    trade_outcome = 'rejected'
+                elif exec_status == 'pending':
+                    trade_outcome = 'pending'
+                else:
+                    trade_outcome = exec_status or 'unknown'
+            elif risk_assessment:
+                # Has risk assessment but no execution
+                approval = risk_assessment.get('approved', None)
+                if approval is False:
+                    trade_outcome = 'skipped'
+                elif strategy_action and strategy_action != 'HOLD':
+                    trade_outcome = 'pending'  # Strategy says trade but no execution yet
+            elif strategy_action:
+                # Has strategy but no risk/execution
+                if strategy_action == 'HOLD':
+                    trade_outcome = 'no_trade'
+                else:
+                    trade_outcome = 'pending'
+        
         summaries.append(ExecutionSummary(
             id=execution.id,
             pipeline_id=execution.pipeline_id,
@@ -264,7 +307,10 @@ async def list_executions(
             total_cost=execution.cost,
             agent_count=agent_count,
             agents_completed=agents_completed,
-            error_message=execution.error_message
+            error_message=execution.error_message,
+            strategy_action=strategy_action,
+            strategy_confidence=strategy_confidence,
+            trade_outcome=trade_outcome
         ))
     
     return summaries
@@ -559,4 +605,124 @@ async def cancel_execution(
     await db.refresh(execution)
     
     return execution
+
+
+@router.get("/{execution_id}/executive-report", response_model=dict)
+async def generate_executive_report(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """
+    Generate an AI-powered executive summary report for an execution.
+    
+    This endpoint uses LLM to synthesize all agent reports, strategy decisions,
+    and execution results into a comprehensive, actionable summary.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Executive report with summary, insights, and recommendations
+    """
+    # Get execution with full data
+    result = await db.execute(
+        select(
+            Execution, 
+            Pipeline.name,
+            Pipeline.trigger_mode
+        )
+        .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .where(Execution.id == execution_id)
+    )
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    execution, pipeline_name, trigger_mode = row
+    
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this execution"
+        )
+    
+    if execution.status != ExecutionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot generate report for execution with status: {execution.status.value}"
+        )
+    
+    # Build execution data for report generator
+    execution_data = {
+        "id": str(execution.id),
+        "pipeline_name": pipeline_name,
+        "symbol": execution.symbol,
+        "mode": execution.mode,
+        "status": execution.status.value,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+        "duration_seconds": (execution.completed_at - execution.started_at).total_seconds() if execution.started_at and execution.completed_at else None,
+        "cost": execution.cost,
+        "reports": execution.reports or {},
+        "result": execution.result or {},
+        "agent_states": execution.agent_states or [],
+    }
+    
+    # Create Langfuse trace (completely optional - won't affect report generation)
+    langfuse_client = get_langfuse_client()
+    trace = None
+    if langfuse_client:
+        try:
+            trace = langfuse_client.trace(
+                name="executive_report_generation",
+                user_id=str(current_user.id),
+                session_id=str(execution_id),
+                metadata={
+                    "execution_id": str(execution_id),
+                    "pipeline_name": pipeline_name,
+                }
+            )
+        except Exception:
+            # Silently ignore Langfuse errors (quota exhaustion, rate limiting, etc.)
+            # Report generation works regardless of Langfuse availability
+            pass
+    
+    # Generate report
+    report = await executive_report_generator.generate_executive_summary(
+        execution_data,
+        langfuse_trace=trace
+    )
+    
+    # Add execution context to report
+    report["execution_context"] = {
+        "id": str(execution.id),
+        "pipeline_name": pipeline_name,
+        "symbol": execution.symbol,
+        "mode": execution.mode,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+        "duration_seconds": execution_data["duration_seconds"],
+        "total_cost": execution.cost,
+    }
+    
+    # Include all agent reports
+    report["agent_reports"] = execution.reports or {}
+    
+    # Include execution artifacts (charts, etc.)
+    if execution.result and isinstance(execution.result, dict):
+        report["execution_artifacts"] = execution.result.get("execution_artifacts", {})
+        report["strategy"] = execution.result.get("strategy")
+        report["bias"] = execution.result.get("biases")
+        report["risk_assessment"] = execution.result.get("risk_assessment")
+        report["trade_execution"] = execution.result.get("trade_execution")
+    
+    return report
+
 

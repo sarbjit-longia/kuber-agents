@@ -14,7 +14,12 @@ _langfuse_client = None
 
 
 def get_langfuse_client():
-    """Get or create Langfuse client singleton."""
+    """
+    Get or create Langfuse client singleton.
+    
+    Handles initialization errors gracefully, including quota exhaustion
+    and authentication issues.
+    """
     global _langfuse_client
     
     if not settings.LANGFUSE_ENABLED:
@@ -30,8 +35,17 @@ def get_langfuse_client():
                 host=settings.LANGFUSE_BASE_URL,
             )
             logger.info("langfuse_initialized", host=settings.LANGFUSE_BASE_URL)
+        except ImportError:
+            logger.warning("langfuse_not_installed", hint="Install with: pip install langfuse")
+            return None
         except Exception as e:
-            logger.error("langfuse_initialization_failed", error=str(e))
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ['quota', 'rate limit', '429']):
+                logger.warning("langfuse_quota_exceeded", error=str(e))
+            elif any(keyword in error_msg for keyword in ['401', '403', 'key', 'auth']):
+                logger.warning("langfuse_auth_failed", error=str(e), hint="Check API keys in .env")
+            else:
+                logger.warning("langfuse_initialization_failed", error=str(e))
             return None
     
     return _langfuse_client
@@ -48,13 +62,14 @@ def trace_agent_execution(
     Create a Langfuse trace for an agent execution.
     
     Returns a trace object that can be used to add spans.
+    Handles quota exhaustion, rate limiting, and API errors gracefully.
     """
     client = get_langfuse_client()
     if not client:
         return None
     
-    try:
-        trace = client.trace(
+    def create_trace():
+        return client.trace(
             name=f"agent_{agent_type}",
             user_id=str(user_id),
             session_id=str(execution_id),
@@ -65,10 +80,8 @@ def trace_agent_execution(
                 "execution_id": str(execution_id),
             },
         )
-        return trace
-    except Exception as e:
-        logger.error("langfuse_trace_creation_failed", error=str(e))
-        return None
+    
+    return safe_langfuse_operation("trace_creation", create_trace)
 
 
 def trace_llm_call(
@@ -81,11 +94,12 @@ def trace_llm_call(
 ) -> None:
     """
     Add LLM call span to a trace.
+    Handles rate limiting and API errors gracefully.
     """
     if not trace:
         return
     
-    try:
+    def create_generation():
         generation = trace.generation(
             name="llm_call",
             model=model,
@@ -97,22 +111,63 @@ def trace_llm_call(
             },
         )
         
-        if cost:
+        if cost and generation:
             generation.score(
                 name="cost",
                 value=cost,
             )
-            
+        
+        return generation
+    
+    safe_langfuse_operation("llm_generation", create_generation)
+
+
+def safe_langfuse_operation(operation_name: str, func, *args, **kwargs) -> Optional[Any]:
+    """
+    Execute a Langfuse operation safely, catching all errors.
+    
+    This ensures that Langfuse quota exhaustion, rate limiting, or API errors
+    never break the main application flow.
+    
+    Args:
+        operation_name: Name of the operation for logging
+        func: Function to execute
+        *args, **kwargs: Arguments to pass to the function
+        
+    Returns:
+        Result of the function or None if it fails
+    """
+    try:
+        return func(*args, **kwargs)
     except Exception as e:
-        logger.error("langfuse_llm_span_failed", error=str(e))
+        error_msg = str(e).lower()
+        
+        # Identify specific Langfuse errors
+        if any(keyword in error_msg for keyword in ['quota', 'rate limit', '429', 'too many requests']):
+            logger.warning(
+                f"langfuse_{operation_name}_quota_exceeded",
+                error=str(e),
+                hint="Langfuse quota exhausted or rate limited"
+            )
+        elif any(keyword in error_msg for keyword in ['401', '403', 'unauthorized', 'forbidden']):
+            logger.warning(
+                f"langfuse_{operation_name}_auth_failed",
+                error=str(e),
+                hint="Check Langfuse API keys"
+            )
+        else:
+            logger.warning(
+                f"langfuse_{operation_name}_failed",
+                error=str(e),
+                error_type=type(e).__name__
+            )
+        
+        return None
 
 
 def flush_langfuse():
     """Flush any pending Langfuse data."""
     client = get_langfuse_client()
     if client:
-        try:
-            client.flush()
-        except Exception as e:
-            logger.error("langfuse_flush_failed", error=str(e))
+        safe_langfuse_operation("flush", client.flush)
 

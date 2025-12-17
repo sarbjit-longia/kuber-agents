@@ -2,7 +2,7 @@
   <div class="modal-header">
     <h2>
       <mat-icon>summarize</mat-icon>
-      Execution Report
+      Executive Report
     </h2>
     <button mat-icon-button (click)="close()">
       <mat-icon>close</mat-icon>
@@ -11,107 +11,134 @@
 
   <mat-divider></mat-divider>
 
-  <div class="modal-content">
-    <!-- Summary Section -->
-    <div class="report-section">
-      <h3>Summary</h3>
-      <div class="summary-grid">
-        <div class="summary-item">
-          <span class="label">Pipeline</span>
-          <span class="value">{{ execution.pipeline_name }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="label">Symbol</span>
-          <span class="value">{{ execution.symbol }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="label">Status</span>
-          <mat-chip [ngClass]="getStatusClass()">{{ execution.status }}</mat-chip>
-        </div>
-        <div class="summary-item">
-          <span class="label">Duration</span>
-          <span class="value">{{ formatDuration(execution.duration_seconds) }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="label">Cost</span>
-          <span class="value">{{ formatCost(execution.cost) }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="label">Started</span>
-          <span class="value">{{ execution.started_at | date:'short' }}</span>
-        </div>
-      </div>
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p>Generating AI-powered executive summary...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-state">
+    <mat-icon>error</mat-icon>
+    <p>{{ error }}</p>
+  </div>
+
+  <!-- Report Content -->
+  <div *ngIf="executiveReport && !loading" class="modal-content" #reportContent>
+    
+    <!-- Executive Summary -->
+    <div class="report-section highlight-section">
+      <h3>
+        <mat-icon>stars</mat-icon>
+        Executive Summary
+      </h3>
+      <p class="summary-text">{{ executiveReport.executive_summary }}</p>
     </div>
 
     <mat-divider></mat-divider>
 
-    <!-- Recommendation Section -->
-    <div class="report-section recommendation-section" *ngIf="execution.result?.strategy">
+    <!-- Key Takeaways -->
+    <div class="report-section" *ngIf="executiveReport.key_takeaways?.length > 0">
       <h3>
         <mat-icon>lightbulb</mat-icon>
-        Recommendation
+        Key Takeaways
       </h3>
-      <p class="recommendation-text">{{ getRecommendation() }}</p>
-    </div>
-
-    <mat-divider></mat-divider>
-
-    <!-- Key Insights -->
-    <div class="report-section">
-      <h3>
-        <mat-icon>insights</mat-icon>
-        Key Insights
-      </h3>
-      <ul class="insights-list">
-        <li *ngFor="let insight of getKeyInsights()">
+      <ul class="takeaways-list">
+        <li *ngFor="let takeaway of executiveReport.key_takeaways">
           <mat-icon>check_circle</mat-icon>
-          <span>{{ insight }}</span>
+          <span>{{ takeaway }}</span>
         </li>
       </ul>
     </div>
 
     <mat-divider></mat-divider>
 
-    <!-- Agent Execution Summary -->
-    <div class="report-section" *ngIf="execution.agent_states">
+    <!-- Final Recommendation -->
+    <div class="report-section recommendation-section" *ngIf="executiveReport.final_recommendation">
       <h3>
-        <mat-icon>psychology</mat-icon>
-        Agent Execution Summary
+        <mat-icon>flag</mat-icon>
+        Final Recommendation
       </h3>
-      <div class="agents-summary">
-        <div *ngFor="let agent of execution.agent_states" class="agent-summary-item">
-          <div class="agent-header">
-            <span class="agent-name">{{ agent.agent_type | titlecase }}</span>
-            <mat-chip [ngClass]="'status-' + agent.status">{{ agent.status }}</mat-chip>
-          </div>
-          <div class="agent-details" *ngIf="execution.reports && execution.reports[agent.agent_id]">
-            <p>{{ execution.reports[agent.agent_id].summary }}</p>
-          </div>
-        </div>
-      </div>
+      <p class="recommendation-text">{{ executiveReport.final_recommendation }}</p>
     </div>
 
-    <!-- Errors/Warnings -->
-    <div class="report-section" *ngIf="execution.result?.errors?.length > 0 || execution.result?.warnings?.length > 0">
+    <mat-divider></mat-divider>
+
+    <!-- Charts -->
+    <div class="report-section" *ngIf="hasChart()">
       <h3>
-        <mat-icon>warning</mat-icon>
-        Issues
+        <mat-icon>show_chart</mat-icon>
+        Strategy Visualization
+      </h3>
+      <app-trading-chart [chartData]="getChartData()" [height]="400"></app-trading-chart>
+    </div>
+
+    <mat-divider *ngIf="hasChart()"></mat-divider>
+
+    <!-- Detailed Agent Reports -->
+    <div class="report-section">
+      <h3>
+        <mat-icon>psychology</mat-icon>
+        Detailed Agent Analysis
       </h3>
       
-      <div *ngIf="execution.result.errors?.length > 0" class="issues-list errors">
-        <h4>Errors</h4>
-        <div *ngFor="let error of execution.result.errors" class="issue-item">
-          <mat-icon>error</mat-icon>
-          <span>{{ error }}</span>
-        </div>
-      </div>
+      <mat-accordion *ngIf="executiveReport.agent_reports">
+        <mat-expansion-panel *ngFor="let report of executiveReport.agent_reports | keyvalue" class="agent-panel">
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              {{ $any(report.value).agent_type || report.key | titlecase }}
+            </mat-panel-title>
+          </mat-expansion-panel-header>
+          
+          <div class="agent-report-content">
+            <h4>{{ $any(report.value).title }}</h4>
+            <p class="agent-summary">{{ $any(report.value).summary }}</p>
+            
+            <!-- Metrics -->
+            <div *ngIf="$any(report.value).metrics" class="metrics-section">
+              <div *ngFor="let metric of $any(report.value).metrics | keyvalue" class="metric-item">
+                <strong>{{ metric.key }}:</strong>
+                <span *ngIf="!isArray(metric.value) && !isObject(metric.value)">{{ metric.value }}</span>
+                <ul *ngIf="isArray(metric.value)" class="metric-list">
+                  <li *ngFor="let item of $any(metric.value)">
+                    <span *ngIf="!isObject(item)">{{ item }}</span>
+                    <pre *ngIf="isObject(item)" class="inline-json">{{ item | json }}</pre>
+                  </li>
+                </ul>
+                <pre *ngIf="isObject(metric.value) && !isArray(metric.value)">{{ metric.value | json }}</pre>
+              </div>
+            </div>
 
-      <div *ngIf="execution.result.warnings?.length > 0" class="issues-list warnings">
-        <h4>Warnings</h4>
-        <div *ngFor="let warning of execution.result.warnings" class="issue-item">
-          <mat-icon>warning</mat-icon>
-          <span>{{ warning }}</span>
-        </div>
+            <!-- Additional Data -->
+            <div *ngIf="$any(report.value).data" class="data-section">
+              <div *ngFor="let item of $any(report.value).data | keyvalue" class="data-item">
+                <strong>{{ item.key }}:</strong>
+                <span *ngIf="!isArray(item.value) && !isObject(item.value)">{{ item.value }}</span>
+                <ul *ngIf="isArray(item.value)" class="data-list">
+                  <li *ngFor="let val of $any(item.value)">
+                    <span *ngIf="!isObject(val)">{{ val }}</span>
+                    <pre *ngIf="isObject(val)" class="inline-json">{{ val | json }}</pre>
+                  </li>
+                </ul>
+                <pre *ngIf="isObject(item.value) && !isArray(item.value)">{{ item.value | json }}</pre>
+              </div>
+            </div>
+          </div>
+        </mat-expansion-panel>
+      </mat-accordion>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Risk Notes -->
+    <div class="report-section" *ngIf="executiveReport.risk_notes && executiveReport.risk_notes !== 'None'">
+      <h3>
+        <mat-icon>warning</mat-icon>
+        Risk Notes
+      </h3>
+      <div class="risk-notes">
+        <mat-icon>info</mat-icon>
+        <p>{{ executiveReport.risk_notes }}</p>
       </div>
     </div>
   </div>
@@ -119,11 +146,11 @@
   <mat-divider></mat-divider>
 
   <div class="modal-footer">
-    <button mat-button (click)="close()">Close</button>
-    <button mat-raised-button color="primary" (click)="downloadReport()">
-      <mat-icon>download</mat-icon>
-      Download Report
+    <button mat-button (click)="close()" [disabled]="generatingPdf">Close</button>
+    <button mat-raised-button color="primary" (click)="downloadReport()" *ngIf="executiveReport" [disabled]="generatingPdf">
+      <mat-spinner *ngIf="generatingPdf" diameter="20" style="display: inline-block; margin-right: 8px;"></mat-spinner>
+      <mat-icon *ngIf="!generatingPdf">download</mat-icon>
+      {{ generatingPdf ? 'Generating PDF...' : 'Download PDF' }}
     </button>
   </div>
 </div>
-

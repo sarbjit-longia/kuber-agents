@@ -241,6 +241,220 @@
   color: #1565c0 !important;
 }
 
+// Highlight Section (for Executive Summary)
+.highlight-section {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  padding: 1.5rem !important;
+  border-radius: 8px;
+  margin: 1rem 0;
+
+  h3 {
+    color: #2e7d32;
+  }
+
+  .summary-text {
+    margin: 0;
+    color: #1b5e20;
+    font-size: 1rem;
+    line-height: 1.6;
+    font-weight: 400;
+  }
+}
+
+// Key Takeaways List
+.takeaways-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: #4caf50;
+      margin-top: 0.125rem;
+      flex-shrink: 0;
+    }
+
+    span {
+      flex: 1;
+      color: #333;
+      font-size: 0.9375rem;
+      line-height: 1.6;
+    }
+  }
+}
+
+// Risk Notes
+.risk-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: #fff3e0;
+  border-radius: 8px;
+  border-left: 4px solid #ff9800;
+
+  mat-icon {
+    color: #f57c00;
+    flex-shrink: 0;
+  }
+
+  p {
+    margin: 0;
+    color: #e65100;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+}
+
+// Agent Panel
+.agent-panel {
+  margin-bottom: 0.5rem;
+  box-shadow: none !important;
+  border: 1px solid #e0e0e0;
+
+  &:before {
+    display: none !important;
+  }
+}
+
+.agent-report-content {
+  padding: 1rem 0;
+
+  h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .agent-summary {
+    margin: 0 0 1.5rem 0;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    color: #555;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+}
+
+// Metrics and Data Sections
+.metrics-section,
+.data-section {
+  margin-top: 1rem;
+
+  .metric-item,
+  .data-item {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #fafafa;
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+
+    strong {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #667eea;
+      font-size: 0.875rem;
+      text-transform: capitalize;
+    }
+
+    span {
+      color: #333;
+      font-size: 0.9375rem;
+    }
+
+    .metric-list,
+    .data-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.5rem 0 0 0;
+
+      li {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e0e0e0;
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        span {
+          color: #555;
+          font-size: 0.875rem;
+        }
+      }
+    }
+
+    pre {
+      margin: 0.5rem 0 0 0;
+      padding: 0.75rem;
+      background: #2d2d2d;
+      color: #f8f8f2;
+      border-radius: 4px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+
+      &.inline-json {
+        margin: 0.25rem 0;
+        font-size: 0.75rem;
+      }
+    }
+  }
+}
+
+// Loading State
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+
+  p {
+    margin: 0;
+    color: #666;
+    font-size: 0.9375rem;
+  }
+}
+
+// Error State
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #f44336;
+  }
+
+  p {
+    margin: 0;
+    color: #c62828;
+    font-size: 1rem;
+    text-align: center;
+  }
+}
+
 @media (max-width: 600px) {
   .summary-grid {
     grid-template-columns: 1fr;

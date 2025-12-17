@@ -15,10 +15,12 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { MonitoringService } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { ExecutionReportModalComponent } from './execution-report-modal/execution-report-modal.component';
 
 @Component({
   selector: 'app-monitoring',
@@ -33,6 +35,7 @@ import { NavbarComponent } from '../../core/components/navbar/navbar.component';
     MatProgressSpinnerModule,
     MatTooltipModule,
     MatSnackBarModule,
+    MatDialogModule,
     NavbarComponent
   ],
   templateUrl: './monitoring.component.html',
@@ -42,14 +45,15 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   executions: ExecutionSummary[] = [];
   stats: ExecutionStats | null = null;
   loading = true;
-  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'status', 'started', 'duration', 'cost', 'actions'];
+  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'status', 'actions'];
 
   private refreshInterval: any;
 
   constructor(
     private monitoringService: MonitoringService,
     private router: Router,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
@@ -89,6 +93,25 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   viewExecution(execution: ExecutionSummary): void {
     this.router.navigate(['/monitoring', execution.id]);
+  }
+
+  viewReport(execution: ExecutionSummary, event: Event): void {
+    event.stopPropagation(); // Prevent row click
+    
+    // Fetch full execution data and open modal
+    this.monitoringService.getExecutionDetail(execution.id).subscribe({
+      next: (fullExecution) => {
+        this.dialog.open(ExecutionReportModalComponent, {
+          width: '800px',
+          maxHeight: '90vh',
+          data: { execution: fullExecution }
+        });
+      },
+      error: (error) => {
+        console.error('Failed to load execution details:', error);
+        this.showNotification('Failed to load report', 'error');
+      }
+    });
   }
 
   stopExecution(execution: ExecutionSummary, event: Event): void {
@@ -197,6 +220,84 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   refresh(): void {
     this.loading = true;
     this.loadData();
+  }
+
+  getStrategyResult(execution: any): string {
+    // Use the summary fields from the API
+    if (execution.strategy_action) {
+      const action = execution.strategy_action;
+      const confidence = execution.strategy_confidence 
+        ? `(${(execution.strategy_confidence * 100).toFixed(0)}%)` 
+        : '';
+      return `${action} ${confidence}`.trim();
+    }
+    
+    // Fallback to result object (for detail view)
+    if (execution.result && execution.result.strategy) {
+      const strategy = execution.result.strategy;
+      const action = strategy.action || 'HOLD';
+      const confidence = strategy.confidence ? `(${(strategy.confidence * 100).toFixed(0)}%)` : '';
+      return `${action} ${confidence}`.trim();
+    }
+    
+    return '-';
+  }
+
+  getResultClass(execution: any): string {
+    // Check summary field first
+    const action = execution.strategy_action || execution.result?.strategy?.action;
+    if (!action) {
+      return '';
+    }
+    return `result-${action.toLowerCase()}`;
+  }
+
+  getResultIcon(execution: any): string {
+    // Check summary field first
+    const action = execution.strategy_action || execution.result?.strategy?.action;
+    if (!action) {
+      return 'remove';
+    }
+    const icons: any = {
+      'BUY': 'trending_up',
+      'SELL': 'trending_down',
+      'HOLD': 'remove'
+    };
+    return icons[action] || 'remove';
+  }
+
+  getTradeOutcome(execution: any): string {
+    const outcome = execution.trade_outcome;
+    if (!outcome) return '-';
+    
+    const labels: any = {
+      'executed': 'Executed',
+      'skipped': 'Skipped',
+      'rejected': 'Rejected',
+      'pending': 'Pending',
+      'no_trade': 'No Trade',
+      'unknown': 'Unknown'
+    };
+    return labels[outcome] || outcome;
+  }
+
+  getOutcomeClass(execution: any): string {
+    const outcome = execution.trade_outcome;
+    if (!outcome) return '';
+    return `outcome-${outcome.toLowerCase().replace('_', '-')}`;
+  }
+
+  getOutcomeIcon(execution: any): string {
+    const outcome = execution.trade_outcome;
+    const icons: any = {
+      'executed': 'check_circle',
+      'skipped': 'block',
+      'rejected': 'cancel',
+      'pending': 'schedule',
+      'no_trade': 'remove_circle_outline',
+      'unknown': 'help_outline'
+    };
+    return icons[outcome] || 'help_outline';
   }
 }
 

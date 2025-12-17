@@ -109,6 +109,28 @@
           <td mat-cell *matCellDef="let execution">{{ getSource(execution) }}</td>
         </ng-container>
 
+        <!-- Result Column -->
+        <ng-container matColumnDef="result">
+          <th mat-header-cell *matHeaderCellDef>Result</th>
+          <td mat-cell *matCellDef="let execution">
+            <div class="result-cell" [ngClass]="getResultClass(execution)">
+              <mat-icon>{{ getResultIcon(execution) }}</mat-icon>
+              <span>{{ getStrategyResult(execution) }}</span>
+            </div>
+          </td>
+        </ng-container>
+
+        <!-- Trade Outcome Column -->
+        <ng-container matColumnDef="outcome">
+          <th mat-header-cell *matHeaderCellDef>Trade Outcome</th>
+          <td mat-cell *matCellDef="let execution">
+            <div class="outcome-cell" [ngClass]="getOutcomeClass(execution)">
+              <mat-icon>{{ getOutcomeIcon(execution) }}</mat-icon>
+              <span>{{ getTradeOutcome(execution) }}</span>
+            </div>
+          </td>
+        </ng-container>
+
         <!-- Status Column -->
         <ng-container matColumnDef="status">
           <th mat-header-cell *matHeaderCellDef>Status</th>
@@ -142,8 +164,17 @@
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let execution">
-            <button mat-icon-button [matTooltip]="'View Details'" (click)="viewExecution(execution)">
+            <button mat-icon-button 
+                    [matTooltip]="'View Details'" 
+                    (click)="viewExecution(execution)">
               <mat-icon>visibility</mat-icon>
+            </button>
+            <button mat-icon-button 
+                    [matTooltip]="'View Report'" 
+                    color="primary"
+                    *ngIf="execution.status === 'completed'"
+                    (click)="viewReport(execution, $event)">
+              <mat-icon>summarize</mat-icon>
             </button>
             <button mat-icon-button 
                     [matTooltip]="'Stop Execution'" 
