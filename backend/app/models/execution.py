@@ -54,6 +54,7 @@ class Execution(Base):
     agent_states = Column(JSONB, nullable=True, default=list)  # Agent execution states
     reports = Column(JSONB, nullable=True, default=dict)  # Structured agent reports
     cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
+    report_pdf_path = Column(String(500), nullable=True)  # Path to generated PDF report
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

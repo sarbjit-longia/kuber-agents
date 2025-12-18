@@ -83,6 +83,12 @@ class Settings(BaseSettings):
         description="Data Plane service URL"
     )
     
+    # PDF Reports
+    PDF_STORAGE_PATH: str = Field(
+        default="/app/data/reports",
+        description="Path to store generated PDF reports"
+    )
+    
     # Broker (Alpaca)
     ALPACA_API_KEY: Optional[str] = Field(default=None, description="Alpaca API key")
     ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca secret key")

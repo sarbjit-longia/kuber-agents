@@ -24,7 +24,7 @@
   </div>
 
   <!-- Report Content -->
-  <div *ngIf="executiveReport && !loading" class="modal-content" #reportContent>
+  <div *ngIf="executiveReport && !loading" class="modal-content">
     
     <!-- Executive Summary -->
     <div class="report-section highlight-section">
@@ -94,6 +94,11 @@
             <h4>{{ $any(report.value).title }}</h4>
             <p class="agent-summary">{{ $any(report.value).summary }}</p>
             
+            <!-- Chart (if available in agent report) -->
+            <div *ngIf="hasAgentChart($any(report.value))" class="agent-chart-section">
+              <app-trading-chart [chartData]="getAgentChartData($any(report.value))" [height]="350"></app-trading-chart>
+            </div>
+            
             <!-- Metrics -->
             <div *ngIf="$any(report.value).metrics" class="metrics-section">
               <div *ngFor="let metric of $any(report.value).metrics | keyvalue" class="metric-item">
@@ -146,11 +151,10 @@
   <mat-divider></mat-divider>
 
   <div class="modal-footer">
-    <button mat-button (click)="close()" [disabled]="generatingPdf">Close</button>
-    <button mat-raised-button color="primary" (click)="downloadReport()" *ngIf="executiveReport" [disabled]="generatingPdf">
-      <mat-spinner *ngIf="generatingPdf" diameter="20" style="display: inline-block; margin-right: 8px;"></mat-spinner>
-      <mat-icon *ngIf="!generatingPdf">download</mat-icon>
-      {{ generatingPdf ? 'Generating PDF...' : 'Download PDF' }}
+    <button mat-button (click)="close()">Close</button>
+    <button mat-raised-button color="primary" (click)="downloadReport()" *ngIf="executiveReport">
+      <mat-icon>download</mat-icon>
+      Download PDF
     </button>
   </div>
 </div>

@@ -9,11 +9,13 @@ Provides endpoints for:
 - Generating executive reports
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+from pathlib import Path
 
 from app.database import get_db
 from app.models.user import User
@@ -724,5 +726,71 @@ async def generate_executive_report(
         report["trade_execution"] = execution.result.get("trade_execution")
     
     return report
+
+
+@router.get("/{execution_id}/report.pdf")
+async def download_execution_report_pdf(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Download the generated PDF report for an execution.
+    
+    Returns the pre-generated PDF file if available, or 404 if not yet generated.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        PDF file as download
+    """
+    # Get execution
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this execution"
+        )
+    
+    if not execution.report_pdf_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF report not yet generated for this execution"
+        )
+    
+    # Construct full path to PDF file
+    from app.config import settings
+    pdf_dir = Path(settings.PDF_STORAGE_PATH if hasattr(settings, 'PDF_STORAGE_PATH') else '/app/data/reports')
+    pdf_filename = Path(execution.report_pdf_path).name
+    pdf_filepath = pdf_dir / pdf_filename
+    
+    if not pdf_filepath.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF file not found on server"
+        )
+    
+    # Return file as download
+    return FileResponse(
+        path=str(pdf_filepath),
+        media_type="application/pdf",
+        filename=pdf_filename,
+        headers={
+            "Content-Disposition": f"attachment; filename={pdf_filename}"
+        }
+    )
 
 

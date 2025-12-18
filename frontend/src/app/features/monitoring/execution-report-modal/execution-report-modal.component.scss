@@ -29,6 +29,13 @@
   flex: 1;
   overflow-y: auto;
   padding: 0 1.5rem;
+  
+  // Ensure proper rendering for PDF capture
+  &.pdf-rendering {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
 }
 
 .report-section {
@@ -346,6 +353,14 @@
     color: #555;
     font-size: 0.9375rem;
     line-height: 1.6;
+  }
+
+  .agent-chart-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
   }
 }
 

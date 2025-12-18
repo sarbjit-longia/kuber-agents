@@ -818,6 +818,10 @@ class PipelineExecutor:
             trigger_met=state.trigger_met
         )
         
+        # Generate PDF report if execution completed successfully
+        if execution.status == ExecutionStatus.COMPLETED:
+            self._generate_pdf_report_sync(execution, db_session)
+        
         return execution
     
     async def execute_with_realtime_updates(self, db_session, execution):
@@ -1005,6 +1009,144 @@ class PipelineExecutor:
             return {k: self._serialize_value(v) for k, v in value.items()}
         return value
     
+    async def _generate_pdf_report_async(self, execution: Any, db_session: Any):
+        """
+        Generate PDF report for completed execution.
+        
+        Runs in background to avoid blocking execution completion.
+        """
+        try:
+            from app.services.pdf_generator import pdf_generator
+            from app.services.executive_report_generator import executive_report_generator
+            
+            self.logger.info("generating_pdf_report", execution_id=str(execution.id))
+            
+            # Prepare execution data
+            execution_data = {
+                "id": str(execution.id),
+                "pipeline_name": self.pipeline.name if hasattr(self.pipeline, 'name') else "Unknown",
+                "symbol": execution.symbol,
+                "mode": execution.mode,
+                "status": execution.status.value,
+                "started_at": execution.started_at.isoformat() if execution.started_at else None,
+                "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+                "duration_seconds": (execution.completed_at - execution.started_at).total_seconds() if execution.started_at and execution.completed_at else None,
+                "cost": execution.cost,
+                "trigger_source": getattr(self, 'trigger_source', 'N/A'),
+                "reports": execution.reports or {},
+                "result": execution.result or {},
+            }
+            
+            # Try to generate AI summary (optional - don't fail if it errors)
+            executive_summary = None
+            try:
+                executive_summary = await executive_report_generator.generate_executive_summary(
+                    execution_data,
+                    langfuse_trace=None
+                )
+            except Exception as e:
+                self.logger.warning("executive_summary_generation_failed", error=str(e))
+            
+            # Generate PDF
+            pdf_path = pdf_generator.generate_execution_report(
+                execution_id=str(execution.id),
+                execution_data=execution_data,
+                executive_summary=executive_summary
+            )
+            
+            # Update execution record with PDF path
+            execution.report_pdf_path = pdf_path
+            await db_session.commit()
+            
+            self.logger.info("pdf_report_generated_successfully", 
+                           execution_id=str(execution.id),
+                           pdf_path=pdf_path)
+            
+        except Exception as e:
+            # Log error but don't fail the execution
+            self.logger.error("pdf_generation_failed", 
+                            execution_id=str(execution.id),
+                            error=str(e))
+    
+    def _generate_pdf_report_sync(self, execution: Any, db_session: Any):
+        """
+        Generate PDF report for completed execution (synchronous version for Celery).
+        
+        Args:
+            execution: Execution database record
+            db_session: Synchronous SQLAlchemy session
+        """
+        try:
+            from app.services.pdf_generator import pdf_generator
+            from app.services.executive_report_generator import executive_report_generator
+            import asyncio
+            
+            self.logger.info("generating_pdf_report", execution_id=str(execution.id))
+            
+            # Prepare execution data
+            execution_data = {
+                "id": str(execution.id),
+                "pipeline_name": self.pipeline.name if hasattr(self.pipeline, 'name') else "Unknown",
+                "symbol": execution.symbol,
+                "mode": execution.mode,
+                "status": execution.status.value,
+                "started_at": execution.started_at.isoformat() if execution.started_at else None,
+                "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+                "duration_seconds": (execution.completed_at - execution.started_at).total_seconds() if execution.started_at and execution.completed_at else None,
+                "cost": execution.cost,
+                "trigger_source": getattr(self, 'trigger_source', 'N/A'),
+                "reports": execution.reports or {},
+                "result": execution.result or {},
+            }
+            
+            # Try to generate AI summary (optional - don't fail if it errors)
+            executive_summary = None
+            try:
+                # Run async code in sync context
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Create new event loop if one is already running
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    executive_summary = loop.run_until_complete(
+                        executive_report_generator.generate_executive_summary(
+                            execution_data,
+                            langfuse_trace=None
+                        )
+                    )
+                    loop.close()
+                else:
+                    executive_summary = loop.run_until_complete(
+                        executive_report_generator.generate_executive_summary(
+                            execution_data,
+                            langfuse_trace=None
+                        )
+                    )
+            except Exception as e:
+                self.logger.warning("executive_summary_generation_failed", error=str(e))
+            
+            # Generate PDF (this is a sync method)
+            pdf_path = pdf_generator.generate_execution_report(
+                execution_id=str(execution.id),
+                execution_data=execution_data,
+                executive_summary=executive_summary
+            )
+            
+            # Update execution record with PDF path
+            execution.report_pdf_path = pdf_path
+            db_session.commit()
+            
+            self.logger.info("pdf_report_generated_successfully", 
+                           execution_id=str(execution.id),
+                           pdf_path=pdf_path)
+            
+        except Exception as e:
+            # Log error but don't fail the execution
+            self.logger.error("pdf_generation_failed", 
+                            execution_id=str(execution.id),
+                            error=str(e),
+                            exc_info=True)
+    
     async def execute_with_db_tracking(self, db_session) -> Execution:
         """
         Execute pipeline and track in database.
@@ -1102,6 +1244,10 @@ class PipelineExecutor:
             execution.agent_states = getattr(state, 'agent_execution_states', [])
             execution.reports = self._serialize_reports(state.agent_reports)
             execution.cost_breakdown = state.agent_costs
+            
+            # Generate PDF report if execution completed successfully
+            if execution.status == ExecutionStatus.COMPLETED:
+                await self._generate_pdf_report_async(execution, db_session)
             
             await db_session.commit()
             

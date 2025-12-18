@@ -12,6 +12,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     vim \
+    # WeasyPrint dependencies
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libpangoft2-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    libglib2.0-0 \
+    libfontconfig1 \
+    fonts-dejavu-core \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

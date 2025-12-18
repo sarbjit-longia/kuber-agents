@@ -5,18 +5,18 @@
  * charts, and actionable recommendations
  */
 
-import { Component, Inject, OnInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, Inject, OnInit, ElementRef, ViewChild, QueryList, ViewChildren } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { MatExpansionModule, MatExpansionPanel } from '@angular/material/expansion';
 import { MatTabsModule } from '@angular/material/tabs';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { environment } from '../../../../environments/environment';
 
 import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
 import { ApiService } from '../../../core/services/api.service';
@@ -40,18 +40,16 @@ import { ApiService } from '../../../core/services/api.service';
   styleUrls: ['./execution-report-modal.component.scss']
 })
 export class ExecutionReportModalComponent implements OnInit {
-  @ViewChild('reportContent', { static: false }) reportContent!: ElementRef;
-  
   execution: any;
   executiveReport: any = null;
   loading = true;
   error: string | null = null;
-  generatingPdf = false;
 
   constructor(
     public dialogRef: MatDialogRef<ExecutionReportModalComponent>,
     @Inject(MAT_DIALOG_DATA) public data: any,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private http: HttpClient
   ) {
     this.execution = data.execution;
   }
@@ -62,15 +60,57 @@ export class ExecutionReportModalComponent implements OnInit {
 
   loadExecutiveReport(): void {
     console.log('Loading executive report for execution:', this.execution.id);
+    
+    // Set a timeout - if AI summary takes too long, show basic report
+    const timeout = setTimeout(() => {
+      if (this.loading) {
+        console.warn('AI summary generation timed out, showing basic report');
+        this.executiveReport = {
+          execution_context: {
+            id: this.execution.id,
+            pipeline_name: this.execution.pipeline_name || 'Unknown',
+            symbol: this.execution.symbol,
+            mode: this.execution.mode,
+            started_at: this.execution.started_at,
+            completed_at: this.execution.completed_at,
+            duration_seconds: this.execution.duration_seconds,
+            total_cost: this.execution.cost
+          },
+          executive_summary: 'Report available - AI summary generation in progress...',
+          agent_reports: this.execution.reports || {},
+          execution_artifacts: this.execution.result?.execution_artifacts || {}
+        };
+        this.loading = false;
+      }
+    }, 5000); // 5 second timeout
+    
     this.apiService.get(`/api/v1/executions/${this.execution.id}/executive-report`).subscribe({
       next: (report) => {
+        clearTimeout(timeout);
         console.log('Executive report received:', report);
         this.executiveReport = report;
         this.loading = false;
       },
       error: (error) => {
+        clearTimeout(timeout);
         console.error('Failed to generate report:', error);
-        this.error = error.error?.detail || error.message || 'Failed to generate executive report';
+        // Show basic report even on error
+        this.executiveReport = {
+          execution_context: {
+            id: this.execution.id,
+            pipeline_name: this.execution.pipeline_name || 'Unknown',
+            symbol: this.execution.symbol,
+            mode: this.execution.mode,
+            started_at: this.execution.started_at,
+            completed_at: this.execution.completed_at,
+            duration_seconds: this.execution.duration_seconds,
+            total_cost: this.execution.cost
+          },
+          executive_summary: 'AI summary generation failed - showing basic report',
+          agent_reports: this.execution.reports || {},
+          execution_artifacts: this.execution.result?.execution_artifacts || {},
+          error: error.error?.detail || error.message
+        };
         this.loading = false;
       }
     });
@@ -80,78 +120,33 @@ export class ExecutionReportModalComponent implements OnInit {
     this.dialogRef.close();
   }
 
-  async downloadReport(): Promise<void> {
-    if (!this.reportContent) {
-      console.error('Report content not available');
-      return;
-    }
-
-    this.generatingPdf = true;
-
-    try {
-      // Get the modal content element
-      const element = this.reportContent.nativeElement;
-      
-      // Expand all accordion panels before capturing
-      const panels = element.querySelectorAll('mat-expansion-panel');
-      panels.forEach((panel: any) => {
-        if (!panel.classList.contains('mat-expanded')) {
-          panel.click();
-        }
-      });
-
-      // Wait for animations to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Configure html2canvas options for better quality
-      const canvas = await html2canvas(element, {
-        scale: 2, // Higher quality
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight,
-      });
-
-      // Calculate PDF dimensions
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-
-      // Create PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      let position = 0;
-
-      // Add image to PDF (handle multiple pages if needed)
-      const imgData = canvas.toDataURL('image/png');
-      
-      // First page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      // Add additional pages if content is longer than one page
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+  downloadReport(): void {
+    // Use HttpClient with blob response type (auth interceptor will add token automatically)
+    const url = `${environment.apiUrl}/api/v1/executions/${this.execution.id}/report.pdf`;
+    
+    this.http.get(url, { responseType: 'blob' }).subscribe({
+      next: (blob: Blob) => {
+        // Create download link
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `execution-report-${this.execution.symbol || 'unknown'}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        console.log('PDF downloaded successfully');
+      },
+      error: (error) => {
+        console.error('Failed to download PDF:', error);
+        const errorMsg = error.status === 404 
+          ? 'PDF not yet generated for this execution'
+          : error.status === 401
+          ? 'Authentication required - please log in again'
+          : error.error?.detail || error.message || 'Failed to download PDF';
+        alert(`Failed to download PDF: ${errorMsg}`);
       }
-
-      // Generate filename
-      const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `execution-report-${this.execution.symbol || 'unknown'}-${timestamp}.pdf`;
-
-      // Save the PDF
-      pdf.save(filename);
-
-      console.log('PDF generated successfully');
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF. Please try again.');
-    } finally {
-      this.generatingPdf = false;
-    }
+    });
   }
 
 
@@ -189,5 +184,20 @@ export class ExecutionReportModalComponent implements OnInit {
 
   isObject(value: any): boolean {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  hasAgentChart(agentReport: any): boolean {
+    // Check if agent report has chart data (look in data.chart or directly in data)
+    if (!agentReport || !agentReport.data) {
+      return false;
+    }
+    return !!(agentReport.data.chart || agentReport.data.strategy_chart);
+  }
+
+  getAgentChartData(agentReport: any): any {
+    if (!agentReport || !agentReport.data) {
+      return null;
+    }
+    return agentReport.data.chart || agentReport.data.strategy_chart || null;
   }
 }

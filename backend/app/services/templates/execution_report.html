@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Execution Report - {{ symbol }}</title>
+</head>
+<body>
+    <div class="header">
+        <h1>Trading Execution Report</h1>
+        <p><strong>{{ symbol }}</strong> | {{ pipeline_name }}</p>
+    </div>
+    
+    <!-- Execution Summary -->
+    <div class="meta-info">
+        <div class="meta-item">
+            <span class="meta-label">Status:</span> {{ status }}
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Mode:</span> {{ mode }}
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Started:</span> {{ started_at }}
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Duration:</span> {{ duration }}
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Cost:</span> ${{ "%.4f"|format(cost) }}
+        </div>
+    </div>
+    
+    {% if executive_summary %}
+    <!-- AI Executive Summary -->
+    <h2>📊 Executive Summary</h2>
+    <div class="summary-box">
+        <p>{{ executive_summary }}</p>
+    </div>
+    {% endif %}
+    
+    {% if key_takeaways %}
+    <!-- Key Takeaways -->
+    <h2>🎯 Key Takeaways</h2>
+    <ul>
+        {% for takeaway in key_takeaways %}
+        <li>{{ takeaway }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    
+    {% if final_recommendation %}
+    <!-- Final Recommendation -->
+    <h2>💡 Final Recommendation</h2>
+    <div class="recommendation-box">
+        <p>{{ final_recommendation }}</p>
+    </div>
+    {% endif %}
+    
+    <!-- Agent Reports -->
+    {% if reports %}
+    <h2>🤖 Agent Reports</h2>
+    {% for agent_id, report in reports.items() %}
+    <div class="agent-report">
+        <h3>{{ report.get('title', agent_id) }}</h3>
+        
+        {% if report.get('summary') %}
+        <p><strong>Summary:</strong> {{ report.get('summary') }}</p>
+        {% endif %}
+        
+        <!-- Agent Metrics -->
+        {% if report.get('metrics') %}
+        <div class="metrics-section">
+            <h4>Metrics:</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if report.metrics is mapping %}
+                        {% for key, value in report.metrics.items() %}
+                        <tr>
+                            <td>{{ key }}</td>
+                            <td>
+                                {% if value is mapping %}
+                                    {{ value|tojson }}
+                                {% elif value is sequence and value is not string %}
+                                    {{ value|join(', ') }}
+                                {% else %}
+                                    {{ value }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% elif report.metrics is sequence %}
+                        {% for metric in report.metrics %}
+                        <tr>
+                            <td colspan="2">{{ metric }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Agent Data -->
+        {% if report.get('data') %}
+        <div class="data-section">
+            <h4>Details:</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if report.data is mapping %}
+                        {% for key, value in report.data.items() %}
+                        <tr>
+                            <td>{{ key }}</td>
+                            <td>
+                                {% if value is mapping %}
+                                    <pre>{{ value|tojson(indent=2) }}</pre>
+                                {% elif value is sequence and value is not string %}
+                                    {% if value|length > 3 %}
+                                        {{ value[:3]|join(', ') }}... ({{ value|length }} items)
+                                    {% else %}
+                                        {{ value|join(', ') }}
+                                    {% endif %}
+                                {% else %}
+                                    {{ value }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+    
+    <!-- Strategy Details -->
+    {% if strategy %}
+    <h2>📈 Strategy Details</h2>
+    <div class="strategy-section">
+        <table>
+            <tr>
+                <td><strong>Action:</strong></td>
+                <td>{{ strategy.action }}</td>
+            </tr>
+            <tr>
+                <td><strong>Confidence:</strong></td>
+                <td>{{ strategy.confidence * 100 if strategy.confidence else 0 }}%</td>
+            </tr>
+            {% if strategy.entry_price %}
+            <tr>
+                <td><strong>Entry Price:</strong></td>
+                <td>${{ "%.2f"|format(strategy.entry_price) }}</td>
+            </tr>
+            {% endif %}
+            {% if strategy.stop_loss %}
+            <tr>
+                <td><strong>Stop Loss:</strong></td>
+                <td>${{ "%.2f"|format(strategy.stop_loss) }}</td>
+            </tr>
+            {% endif %}
+            {% if strategy.take_profit %}
+            <tr>
+                <td><strong>Take Profit:</strong></td>
+                <td>${{ "%.2f"|format(strategy.take_profit) }}</td>
+            </tr>
+            {% endif %}
+            {% if strategy.rationale %}
+            <tr>
+                <td><strong>Rationale:</strong></td>
+                <td>{{ strategy.rationale }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    {% endif %}
+    
+    <!-- Risk Assessment -->
+    {% if risk_assessment %}
+    <h2>⚠️ Risk Assessment</h2>
+    <div class="risk-section">
+        <table>
+            <tr>
+                <td><strong>Risk Score:</strong></td>
+                <td>{{ risk_assessment.risk_score if risk_assessment.risk_score else 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td><strong>Approved:</strong></td>
+                <td>{{ 'Yes' if risk_assessment.approved else 'No' }}</td>
+            </tr>
+            {% if risk_assessment.position_size %}
+            <tr>
+                <td><strong>Position Size:</strong></td>
+                <td>{{ risk_assessment.position_size }}</td>
+            </tr>
+            {% endif %}
+            {% if risk_assessment.risk_amount %}
+            <tr>
+                <td><strong>Risk Amount:</strong></td>
+                <td>${{ "%.2f"|format(risk_assessment.risk_amount) }}</td>
+            </tr>
+            {% endif %}
+            {% if risk_assessment.notes %}
+            <tr>
+                <td><strong>Notes:</strong></td>
+                <td>{{ risk_assessment.notes }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    {% endif %}
+    
+    <!-- Trade Execution -->
+    {% if trade_execution %}
+    <h2>💼 Trade Execution</h2>
+    <div class="trade-section">
+        <table>
+            <tr>
+                <td><strong>Status:</strong></td>
+                <td>{{ trade_execution.status }}</td>
+            </tr>
+            {% if trade_execution.order_id %}
+            <tr>
+                <td><strong>Order ID:</strong></td>
+                <td>{{ trade_execution.order_id }}</td>
+            </tr>
+            {% endif %}
+            {% if trade_execution.filled_price %}
+            <tr>
+                <td><strong>Filled Price:</strong></td>
+                <td>${{ "%.2f"|format(trade_execution.filled_price) }}</td>
+            </tr>
+            {% endif %}
+            {% if trade_execution.filled_quantity %}
+            <tr>
+                <td><strong>Filled Quantity:</strong></td>
+                <td>{{ trade_execution.filled_quantity }}</td>
+            </tr>
+            {% endif %}
+            {% if trade_execution.commission %}
+            <tr>
+                <td><strong>Commission:</strong></td>
+                <td>${{ "%.2f"|format(trade_execution.commission) }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    {% endif %}
+    
+    {% if risk_notes and risk_notes != 'None' %}
+    <!-- Additional Risk Notes -->
+    <h2>⚠️ Risk Notes</h2>
+    <div class="risk-box">
+        <p>{{ risk_notes }}</p>
+    </div>
+    {% endif %}
+    
+    <!-- Footer -->
+    <div class="footer">
+        <p>Generated on {{ generated_at }} | Execution ID: {{ execution_id }}</p>
+    </div>
+</body>
+</html>
+
