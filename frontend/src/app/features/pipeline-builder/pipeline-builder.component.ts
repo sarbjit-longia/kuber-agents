@@ -142,6 +142,8 @@ export class PipelineBuilderComponent implements OnInit {
   // Configuration editing state
   editingConfig: any = null; // Temporary config being edited
   originalConfig: any = null; // Original config before editing
+  filteredConfigSchema: any = null; // Cached filtered schema without instructions field
+  showAdditionalSettings = false; // Whether to show additional settings section
   
   // ViewChild for JSON schema form (for timezone conversion)
   @ViewChild('jsonSchemaForm') jsonSchemaForm?: JsonSchemaFormComponent;
@@ -491,6 +493,55 @@ export class PipelineBuilderComponent implements OnInit {
     // Initialize editing config (deep copy to avoid reference issues)
     this.originalConfig = JSON.parse(JSON.stringify(node.config || {}));
     this.editingConfig = JSON.parse(JSON.stringify(node.config || {}));
+    
+    // Compute filtered schema and settings visibility (do this once, not in template)
+    this.updateFilteredConfigSchema();
+  }
+  
+  /**
+   * Update filtered config schema (called once when node is selected)
+   */
+  private updateFilteredConfigSchema(): void {
+    if (!this.selectedNode || !this.selectedNode.metadata?.config_schema) {
+      this.filteredConfigSchema = null;
+      this.showAdditionalSettings = false;
+      return;
+    }
+    
+    const schema = this.selectedNode.metadata.config_schema;
+    
+    // Check if there are fields other than instructions
+    const properties = schema.properties ? Object.keys(schema.properties) : [];
+    const otherFields = properties.filter(
+      prop => prop !== 'instructions' && 
+              prop !== 'strategy_document_url' &&
+              prop !== 'auto_detected_tools'
+    );
+    
+    this.showAdditionalSettings = otherFields.length > 0;
+    
+    // Create filtered schema if needed
+    if (this.showAdditionalSettings) {
+      const filteredSchema = JSON.parse(JSON.stringify(schema)); // Deep clone
+      
+      if (filteredSchema.properties) {
+        delete filteredSchema.properties['instructions'];
+        delete filteredSchema.properties['strategy_document_url'];
+        delete filteredSchema.properties['auto_detected_tools'];
+        
+        if (filteredSchema.required && Array.isArray(filteredSchema.required)) {
+          filteredSchema.required = filteredSchema.required.filter(
+            (field: string) => field !== 'instructions' && 
+                              field !== 'strategy_document_url' &&
+                              field !== 'auto_detected_tools'
+          );
+        }
+      }
+      
+      this.filteredConfigSchema = filteredSchema;
+    } else {
+      this.filteredConfigSchema = null;
+    }
   }
 
   /**

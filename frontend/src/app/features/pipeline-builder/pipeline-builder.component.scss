@@ -831,12 +831,61 @@
       margin: 1.5rem 0;
     }
 
+    // Primary instructions section (prominent)
+    .config-instructions.primary-section {
+      margin: 1.5rem 0;
+      padding: 1.5rem;
+      background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
+      border-radius: 12px;
+      border: 2px solid #667eea;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+      
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+        
+        .section-icon {
+          color: #667eea;
+          font-size: 2rem;
+          width: 2rem;
+          height: 2rem;
+        }
+        
+        .section-title {
+          margin: 0;
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #333;
+          letter-spacing: -0.3px;
+        }
+      }
+      
+      .section-description {
+        margin: 0 0 1rem 0;
+        padding-left: 2.75rem; // Align with title
+        color: #555;
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+    }
+    
     .config-properties, .config-form {
       h5 {
         margin: 0 0 1rem 0;
         font-size: 1rem;
         font-weight: 600;
         color: #333;
+      }
+      
+      // Make "Additional Settings" less prominent
+      .config-subtitle {
+        font-size: 0.9rem;
+        color: #666;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
     }
 

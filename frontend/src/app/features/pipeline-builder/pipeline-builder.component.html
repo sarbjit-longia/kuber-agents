@@ -300,8 +300,14 @@
           <mat-divider></mat-divider>
           
           <!-- Agent Instructions (ONLY for agents, shown before config form) -->
-          <div *ngIf="isAgentNode(selectedNode)" class="config-instructions">
-            <h5>Strategy Instructions</h5>
+          <div *ngIf="isAgentNode(selectedNode)" class="config-instructions primary-section">
+            <div class="section-header">
+              <mat-icon class="section-icon">psychology</mat-icon>
+              <h4 class="section-title">Tell the Agent What To Do</h4>
+            </div>
+            <p class="section-description">
+              Write your strategy in plain English. The agent will automatically select the right tools based on your instructions.
+            </p>
             <app-agent-instructions
               [agentType]="selectedNode.agent_type"
               [initialInstructions]="editingConfig['instructions'] || ''"
@@ -310,15 +316,17 @@
             </app-agent-instructions>
           </div>
           
-          <mat-divider *ngIf="isAgentNode(selectedNode)"></mat-divider>
+          <mat-divider *ngIf="isAgentNode(selectedNode) && showAdditionalSettings"></mat-divider>
           
-          <!-- Configuration form (for both agents and tools) -->
-          <div class="config-form">
-            <h5>Advanced Configuration</h5>
+          <!-- Configuration form (additional settings for agents, all settings for tools) -->
+          <div class="config-form" *ngIf="isAgentNode(selectedNode) ? showAdditionalSettings : selectedNode.metadata?.config_schema">
+            <h5 class="config-subtitle" *ngIf="isAgentNode(selectedNode)">Additional Settings</h5>
+            <h5 *ngIf="!isAgentNode(selectedNode)">Configuration</h5>
+            
             <app-json-schema-form
               #jsonSchemaForm
-              *ngIf="selectedNode.metadata?.config_schema"
-              [schema]="selectedNode.metadata!.config_schema"
+              *ngIf="isAgentNode(selectedNode) ? filteredConfigSchema : selectedNode.metadata?.config_schema"
+              [schema]="isAgentNode(selectedNode) ? filteredConfigSchema : selectedNode.metadata!.config_schema"
               [data]="editingConfig"
               (dataChange)="onConfigChange($event, selectedNode)">
             </app-json-schema-form>
