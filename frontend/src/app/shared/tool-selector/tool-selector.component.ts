@@ -6,8 +6,9 @@ import { MatCardModule } from '@angular/material/card';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatChipsModule } from '@angular/material/chips';
 import { ToolService, ToolMetadata } from '../../core/services/tool.service';
-import { JsonSchemaFormComponent } from '../json-schema-form/json-schema-form.component';
 
 export interface ToolInstance {
   tool_type: string;
@@ -27,7 +28,8 @@ export interface ToolInstance {
     MatMenuModule,
     MatTooltipModule,
     MatDialogModule,
-    JsonSchemaFormComponent
+    MatSnackBarModule,
+    MatChipsModule
   ],
   templateUrl: './tool-selector.component.html',
   styleUrls: ['./tool-selector.component.scss']
@@ -40,9 +42,13 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
   availableTools: ToolMetadata[] = [];
   loading = false;
 
+  // Broker tool types that are mutually exclusive
+  private readonly BROKER_TOOLS = ['alpaca_broker', 'oanda_broker', 'tradier_broker'];
+
   constructor(
     private toolService: ToolService,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
@@ -98,6 +104,32 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
       return;
     }
 
+    // ⚠️ BROKER VALIDATION: Prevent multiple brokers
+    if (this.BROKER_TOOLS.includes(toolType)) {
+      const attachedBroker = this.attachedTools.find(t => this.BROKER_TOOLS.includes(t.tool_type));
+      if (attachedBroker) {
+        const brokerNames: { [key: string]: string } = {
+          'alpaca_broker': 'Alpaca',
+          'oanda_broker': 'Oanda',
+          'tradier_broker': 'Tradier'
+        };
+        const currentBrokerName = brokerNames[attachedBroker.tool_type] || attachedBroker.tool_type;
+        const newBrokerName = brokerNames[toolType] || toolType;
+        
+        this.snackBar.open(
+          `⚠️ Only one broker allowed! ${currentBrokerName} is already attached. Remove it first to add ${newBrokerName}.`,
+          'Close',
+          {
+            duration: 5000,
+            horizontalPosition: 'center',
+            verticalPosition: 'top',
+            panelClass: ['error-snackbar']
+          }
+        );
+        return;
+      }
+    }
+
     const newTool: ToolInstance = {
       tool_type: toolType,
       enabled: true,
@@ -132,5 +164,37 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
     //console.log('Available tools for menu:', available);
     //console.log('Already attached tools:', this.attachedTools.map(t => t.tool_type));
     return available;
+  }
+
+  /**
+   * Check if a tool should be disabled in the menu (e.g., broker when another broker is attached)
+   */
+  isToolDisabled(toolType: string): boolean {
+    if (this.BROKER_TOOLS.includes(toolType)) {
+      // If this is a broker tool, disable it if another broker is already attached
+      return this.attachedTools.some(t => 
+        this.BROKER_TOOLS.includes(t.tool_type) && t.tool_type !== toolType
+      );
+    }
+    return false;
+  }
+
+  /**
+   * Get a tooltip explaining why a tool is disabled
+   */
+  getDisabledTooltip(toolType: string): string {
+    if (this.isToolDisabled(toolType) && this.BROKER_TOOLS.includes(toolType)) {
+      const attachedBroker = this.attachedTools.find(t => this.BROKER_TOOLS.includes(t.tool_type));
+      if (attachedBroker) {
+        const brokerNames: { [key: string]: string } = {
+          'alpaca_broker': 'Alpaca',
+          'oanda_broker': 'Oanda',
+          'tradier_broker': 'Tradier'
+        };
+        const currentBrokerName = brokerNames[attachedBroker.tool_type] || attachedBroker.tool_type;
+        return `Only one broker allowed. ${currentBrokerName} is already attached. Remove it first.`;
+      }
+    }
+    return '';
   }
 }

@@ -195,6 +195,11 @@ class PipelineState(BaseModel):
     errors: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     
+    # Position monitoring (Trade Manager)
+    execution_phase: str = "execute"  # "execute" or "monitoring"
+    should_complete: bool = False  # Signal from agent to complete monitoring
+    monitor_interval_minutes: int = 5  # Polling frequency for position monitoring
+    
     # Metadata
     started_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

@@ -39,53 +39,36 @@ class AlpacaBrokerTool(BaseTool):
                     "account_type": {
                         "type": "string",
                         "title": "Account Type",
-                        "description": "Use live or paper trading account",
-                        "enum": ["live", "paper"],
-                        "default": "paper"
-                    },
-                    "use_env_credentials": {
-                        "type": "boolean",
-                        "title": "Use Environment Credentials",
-                        "description": "Use API keys from environment variables",
-                        "default": True
+                        "description": "Use paper (testing) or live trading account",
+                        "enum": ["Paper", "Live"],
+                        "default": "Paper"
                     },
                     "api_key": {
                         "type": "string",
                         "title": "API Key",
-                        "description": "Alpaca API key (if not using env credentials)"
+                        "description": "Alpaca API key (required)"
                     },
                     "secret_key": {
                         "type": "string",
                         "title": "Secret Key",
-                        "description": "Alpaca secret key (if not using env credentials)"
-                    },
-                    "order_type": {
-                        "type": "string",
-                        "title": "Default Order Type",
-                        "enum": ["market", "limit", "stop", "stop_limit"],
-                        "default": "market"
-                    },
-                    "time_in_force": {
-                        "type": "string",
-                        "title": "Time In Force",
-                        "enum": ["day", "gtc", "ioc", "fok"],
-                        "default": "day"
+                        "description": "Alpaca secret key (required)"
                     }
                 },
-                required=["account_type"]
+                required=["account_type", "api_key", "secret_key"]
             )
         )
     
     def _validate_config(self):
         """Validate Alpaca configuration."""
-        account_type = self.config.get("account_type", "paper")
-        if account_type not in ["live", "paper"]:
-            raise ValueError("account_type must be 'live' or 'paper'")
+        account_type = self.config.get("account_type", "Paper")
+        if account_type not in ["Paper", "Live"]:
+            raise ValueError("account_type must be 'Paper' or 'Live'")
         
-        use_env = self.config.get("use_env_credentials", True)
-        if not use_env:
-            if not self.config.get("api_key") or not self.config.get("secret_key"):
-                raise ValueError("api_key and secret_key required when not using env credentials")
+        if not self.config.get("api_key"):
+            raise ValueError("api_key is required")
+        
+        if not self.config.get("secret_key"):
+            raise ValueError("secret_key is required")
     
     def execute(self, action: str, symbol: str, quantity: float, **kwargs) -> Dict[str, Any]:
         """

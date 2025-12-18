@@ -336,7 +336,17 @@
       color: #ad1457 !important;
       
       mat-icon {
-        color: #c2185b;
+        color: #ad1457 !important;
+      }
+    }
+    
+    &.status-monitoring {
+      background-color: #fff9c4 !important;
+      color: #f57f17 !important;
+      animation: pulse-monitoring 2s ease-in-out infinite;
+      
+      mat-icon {
+        color: #f57f17 !important;
       }
     }
   }
@@ -374,6 +384,16 @@
   .executions-table {
     display: block;
     overflow-x: auto;
+  }
+}
+
+// Monitoring status pulse animation
+@keyframes pulse-monitoring {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
   }
 }
 

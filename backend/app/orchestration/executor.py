@@ -205,9 +205,14 @@ class PipelineExecutor:
         """
         Determine which timeframes are required by agents in the pipeline.
         
+        This is now INSTRUCTION-DRIVEN: parses timeframes from natural language
+        instructions rather than hardcoded metadata.
+        
         Returns:
             List of unique timeframe strings
         """
+        from app.services.instruction_parser import instruction_parser
+        
         timeframes = set()
         
         for node in self.nodes:
@@ -217,20 +222,39 @@ class PipelineExecutor:
             if node.get("node_category") == "tool":
                 continue
             
-            # Get agent metadata
             try:
-                metadata = self.registry.get_metadata(agent_type)
-                if metadata and metadata.requires_timeframes:
-                    timeframes.update(metadata.requires_timeframes)
-                
-                # Also check agent config for explicit timeframe requirements
                 config = node.get("config", {})
+                
+                # PRIMARY: Parse timeframes from instructions (instruction-driven!)
+                instructions = config.get("instructions", "")
+                if instructions:
+                    extracted_tfs = instruction_parser.extract_timeframes(instructions)
+                    if extracted_tfs:
+                        timeframes.update(extracted_tfs)
+                        self.logger.debug(
+                            "timeframes_extracted_from_instructions",
+                            agent_type=agent_type,
+                            extracted=extracted_tfs
+                        )
+                
+                # FALLBACK: Check explicit config fields (for backward compatibility)
+                if "strategy_timeframe" in config:
+                    timeframes.add(config["strategy_timeframe"])
                 if "primary_timeframe" in config:
                     timeframes.add(config["primary_timeframe"])
                 if "secondary_timeframes" in config:
                     timeframes.update(config["secondary_timeframes"])
-                if "strategy_timeframe" in config:
-                    timeframes.add(config["strategy_timeframe"])
+                
+                # LAST RESORT: Use metadata defaults (deprecated)
+                if not timeframes:
+                    metadata = self.registry.get_metadata(agent_type)
+                    if metadata and metadata.requires_timeframes:
+                        timeframes.update(metadata.requires_timeframes)
+                        self.logger.debug(
+                            "using_fallback_timeframes_from_metadata",
+                            agent_type=agent_type,
+                            timeframes=metadata.requires_timeframes
+                        )
                     
             except Exception as e:
                 self.logger.warning(
@@ -239,7 +263,10 @@ class PipelineExecutor:
                     error=str(e)
                 )
         
-        return list(timeframes)
+        sorted_timeframes = sorted(list(timeframes))
+        self.logger.info("pipeline_timeframes_determined", timeframes=sorted_timeframes)
+        
+        return sorted_timeframes
     
     def _generate_mock_market_data(self, symbol: str, timeframes: List[str]):
         """
@@ -761,8 +788,16 @@ class PipelineExecutor:
             })
         
         # Update final execution record
-        execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
-        execution.completed_at = datetime.utcnow()
+        # Check if entering monitoring mode (Trade Manager)
+        if state.execution_phase == "monitoring":
+            execution.status = ExecutionStatus.MONITORING
+            execution.execution_phase = "monitoring"
+            execution.monitor_interval_minutes = state.monitor_interval_minutes
+            execution.next_check_at = datetime.utcnow() + timedelta(minutes=state.monitor_interval_minutes)
+            execution.completed_at = None  # Not completed yet, still monitoring
+        else:
+            execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
+            execution.completed_at = datetime.utcnow()
         
         # Serialize result models
         def serialize_model(model):
@@ -821,6 +856,21 @@ class PipelineExecutor:
         # Generate PDF report if execution completed successfully
         if execution.status == ExecutionStatus.COMPLETED:
             self._generate_pdf_report_sync(execution, db_session)
+        
+        # Schedule monitoring task if entering monitoring mode
+        if execution.status == ExecutionStatus.MONITORING:
+            from app.orchestration.tasks import schedule_monitoring_check
+            interval = execution.monitor_interval_minutes
+            schedule_monitoring_check.apply_async(
+                args=[str(execution.id)],
+                countdown=interval * 60  # Convert minutes to seconds
+            )
+            self.logger.info(
+                "monitoring_scheduled",
+                execution_id=str(execution.id),
+                interval_minutes=interval,
+                next_check_at=execution.next_check_at.isoformat()
+            )
         
         return execution
     

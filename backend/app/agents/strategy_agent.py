@@ -45,7 +45,7 @@ class StrategyAgent(BaseAgent):
             icon="psychology",
             pricing_rate=0.15,
             is_free=False,
-            requires_timeframes=["5m"],
+            requires_timeframes=[],  # Derived from instructions
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Strategy Agent Configuration",
@@ -53,21 +53,8 @@ class StrategyAgent(BaseAgent):
                     "instructions": {
                         "type": "string",
                         "title": "Strategy Instructions",
-                        "description": "Natural language instructions for generating trade strategies",
-                        "default": "Analyze the chart and identify high-probability trade setups. Look for clear patterns (flags, triangles, FVGs) with defined support/resistance. Generate BUY or SELL signals with specific entry, stop loss, and take profit levels. Ensure minimum 2:1 risk/reward ratio."
-                    },
-                    "strategy_timeframe": {
-                        "type": "string",
-                        "title": "Strategy Timeframe",
-                        "description": "Primary timeframe for trade execution",
-                        "enum": ["1m", "5m", "15m", "30m", "1h"],
-                        "default": "5m"
-                    },
-                    "min_risk_reward": {
-                        "type": "number",
-                        "title": "Minimum Risk/Reward",
-                        "description": "Minimum acceptable R/R ratio",
-                        "default": 2.0
+                        "description": "Natural language instructions for generating trade strategies. Specify the timeframe(s) you want to analyze (e.g., '5m', '15m', '1h').",
+                        "default": "Analyze the 5m chart and identify high-probability trade setups. Look for clear patterns (flags, triangles, FVGs) with defined support/resistance. Generate BUY or SELL signals with specific entry, stop loss, and take profit levels."
                     },
                     "model": {
                         "type": "string",
@@ -76,7 +63,7 @@ class StrategyAgent(BaseAgent):
                         "default": "gpt-4"
                     }
                 },
-                required=["instructions", "strategy_timeframe"]
+                required=["instructions"]
             ),
             can_initiate_trades=True,
             can_close_positions=False
@@ -108,10 +95,17 @@ class StrategyAgent(BaseAgent):
             if not instructions:
                 instructions = self.metadata.config_schema.properties["instructions"]["default"]
             
-            strategy_tf = self.config.get("strategy_timeframe", "5m")
-            min_rr = self.config.get("min_risk_reward", 2.0)
+            # Parse timeframe from instructions (instruction-driven!)
+            from app.services.instruction_parser import instruction_parser
+            extracted_timeframes = instruction_parser.extract_timeframes(instructions)
             
-            self.log(state, f"Strategy timeframe: {strategy_tf}, Min R/R: {min_rr}")
+            # Use the smallest (fastest) timeframe as primary execution timeframe
+            # Or fallback to 5m if none specified
+            strategy_tf = extracted_timeframes[0] if extracted_timeframes else "5m"
+            
+            self.log(state, f"Strategy timeframe (from instructions): {strategy_tf}")
+            if extracted_timeframes:
+                self.log(state, f"All timeframes: {extracted_timeframes}")
             self.log(state, f"Using instructions: {instructions[:100]}...")
             
             # Prepare context
@@ -168,7 +162,6 @@ YOUR INSTRUCTIONS:
 {instructions}
 
 REQUIREMENTS:
-- Minimum Risk/Reward: {min_rr}:1
 - Current Price: ${state.market_data.current_price:.2f if state.market_data and state.market_data.current_price else 0}
 
 Use the available tools as needed to analyze the market and find trade setups.
@@ -186,10 +179,11 @@ Provide your strategy in this JSON format:
 
 Only suggest trades (BUY/SELL) if:
 1. There's a clear high-probability setup
-2. Risk/reward ratio meets minimum ({min_rr}:1)
-3. Entry, stop loss, and take profit are clearly defined
+2. Entry, stop loss, and take profit are clearly defined
 
-Otherwise, return action=HOLD with reasoning.""",
+Otherwise, return action=HOLD with reasoning.
+
+Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                 agent=strategist,
                 expected_output="JSON with complete trade strategy or HOLD recommendation"
             )

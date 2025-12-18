@@ -135,6 +135,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const colors: any = {
       'pending': 'default',
       'running': 'primary',
+      'monitoring': 'accent',
       'completed': 'accent',
       'failed': 'warn',
       'cancelled': 'default',
@@ -147,6 +148,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const icons: any = {
       'pending': 'schedule',
       'running': 'play_circle',
+      'monitoring': 'visibility',
       'completed': 'check_circle',
       'failed': 'error',
       'cancelled': 'cancel',

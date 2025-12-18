@@ -44,7 +44,7 @@ class BiasAgent(BaseAgent):
             icon="trending_up",
             pricing_rate=0.0,
             is_free=True,
-            requires_timeframes=["1h", "4h", "1d"],  # Default timeframes
+            requires_timeframes=[],  # Derived from instructions
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Bias Agent Configuration",

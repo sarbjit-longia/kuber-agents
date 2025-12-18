@@ -7,6 +7,8 @@ from app.tools.base import BaseTool, ToolError
 from app.tools.market_data import MarketDataTool, MockMarketDataTool
 from app.tools.registry import ToolRegistry, get_registry, register_tool
 from app.tools.alpaca_broker import AlpacaBrokerTool
+from app.tools.oanda_broker import OandaBrokerTool
+from app.tools.tradier_broker import TradierBrokerTool
 from app.tools.webhook_notifier import WebhookNotifierTool
 from app.tools.email_notifier import EmailNotifierTool
 
@@ -21,6 +23,8 @@ def _initialize_registry():
     
     # Register broker tools
     registry.register(AlpacaBrokerTool)
+    registry.register(OandaBrokerTool)
+    registry.register(TradierBrokerTool)
     
     # Register notifier tools
     registry.register(WebhookNotifierTool)
@@ -38,6 +42,8 @@ __all__ = [
     "get_registry",
     "register_tool",
     "AlpacaBrokerTool",
+    "OandaBrokerTool",
+    "TradierBrokerTool",
     "WebhookNotifierTool",
     "EmailNotifierTool",
 ]

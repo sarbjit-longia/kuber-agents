@@ -31,9 +31,10 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 python-multipart>=0.0.6
 
-# External APIs
+# External APIs & Brokers
 finnhub-python>=2.4.19
 alpaca-py>=0.43.0
+requests>=2.31.0  # For Oanda and Tradier broker APIs
 
 # Utilities
 python-dotenv>=1.0.0

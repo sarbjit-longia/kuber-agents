@@ -291,16 +291,14 @@
               <span>Cost:</span>
               <span class="property-value">{{formatCost(getAgentMetadata(selectedNode))}}</span>
             </div>
-            <div class="property-item" *ngIf="isAgentNode(selectedNode) && getAgentMetadata(selectedNode)?.requires_timeframes">
-              <span>Timeframes:</span>
-              <span class="property-value">{{getAgentMetadata(selectedNode)!.requires_timeframes.join(', ')}}</span>
-            </div>
+            <!-- Timeframes are now derived from instructions, not hardcoded -->
           </div>
           
           <mat-divider></mat-divider>
           
           <!-- Agent Instructions (ONLY for agents, shown before config form) -->
-          <div *ngIf="isAgentNode(selectedNode)" class="config-instructions primary-section">
+          <!-- Instructions Section (hide for rule-based agents like Trade Manager) -->
+          <div *ngIf="isAgentNode(selectedNode) && selectedNode.agent_type !== 'trade_manager_agent' && selectedNode.agent_type !== 'risk_manager_agent'" class="config-instructions primary-section">
             <div class="section-header">
               <mat-icon class="section-icon">psychology</mat-icon>
               <h4 class="section-title">Tell the Agent What To Do</h4>
@@ -335,25 +333,6 @@
               <mat-icon>info</mat-icon>
               <p>No configuration required for this {{selectedNode.node_category === 'tool' ? 'tool' : 'agent'}}.</p>
             </div>
-            
-            <!-- Save/Cancel buttons -->
-            <div *ngIf="selectedNode.metadata?.config_schema" class="config-actions">
-              <button 
-                mat-raised-button 
-                color="primary" 
-                (click)="saveConfigChanges()"
-                [disabled]="!hasUnsavedConfigChanges()">
-                <mat-icon>save</mat-icon>
-                Save
-              </button>
-              <button 
-                mat-button 
-                (click)="cancelConfigChanges()"
-                [disabled]="!hasUnsavedConfigChanges()">
-                <mat-icon>close</mat-icon>
-                Cancel
-              </button>
-            </div>
           </div>
           
           <!-- Tool Selector (ONLY for agents) -->
@@ -366,6 +345,25 @@
               (toolsChange)="onToolsChange($event, selectedNode)">
             </app-tool-selector>
           </div>
+        </div>
+        
+        <!-- Save/Cancel buttons - Fixed at bottom -->
+        <div class="config-footer">
+          <button 
+            mat-raised-button 
+            color="primary" 
+            (click)="saveConfigChanges()"
+            [disabled]="!hasUnsavedConfigChanges()">
+            <mat-icon>save</mat-icon>
+            Save Changes
+          </button>
+          <button 
+            mat-button 
+            (click)="cancelConfigChanges()"
+            [disabled]="!hasUnsavedConfigChanges()">
+            <mat-icon>close</mat-icon>
+            Cancel
+          </button>
         </div>
       </div>
     </div>

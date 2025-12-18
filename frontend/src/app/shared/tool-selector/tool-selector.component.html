@@ -2,44 +2,55 @@
   <div class="tool-selector-header">
     <h6>Attached Tools</h6>
     <button 
-      mat-icon-button 
+      mat-mini-fab 
+      color="primary"
       [matMenuTriggerFor]="addToolMenu"
       [disabled]="getAvailableToolsForMenu().length === 0"
-      matTooltip="Add Tool">
+      matTooltip="Add Tool"
+      class="add-tool-btn">
       <mat-icon>add</mat-icon>
     </button>
   </div>
 
-  <!-- Simple list of attached tools (NO configuration here) -->
-  <div *ngIf="attachedTools.length > 0" class="tools-list-simple">
-    <div *ngFor="let tool of attachedTools" class="tool-item-simple">
-      <mat-icon class="tool-icon-small">{{tool.metadata?.icon || 'extension'}}</mat-icon>
-      <span class="tool-name">{{tool.metadata?.name}}</span>
-      <button 
-        mat-icon-button 
-        (click)="removeTool(tool.tool_type)"
-        matTooltip="Remove Tool"
-        class="remove-btn">
-        <mat-icon>close</mat-icon>
-      </button>
-    </div>
+  <!-- Tool chips (tags style) -->
+  <div *ngIf="attachedTools.length > 0" class="tools-chips-container">
+    <mat-chip-set aria-label="Attached tools">
+      <mat-chip 
+        *ngFor="let tool of attachedTools" 
+        [removable]="true"
+        (removed)="removeTool(tool.tool_type)"
+        class="tool-chip">
+        <mat-icon matChipAvatar>{{tool.metadata?.icon || 'extension'}}</mat-icon>
+        {{tool.metadata?.name}}
+        <button matChipRemove aria-label="Remove tool">
+          <mat-icon>cancel</mat-icon>
+        </button>
+      </mat-chip>
+    </mat-chip-set>
   </div>
 
   <!-- Empty state -->
-  <div *ngIf="attachedTools.length === 0" class="empty-state-simple">
-    <mat-icon>extension_off</mat-icon>
-    <p>No tools attached</p>
-    <small>Click + to add tools. Configure tools by clicking their node on canvas.</small>
+  <div *ngIf="attachedTools.length === 0" class="empty-state-modern">
+    <div class="empty-icon-wrapper">
+      <mat-icon>build_circle</mat-icon>
+    </div>
+    <p class="empty-title">No tools attached yet</p>
+    <small class="empty-subtitle">Click the + button to add tools</small>
   </div>
 
   <!-- Add tool menu -->
-  <mat-menu #addToolMenu="matMenu">
+  <mat-menu #addToolMenu="matMenu" class="tool-menu">
     <button 
       mat-menu-item 
       *ngFor="let tool of getAvailableToolsForMenu()"
-      (click)="addTool(tool.tool_type)">
-      <mat-icon>{{tool.icon || 'extension'}}</mat-icon>
-      <span>{{tool.name}}</span>
+      (click)="addTool(tool.tool_type)"
+      [disabled]="isToolDisabled(tool.tool_type)"
+      [matTooltip]="getDisabledTooltip(tool.tool_type)"
+      [matTooltipDisabled]="!isToolDisabled(tool.tool_type)"
+      class="tool-menu-item">
+      <mat-icon [class.disabled-icon]="isToolDisabled(tool.tool_type)">{{tool.icon || 'extension'}}</mat-icon>
+      <span [class.disabled-text]="isToolDisabled(tool.tool_type)">{{tool.name}}</span>
+      <mat-icon *ngIf="isToolDisabled(tool.tool_type)" class="warning-icon">warning</mat-icon>
     </button>
     <div *ngIf="getAvailableToolsForMenu().length === 0" class="no-tools-message">
       <small>All supported tools already attached</small>

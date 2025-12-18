@@ -395,3 +395,189 @@ def stop_execution(execution_id: str, user_id: str):
     finally:
         db.close()
 
+
+@celery_app.task(name="app.orchestration.tasks.schedule_monitoring_check", bind=True, max_retries=5)
+def schedule_monitoring_check(self, execution_id: str):
+    """
+    Periodic monitoring check for open positions (Trade Manager Agent).
+    
+    This task:
+    1. Uses a fresh DB connection each time (5-min polling)
+    2. Checks if position still exists via broker API
+    3. Evaluates emergency exit conditions
+    4. Closes position if needed or schedules next check
+    
+    Args:
+        execution_id: UUID of execution in MONITORING status
+        
+    Returns:
+        Dict with monitoring status
+    """
+    logger.info("monitoring_check_started", execution_id=execution_id)
+    
+    # Fresh DB connection for each check
+    db = SessionLocal()
+    
+    try:
+        # Load execution
+        execution = db.query(Execution).filter(Execution.id == UUID(execution_id)).first()
+        
+        if not execution:
+            logger.warning("execution_not_found", execution_id=execution_id)
+            return {"status": "not_found"}
+        
+        if execution.status != ExecutionStatus.MONITORING:
+            logger.info("execution_no_longer_monitoring", execution_id=execution_id, status=execution.status.value)
+            return {"status": "not_monitoring"}
+        
+        # Load pipeline
+        pipeline = execution.pipeline
+        if not pipeline:
+            logger.error("pipeline_not_found", execution_id=execution_id)
+            return {"status": "error", "message": "Pipeline not found"}
+        
+        # Deserialize current state from execution result
+        state_dict = execution.result or {}
+        from app.schemas.pipeline_state import PipelineState
+        
+        # Reconstruct state object
+        state = PipelineState(
+            pipeline_id=pipeline.id,
+            execution_id=execution.id,
+            user_id=execution.user_id,
+            symbol=execution.symbol or "UNKNOWN",
+            mode=execution.mode,
+            execution_phase="monitoring"  # Force monitoring phase
+        )
+        
+        # Restore state fields from result
+        if "strategy" in state_dict and state_dict["strategy"]:
+            from app.schemas.pipeline_state import StrategyResult
+            state.strategy = StrategyResult(**state_dict["strategy"])
+        
+        if "risk_assessment" in state_dict and state_dict["risk_assessment"]:
+            from app.schemas.pipeline_state import RiskAssessment
+            state.risk_assessment = RiskAssessment(**state_dict["risk_assessment"])
+        
+        if "trade_execution" in state_dict and state_dict["trade_execution"]:
+            from app.schemas.pipeline_state import TradeExecution
+            state.trade_execution = TradeExecution(**state_dict["trade_execution"])
+        
+        # Find Trade Manager agent in pipeline
+        trade_manager_node = None
+        for node in pipeline.config.get("nodes", []):
+            if node.get("agent_type") == "trade_manager_agent":
+                trade_manager_node = node
+                break
+        
+        if not trade_manager_node:
+            logger.error("trade_manager_not_found", execution_id=execution_id)
+            return {"status": "error", "message": "Trade Manager agent not found"}
+        
+        # Create Trade Manager agent instance
+        from app.agents import get_registry
+        registry = get_registry()
+        
+        agent = registry.create_agent(
+            agent_type="trade_manager_agent",
+            agent_id=trade_manager_node["id"],
+            config=trade_manager_node.get("config", {})
+        )
+        
+        # Execute monitoring logic
+        updated_state = agent.process(state)
+        
+        # Update execution result
+        def serialize_model(model):
+            if model is None:
+                return None
+            data = model.dict()
+            for key, value in data.items():
+                if isinstance(value, datetime):
+                    data[key] = value.isoformat()
+            return data
+        
+        execution.result = {
+            **(execution.result or {}),
+            "strategy": serialize_model(updated_state.strategy),
+            "risk_assessment": serialize_model(updated_state.risk_assessment),
+            "trade_execution": serialize_model(updated_state.trade_execution),
+            "errors": updated_state.errors,
+            "warnings": updated_state.warnings,
+        }
+        
+        # Update logs and reports
+        from sqlalchemy.orm.attributes import flag_modified
+        execution.logs = _serialize_logs(updated_state.execution_log)
+        execution.reports = _serialize_reports(updated_state.agent_reports)
+        flag_modified(execution, "logs")
+        flag_modified(execution, "reports")
+        flag_modified(execution, "result")
+        
+        # Check if monitoring should complete
+        if updated_state.should_complete:
+            execution.status = ExecutionStatus.COMPLETED
+            execution.completed_at = datetime.utcnow()
+            execution.execution_phase = "completed"
+            execution.next_check_at = None
+            
+            logger.info("monitoring_completed", execution_id=execution_id)
+            
+            db.commit()
+            return {"status": "completed"}
+        
+        else:
+            # Schedule next check
+            interval = updated_state.monitor_interval_minutes or 5
+            execution.next_check_at = datetime.utcnow() + timedelta(minutes=interval)
+            
+            db.commit()
+            
+            # Schedule next task
+            schedule_monitoring_check.apply_async(
+                args=[execution_id],
+                countdown=interval * 60  # Convert to seconds
+            )
+            
+            logger.info(
+                "monitoring_continuing",
+                execution_id=execution_id,
+                next_check_minutes=interval,
+                next_check_at=execution.next_check_at.isoformat()
+            )
+            
+            return {"status": "monitoring", "next_check_minutes": interval}
+    
+    except Exception as exc:
+        logger.error("monitoring_check_failed", execution_id=execution_id, error=str(exc), exc_info=True)
+        
+        # Retry with exponential backoff (1 min, 2 min, 4 min, 8 min, 16 min)
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+    
+    finally:
+        db.close()  # Always clean up connection
+
+
+def _serialize_logs(logs):
+    """Helper to serialize execution logs."""
+    return [
+        {
+            "timestamp": log.get("timestamp").isoformat() if isinstance(log.get("timestamp"), datetime) else log.get("timestamp"),
+            "message": log.get("message"),
+            "level": log.get("level", "info"),
+            "agent_id": log.get("agent_id")
+        }
+        for log in logs
+    ]
+
+
+def _serialize_reports(reports):
+    """Helper to serialize agent reports."""
+    serialized = {}
+    for agent_id, report in reports.items():
+        if hasattr(report, 'dict'):
+            serialized[agent_id] = report.dict()
+        else:
+            serialized[agent_id] = report
+    return serialized
+

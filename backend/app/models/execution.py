@@ -3,7 +3,7 @@ Execution model for tracking pipeline execution runs.
 """
 from datetime import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Float, Enum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Float, Enum, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -15,6 +15,7 @@ class ExecutionStatus(str, PyEnum):
     """Execution status enum."""
     PENDING = "pending"
     RUNNING = "running"
+    MONITORING = "monitoring"  # Position monitoring mode (Trade Manager)
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -56,6 +57,12 @@ class Execution(Base):
     cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
     report_pdf_path = Column(String(500), nullable=True)  # Path to generated PDF report
     executive_report = Column(JSONB, nullable=True)  # Comprehensive AI-generated report
+    
+    # Position monitoring fields (Trade Manager)
+    execution_phase = Column(String(20), default="execute", nullable=False)  # "execute" or "monitoring"
+    next_check_at = Column(DateTime, nullable=True)  # When to check position next
+    monitor_interval_minutes = Column(Integer, default=5, nullable=False)  # Polling frequency
+    
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
