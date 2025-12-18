@@ -1,78 +1,58 @@
 """
-Bias Agent using CrewAI
+Bias Agent - Determines overall market bias using LLM + tools
 
-Analyzes market data across multiple timeframes to determine market bias.
-This agent uses CrewAI with multiple sub-agents for comprehensive analysis.
+This agent is instruction-driven: it reads natural language instructions from the user
+and automatically selects appropriate tools to complete the analysis.
 """
+import structlog
 from typing import Dict, Any
-from crewai import Agent, Task, Crew, Process
+from datetime import datetime
+from crewai import Agent, Task, Crew
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
-from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, BiasResult
-from app.config import settings
-from app.services.langfuse_service import trace_agent_execution, trace_llm_call, flush_langfuse
+from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
+from app.schemas.pipeline_state import PipelineState, BiasResult
+from app.services.langfuse_service import trace_agent_execution
+from app.tools.crewai_tools import get_available_tools
+
+logger = structlog.get_logger()
 
 
 class BiasAgent(BaseAgent):
     """
-    Multi-timeframe bias analysis agent powered by CrewAI.
+    Bias Agent - Determines market bias (BULLISH/BEARISH/NEUTRAL)
     
-    This agent uses a crew of AI sub-agents to analyze market data:
-    - Market Structure Analyst: Analyzes price action and market structure
-    - Sentiment Analyst: Evaluates market sentiment indicators
-    - Bias Synthesizer: Combines analyses to determine overall bias
+    This agent analyzes market conditions using technical indicators and price action
+    to determine the overall bias. It uses natural language instructions provided by
+    the user and automatically selects the appropriate tools.
     
-    This is a PAID agent (uses OpenAI API for LLM calls).
-    
-    Configuration:
-        - primary_timeframe: Main timeframe for bias (e.g., "1h", "4h")
-        - secondary_timeframes: Additional timeframes to consider
-        - model: LLM model to use (default: "gpt-3.5-turbo")
-    
-    Example config:
-        {
-            "primary_timeframe": "4h",
-            "secondary_timeframes": ["1h", "1d"],
-            "model": "gpt-3.5-turbo"
-        }
+    Example Instructions:
+        "Determine bias using RSI on daily timeframe. RSI > 70 = bearish, RSI < 30 = bullish"
+        "Use multiple timeframes (1h, 4h, 1d) to determine overall trend"
+        "Analyze market structure and momentum to determine bias"
     """
     
     @classmethod
     def get_metadata(cls) -> AgentMetadata:
         return AgentMetadata(
             agent_type="bias_agent",
-            name="Multi-Timeframe Bias Agent",
-            description="AI-powered market bias analysis across multiple timeframes using CrewAI. Uses GPT-3.5-turbo.",
+            name="Bias Agent",
+            description="Determines overall market bias (bullish/bearish/neutral) using technical analysis",
             category="analysis",
-            version="1.0.0",
-            icon="analytics",
-            pricing_rate=0.05,  # $0.05 per execution (estimated)
-            is_free=False,
-            requires_timeframes=["1h", "4h", "1d"],  # Minimum required
-            requires_market_data=True,
-            requires_position=False,
-            supported_tools=["webhook_notifier", "email_notifier"],  # Added for bias change alerts
+            version="2.0.0",
+            icon="trending_up",
+            pricing_rate=0.0,
+            is_free=True,
+            requires_timeframes=["1h", "4h", "1d"],  # Default timeframes
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Bias Agent Configuration",
-                description="Configure multi-timeframe bias analysis",
                 properties={
-                    "primary_timeframe": {
+                    "instructions": {
                         "type": "string",
-                        "title": "Primary Timeframe",
-                        "description": "Main timeframe for bias determination",
-                        "enum": ["1h", "4h", "1d"],
-                        "default": "4h"
-                    },
-                    "secondary_timeframes": {
-                        "type": "array",
-                        "title": "Secondary Timeframes",
-                        "description": "Additional timeframes to consider",
-                        "items": {
-                            "type": "string",
-                            "enum": ["5m", "15m", "30m", "1h", "4h", "1d", "1w"]
-                        },
-                        "default": ["1h", "1d"]
+                        "title": "Instructions",
+                        "description": "Natural language instructions for how to determine market bias",
+                        "default": "Analyze the market using RSI, MACD, and price action across multiple timeframes (1h, 4h, 1d) to determine if the overall bias is BULLISH, BEARISH, or NEUTRAL. Consider momentum, trend strength, and key levels."
                     },
                     "model": {
                         "type": "string",
@@ -82,7 +62,7 @@ class BiasAgent(BaseAgent):
                         "default": "gpt-3.5-turbo"
                     }
                 },
-                required=["primary_timeframe"]
+                required=["instructions"]
             ),
             can_initiate_trades=False,
             can_close_positions=False
@@ -91,64 +71,18 @@ class BiasAgent(BaseAgent):
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
         self.model = config.get("model", "gpt-3.5-turbo")
-        
-        # Initialize CrewAI agents (sub-agents)
-        self._setup_crew()
-    
-    def _setup_crew(self):
-        """Set up the CrewAI crew with sub-agents."""
-        
-        # Market Structure Analyst
-        self.structure_analyst = Agent(
-            role="Market Structure Analyst",
-            goal="Analyze price action and market structure to identify trends and key levels",
-            backstory="""You are an expert technical analyst specializing in market structure.
-            You identify support/resistance levels, trend direction, and market phases.
-            You analyze candlestick patterns and price movements across timeframes.""",
-            verbose=False,
-            allow_delegation=False,
-            llm=self.model
-        )
-        
-        # Sentiment Analyst
-        self.sentiment_analyst = Agent(
-            role="Market Sentiment Analyst",
-            goal="Evaluate market sentiment using technical indicators and momentum",
-            backstory="""You are a sentiment analysis expert who reads market psychology.
-            You use RSI, MACD, volume, and other indicators to gauge market sentiment.
-            You identify overbought/oversold conditions and momentum shifts.""",
-            verbose=False,
-            allow_delegation=False,
-            llm=self.model
-        )
-        
-        # Bias Synthesizer
-        self.bias_synthesizer = Agent(
-            role="Bias Synthesizer",
-            goal="Combine all analyses to determine the overall market bias",
-            backstory="""You are a senior trading strategist who synthesizes multiple analyses.
-            You weigh different timeframes and factors to determine the strongest bias.
-            You provide clear, actionable bias determinations (BULLISH/BEARISH/NEUTRAL).""",
-            verbose=False,
-            allow_delegation=False,
-            llm=self.model
-        )
     
     def process(self, state: PipelineState) -> PipelineState:
         """
-        Analyze market bias using CrewAI agents.
+        Analyze market bias using LLM + tools.
         
         Args:
             state: Current pipeline state with market data
             
         Returns:
             Updated pipeline state with bias analysis
-            
-        Raises:
-            InsufficientDataError: If required data missing
-            AgentProcessingError: If analysis fails
         """
-        # Create Langfuse trace for this agent execution
+        # Create Langfuse trace
         trace = trace_agent_execution(
             execution_id=str(state.execution_id),
             agent_type=self.metadata.agent_type,
@@ -157,7 +91,7 @@ class BiasAgent(BaseAgent):
             user_id=str(state.user_id),
         )
         
-        self.log(state, "Starting multi-timeframe bias analysis with CrewAI")
+        self.log(state, "Starting bias analysis with instruction-driven approach")
         
         # Validate inputs
         if not self.validate_input(state):
@@ -166,243 +100,162 @@ class BiasAgent(BaseAgent):
             )
         
         try:
-            primary_tf = self.config["primary_timeframe"]
-            secondary_tfs = self.config.get("secondary_timeframes", ["1h", "1d"])
+            # Get user instructions
+            instructions = self.config.get("instructions", "").strip()
+            if not instructions:
+                instructions = self.metadata.config_schema.properties["instructions"]["default"]
             
-            # Prepare market data context for AI agents
-            market_context = self._prepare_market_context(state, primary_tf, secondary_tfs)
+            self.log(state, f"Using instructions: {instructions[:100]}...")
             
-            # Create tasks for each agent
-            structure_task = Task(
-                description=f"""Analyze the market structure for {state.symbol}:
-                
-                Primary Timeframe ({primary_tf}):
-                {market_context['primary']}
-                
-                Identify:
-                1. Current trend direction (uptrend/downtrend/sideways)
-                2. Key support and resistance levels
-                3. Market phase (accumulation/distribution/markup/markdown)
-                4. Any significant patterns
-                
-                Provide a clear structural analysis.""",
-                agent=self.structure_analyst,
-                expected_output="Detailed market structure analysis with trend direction and key levels"
+            # Prepare market context
+            market_context = self._prepare_market_context(state)
+            
+            # Get all available tools for this ticker
+            tools = get_available_tools(
+                ticker=state.symbol,
+                candles=None  # Indicator tools don't need candles
             )
             
-            sentiment_task = Task(
-                description=f"""Analyze market sentiment for {state.symbol}:
-                
-                Technical Indicators:
-                {market_context['indicators']}
-                
-                Evaluate:
-                1. Momentum (RSI, MACD)
-                2. Volume trends
-                3. Overbought/oversold conditions
-                4. Divergences
-                
-                Determine the current market sentiment.""",
-                agent=self.sentiment_analyst,
-                expected_output="Market sentiment analysis with indicator readings"
+            self.log(state, f"Available tools: {[t.name for t in tools]}")
+            
+            # Create single analyst agent with user instructions
+            analyst = Agent(
+                role="Market Bias Analyst",
+                goal=instructions,  # User's natural language instructions!
+                backstory=f"""You are an expert market analyst for {state.symbol}. 
+                You have access to various technical analysis tools. 
+                Use them as needed to accomplish your goal based on the instructions provided.
+                Always provide clear reasoning for your bias determination.""",
+                tools=tools,
+                llm=self.model,
+                verbose=True,
+                allow_delegation=False
             )
             
-            synthesis_task = Task(
-                description=f"""Based on the structure and sentiment analyses, determine the overall bias:
+            # Create analysis task
+            analysis_task = Task(
+                description=f"""Analyze {state.symbol} and determine the market bias.
                 
-                Consider:
-                1. Agreement/disagreement between timeframes
-                2. Strength of trends and momentum
-                3. Risk factors
-                
-                Provide:
-                - Bias: BULLISH, BEARISH, or NEUTRAL
-                - Confidence: 0.0 to 1.0
-                - Key factors supporting the bias
-                - Reasoning for the determination
-                
-                Format your response as JSON:
-                {{
-                    "bias": "BULLISH|BEARISH|NEUTRAL",
-                    "confidence": 0.0-1.0,
-                    "key_factors": ["factor1", "factor2", ...],
-                    "reasoning": "explanation"
-                }}""",
-                agent=self.bias_synthesizer,
-                expected_output="JSON with bias determination, confidence, factors, and reasoning",
-                context=[structure_task, sentiment_task]
+CURRENT MARKET DATA:
+{market_context}
+
+YOUR INSTRUCTIONS:
+{instructions}
+
+Use the available tools as needed (RSI, MACD, SMA, etc.) to complete your analysis.
+
+Provide your final output in this JSON format:
+{{
+    "bias": "BULLISH|BEARISH|NEUTRAL",
+    "confidence": 0.0-1.0,
+    "reasoning": "detailed explanation of your analysis",
+    "key_factors": ["factor1", "factor2", "factor3"]
+}}
+
+Be specific about which indicators you used and what they showed.""",
+                agent=analyst,
+                expected_output="JSON with bias determination, confidence, reasoning, and key factors"
             )
             
-            # Create and run the crew
-            self.log(state, f"Running CrewAI crew with {len([structure_task, sentiment_task, synthesis_task])} tasks")
-            
+            # Execute crew
             crew = Crew(
-                agents=[self.structure_analyst, self.sentiment_analyst, self.bias_synthesizer],
-                tasks=[structure_task, sentiment_task, synthesis_task],
-                process=Process.sequential,
+                agents=[analyst],
+                tasks=[analysis_task],
                 verbose=False
             )
             
-            # Execute the crew
+            self.log(state, "Executing bias analysis...")
             result = crew.kickoff()
             
-            # Trace the LLM call to Langfuse
-            if trace and result:
-                trace_llm_call(
-                    trace=trace,
-                    model=self.model,
-                    prompt=f"Bias analysis for {state.symbol} on {primary_tf}",
-                    response=str(result),
-                    tokens_used=None,  # CrewAI doesn't expose token counts easily
-                    cost=0.05,  # Estimated
-                )
+            # Parse result
+            bias_result = self._parse_bias_result(result, state)
             
-            # Parse the result
-            bias_result = self._parse_crew_result(result, primary_tf)
-            
-            # Store in state
-            state.biases[primary_tf] = bias_result
+            # Update state
+            state.bias = bias_result
             
             self.log(
                 state,
-                f"✓ Bias determined: {bias_result.bias} "
-                f"(confidence: {bias_result.confidence:.2f}) on {primary_tf}"
-            )
-            self.record_report(
-                state,
-                title="Bias analysis completed",
-                summary=(
-                    f"{bias_result.bias} bias ({bias_result.confidence:.2%} confidence) "
-                    f"on {primary_tf}"
-                ),
-                metrics={
-                    "bias": bias_result.bias,
-                    "confidence": round(bias_result.confidence, 2),
-                    "timeframe": primary_tf,
-                },
-                data={
-                    "key_factors": bias_result.key_factors,
-                    "reasoning": bias_result.reasoning,
-                    "secondary_timeframes": secondary_tfs,
-                    "model": self.model,
-                },
+                f"✓ Bias determined: {bias_result.bias} (confidence: {bias_result.confidence:.0%})"
             )
             
-            # Track cost (estimate based on tokens)
-            # TODO: Implement actual token counting from OpenAI response
-            estimated_cost = 0.05  # Rough estimate
+            # Track cost
+            estimated_cost = 0.05  # GPT-3.5 is cheap
             self.track_cost(state, estimated_cost)
             
-            # Flush Langfuse data
-            flush_langfuse()
-            
             return state
-        
+            
         except Exception as e:
             error_msg = f"Bias analysis failed: {str(e)}"
             self.add_error(state, error_msg)
-            
-            # Flush Langfuse on error too
-            flush_langfuse()
-            
+            logger.exception("bias_agent_failed", agent_id=self.agent_id, error=str(e))
             raise AgentProcessingError(error_msg) from e
     
-    def _prepare_market_context(
-        self,
-        state: PipelineState,
-        primary_tf: str,
-        secondary_tfs: list
-    ) -> Dict[str, str]:
-        """
-        Prepare market data context for AI agents.
+    def _prepare_market_context(self, state: PipelineState) -> str:
+        """Prepare market data context for the LLM."""
+        lines = [f"Symbol: {state.symbol}"]
         
-        Returns:
-            Dictionary with formatted market data strings
-        """
-        context = {}
+        if state.market_data and state.market_data.current_price:
+            lines.append(f"Current Price: ${state.market_data.current_price:.2f}")
         
-        # Primary timeframe data
-        primary_candles = state.get_timeframe_data(primary_tf)
-        if primary_candles:
-            latest = primary_candles[-1]
-            context['primary'] = f"""
-            Latest Candle: O:{latest.open:.2f} H:{latest.high:.2f} L:{latest.low:.2f} C:{latest.close:.2f}
-            Volume: {latest.volume:,}
-            Last 5 Closes: {', '.join([f'{c.close:.2f}' for c in primary_candles[-5:]])}
-            """
-        
-        # Indicators (from latest candle if available)
-        if primary_candles and primary_candles[-1].rsi:
-            latest = primary_candles[-1]
-            context['indicators'] = f"""
-            RSI: {latest.rsi:.2f} {self._interpret_rsi(latest.rsi)}
-            MACD: {latest.macd:.2f} (Signal: {latest.macd_signal:.2f})
-            """
-        else:
-            context['indicators'] = "Technical indicators not yet calculated"
-        
-        return context
-    
-    def _interpret_rsi(self, rsi: float) -> str:
-        """Helper to interpret RSI value."""
-        if rsi > 70:
-            return "(Overbought)"
-        elif rsi < 30:
-            return "(Oversold)"
-        else:
-            return "(Neutral)"
-    
-    def _parse_crew_result(self, result: Any, timeframe: str) -> BiasResult:
-        """
-        Parse CrewAI result into BiasResult.
-        
-        Args:
-            result: Raw result from CrewAI (CrewOutput or str)
-            timeframe: Timeframe analyzed
+        # Show available timeframes
+        if state.market_data and state.market_data.timeframes:
+            lines.append(f"\nAvailable Timeframes: {list(state.market_data.timeframes.keys())}")
             
-        Returns:
-            BiasResult object
-        """
+            # Show recent price action for each timeframe
+            for tf, data in state.market_data.timeframes.items():
+                if data and len(data) > 0:
+                    latest = data[-1]
+                    lines.append(
+                        f"  {tf}: Close=${latest.close:.2f}, "
+                        f"High=${latest.high:.2f}, Low=${latest.low:.2f}"
+                    )
+        
+        # Show signal context if available
+        if state.signal_data:
+            lines.append(f"\nTriggering Signal: {state.signal_data.signal_type}")
+            lines.append(f"Signal Confidence: {state.signal_data.confidence:.0%}")
+        
+        return "\n".join(lines)
+    
+    def _parse_bias_result(self, result: Any, state: PipelineState) -> BiasResult:
+        """Parse CrewAI result into BiasResult."""
         import json
         import re
         
-        # Convert CrewOutput to string if needed
-        if hasattr(result, 'raw'):
-            result_str = str(result.raw)
-        elif hasattr(result, 'output'):
-            result_str = str(result.output)
-        else:
-            result_str = str(result)
+        result_str = str(result)
         
-        # Try to extract JSON from the result
-        try:
-            # Look for JSON in the result
-            json_match = re.search(r'\{[^}]+\}', result_str, re.DOTALL)
-            if json_match:
+        # Try to extract JSON from result
+        json_match = re.search(r'\{[^{}]*"bias"[^{}]*\}', result_str, re.DOTALL)
+        
+        if json_match:
+            try:
                 data = json.loads(json_match.group())
-                
                 return BiasResult(
                     bias=data.get("bias", "NEUTRAL"),
                     confidence=float(data.get("confidence", 0.5)),
-                    timeframe=timeframe,
-                    reasoning=data.get("reasoning", result_str[:200]),
-                    key_factors=data.get("key_factors", [])
+                    reasoning=data.get("reasoning", result_str),
+                    key_factors=data.get("key_factors", []),
+                    timeframe_analysis={}
                 )
-        except:
-            pass
+            except (json.JSONDecodeError, ValueError):
+                pass
         
-        # Fallback: Parse text result
+        # Fallback: parse bias from text
         bias = "NEUTRAL"
-        if "BULLISH" in result_str.upper():
+        confidence = 0.5
+        
+        result_lower = result_str.lower()
+        if "bullish" in result_lower or "buy" in result_lower:
             bias = "BULLISH"
-        elif "BEARISH" in result_str.upper():
+            confidence = 0.7
+        elif "bearish" in result_lower or "sell" in result_lower:
             bias = "BEARISH"
+            confidence = 0.7
         
         return BiasResult(
             bias=bias,
-            confidence=0.6,
-            timeframe=timeframe,
-            reasoning=result_str[:500],  # First 500 chars
-            key_factors=[]
+            confidence=confidence,
+            reasoning=result_str[:500],  # Truncate if too long
+            key_factors=[],
+            timeframe_analysis={}
         )
-

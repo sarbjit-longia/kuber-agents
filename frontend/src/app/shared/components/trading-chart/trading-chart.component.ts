@@ -32,6 +32,8 @@ export interface ChartData {
     markers?: any[];
     lines?: any[];
     arrows?: any[];
+    zones?: any[];
+    text?: any[];
   };
   metadata?: {
     strategy?: string;
@@ -292,26 +294,102 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const chart = this.widget.activeChart();
+      const candles = this.chartData.candles || [];
       
-      // Add shapes (rectangles, triangles, etc.)
+      if (candles.length === 0) {
+        console.warn('No candles available for annotations');
+        return;
+      }
+      
+      const firstTime = new Date(candles[0].time || candles[0].timestamp || Date.now()).getTime() / 1000;
+      const lastTime = new Date(candles[candles.length - 1].time || candles[candles.length - 1].timestamp || Date.now()).getTime() / 1000;
+      
+      // 1. Add zones (shaded rectangular areas)
+      if (this.chartData.annotations.zones && this.chartData.annotations.zones.length > 0) {
+        this.chartData.annotations.zones.forEach((zone: any) => {
+          try {
+            chart.createMultipointShape([
+              { time: firstTime, price: zone.price1 },
+              { time: lastTime, price: zone.price2 }
+            ], {
+              shape: 'rectangle',
+              overrides: {
+                backgroundColor: zone.color || 'rgba(0, 0, 0, 0.1)',
+                borderColor: 'transparent',
+                borderWidth: 0,
+                transparency: 85,
+              },
+              text: zone.label || '',
+            });
+          } catch (err) {
+            console.warn('Failed to add zone:', err);
+          }
+        });
+      }
+      
+      // 2. Add shapes (rectangles from LLM - FVGs, flags, etc.)
       if (this.chartData.annotations.shapes && this.chartData.annotations.shapes.length > 0) {
         this.chartData.annotations.shapes.forEach((shape: any) => {
           try {
-            chart.createMultipointShape(shape.points || [], {
-              shape: shape.type || 'rectangle',
-              overrides: shape.style || {},
-            });
+            // For LLM-extracted shapes that only have price1/price2, not time
+            if (shape.price1 && shape.price2 && !shape.points) {
+              chart.createMultipointShape([
+                { time: firstTime, price: shape.price1 },
+                { time: lastTime, price: shape.price2 }
+              ], {
+                shape: shape.type || 'rectangle',
+                overrides: {
+                  backgroundColor: shape.color || 'rgba(0, 0, 0, 0.1)',
+                  borderColor: shape.border_color || shape.color || '#000',
+                  borderWidth: shape.border_width || 1,
+                  transparency: (1 - (shape.opacity || 0.2)) * 100,
+                },
+                text: shape.label || '',
+              });
+            } else if (shape.points) {
+              // For shapes with explicit points (from tools)
+              chart.createMultipointShape(shape.points, {
+                shape: shape.type || 'rectangle',
+                overrides: shape.style || {},
+              });
+            }
           } catch (err) {
             console.warn('Failed to add shape:', err);
           }
         });
       }
+      
+      // 3. Add lines (support/resistance levels)
+      if (this.chartData.annotations.lines && this.chartData.annotations.lines.length > 0) {
+        this.chartData.annotations.lines.forEach((line: any) => {
+          try {
+            if (line.type === 'horizontal' && line.price) {
+              chart.createMultipointShape([
+                { time: firstTime, price: line.price },
+                { time: lastTime, price: line.price }
+              ], {
+                shape: 'trend_line',
+                overrides: {
+                  linecolor: line.color || '#000',
+                  linewidth: line.width || 1,
+                  linestyle: line.style === 'dashed' ? 1 : 0, // 0=solid, 1=dotted, 2=dashed
+                },
+                text: line.label || '',
+              });
+            }
+          } catch (err) {
+            console.warn('Failed to add line:', err);
+          }
+        });
+      }
 
-      // Add markers/points using createExecutionShape
+      // 4. Add markers/points using createExecutionShape
       if (this.chartData.annotations.markers && this.chartData.annotations.markers.length > 0) {
         this.chartData.annotations.markers.forEach((marker: any) => {
           try {
-            const time = new Date(marker.timestamp).getTime() / 1000; // Convert to seconds
+            const time = marker.timestamp 
+              ? new Date(marker.timestamp).getTime() / 1000 
+              : marker.time || lastTime;
             const price = marker.price || 0;
             
             chart.createExecutionShape({
@@ -327,6 +405,44 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           }
         });
       }
+      
+      // 5. Add text labels (overlays)
+      if (this.chartData.annotations.text && this.chartData.annotations.text.length > 0) {
+        this.chartData.annotations.text.forEach((text: any, index: number) => {
+          try {
+            // Position text labels at specific points or at the latest bar
+            const time = text.time === 'latest' ? lastTime : (new Date(text.time).getTime() / 1000);
+            
+            // Get a price level for positioning (top, middle, or bottom of visible range)
+            const prices = candles.map((c: any) => c.high);
+            const maxPrice = Math.max(...prices);
+            const minPrice = Math.min(...prices);
+            const range = maxPrice - minPrice;
+            
+            let yPosition = maxPrice - (range * 0.1); // Default: near top
+            if (text.position === 'bottom_left' || text.position === 'bottom_right') {
+              yPosition = minPrice + (range * 0.1) + (text.offset_y || 0) * range / 100;
+            } else if (text.position === 'middle') {
+              yPosition = minPrice + range * 0.5;
+            }
+            
+            chart.createMultipointShape([{ time: time, price: yPosition }], {
+              shape: 'text',
+              overrides: {
+                color: text.color || '#fff',
+                fontSize: text.font_size || 12,
+                bold: text.bold || false,
+                backgroundColor: text.background || 'transparent',
+              },
+              text: text.text || '',
+            });
+          } catch (err) {
+            console.warn('Failed to add text:', err);
+          }
+        });
+      }
+
+      console.log('✅ Annotations added successfully');
 
     } catch (error) {
       console.error('Error adding annotations:', error);
