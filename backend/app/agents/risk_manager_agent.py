@@ -97,7 +97,7 @@ class RiskManagerAgent(BaseAgent):
             AgentProcessingError: If risk assessment fails
         """
         from crewai import Agent, Task, Crew
-        from app.services.langfuse_service import create_langfuse_trace, track_llm_generation
+        from app.services.langfuse_service import trace_agent_execution
         from app.services.model_registry import model_registry
         from app.database import SessionLocal
         
@@ -137,21 +137,20 @@ class RiskManagerAgent(BaseAgent):
             
             model_id = self.config.get("model", "gpt-4")
             
+            # Create Langfuse trace
+            trace = trace_agent_execution(
+                execution_id=str(state.execution_id),
+                agent_type=self.metadata.agent_type,
+                agent_id=self.agent_id,
+                pipeline_id=str(state.pipeline_id),
+                user_id=str(state.user_id),
+            )
+            
             # Get broker account info
             broker_info = self._get_broker_account_info(state)
             
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
-            
-            # Create Langfuse trace
-            langfuse_trace = create_langfuse_trace(
-                name=f"risk_manager_{state.execution_id}",
-                metadata={
-                    "agent_type": self.metadata.agent_type,
-                    "symbol": state.symbol,
-                    "strategy_action": strategy.action
-                }
-            )
             
             # Create CrewAI agent
             risk_analyst = Agent(
@@ -203,16 +202,6 @@ class RiskManagerAgent(BaseAgent):
             )
             
             result = crew.kickoff()
-            
-            # Track LLM call
-            track_llm_generation(
-                langfuse_trace=langfuse_trace,
-                name="risk_analysis",
-                model=model_id,
-                input_text=context + "\n\n" + instructions,
-                output_text=str(result),
-                metadata={"strategy_action": strategy.action}
-            )
             
             # Parse LLM response
             risk_decision = self._parse_risk_decision(str(result), strategy)

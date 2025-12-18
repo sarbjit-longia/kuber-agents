@@ -251,12 +251,14 @@ Be specific about which indicators you used and what they showed.""",
         if json_match:
             try:
                 data = json.loads(json_match.group())
+                # Determine primary timeframe from state
+                primary_timeframe = state.timeframes[0] if state.timeframes else "1d"
                 return BiasResult(
                     bias=data.get("bias", "NEUTRAL"),
                     confidence=float(data.get("confidence", 0.5)),
+                    timeframe=primary_timeframe,
                     reasoning=data.get("reasoning", result_str),
-                    key_factors=data.get("key_factors", []),
-                    timeframe_analysis={}
+                    key_factors=data.get("key_factors", [])
                 )
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -273,10 +275,13 @@ Be specific about which indicators you used and what they showed.""",
             bias = "BEARISH"
             confidence = 0.7
         
+        # Determine primary timeframe from state
+        primary_timeframe = state.timeframes[0] if state.timeframes else "1d"
+        
         return BiasResult(
             bias=bias,
             confidence=confidence,
+            timeframe=primary_timeframe,
             reasoning=result_str[:500],  # Truncate if too long
-            key_factors=[],
-            timeframe_analysis={}
+            key_factors=[]
         )

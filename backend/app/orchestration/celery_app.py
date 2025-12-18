@@ -27,10 +27,14 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=30 * 60,  # 30 minutes max per task
-    task_soft_time_limit=25 * 60,  # 25 minutes soft limit
+    task_time_limit=10 * 60,  # 10 minutes max per task (reduced for faster recovery)
+    task_soft_time_limit=8 * 60,  # 8 minutes soft limit
     worker_prefetch_multiplier=1,  # One task at a time
     worker_max_tasks_per_child=1000,  # Restart worker after 1000 tasks
+    
+    # Task resilience: prevent task loss on worker restart
+    task_acks_late=True,  # Don't acknowledge task until it's fully completed
+    task_reject_on_worker_lost=True,  # Requeue task if worker dies unexpectedly
 )
 
 # Celery Beat schedule for periodic tasks
