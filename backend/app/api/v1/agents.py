@@ -218,6 +218,40 @@ async def validate_instructions(
             agent_type=request.agent_type
         )
         
+        # Filter tools based on agent's supported tools
+        registry = get_registry()
+        agent_metadata = registry.get_metadata(request.agent_type)
+        
+        if agent_metadata and agent_metadata.supported_tools:
+            supported = set(agent_metadata.supported_tools)
+            detected_tools = result.get("tools", [])
+            
+            # Filter to only supported tools
+            filtered_tools = [
+                tool for tool in detected_tools 
+                if tool.get("tool") in supported
+            ]
+            
+            # Recalculate total cost
+            filtered_cost = sum(tool.get("cost", 0.0) for tool in filtered_tools)
+            
+            # Special handling for agents that don't need tool detection
+            if not filtered_tools and request.agent_type == "risk_manager_agent":
+                result["status"] = "success"
+                result["message"] = "No broker detected in instructions - attach one manually below"
+                result["summary"] = "Risk Manager will query the broker tool you attach below for account balance and positions."
+                result["tools"] = []
+                result["total_cost"] = 0.0
+            elif len(filtered_tools) < len(detected_tools):
+                # Add warning if tools were filtered
+                filtered_out = [t.get("tool") for t in detected_tools if t.get("tool") not in supported]
+                result["summary"] = f"{result.get('summary', '')} [Note: {', '.join(filtered_out)} not supported by {agent_metadata.name}]"
+                result["tools"] = filtered_tools
+                result["total_cost"] = filtered_cost
+            else:
+                result["tools"] = filtered_tools
+                result["total_cost"] = filtered_cost
+        
         logger.info(
             "instructions_validated",
             user_id=current_user.id,

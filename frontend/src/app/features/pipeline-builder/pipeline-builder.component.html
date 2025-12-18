@@ -298,13 +298,21 @@
           
           <!-- Agent Instructions (ONLY for agents, shown before config form) -->
           <!-- Instructions Section (hide for rule-based agents like Trade Manager) -->
-          <div *ngIf="isAgentNode(selectedNode) && selectedNode.agent_type !== 'trade_manager_agent' && selectedNode.agent_type !== 'risk_manager_agent'" class="config-instructions primary-section">
+          <div *ngIf="isAgentNode(selectedNode) && selectedNode.agent_type !== 'trade_manager_agent'" class="config-instructions primary-section">
             <div class="section-header">
               <mat-icon class="section-icon">psychology</mat-icon>
-              <h4 class="section-title">Tell the Agent What To Do</h4>
+              <h4 class="section-title">
+                <span *ngIf="selectedNode.agent_type === 'risk_manager_agent'">Set Your Risk Rules</span>
+                <span *ngIf="selectedNode.agent_type !== 'risk_manager_agent'">Tell the Agent What To Do</span>
+              </h4>
             </div>
             <p class="section-description">
-              Write your strategy in plain English. The agent will automatically select the right tools based on your instructions.
+              <span *ngIf="selectedNode.agent_type === 'risk_manager_agent'">
+                Define your risk management rules in plain English. The agent will calculate safe position sizes based on your rules.
+              </span>
+              <span *ngIf="selectedNode.agent_type !== 'risk_manager_agent'">
+                Write your strategy in plain English. The agent will automatically select the right tools based on your instructions.
+              </span>
             </p>
             <app-agent-instructions
               [agentType]="selectedNode.agent_type"
@@ -341,7 +349,7 @@
           <div class="config-tools" *ngIf="isAgentNode(selectedNode) && getAgentSupportedTools(selectedNode).length > 0">
             <app-tool-selector
               [supportedTools]="getAgentSupportedTools(selectedNode)"
-              [attachedTools]="selectedNode.config['tools'] || []"
+              [attachedTools]="editingConfig['tools'] || []"
               (toolsChange)="onToolsChange($event, selectedNode)">
             </app-tool-selector>
           </div>

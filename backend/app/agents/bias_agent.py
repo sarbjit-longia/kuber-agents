@@ -45,6 +45,11 @@ class BiasAgent(BaseAgent):
             pricing_rate=0.0,
             is_free=True,
             requires_timeframes=[],  # Derived from instructions
+            supported_tools=[
+                # Analysis tools - Bias Agent can use any technical indicator
+                "rsi", "macd", "sma_crossover", "bollinger_bands",
+                "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+            ],
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Bias Agent Configuration",

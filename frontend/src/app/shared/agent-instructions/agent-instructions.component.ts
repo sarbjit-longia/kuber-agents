@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -31,7 +31,7 @@ import { FileUploadService, FileUploadResponse } from '../../core/services/file-
   templateUrl: './agent-instructions.component.html',
   styleUrls: ['./agent-instructions.component.scss']
 })
-export class AgentInstructionsComponent implements OnInit, OnDestroy {
+export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges {
   @Input() agentType: string = 'strategy';
   @Input() initialInstructions: string = '';
   @Input() initialDocumentUrl: string = '';
@@ -84,6 +84,19 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy {
           this.detectTools();
         }
       });
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Update instructions when initialInstructions input changes
+    if (changes['initialInstructions'] && !changes['initialInstructions'].firstChange) {
+      this.instructions = changes['initialInstructions'].currentValue || '';
+    }
+    
+    // Update document URL when initialDocumentUrl input changes
+    if (changes['initialDocumentUrl'] && !changes['initialDocumentUrl'].firstChange) {
+      this.documentUrl = changes['initialDocumentUrl'].currentValue || '';
+      this.uploadedFileName = this.documentUrl ? this.documentUrl.split('/').pop() || '' : '';
+    }
   }
 
   ngOnDestroy(): void {
@@ -233,6 +246,11 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy {
   }
 
   getStatusIcon(): string {
+    // Show info icon if status is success but no tools detected (manual attachment required)
+    if (this.detectionStatus === 'success' && this.detectedTools.length === 0) {
+      return 'info';
+    }
+    
     switch (this.detectionStatus) {
       case 'success': return 'check_circle';
       case 'partial': return 'warning';
@@ -242,6 +260,11 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy {
   }
 
   getStatusColor(): string {
+    // Show primary color for info state (success but no tools)
+    if (this.detectionStatus === 'success' && this.detectedTools.length === 0) {
+      return 'primary';
+    }
+    
     switch (this.detectionStatus) {
       case 'success': return 'accent';
       case 'partial': return 'warn';

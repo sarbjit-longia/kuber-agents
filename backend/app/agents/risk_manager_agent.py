@@ -1,10 +1,11 @@
 """
 Risk Manager Agent
 
-Validates and sizes trades based on risk parameters.
-Mostly rule-based for cost efficiency, but can use AI for complex scenarios.
+Instruction-driven risk management and position sizing using LLM.
+Queries broker for account state and calculates safe position sizes.
 """
 from typing import Dict, Any
+from datetime import datetime
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, RiskAssessment
@@ -13,93 +14,69 @@ from app.config import settings
 
 class RiskManagerAgent(BaseAgent):
     """
-    Risk management agent using rule-based validation.
+    Instruction-driven risk management and position sizing agent.
     
-    This is a FREE agent (uses rules, no AI needed).
+    Uses LLM to interpret natural language risk rules and calculate safe position sizes.
     
-    Validates:
-    - Risk/reward ratios
-    - Position sizing based on account risk
-    - Maximum loss limits
-    - Exposure limits
+    The agent:
+    - Queries broker for account balance and positions
+    - Interprets user's risk instructions
+    - Validates trade against risk rules
+    - Calculates position size (shares/contracts)
+    - Considers market volatility and existing exposure
     
-    Configuration:
-        - account_size: Total account value (default: 10000)
-        - risk_per_trade_percent: Max % of account to risk per trade (default: 1.0)
-        - max_position_size_percent: Max % of account in single position (default: 10.0)
-        - min_risk_reward_ratio: Minimum acceptable R/R (default: 2.0)
-        - max_daily_loss_percent: Max % account loss per day (default: 3.0)
-    
-    Example config:
-        {
-            "account_size": 10000,
-            "risk_per_trade_percent": 1.0,
-            "max_position_size_percent": 10.0,
-            "min_risk_reward_ratio": 2.0
-        }
+    Example instructions:
+        "Keep 60% cash on side, risk max 1% loss per trade, minimum 2:1 risk/reward,
+         factor in today's volatility. Never exceed 10% of account in single position."
+        
+    Strategy Agent provides: Entry, Stop Loss, Take Profit
+    Risk Manager provides: Position Size (shares/contracts)
     """
     
     @classmethod
     def get_metadata(cls) -> AgentMetadata:
+        from app.services.model_registry import model_registry
+        from app.database import SessionLocal
+        
+        db = SessionLocal()
+        try:
+            model_choices = model_registry.get_model_choices_for_schema(db)
+        finally:
+            db.close()
+        
         return AgentMetadata(
             agent_type="risk_manager_agent",
             name="Risk Manager Agent",
-            description="Rule-based risk management and position sizing. Validates trades and calculates safe position sizes. Free to use.",
+            description="Instruction-driven risk management and position sizing. Interprets your risk rules, queries broker for account state, and calculates safe position sizes.",
             category="risk",
-            version="1.0.0",
+            version="2.0.0",
             icon="shield",
-            pricing_rate=0.0,
-            is_free=True,
+            pricing_rate=0.10,
+            is_free=False,
             requires_timeframes=[],
-            requires_market_data=True,
+            requires_market_data=False,
             requires_position=False,
-            supported_tools=["webhook_notifier", "email_notifier"],  # Added for risk warnings/alerts
+            supported_tools=["alpaca_broker", "oanda_broker", "tradier_broker", "webhook_notifier", "email_notifier"],
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Risk Manager Configuration",
-                description="Configure risk management parameters",
+                description="Configure risk management via natural language instructions",
                 properties={
-                    "account_size": {
-                        "type": "number",
-                        "title": "Account Size",
-                        "description": "Total account value in dollars",
-                        "default": 10000,
-                        "minimum": 100
+                    "instructions": {
+                        "type": "string",
+                        "title": "Risk Management Instructions",
+                        "description": "Natural language risk rules. Example: 'Keep 60% cash reserve, risk max 1% per trade, minimum 2:1 R/R, factor in volatility'. NOTE: Attach a broker tool (Alpaca/Oanda/Tradier) below to query your account balance automatically.",
+                        "default": "Risk maximum 1% of account per trade. Maintain minimum 2:1 risk/reward ratio. Keep 50% cash reserve. Factor in market volatility when sizing positions. Reject trades if daily loss exceeds 3%."
                     },
-                    "risk_per_trade_percent": {
-                        "type": "number",
-                        "title": "Risk Per Trade (%)",
-                        "description": "Maximum percentage of account to risk on single trade",
-                        "default": 1.0,
-                        "minimum": 0.1,
-                        "maximum": 5.0
-                    },
-                    "max_position_size_percent": {
-                        "type": "number",
-                        "title": "Max Position Size (%)",
-                        "description": "Maximum percentage of account in single position",
-                        "default": 10.0,
-                        "minimum": 1.0,
-                        "maximum": 100.0
-                    },
-                    "min_risk_reward_ratio": {
-                        "type": "number",
-                        "title": "Minimum Risk/Reward Ratio",
-                        "description": "Minimum acceptable risk/reward ratio",
-                        "default": 2.0,
-                        "minimum": 1.0,
-                        "maximum": 10.0
-                    },
-                    "max_daily_loss_percent": {
-                        "type": "number",
-                        "title": "Max Daily Loss (%)",
-                        "description": "Maximum percentage account loss allowed per day",
-                        "default": 3.0,
-                        "minimum": 1.0,
-                        "maximum": 10.0
+                    "model": {
+                        "type": "string",
+                        "title": "AI Model",
+                        "description": "LLM model for risk analysis",
+                        "enum": model_choices,
+                        "default": model_choices[0] if model_choices else "gpt-4"
                     }
                 },
-                required=["account_size"]
+                required=["instructions"]
             ),
             can_initiate_trades=False,
             can_close_positions=False
@@ -107,19 +84,24 @@ class RiskManagerAgent(BaseAgent):
     
     def process(self, state: PipelineState) -> PipelineState:
         """
-        Validate and size trade based on risk parameters.
+        Validate and size trade using LLM-based risk analysis.
         
         Args:
             state: Current pipeline state with strategy
             
         Returns:
-            Updated pipeline state with risk assessment
+            Updated pipeline state with risk assessment and position size
             
         Raises:
             InsufficientDataError: If strategy missing
             AgentProcessingError: If risk assessment fails
         """
-        self.log(state, "Performing risk assessment and position sizing")
+        from crewai import Agent, Task, Crew
+        from app.services.langfuse_service import create_langfuse_trace, track_llm_generation
+        from app.services.model_registry import model_registry
+        from app.database import SessionLocal
+        
+        self.log(state, "🛡️ Performing instruction-driven risk assessment")
         
         # Validate we have a strategy
         if not state.strategy:
@@ -148,210 +130,324 @@ class RiskManagerAgent(BaseAgent):
             return state
         
         try:
-            # Get configuration
-            account_size = self.config["account_size"]
-            risk_per_trade_pct = self.config.get("risk_per_trade_percent", 1.0)
-            max_position_pct = self.config.get("max_position_size_percent", 10.0)
-            min_rr_ratio = self.config.get("min_risk_reward_ratio", 2.0)
+            # Get instructions
+            instructions = self.config.get("instructions", "").strip()
+            if not instructions:
+                instructions = self.metadata.config_schema.properties["instructions"]["default"]
             
-            # Validate strategy has required fields
-            if not strategy.entry_price or not strategy.stop_loss or not strategy.take_profit:
-                state.risk_assessment = RiskAssessment(
-                    approved=False,
-                    risk_score=1.0,
-                    position_size=0.0,
-                    max_loss_amount=0.0,
-                    risk_reward_ratio=0.0,
-                    warnings=["Incomplete trade plan: missing entry, stop, or target"],
-                    reasoning="Trade rejected: incomplete price levels"
+            model_id = self.config.get("model", "gpt-4")
+            
+            # Get broker account info
+            broker_info = self._get_broker_account_info(state)
+            
+            # Prepare context for LLM
+            context = self._prepare_risk_context(state, broker_info)
+            
+            # Create Langfuse trace
+            langfuse_trace = create_langfuse_trace(
+                name=f"risk_manager_{state.execution_id}",
+                metadata={
+                    "agent_type": self.metadata.agent_type,
+                    "symbol": state.symbol,
+                    "strategy_action": strategy.action
+                }
+            )
+            
+            # Create CrewAI agent
+            risk_analyst = Agent(
+                role="Risk Manager",
+                goal=f"Analyze the proposed trade and determine safe position size following these rules: {instructions}",
+                backstory="""You are an expert risk manager responsible for protecting capital and ensuring
+                        trades are properly sized according to the user's risk rules.""",
+                verbose=False,
+                allow_delegation=False,
+                llm=model_id
+            )
+            
+            # Create task
+            task = Task(
+                description=f"""
+                Analyze this trade proposal and make a risk decision:
+                
+                {context}
+                
+                Risk Management Instructions:
+                {instructions}
+                
+                You MUST provide your response in this EXACT format:
+                APPROVED: Yes/No
+                POSITION_SIZE: <number of shares/contracts>
+                RISK_SCORE: <0.0 to 1.0>
+                MAX_LOSS: <dollar amount>
+                WARNINGS: <list any warnings, or "None">
+                REASONING: <detailed explanation of your decision>
+                
+                Calculate position size based on:
+                1. Account balance and cash requirements from instructions
+                2. Maximum loss per trade (from instructions)
+                3. Distance from entry to stop loss
+                4. Risk/reward ratio requirements
+                5. Existing positions and exposure
+                
+                Be conservative. Safety is paramount.
+                """,
+                agent=risk_analyst,
+                expected_output="Risk decision with position size calculation"
+            )
+            
+            # Execute
+            crew = Crew(
+                agents=[risk_analyst],
+                tasks=[task],
+                verbose=False
+            )
+            
+            result = crew.kickoff()
+            
+            # Track LLM call
+            track_llm_generation(
+                langfuse_trace=langfuse_trace,
+                name="risk_analysis",
+                model=model_id,
+                input_text=context + "\n\n" + instructions,
+                output_text=str(result),
+                metadata={"strategy_action": strategy.action}
+            )
+            
+            # Parse LLM response
+            risk_decision = self._parse_risk_decision(str(result), strategy)
+            
+            # Create risk assessment
+            state.risk_assessment = RiskAssessment(
+                approved=risk_decision["approved"],
+                risk_score=risk_decision["risk_score"],
+                position_size=risk_decision["position_size"],
+                max_loss_amount=risk_decision["max_loss"],
+                risk_reward_ratio=risk_decision["rr_ratio"],
+                warnings=risk_decision["warnings"],
+                reasoning=risk_decision["reasoning"]
+            )
+            
+            # Update strategy with position size
+            strategy.position_size = risk_decision["position_size"]
+            
+            # Log result
+            if risk_decision["approved"]:
+                self.log(
+                    state,
+                    f"✓ Trade APPROVED: {risk_decision['position_size']:.0f} shares, "
+                    f"Risk: ${risk_decision['max_loss']:.2f}, R/R: {risk_decision['rr_ratio']:.2f}:1"
                 )
-                self.log(state, "✗ Trade rejected: incomplete price levels")
-                return state
+            else:
+                self.log(
+                    state,
+                    f"✗ Trade REJECTED: {', '.join(risk_decision['warnings'])}"
+                )
             
-            # Calculate risk and reward
+            self.record_report(
+                state,
+                title="Risk Assessment Completed",
+                summary=f"{'APPROVED' if risk_decision['approved'] else 'REJECTED'} - Position Size: {risk_decision['position_size']:.0f} shares",
+                status="completed" if risk_decision["approved"] else "rejected",
+                metrics={
+                    "position_size": round(risk_decision["position_size"], 2),
+                    "risk_score": round(risk_decision["risk_score"], 2),
+                    "risk_reward_ratio": round(risk_decision["rr_ratio"], 2),
+                    "max_loss": round(risk_decision["max_loss"], 2)
+                },
+                data={
+                    "approved": risk_decision["approved"],
+                    "warnings": risk_decision["warnings"],
+                    "reasoning": risk_decision["reasoning"],
+                    "broker_info": broker_info
+                }
+            )
+            
+            # Calculate and track cost
+            db = SessionLocal()
+            try:
+                cost = model_registry.calculate_agent_cost(
+                    model_id=model_id,
+                    db=db,
+                    base_cost=0.02,
+                    estimated_input_tokens=800,
+                    estimated_output_tokens=300
+                )
+                self.track_cost(state, cost)
+            finally:
+                db.close()
+            
+            return state
+            
+        except Exception as e:
+            self.logger.error("Risk assessment failed", error=str(e), exc_info=True)
+            raise AgentProcessingError(f"Risk assessment failed: {str(e)}")
+    
+    def _get_broker_account_info(self, state: PipelineState) -> Dict[str, Any]:
+        """Query broker for account information."""
+        broker_tool = self._get_broker_tool()
+        
+        if not broker_tool:
+            self.log(state, "⚠️ No broker attached, using default account info")
+            return {
+                "account_balance": 10000,
+                "buying_power": 10000,
+                "cash": 10000,
+                "equity": 10000,
+                "positions": [],
+                "source": "default"
+            }
+        
+        try:
+            from app.services.brokers.factory import broker_factory
+            
+            broker = broker_factory.from_tool_config(broker_tool)
+            account_info = broker.get_account_info()
+            
+            self.log(state, f"📊 Broker account balance: ${account_info.get('equity', 0):.2f}")
+            
+            return {
+                "account_balance": account_info.get("equity", 10000),
+                "buying_power": account_info.get("buying_power", account_info.get("equity", 10000)),
+                "cash": account_info.get("cash", account_info.get("equity", 10000)),
+                "equity": account_info.get("equity", 10000),
+                "positions": account_info.get("positions", []),
+                "source": "broker"
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to get broker info: {e}")
+            return {
+                "account_balance": 10000,
+                "buying_power": 10000,
+                "cash": 10000,
+                "equity": 10000,
+                "positions": [],
+                "source": "fallback"
+            }
+    
+    def _get_broker_tool(self):
+        """Get any attached broker tool."""
+        broker_types = ["alpaca_broker", "oanda_broker", "tradier_broker"]
+        for broker_type in broker_types:
+            tool = self._get_tool_by_type(broker_type)
+            if tool:
+                return tool
+        return None
+    
+    def _prepare_risk_context(self, state: PipelineState, broker_info: Dict[str, Any]) -> str:
+        """Prepare context string for LLM."""
+        strategy = state.strategy
+        
+        # Calculate risk/reward
+        entry = strategy.entry_price
+        stop = strategy.stop_loss
+        target = strategy.take_profit
+        
+        if strategy.action == "BUY":
+            risk_per_share = abs(entry - stop)
+            reward_per_share = abs(target - entry)
+        else:
+            risk_per_share = abs(stop - entry)
+            reward_per_share = abs(entry - target)
+        
+        rr_ratio = reward_per_share / risk_per_share if risk_per_share > 0 else 0
+        
+        context = f"""
+PROPOSED TRADE:
+- Symbol: {state.symbol}
+- Action: {strategy.action}
+- Entry Price: ${entry:.2f}
+- Stop Loss: ${stop:.2f}
+- Take Profit: ${target:.2f}
+- Risk per share: ${risk_per_share:.2f}
+- Reward per share: ${reward_per_share:.2f}
+- Risk/Reward Ratio: {rr_ratio:.2f}:1
+- Strategy Confidence: {strategy.confidence:.1%}
+
+ACCOUNT STATUS:
+- Total Equity: ${broker_info['equity']:.2f}
+- Cash Available: ${broker_info['cash']:.2f}
+- Buying Power: ${broker_info['buying_power']:.2f}
+- Open Positions: {len(broker_info['positions'])}
+- Data Source: {broker_info['source']}
+
+MARKET CONDITIONS:
+- Symbol: {state.symbol}
+- Current Date: {datetime.now().strftime('%Y-%m-%d')}
+"""
+        
+        if broker_info.get('positions'):
+            context += "\nEXISTING POSITIONS:\n"
+            for pos in broker_info['positions'][:5]:  # Show up to 5 positions
+                context += f"- {pos.get('symbol', 'N/A')}: {pos.get('qty', 0)} shares\n"
+        
+        return context
+    
+    def _parse_risk_decision(self, llm_response: str, strategy) -> Dict[str, Any]:
+        """Parse LLM response into structured risk decision."""
+        import re
+        
+        # Default values
+        decision = {
+            "approved": False,
+            "position_size": 0.0,
+            "risk_score": 1.0,
+            "max_loss": 0.0,
+            "rr_ratio": 0.0,
+            "warnings": [],
+            "reasoning": llm_response
+        }
+        
+        try:
+            # Parse APPROVED
+            approved_match = re.search(r'APPROVED:\s*(Yes|No)', llm_response, re.IGNORECASE)
+            if approved_match:
+                decision["approved"] = approved_match.group(1).lower() == "yes"
+            
+            # Parse POSITION_SIZE
+            size_match = re.search(r'POSITION_SIZE:\s*(\d+\.?\d*)', llm_response)
+            if size_match:
+                decision["position_size"] = float(size_match.group(1))
+            
+            # Parse RISK_SCORE
+            score_match = re.search(r'RISK_SCORE:\s*(\d+\.?\d*)', llm_response)
+            if score_match:
+                decision["risk_score"] = float(score_match.group(1))
+            
+            # Parse MAX_LOSS
+            loss_match = re.search(r'MAX_LOSS:\s*\$?(\d+\.?\d*)', llm_response)
+            if loss_match:
+                decision["max_loss"] = float(loss_match.group(1))
+            
+            # Parse WARNINGS
+            warnings_match = re.search(r'WARNINGS:\s*(.+?)(?=REASONING:|$)', llm_response, re.DOTALL)
+            if warnings_match:
+                warnings_text = warnings_match.group(1).strip()
+                if warnings_text.lower() != "none":
+                    decision["warnings"] = [w.strip() for w in warnings_text.split('\n') if w.strip()]
+            
+            # Parse REASONING
+            reasoning_match = re.search(r'REASONING:\s*(.+)', llm_response, re.DOTALL)
+            if reasoning_match:
+                decision["reasoning"] = reasoning_match.group(1).strip()
+            
+            # Calculate R/R ratio from strategy
             entry = strategy.entry_price
             stop = strategy.stop_loss
             target = strategy.take_profit
             
             if strategy.action == "BUY":
-                risk_per_share = abs(entry - stop)
-                reward_per_share = abs(target - entry)
-            else:  # SELL
-                risk_per_share = abs(stop - entry)
-                reward_per_share = abs(entry - target)
-            
-            # Calculate risk/reward ratio
-            if risk_per_share == 0:
-                rr_ratio = 0.0
+                risk = abs(entry - stop)
+                reward = abs(target - entry)
             else:
-                rr_ratio = reward_per_share / risk_per_share
+                risk = abs(stop - entry)
+                reward = abs(entry - target)
             
-            # Validate risk/reward ratio
-            warnings = []
-            if rr_ratio < min_rr_ratio:
-                warnings.append(
-                    f"Risk/reward ratio {rr_ratio:.2f}:1 is below minimum {min_rr_ratio}:1"
-                )
+            decision["rr_ratio"] = reward / risk if risk > 0 else 0
             
-            # Calculate position size based on risk
-            max_risk_amount = account_size * (risk_per_trade_pct / 100)
-            
-            if risk_per_share > 0:
-                position_size = max_risk_amount / risk_per_share
-            else:
-                position_size = 0
-            
-            # Validate position size doesn't exceed maximum
-            max_position_value = account_size * (max_position_pct / 100)
-            max_shares_by_value = max_position_value / entry
-            
-            if position_size > max_shares_by_value:
-                warnings.append(
-                    f"Position size limited by max position value: "
-                    f"{position_size:.0f} reduced to {max_shares_by_value:.0f} shares"
-                )
-                position_size = max_shares_by_value
-            
-            # Calculate risk score (0.0 = low risk, 1.0 = high risk)
-            risk_score = self._calculate_risk_score(
-                rr_ratio=rr_ratio,
-                min_rr=min_rr_ratio,
-                risk_amount=max_risk_amount,
-                account_size=account_size,
-                confidence=strategy.confidence
-            )
-            
-            # Determine approval
-            approved = len(warnings) == 0 and risk_score < 0.8 and position_size > 0
-            
-            # Create risk assessment
-            state.risk_assessment = RiskAssessment(
-                approved=approved,
-                risk_score=risk_score,
-                position_size=round(position_size, 2),
-                max_loss_amount=max_risk_amount,
-                risk_reward_ratio=rr_ratio,
-                warnings=warnings,
-                reasoning=self._generate_reasoning(
-                    approved=approved,
-                    rr_ratio=rr_ratio,
-                    risk_score=risk_score,
-                    position_size=position_size,
-                    max_risk=max_risk_amount,
-                    warnings=warnings
-                )
-            )
-            
-            # Update strategy with position size
-            strategy.position_size = position_size
-            
-            # Log result
-            if approved:
-                self.log(
-                    state,
-                    f"✓ Trade APPROVED: {position_size:.0f} shares, "
-                    f"Risk: ${max_risk_amount:.2f} ({risk_per_trade_pct}%), "
-                    f"R/R: {rr_ratio:.2f}:1"
-                )
-            else:
-                self.log(
-                    state,
-                    f"✗ Trade REJECTED: {', '.join(warnings) if warnings else 'High risk score'}"
-                )
-            
-            self.record_report(
-                state,
-                title="Risk assessment completed",
-                summary=f"{'APPROVED' if approved else 'REJECTED'} with R/R {rr_ratio:.2f}:1 "
-                        f"and risk ${max_risk_amount:.2f}",
-                status="completed" if approved else "rejected",
-                metrics={
-                    "risk_score": round(risk_score, 2),
-                    "position_size": round(position_size, 2),
-                    "risk_reward_ratio": round(rr_ratio, 2),
-                },
-                data={
-                    "warnings": warnings,
-                    "reasoning": state.risk_assessment.reasoning,
-                    "config": {
-                        "account_size": account_size,
-                        "risk_per_trade_percent": risk_per_trade_pct,
-                        "max_position_size_percent": max_position_pct,
-                        "min_risk_reward_ratio": min_rr_ratio,
-                    },
-                },
-            )
-            
-            # No cost for this agent (rule-based)
-            self.track_cost(state, 0.0)
-            
-            return state
-        
         except Exception as e:
-            error_msg = f"Risk assessment failed: {str(e)}"
-            self.add_error(state, error_msg)
-            raise AgentProcessingError(error_msg) from e
-    
-    def _calculate_risk_score(
-        self,
-        rr_ratio: float,
-        min_rr: float,
-        risk_amount: float,
-        account_size: float,
-        confidence: float
-    ) -> float:
-        """
-        Calculate risk score (0.0 = low risk, 1.0 = high risk).
+            self.logger.warning(f"Error parsing risk decision: {e}")
+            decision["warnings"].append(f"Parsing error: {str(e)}")
         
-        Factors:
-        - Risk/reward ratio
-        - Risk amount relative to account
-        - Strategy confidence
-        """
-        # R/R score (lower ratio = higher risk)
-        rr_score = max(0, 1 - (rr_ratio / min_rr)) if min_rr > 0 else 0
-        
-        # Risk amount score
-        risk_pct = (risk_amount / account_size) * 100
-        risk_amount_score = min(1.0, risk_pct / 5.0)  # 5% = max risk
-        
-        # Confidence score (lower confidence = higher risk)
-        confidence_score = 1 - confidence
-        
-        # Weighted average
-        risk_score = (
-            rr_score * 0.4 +
-            risk_amount_score * 0.3 +
-            confidence_score * 0.3
-        )
-        
-        return round(risk_score, 2)
-    
-    def _generate_reasoning(
-        self,
-        approved: bool,
-        rr_ratio: float,
-        risk_score: float,
-        position_size: float,
-        max_risk: float,
-        warnings: list
-    ) -> str:
-        """Generate human-readable reasoning for the risk assessment."""
-        if approved:
-            return (
-                f"Trade approved with position size of {position_size:.0f} shares. "
-                f"Risk/reward ratio of {rr_ratio:.2f}:1 meets requirements. "
-                f"Maximum risk: ${max_risk:.2f}. "
-                f"Risk score: {risk_score:.2f}/1.0."
-            )
-        else:
-            reason_parts = []
-            if warnings:
-                reason_parts.append(f"Issues: {', '.join(warnings)}")
-            if risk_score >= 0.8:
-                reason_parts.append(f"Risk score too high: {risk_score:.2f}/1.0")
-            if position_size <= 0:
-                reason_parts.append("Position size invalid")
-            
-            return "Trade rejected. " + ". ".join(reason_parts) + "."
-
+        return decision

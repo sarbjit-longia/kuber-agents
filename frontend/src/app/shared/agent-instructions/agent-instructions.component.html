@@ -68,19 +68,21 @@ Examples:
     
     <!-- Success/Partial -->
     <div *ngIf="detectionStatus === 'success' || detectionStatus === 'partial'" class="tools-detected">
-      <div class="detection-header" [class.partial]="detectionStatus === 'partial'">
+      <div class="detection-header" [class.partial]="detectionStatus === 'partial'" [class.info]="detectedTools.length === 0">
         <mat-icon [color]="getStatusColor()">{{ getStatusIcon() }}</mat-icon>
-        <h4>{{ detectionStatus === 'success' ? 'Tools Auto-Detected' : 'Partial Detection' }}</h4>
+        <h4>{{ detectedTools.length > 0 ? (detectionStatus === 'success' ? 'Tools Auto-Detected' : 'Partial Detection') : 'Manual Tool Attachment Required' }}</h4>
       </div>
 
       <!-- Strategy Summary -->
-      <div *ngIf="summary" class="strategy-summary">
-        <strong>Strategy:</strong> {{ summary }}
-        <span *ngIf="confidence > 0" class="confidence">({{(confidence * 100).toFixed(0)}}% confident)</span>
+      <div *ngIf="summary" class="strategy-summary" [class.info-message]="detectedTools.length === 0">
+        <strong *ngIf="detectedTools.length > 0">Strategy:</strong>
+        <mat-icon *ngIf="detectedTools.length === 0" class="info-icon">info</mat-icon>
+        {{ summary }}
+        <span *ngIf="confidence > 0 && detectedTools.length > 0" class="confidence">({{(confidence * 100).toFixed(0)}}% confident)</span>
       </div>
 
-      <!-- Detected Tools List -->
-      <div class="tools-list">
+      <!-- Detected Tools List (only show if tools exist) -->
+      <div class="tools-list" *ngIf="detectedTools.length > 0">
         <div *ngFor="let tool of detectedTools" class="tool-item">
           <div class="tool-info">
             <mat-icon [matTooltip]="tool.category">{{ getCategoryIcon(tool.category) }}</mat-icon>
@@ -93,8 +95,8 @@ Examples:
         </div>
       </div>
 
-      <!-- Cost Summary -->
-      <div class="cost-summary">
+      <!-- Cost Summary (only show if tools exist) -->
+      <div class="cost-summary" *ngIf="detectedTools.length > 0">
         <div class="cost-row">
           <span>Tools Cost:</span>
           <span class="cost-value">${{ totalCost.toFixed(3) }}/execution</span>

@@ -261,6 +261,16 @@ export class PipelineBuilderComponent implements OnInit {
           // Load nodes onto canvas
           if (pipeline.config.nodes && Array.isArray(pipeline.config.nodes)) {
             console.log('📦 Loading nodes:', pipeline.config.nodes.length);
+            
+            // 🐛 Debug: Check what instructions data is in the backend response
+            pipeline.config.nodes.forEach((node: any) => {
+              console.log(`   Loading ${node.agent_type}:`, {
+                hasInstructions: !!node.config?.instructions,
+                instructionsPreview: node.config?.instructions?.substring(0, 50),
+                configKeys: node.config ? Object.keys(node.config) : []
+              });
+            });
+            
             this.canvasNodes = pipeline.config.nodes.map((node: any) => {
               // Find agent metadata
               const agentMetadata = this.agents.find(a => a.agent_type === node.agent_type);
@@ -276,8 +286,22 @@ export class PipelineBuilderComponent implements OnInit {
             });
             
             console.log('✅ Nodes loaded on canvas:', this.canvasNodes);
+          }
+          
+          // 🐛 FIX: Load agent-to-agent connections BEFORE creating tool nodes
+          // This prevents tool connections from being overwritten
+          if (pipeline.config.edges && Array.isArray(pipeline.config.edges)) {
+            console.log('🔗 Loading agent-to-agent connections:', pipeline.config.edges.length);
+            this.connections = pipeline.config.edges.map((edge: any) => ({
+              from: edge.from,
+              to: edge.to
+            }));
             
-            // Recreate visual tool nodes for each agent that has tools attached
+            console.log('✅ Agent connections loaded:', this.connections);
+          }
+          
+          // NOW recreate visual tool nodes (which will ADD their connections to this.connections)
+          if (pipeline.config.nodes && Array.isArray(pipeline.config.nodes)) {
             this.canvasNodes.forEach((node: CanvasNode) => {
               if (node.node_category === 'agent' && node.config && node.config['tools']) {
                 const tools = node.config['tools'];
@@ -294,17 +318,8 @@ export class PipelineBuilderComponent implements OnInit {
                 }
               }
             });
-          }
-          
-          // Load connections
-          if (pipeline.config.edges && Array.isArray(pipeline.config.edges)) {
-            console.log('🔗 Loading connections:', pipeline.config.edges.length);
-            this.connections = pipeline.config.edges.map((edge: any) => ({
-              from: edge.from,
-              to: edge.to
-            }));
             
-            console.log('✅ Connections loaded:', this.connections);
+            console.log('✅ Final connections (agents + tools):', this.connections.length);
           }
         }
         
@@ -489,13 +504,70 @@ export class PipelineBuilderComponent implements OnInit {
    * Select node for configuration
    */
   selectNode(node: CanvasNode): void {
+    console.log('🖱️ Selecting node:', node.agent_type);
+    console.log('   Before sync - Has instructions:', !!node.config?.['instructions']);
+    console.log('   Before sync - Config keys:', node.config ? Object.keys(node.config) : 'NO CONFIG');
+    
     this.selectedNode = node;
+    
+    // IMPORTANT: Sync visual tool nodes back to config['tools'] BEFORE initializing editing config
+    // This ensures the tool-selector displays the correct tools from the canvas
+    if (node.node_category === 'agent') {
+      this.syncToolsFromCanvas(node);
+    }
+    
+    console.log('   After sync - Has instructions:', !!node.config?.['instructions']);
+    console.log('   After sync - Config keys:', node.config ? Object.keys(node.config) : 'NO CONFIG');
+    
     // Initialize editing config (deep copy to avoid reference issues)
     this.originalConfig = JSON.parse(JSON.stringify(node.config || {}));
     this.editingConfig = JSON.parse(JSON.stringify(node.config || {}));
     
+    console.log('   editingConfig initialized - Has instructions:', !!this.editingConfig['instructions']);
+    console.log('   editingConfig initialized - Has tools:', this.editingConfig['tools']?.length || 0);
+    console.log('   editingConfig preview:', this.editingConfig['instructions']?.substring(0, 50));
+    
     // Compute filtered schema and settings visibility (do this once, not in template)
     this.updateFilteredConfigSchema();
+  }
+  
+  /**
+   * Sync visual tool nodes from canvas back to node's config['tools'] array
+   * This ensures the tool-selector always shows the correct state
+   * IMPORTANT: Only updates the 'tools' field, preserves all other config (instructions, etc.)
+   */
+  private syncToolsFromCanvas(node: CanvasNode): void {
+    console.log('🔄 syncToolsFromCanvas called for:', node.agent_type, 'ID:', node.id);
+    console.log('   Total canvas nodes:', this.canvasNodes.length);
+    console.log('   Total connections:', this.connections.length);
+    
+    const toolNodes = this.getToolNodesForAgent(node.id);
+    
+    console.log('   Found tool nodes:', toolNodes.length);
+    toolNodes.forEach(tn => {
+      console.log('      -', tn.agent_type, 'ID:', tn.id);
+    });
+    
+    // ⚠️ CRITICAL: Initialize config ONLY if it doesn't exist
+    // This preserves existing instructions and other config fields
+    if (!node.config) {
+      console.warn(`⚠️ Node ${node.id} has no config! Creating empty config.`);
+      node.config = {};
+    }
+    
+    console.log('   Before sync - config.tools:', node.config['tools']?.length || 0);
+    
+    // Only update the 'tools' array, leave everything else intact
+    node.config['tools'] = toolNodes.map(toolNode => ({
+      tool_type: toolNode.agent_type,
+      enabled: true,
+      config: toolNode.config || {},
+      metadata: toolNode.metadata
+    }));
+    
+    console.log('   After sync - config.tools:', node.config['tools']?.length || 0);
+    console.log('   Has instructions:', !!node.config['instructions']);
+    console.log('   Full config keys:', Object.keys(node.config));
   }
   
   /**
@@ -556,6 +628,10 @@ export class PipelineBuilderComponent implements OnInit {
    * Handle instructions changes from agent-instructions component
    */
   onInstructionsChange(event: any, node: CanvasNode): void {
+    console.log('📝 onInstructionsChange called for:', node.agent_type);
+    console.log('   Instructions length:', event.instructions?.length || 0);
+    console.log('   Instructions preview:', event.instructions?.substring(0, 50));
+    
     // Update config with instructions and detected tools
     this.editingConfig = {
       ...this.editingConfig,
@@ -565,11 +641,8 @@ export class PipelineBuilderComponent implements OnInit {
       estimated_tool_cost: event.totalCost
     };
 
-    console.log('Instructions updated:', {
-      instructions: event.instructions.substring(0, 50) + '...',
-      tools: event.detectedTools.length,
-      cost: event.totalCost
-    });
+    console.log('   editingConfig after update - Has instructions:', !!this.editingConfig['instructions']);
+    console.log('   editingConfig keys:', Object.keys(this.editingConfig));
   }
   
   /**
@@ -620,6 +693,13 @@ export class PipelineBuilderComponent implements OnInit {
       this.selectedNode.config = JSON.parse(JSON.stringify(configToSave));
       this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig)); // Keep original in local time
       
+      // 🐛 Debug logging to track instructions persistence
+      console.log('💾 Config saved for node', this.selectedNode.id);
+      console.log('   Agent type:', this.selectedNode.agent_type);
+      console.log('   Has instructions:', !!this.selectedNode.config['instructions']);
+      console.log('   Instructions preview:', this.selectedNode.config['instructions']?.substring(0, 50));
+      console.log('   Tools count:', this.selectedNode.config['tools']?.length || 0);
+      
       // Update visual tool nodes if this is an agent
       if (this.selectedNode.node_category === 'agent' && configToSave.tools && configToSave.tools.length > 0) {
         console.log('🎨 Calling onToolsChange with tools:', configToSave.tools);
@@ -629,7 +709,18 @@ export class PipelineBuilderComponent implements OnInit {
         }, 0);
       }
       
-      this.showNotification('Configuration saved', 'success');
+      // 🔥 AUTO-SAVE: Persist to backend if this is an existing pipeline
+      if (this.currentPipelineId) {
+        console.log('💾 Auto-saving pipeline after config change...');
+        this.showNotification('Configuration saved & synced ✓', 'success');
+        // Use setTimeout to ensure visual nodes are created first
+        setTimeout(() => {
+          this.savePipeline(false); // false = don't show duplicate "Pipeline saved" notification
+        }, 100);
+      } else {
+        // New pipeline not yet saved - just save locally
+        this.showNotification('Configuration saved (click "Save Pipeline" to persist)', 'success');
+      }
     }
   }
   
@@ -731,6 +822,12 @@ export class PipelineBuilderComponent implements OnInit {
     
     // Update agent's config FIRST (so createToolNode can see the correct total count)
     node.config['tools'] = [...tools];
+    
+    // 🔧 CRITICAL FIX: Also update editingConfig to enable "Save Changes" button
+    if (this.selectedNode?.id === node.id) {
+      this.editingConfig['tools'] = [...tools];
+      console.log('🔧 Updated editingConfig with new tools:', tools.length);
+    }
     
     // Remove visual nodes for removed tools
     removedToolTypes.forEach((toolType: string) => {
@@ -1115,8 +1212,9 @@ export class PipelineBuilderComponent implements OnInit {
 
   /**
    * Save pipeline
+   * @param showNotification - Whether to show success notification (default: true)
    */
-  savePipeline(): void {
+  savePipeline(showNotification: boolean = true): void {
     // Check if user is authenticated
     const token = localStorage.getItem('auth_token');
     if (!token) {
@@ -1177,7 +1275,15 @@ export class PipelineBuilderComponent implements OnInit {
       is_active: false
     };
 
-    console.log('Saving pipeline:', pipelineData); // Debug log
+    console.log('💾 Saving pipeline:', pipelineData);
+    // 🐛 Debug: Check if instructions are in the nodes being saved
+    processedNodes.forEach((node: any) => {
+      console.log(`   Node ${node.agent_type}:`, {
+        hasInstructions: !!node.config['instructions'],
+        instructionsPreview: node.config['instructions']?.substring(0, 50),
+        configKeys: Object.keys(node.config)
+      });
+    });
 
     // Determine if we're updating or creating
     const saveOperation = this.currentPipelineId
@@ -1195,7 +1301,9 @@ export class PipelineBuilderComponent implements OnInit {
           this.router.navigate(['/pipeline-builder', pipeline.id], { replaceUrl: true });
         }
         
-        this.showNotification('Pipeline saved successfully!', 'success');
+        if (showNotification) {
+          this.showNotification('Pipeline saved successfully!', 'success');
+        }
         console.log('Pipeline saved:', pipeline);
       },
       error: (error: any) => {

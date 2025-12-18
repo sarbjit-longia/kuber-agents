@@ -46,6 +46,11 @@ class StrategyAgent(BaseAgent):
             pricing_rate=0.15,
             is_free=False,
             requires_timeframes=[],  # Derived from instructions
+            supported_tools=[
+                # Analysis tools - Strategy Agent can use any technical indicator
+                "rsi", "macd", "sma_crossover", "bollinger_bands",
+                "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+            ],
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Strategy Agent Configuration",
