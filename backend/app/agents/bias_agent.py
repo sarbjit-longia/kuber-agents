@@ -14,6 +14,7 @@ from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import get_available_tools
+from app.services.model_registry import model_registry
 
 logger = structlog.get_logger()
 
@@ -178,9 +179,24 @@ Be specific about which indicators you used and what they showed.""",
                 f"✓ Bias determined: {bias_result.bias} (confidence: {bias_result.confidence:.0%})"
             )
             
-            # Track cost
-            estimated_cost = 0.05  # GPT-3.5 is cheap
-            self.track_cost(state, estimated_cost)
+            # Track cost using model registry
+            from app.database import SessionLocal
+            db = SessionLocal()
+            try:
+                model_id = self.config.get("model", "gpt-3.5-turbo")
+                # Base cost for bias agent (minimal tool usage)
+                base_cost = 0.01
+                # Calculate total cost based on model
+                total_cost = model_registry.calculate_agent_cost(
+                    model_id=model_id,
+                    db=db,
+                    base_cost=base_cost,
+                    estimated_input_tokens=1000,  # Typical bias prompt
+                    estimated_output_tokens=300   # Typical bias response
+                )
+                self.track_cost(state, total_cost)
+            finally:
+                db.close()
             
             return state
             

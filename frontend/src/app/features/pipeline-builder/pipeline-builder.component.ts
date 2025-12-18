@@ -1355,7 +1355,7 @@ export class PipelineBuilderComponent implements OnInit {
   /**
    * Format tool name from tool_type (e.g., "rsi" -> "RSI", "fvg_detector" -> "FVG Detector")
    */
-  private formatToolName(toolType: string): string {
+  formatToolName(toolType: string): string {
     // Special cases
     const specialNames: Record<string, string> = {
       'rsi': 'RSI',
@@ -1398,6 +1398,61 @@ export class PipelineBuilderComponent implements OnInit {
   hasToolAttached(node: CanvasNode, pegIndex: number): boolean {
     const tools = node.config['tools'] || [];
     return pegIndex < tools.length;
+  }
+
+  /**
+   * Format agent type for display (e.g., "bias_agent" -> "Bias Agent")
+   */
+  formatAgentType(agentType: string): string {
+    if (!agentType) return '';
+    
+    // Remove "_agent" suffix if present
+    const withoutSuffix = agentType.replace(/_agent$/, '');
+    
+    // Capitalize and replace underscores
+    return withoutSuffix
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Format category for display (e.g., "analysis" -> "Analysis")
+   */
+  formatCategory(category: string): string {
+    if (!category) return '';
+    
+    const specialCategories: Record<string, string> = {
+      'ict': 'ICT',
+      'indicator': 'Technical Indicator',
+      'price_action': 'Price Action'
+    };
+    
+    if (specialCategories[category]) {
+      return specialCategories[category];
+    }
+    
+    // Capitalize first letter
+    return category.charAt(0).toUpperCase() + category.slice(1);
+  }
+
+  /**
+   * Format cost for display
+   */
+  formatCost(metadata: any): string {
+    if (!metadata) return '';
+    
+    if (metadata.is_free) {
+      return 'Free';
+    }
+    
+    const rate = metadata.pricing_rate;
+    if (rate === 0) {
+      return 'Free';
+    }
+    
+    // Format as currency
+    return `$${rate.toFixed(2)}/execution`;
   }
 
   /**

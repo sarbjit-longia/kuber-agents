@@ -7,6 +7,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status, Depends
 import structlog
 import os
+from sqlalchemy.orm import Session
 
 from app.agents import get_registry
 from app.schemas.pipeline_state import AgentMetadata
@@ -20,10 +21,42 @@ from app.services.tool_detection_service import ToolDetectionService
 from app.tools.strategy_tools_registry import STRATEGY_TOOL_REGISTRY
 from app.api.dependencies import get_current_user
 from app.models.user import User
+from app.services.model_registry import model_registry
+from app.database import SessionLocal
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+def _inject_model_choices(metadata: AgentMetadata, db: Session) -> AgentMetadata:
+    """
+    Dynamically inject available model choices into agent config schema.
+    
+    Args:
+        metadata: Agent metadata with potentially hardcoded model enum
+        db: Database session
+        
+    Returns:
+        Updated metadata with dynamic model choices from registry
+    """
+    # Check if this agent has a "model" field in config
+    if metadata.config_schema and metadata.config_schema.properties:
+        if "model" in metadata.config_schema.properties:
+            # Get available models from registry
+            model_choices = model_registry.get_model_choices_for_schema(db)
+            
+            # Update the enum with live data from database
+            metadata.config_schema.properties["model"]["enum"] = model_choices
+            
+            logger.debug(
+                "injected_model_choices",
+                agent_type=metadata.agent_type,
+                model_count=len(model_choices),
+                models=model_choices
+            )
+    
+    return metadata
 
 
 @router.get("", response_model=List[AgentMetadata])
@@ -32,13 +65,23 @@ async def list_agents():
     Get list of all available agents with their metadata.
     
     This endpoint is used by the frontend to discover available agents
-    and generate configuration forms dynamically.
+    and generate configuration forms dynamically. Model choices are
+    dynamically populated from the model registry database.
     
     Returns:
-        List of agent metadata
+        List of agent metadata with live model choices
     """
     registry = get_registry()
-    return registry.list_all_metadata()
+    agents = registry.list_all_metadata()
+    
+    # Inject dynamic model choices
+    db = SessionLocal()
+    try:
+        agents = [_inject_model_choices(agent, db) for agent in agents]
+    finally:
+        db.close()
+    
+    return agents
 
 
 @router.get("/category/{category}", response_model=List[AgentMetadata])
@@ -46,11 +89,13 @@ async def list_agents_by_category(category: str):
     """
     Get all agents in a specific category.
     
+    Model choices are dynamically populated from the model registry database.
+    
     Args:
         category: Category name (trigger, data, analysis, risk, execution, reporting)
         
     Returns:
-        List of agent metadata in that category
+        List of agent metadata in that category with live model choices
     """
     registry = get_registry()
     agents = registry.list_agents_by_category(category)
@@ -61,6 +106,13 @@ async def list_agents_by_category(category: str):
             detail=f"No agents found in category: {category}"
         )
     
+    # Inject dynamic model choices
+    db = SessionLocal()
+    try:
+        agents = [_inject_model_choices(agent, db) for agent in agents]
+    finally:
+        db.close()
+    
     return agents
 
 
@@ -69,11 +121,13 @@ async def get_agent_metadata(agent_type: str):
     """
     Get metadata for a specific agent type.
     
+    Model choices are dynamically populated from the model registry database.
+    
     Args:
         agent_type: Type of agent
         
     Returns:
-        Agent metadata
+        Agent metadata with live model choices
         
     Raises:
         HTTPException: If agent type not found
@@ -81,7 +135,16 @@ async def get_agent_metadata(agent_type: str):
     registry = get_registry()
     
     try:
-        return registry.get_metadata(agent_type)
+        metadata = registry.get_metadata(agent_type)
+        
+        # Inject dynamic model choices
+        db = SessionLocal()
+        try:
+            metadata = _inject_model_choices(metadata, db)
+        finally:
+            db.close()
+        
+        return metadata
     except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

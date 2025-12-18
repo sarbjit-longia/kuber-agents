@@ -281,19 +281,19 @@
             <h5>Properties</h5>
             <div class="property-item">
               <span>{{selectedNode.node_category === 'tool' ? 'Tool Type' : 'Agent Type'}}:</span>
-              <span>{{selectedNode.agent_type}}</span>
+              <span class="property-value">{{selectedNode.node_category === 'tool' ? formatToolName(selectedNode.agent_type) : formatAgentType(selectedNode.agent_type)}}</span>
             </div>
             <div class="property-item">
               <span>Category:</span>
-              <span>{{selectedNode.metadata?.category}}</span>
+              <span class="property-value">{{formatCategory(selectedNode.metadata?.category || '')}}</span>
             </div>
             <div class="property-item" *ngIf="isAgentNode(selectedNode)">
               <span>Cost:</span>
-              <span>{{getAgentMetadata(selectedNode)?.is_free ? 'FREE' : '$' + getAgentMetadata(selectedNode)?.pricing_rate}}</span>
+              <span class="property-value">{{formatCost(getAgentMetadata(selectedNode))}}</span>
             </div>
             <div class="property-item" *ngIf="isAgentNode(selectedNode) && getAgentMetadata(selectedNode)?.requires_timeframes">
               <span>Timeframes:</span>
-              <span>{{getAgentMetadata(selectedNode)!.requires_timeframes.join(', ')}}</span>
+              <span class="property-value">{{getAgentMetadata(selectedNode)!.requires_timeframes.join(', ')}}</span>
             </div>
           </div>
           

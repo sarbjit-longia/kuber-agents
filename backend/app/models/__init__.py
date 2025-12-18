@@ -12,6 +12,7 @@ from app.models.scanner import Scanner, ScannerType
 from app.models.pipeline import Pipeline
 from app.models.execution import Execution, ExecutionStatus
 from app.models.cost_tracking import CostTracking, UserBudget
+from app.models.llm_model import LLMModel
 
 __all__ = [
     "Base",
@@ -22,6 +23,7 @@ __all__ = [
     "Execution",
     "ExecutionStatus",
     "CostTracking",
-    "UserBudget"
+    "UserBudget",
+    "LLMModel"
 ]
 

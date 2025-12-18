@@ -16,6 +16,7 @@ from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import get_available_tools
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.services.reasoning_chart_parser import reasoning_chart_parser
+from app.services.model_registry import model_registry
 
 logger = structlog.get_logger()
 
@@ -261,9 +262,24 @@ Otherwise, return action=HOLD with reasoning.""",
             except Exception as e:
                 self.add_warning(state, f"Chart generation failed: {str(e)}")
             
-            # Track cost
-            estimated_cost = 0.15  # GPT-4 is more expensive
-            self.track_cost(state, estimated_cost)
+            # Track cost using model registry
+            from app.database import SessionLocal
+            db = SessionLocal()
+            try:
+                model_id = self.config.get("model", "gpt-4")
+                # Base cost for strategy agent (chart generation, etc.)
+                base_cost = 0.02
+                # Calculate total cost based on model
+                total_cost = model_registry.calculate_agent_cost(
+                    model_id=model_id,
+                    db=db,
+                    base_cost=base_cost,
+                    estimated_input_tokens=1500,  # Typical strategy prompt
+                    estimated_output_tokens=500   # Typical strategy response
+                )
+                self.track_cost(state, total_cost)
+            finally:
+                db.close()
             
             return state
             

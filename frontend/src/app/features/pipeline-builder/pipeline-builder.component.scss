@@ -724,7 +724,7 @@
 
 // Configuration Panel
 .config-panel {
-  width: 350px;
+  width: 420px;
   background: white;
   border-left: 1px solid #e0e0e0;
   display: flex;
@@ -760,8 +760,8 @@
     display: flex;
     flex-direction: column;
     min-height: 0; // CRITICAL: Allows flexbox child to shrink below content size
-    padding: 1.5rem;
-    padding-bottom: 5rem; // Extra room so attached tools + buttons fully show
+    padding: 1rem;
+    padding-bottom: 4rem; // Extra room so attached tools + buttons fully show
     overflow-y: scroll; // Always show scrollbar space
     overflow-x: hidden;
     
@@ -789,23 +789,23 @@
 
     .config-agent-info {
       text-align: center;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
 
       .agent-icon-large {
-        width: 80px;
-        height: 80px;
-        margin: 0 auto 1rem;
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 0.75rem;
         display: flex;
         align-items: center;
         justify-content: center;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 20px;
+        border-radius: 16px;
 
         mat-icon {
           color: white;
-          font-size: 3rem;
-          width: 3rem;
-          height: 3rem;
+          font-size: 2.25rem;
+          width: 2.25rem;
+          height: 2.25rem;
         }
       }
 
@@ -814,60 +814,58 @@
       }
 
       h4 {
-        margin: 0 0 0.5rem 0;
-        font-size: 1.25rem;
+        margin: 0 0 0.25rem 0;
+        font-size: 1.1rem;
         color: #333;
       }
 
       p {
         margin: 0;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         color: #666;
-        line-height: 1.5;
+        line-height: 1.4;
       }
     }
 
     mat-divider {
-      margin: 1.5rem 0;
+      margin: 1rem 0;
     }
 
-    // Primary instructions section (prominent)
+    // Primary instructions section (prominent but space-efficient)
     .config-instructions.primary-section {
-      margin: 1.5rem 0;
-      padding: 1.5rem;
-      background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
-      border-radius: 12px;
-      border: 2px solid #667eea;
-      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+      margin: 0 0 1rem 0;
+      padding: 0;
       
       .section-header {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        margin-bottom: 0.75rem;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #667eea;
         
         .section-icon {
           color: #667eea;
-          font-size: 2rem;
-          width: 2rem;
-          height: 2rem;
+          font-size: 1.5rem;
+          width: 1.5rem;
+          height: 1.5rem;
         }
         
         .section-title {
           margin: 0;
-          font-size: 1.25rem;
-          font-weight: 700;
+          font-size: 1.1rem;
+          font-weight: 600;
           color: #333;
-          letter-spacing: -0.3px;
+          letter-spacing: -0.2px;
         }
       }
       
       .section-description {
-        margin: 0 0 1rem 0;
-        padding-left: 2.75rem; // Align with title
-        color: #555;
-        font-size: 0.9rem;
-        line-height: 1.5;
+        margin: 0 0 0.75rem 0;
+        padding-left: 2rem; // Align with icon + title
+        color: #666;
+        font-size: 0.85rem;
+        line-height: 1.4;
       }
     }
     
@@ -881,17 +879,19 @@
       
       // Make "Additional Settings" less prominent
       .config-subtitle {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         color: #666;
         font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        margin-bottom: 0.75rem;
       }
     }
 
     .property-item {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       padding: 0.75rem;
       margin-bottom: 0.5rem;
       background: #f8f9fa;
@@ -900,11 +900,18 @@
       span:first-child {
         color: #666;
         font-weight: 500;
+        font-size: 0.9rem;
       }
 
       span:last-child {
         color: #333;
         font-weight: 600;
+      }
+      
+      .property-value {
+        color: #1976d2;
+        font-weight: 600;
+        text-align: right;
       }
     }
 
@@ -938,9 +945,9 @@
     .config-actions {
       display: flex;
       gap: 0.75rem;
-      margin-top: 1.5rem;
-      margin-bottom: 1rem; // Space at bottom
-      padding: 1rem;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem; // Space at bottom
+      padding: 0.75rem 0;
       border-top: 1px solid #e0e0e0;
       background: white; // Ensure buttons stand out
       border-radius: 8px;
