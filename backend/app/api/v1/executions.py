@@ -661,6 +661,11 @@ async def generate_executive_report(
             detail=f"Cannot generate report for execution with status: {execution.status.value}"
         )
     
+    # Return saved executive report if available
+    if execution.executive_report:
+        return execution.executive_report
+    
+    # Otherwise, generate report on-demand (for backward compatibility with old executions)
     # Build execution data for report generator
     execution_data = {
         "id": str(execution.id),

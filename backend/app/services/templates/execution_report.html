@@ -69,38 +69,39 @@
         <!-- Agent Metrics -->
         {% if report.get('metrics') %}
         <div class="metrics-section">
-            <h4>Metrics:</h4>
+            <h4>Key Metrics:</h4>
             <table>
-                <thead>
+                {% if report.metrics is mapping %}
+                    {% for key, value in report.metrics.items() %}
                     <tr>
-                        <th>Metric</th>
-                        <th>Value</th>
+                        <td><strong>{{ key|replace('_', ' ')|title }}:</strong></td>
+                        <td>
+                            {% if value is mapping %}
+                                <table class="nested-table">
+                                {% for k, v in value.items() %}
+                                    <tr>
+                                        <td>{{ k|replace('_', ' ')|title }}</td>
+                                        <td>{{ v }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </table>
+                            {% elif value is sequence and value is not string %}
+                                {{ value|join(', ') }}
+                            {% elif value is number %}
+                                {{ "%.2f"|format(value) if value is float else value }}
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    {% if report.metrics is mapping %}
-                        {% for key, value in report.metrics.items() %}
-                        <tr>
-                            <td>{{ key }}</td>
-                            <td>
-                                {% if value is mapping %}
-                                    {{ value|tojson }}
-                                {% elif value is sequence and value is not string %}
-                                    {{ value|join(', ') }}
-                                {% else %}
-                                    {{ value }}
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% elif report.metrics is sequence %}
-                        {% for metric in report.metrics %}
-                        <tr>
-                            <td colspan="2">{{ metric }}</td>
-                        </tr>
-                        {% endfor %}
-                    {% endif %}
-                </tbody>
+                    {% endfor %}
+                {% elif report.metrics is sequence %}
+                    {% for metric in report.metrics %}
+                    <tr>
+                        <td colspan="2">• {{ metric }}</td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
             </table>
         </div>
         {% endif %}
@@ -108,37 +109,69 @@
         <!-- Agent Data -->
         {% if report.get('data') %}
         <div class="data-section">
-            <h4>Details:</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Field</th>
-                        <th>Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if report.data is mapping %}
-                        {% for key, value in report.data.items() %}
-                        <tr>
-                            <td>{{ key }}</td>
-                            <td>
-                                {% if value is mapping %}
-                                    <pre>{{ value|tojson(indent=2) }}</pre>
-                                {% elif value is sequence and value is not string %}
-                                    {% if value|length > 3 %}
-                                        {{ value[:3]|join(', ') }}... ({{ value|length }} items)
-                                    {% else %}
-                                        {{ value|join(', ') }}
-                                    {% endif %}
-                                {% else %}
-                                    {{ value }}
-                                {% endif %}
-                            </td>
-                        </tr>
+            <h4>Analysis Details:</h4>
+            {% if report.data is mapping %}
+                {% for key, value in report.data.items() %}
+                    {% if value is mapping %}
+                        <div class="data-group">
+                            <strong>{{ key|replace('_', ' ')|title }}:</strong>
+                            <table class="nested-table">
+                            {% for k, v in value.items() %}
+                                <tr>
+                                    <td>{{ k|replace('_', ' ')|title }}</td>
+                                    <td>{{ v if v is not mapping else (v|tojson) }}</td>
+                                </tr>
+                            {% endfor %}
+                            </table>
+                        </div>
+                    {% elif value is sequence and value is not string %}
+                        <p><strong>{{ key|replace('_', ' ')|title }}:</strong></p>
+                        <ul>
+                        {% for item in value %}
+                            <li>{{ item }}</li>
                         {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p><strong>{{ key|replace('_', ' ')|title }}:</strong> {{ value }}</p>
                     {% endif %}
-                </tbody>
-            </table>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <!-- Chart Data Summary (if available) -->
+        {% if report.get('chart_data') or (execution_artifacts and execution_artifacts.get('strategy_chart')) %}
+        <div class="chart-section">
+            <h4>📊 Strategy Visualization</h4>
+            <p><em>Chart data included in execution - view in platform for interactive visualization</em></p>
+            {% if execution_artifacts and execution_artifacts.get('strategy_chart') %}
+                {% set chart = execution_artifacts.strategy_chart %}
+                <table>
+                    <tr>
+                        <td><strong>Symbol:</strong></td>
+                        <td>{{ chart.meta.symbol if chart.meta else 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Timeframe:</strong></td>
+                        <td>{{ chart.meta.timeframe if chart.meta else 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Data Points:</strong></td>
+                        <td>{{ chart.candles|length if chart.candles else 0 }} candles</td>
+                    </tr>
+                    {% if chart.annotations %}
+                    <tr>
+                        <td><strong>Trade Levels:</strong></td>
+                        <td>
+                            {% for annotation in chart.annotations %}
+                                {{ annotation.type|title }} @ ${{ "%.2f"|format(annotation.price) }}
+                                {% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+            {% endif %}
         </div>
         {% endif %}
     </div>

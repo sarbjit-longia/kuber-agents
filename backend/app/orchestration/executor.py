@@ -1125,11 +1125,42 @@ class PipelineExecutor:
             except Exception as e:
                 self.logger.warning("executive_summary_generation_failed", error=str(e))
             
-            # Generate PDF (this is a sync method)
+            # Build comprehensive executive report (same structure as /executive-report endpoint)
+            executive_report = {
+                "execution_context": {
+                    "id": str(execution.id),
+                    "pipeline_name": execution_data["pipeline_name"],
+                    "symbol": execution.symbol,
+                    "mode": execution.mode,
+                    "started_at": execution_data["started_at"],
+                    "completed_at": execution_data["completed_at"],
+                    "duration_seconds": execution_data["duration_seconds"],
+                    "total_cost": execution.cost,
+                },
+                "agent_reports": execution.reports or {},
+            }
+            
+            # Add AI-generated summary if available
+            if executive_summary:
+                executive_report.update(executive_summary)
+            
+            # Add execution artifacts and results
+            if execution.result and isinstance(execution.result, dict):
+                executive_report["execution_artifacts"] = execution.result.get("execution_artifacts", {})
+                executive_report["strategy"] = execution.result.get("strategy")
+                executive_report["bias"] = execution.result.get("biases")
+                executive_report["risk_assessment"] = execution.result.get("risk_assessment")
+                executive_report["trade_execution"] = execution.result.get("trade_execution")
+            
+            # Save executive report to database
+            execution.executive_report = executive_report
+            
+            # Generate PDF using the full executive report (this is a sync method)
             pdf_path = pdf_generator.generate_execution_report(
                 execution_id=str(execution.id),
                 execution_data=execution_data,
-                executive_summary=executive_summary
+                executive_summary=executive_summary,  # Keep for backward compatibility
+                executive_report=executive_report  # Use full report
             )
             
             # Update execution record with PDF path

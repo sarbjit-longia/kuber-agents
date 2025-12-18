@@ -44,7 +44,8 @@ class PDFReportGenerator:
         self,
         execution_id: str,
         execution_data: Dict[str, Any],
-        executive_summary: Optional[Dict[str, Any]] = None
+        executive_summary: Optional[Dict[str, Any]] = None,
+        executive_report: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Generate PDF report for a pipeline execution.
@@ -61,7 +62,7 @@ class PDFReportGenerator:
             logger.info("generating_pdf_report", execution_id=execution_id)
             
             # Prepare template context
-            context = self._prepare_context(execution_data, executive_summary)
+            context = self._prepare_context(execution_data, executive_summary, executive_report)
             
             # Render HTML from template
             html_content = self._render_template(context)
@@ -94,44 +95,82 @@ class PDFReportGenerator:
     def _prepare_context(
         self,
         execution_data: Dict[str, Any],
-        executive_summary: Optional[Dict[str, Any]]
+        executive_summary: Optional[Dict[str, Any]],
+        executive_report: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Prepare template context from execution data."""
-        result = execution_data.get('result', {})
-        
-        context = {
-            'execution_id': execution_data.get('id'),
-            'pipeline_name': execution_data.get('pipeline_name', 'Unknown'),
-            'symbol': execution_data.get('symbol', 'N/A'),
-            'mode': execution_data.get('mode', 'paper').upper(),
-            'status': execution_data.get('status', 'unknown').upper(),
-            'started_at': self._format_datetime(execution_data.get('started_at')),
-            'completed_at': self._format_datetime(execution_data.get('completed_at')),
-            'duration': self._format_duration(execution_data.get('duration_seconds')),
-            'cost': execution_data.get('cost', 0),
-            'trigger_source': execution_data.get('trigger_source', 'N/A'),
+        # If executive_report is available, use it (it contains everything)
+        if executive_report:
+            context = {
+                'execution_id': executive_report['execution_context']['id'],
+                'pipeline_name': executive_report['execution_context']['pipeline_name'],
+                'symbol': executive_report['execution_context']['symbol'],
+                'mode': executive_report['execution_context']['mode'].upper(),
+                'status': 'COMPLETED',
+                'started_at': self._format_datetime(executive_report['execution_context']['started_at']),
+                'completed_at': self._format_datetime(executive_report['execution_context']['completed_at']),
+                'duration': self._format_duration(executive_report['execution_context']['duration_seconds']),
+                'cost': executive_report['execution_context']['total_cost'],
+                'trigger_source': execution_data.get('trigger_source', 'N/A'),
+                
+                # Executive summary (AI-generated)
+                'executive_summary': executive_report.get('executive_summary'),
+                'key_takeaways': executive_report.get('key_takeaways', []),
+                'final_recommendation': executive_report.get('final_recommendation'),
+                'risk_notes': executive_report.get('risk_notes'),
+                
+                # Agent reports
+                'reports': executive_report.get('agent_reports', {}),
+                
+                # Results
+                'biases': executive_report.get('bias'),
+                'strategy': executive_report.get('strategy'),
+                'risk_assessment': executive_report.get('risk_assessment'),
+                'trade_execution': executive_report.get('trade_execution'),
+                
+                # Execution artifacts (charts, images, etc.)
+                'execution_artifacts': executive_report.get('execution_artifacts', {}),
+                
+                # Metadata
+                'generated_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'),
+            }
+        else:
+            # Fallback to old method for backward compatibility
+            result = execution_data.get('result', {})
             
-            # Executive summary (if available)
-            'executive_summary': executive_summary.get('executive_summary') if executive_summary else None,
-            'key_takeaways': executive_summary.get('key_takeaways', []) if executive_summary else [],
-            'final_recommendation': executive_summary.get('final_recommendation') if executive_summary else None,
-            'risk_notes': executive_summary.get('risk_notes') if executive_summary else None,
-            
-            # Agent reports
-            'reports': execution_data.get('reports', {}),
-            
-            # Results
-            'biases': result.get('biases'),
-            'strategy': result.get('strategy'),
-            'risk_assessment': result.get('risk_assessment'),
-            'trade_execution': result.get('trade_execution'),
-            
-            # Execution artifacts (charts, images, etc.)
-            'execution_artifacts': result.get('execution_artifacts', {}),
-            
-            # Metadata
-            'generated_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'),
-        }
+            context = {
+                'execution_id': execution_data.get('id'),
+                'pipeline_name': execution_data.get('pipeline_name', 'Unknown'),
+                'symbol': execution_data.get('symbol', 'N/A'),
+                'mode': execution_data.get('mode', 'paper').upper(),
+                'status': execution_data.get('status', 'unknown').upper(),
+                'started_at': self._format_datetime(execution_data.get('started_at')),
+                'completed_at': self._format_datetime(execution_data.get('completed_at')),
+                'duration': self._format_duration(execution_data.get('duration_seconds')),
+                'cost': execution_data.get('cost', 0),
+                'trigger_source': execution_data.get('trigger_source', 'N/A'),
+                
+                # Executive summary (if available)
+                'executive_summary': executive_summary.get('executive_summary') if executive_summary else None,
+                'key_takeaways': executive_summary.get('key_takeaways', []) if executive_summary else [],
+                'final_recommendation': executive_summary.get('final_recommendation') if executive_summary else None,
+                'risk_notes': executive_summary.get('risk_notes') if executive_summary else None,
+                
+                # Agent reports
+                'reports': execution_data.get('reports', {}),
+                
+                # Results
+                'biases': result.get('biases'),
+                'strategy': result.get('strategy'),
+                'risk_assessment': result.get('risk_assessment'),
+                'trade_execution': result.get('trade_execution'),
+                
+                # Execution artifacts (charts, images, etc.)
+                'execution_artifacts': result.get('execution_artifacts', {}),
+                
+                # Metadata
+                'generated_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'),
+            }
         
         return context
     
@@ -226,11 +265,35 @@ class PDFReportGenerator:
                 padding: 8pt;
                 text-align: left;
                 border-bottom: 1pt solid #ddd;
+                vertical-align: top;
             }
             th {
                 background: #667eea;
                 color: white;
                 font-weight: bold;
+            }
+            .nested-table {
+                margin: 5pt 0;
+                border: 1pt solid #e0e0e0;
+                background: #fafafa;
+            }
+            .nested-table td {
+                padding: 5pt;
+                border-bottom: 1pt solid #e0e0e0;
+                font-size: 9pt;
+            }
+            .data-group {
+                margin: 10pt 0;
+                padding: 8pt;
+                background: #f8f9fa;
+                border-left: 3pt solid #667eea;
+            }
+            .chart-section {
+                background: #e8f4fd;
+                padding: 12pt;
+                margin: 15pt 0;
+                border-left: 4pt solid #2196f3;
+                border-radius: 5pt;
             }
             .agent-report {
                 background: #fafafa;
@@ -323,26 +386,60 @@ class PDFReportGenerator:
         
         # Add agent reports
         if context.get('reports'):
-            html += '<h2>Agent Reports</h2>'
+            html += '<h2>🤖 Agent Reports</h2>'
             for agent_id, report in context['reports'].items():
                 html += f'''
                 <div class="agent-report">
                     <h3>{report.get('title', agent_id)}</h3>
-                    <p>{report.get('summary', 'No summary available')}</p>
-                </div>
+                    <p><strong>Summary:</strong> {report.get('summary', 'No summary available')}</p>
                 '''
+                
+                # Add metrics if available
+                if report.get('metrics'):
+                    html += '<h4>Key Metrics:</h4><table>'
+                    metrics = report['metrics']
+                    if isinstance(metrics, dict):
+                        for key, value in metrics.items():
+                            html += f'<tr><td><strong>{key.replace("_", " ").title()}:</strong></td><td>{value}</td></tr>'
+                    html += '</table>'
+                
+                # Add data if available (formatted, not JSON)
+                if report.get('data'):
+                    html += '<h4>Analysis Details:</h4>'
+                    data = report['data']
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if isinstance(value, (str, int, float, bool)):
+                                html += f'<p><strong>{key.replace("_", " ").title()}:</strong> {value}</p>'
+                            elif isinstance(value, list):
+                                html += f'<p><strong>{key.replace("_", " ").title()}:</strong></p><ul>'
+                                for item in value:
+                                    html += f'<li>{item}</li>'
+                                html += '</ul>'
+                
+                html += '</div>'
         
         if context.get('risk_notes') and context['risk_notes'] != 'None':
             html += f'''
-            <h2>Risk Notes</h2>
+            <h2>⚠️ Risk Notes</h2>
             <div class="risk-box">
                 <p>{context['risk_notes']}</p>
+            </div>
+            '''
+        
+        # Add chart visualization note
+        if context.get('execution_artifacts', {}).get('strategy_chart'):
+            html += '''
+            <h2>📊 Strategy Visualization</h2>
+            <div class="chart-section">
+                <p><strong>Interactive Chart Available:</strong> View this execution in the platform to see the full TradingView chart with annotations and trade levels.</p>
             </div>
             '''
         
         html += f'''
             <div class="footer">
                 <p>Generated on {context['generated_at']} | Execution ID: {context['execution_id']}</p>
+                <p style="font-size: 7pt; color: #999; margin-top: 5pt;">This is an automated report. For interactive charts and detailed analysis, please view this execution in the trading platform.</p>
             </div>
         </body>
         </html>
