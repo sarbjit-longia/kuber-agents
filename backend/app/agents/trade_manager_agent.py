@@ -105,8 +105,20 @@ class TradeManagerAgent(BaseAgent):
         self._validate_single_broker()
         
         # Validate we have risk assessment
+        # Do not raise InsufficientDataError here; missing upstream outputs should result in a
+        # clean "skipped" trade so the pipeline execution can complete with a readable outcome.
         if not state.risk_assessment:
-            raise InsufficientDataError("No risk assessment available")
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="skipped",
+                filled_price=None,
+                filled_quantity=None,
+                commission=None,
+                execution_time=datetime.utcnow(),
+                broker_response={"reason": "No risk assessment available - skipping trade."},
+            )
+            self.log(state, "⚠️ No risk assessment available. Skipping trade execution.")
+            return state
         
         risk = state.risk_assessment
         strategy = state.strategy

@@ -174,10 +174,19 @@ class PipelineExecutor:
         """
         # Determine which timeframes are needed by agents
         required_timeframes = self._get_required_timeframes()
-        
+
+        # If we can't infer timeframes (e.g., missing instructions), don't leave state.market_data empty.
+        # This previously caused downstream agents to crash on None market_data.
         if not required_timeframes:
-            self.logger.debug("no_timeframes_required")
-            return
+            self.logger.warning("no_timeframes_required_defaulting", mode=self.mode)
+            if self.mode in ["paper", "simulation", "validation"]:
+                required_timeframes = ["5m", "1h", "1d"]
+            else:
+                # Live mode fallback: at minimum fetch daily to give agents something to work with
+                required_timeframes = ["1d"]
+        
+        # Store timeframes in state for agent access
+        state.timeframes = required_timeframes
         
         self.logger.info(
             "fetching_market_data",
@@ -395,10 +404,17 @@ class PipelineExecutor:
         """
         # Determine which timeframes are needed by agents
         required_timeframes = self._get_required_timeframes()
-        
+
+        # Mirror async behavior: never leave market_data empty in paper modes.
         if not required_timeframes:
-            self.logger.debug("no_timeframes_required")
-            return
+            self.logger.warning("no_timeframes_required_defaulting", mode=self.mode)
+            if self.mode in ["paper", "simulation", "validation"]:
+                required_timeframes = ["5m", "1h", "1d"]
+            else:
+                required_timeframes = ["1d"]
+        
+        # Store timeframes in state for agent access
+        state.timeframes = required_timeframes
         
         self.logger.info(
             "fetching_market_data",

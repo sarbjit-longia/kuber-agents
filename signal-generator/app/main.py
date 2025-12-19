@@ -8,6 +8,7 @@ or Kafka (Phase 2).
 import asyncio
 import json
 import time
+from copy import deepcopy
 from datetime import datetime
 from typing import List, Optional
 import structlog
@@ -135,6 +136,20 @@ class SignalGeneratorService:
         
         # Initialize generators based on configuration
         self._initialize_generators()
+
+    def _merge_timeframes(self, primary: str) -> List[str]:
+        """Combine primary timeframe with additional timeframes (dedup, preserve order)."""
+        tfs = []
+        if primary:
+            tfs.append(primary)
+
+        # Parse comma-separated string into list
+        if settings.ADDITIONAL_TIMEFRAMES:
+            extra = [tf.strip() for tf in settings.ADDITIONAL_TIMEFRAMES.split(",") if tf.strip()]
+            for tf in extra:
+                if tf and tf not in tfs:
+                    tfs.append(tf)
+        return tfs or ["D"]
     
     def _initialize_kafka(self):
         """Initialize Kafka producer for signal publishing."""
@@ -179,266 +194,283 @@ class SignalGeneratorService:
             "interval": settings.MOCK_GENERATOR_INTERVAL_SECONDS
         })
         
-        # Golden cross generator
-        golden_cross_config = {
-            "tickers": watchlist,
-            "sma_short": settings.GOLDEN_CROSS_SMA_SHORT,
-            "sma_long": settings.GOLDEN_CROSS_SMA_LONG,
-            "timeframe": settings.GOLDEN_CROSS_TIMEFRAME,
-            "lookback_days": 5,
-            "confidence": 0.85
-        }
-        self.generators.append({
-            "name": "golden_cross",
-            "generator": GoldenCrossSignalGenerator(golden_cross_config),
-            "interval": settings.GOLDEN_CROSS_CHECK_INTERVAL_SECONDS
-        })
+        # Golden cross generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.GOLDEN_CROSS_TIMEFRAME):
+            golden_cross_config = {
+                "tickers": watchlist,
+                "sma_short": settings.GOLDEN_CROSS_SMA_SHORT,
+                "sma_long": settings.GOLDEN_CROSS_SMA_LONG,
+                "timeframe": tf,
+                "lookback_days": 5,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"golden_cross_{tf}",
+                "generator": GoldenCrossSignalGenerator(golden_cross_config),
+                "interval": settings.GOLDEN_CROSS_CHECK_INTERVAL_SECONDS
+            })
         
-        # Death cross generator
-        death_cross_config = {
-            "tickers": watchlist,
-            "sma_short": settings.DEATH_CROSS_SMA_SHORT,
-            "sma_long": settings.DEATH_CROSS_SMA_LONG,
-            "timeframe": settings.DEATH_CROSS_TIMEFRAME,
-            "lookback_days": 5,
-            "confidence": 0.85
-        }
-        self.generators.append({
-            "name": "death_cross",
-            "generator": DeathCrossSignalGenerator(death_cross_config),
-            "interval": settings.DEATH_CROSS_CHECK_INTERVAL_SECONDS
-        })
+        # Death cross generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.DEATH_CROSS_TIMEFRAME):
+            death_cross_config = {
+                "tickers": watchlist,
+                "sma_short": settings.DEATH_CROSS_SMA_SHORT,
+                "sma_long": settings.DEATH_CROSS_SMA_LONG,
+                "timeframe": tf,
+                "lookback_days": 5,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"death_cross_{tf}",
+                "generator": DeathCrossSignalGenerator(death_cross_config),
+                "interval": settings.DEATH_CROSS_CHECK_INTERVAL_SECONDS
+            })
         
-        # RSI generator
-        rsi_config = {
-            "tickers": watchlist,
-            "period": settings.RSI_PERIOD,
-            "oversold_threshold": settings.RSI_OVERSOLD_THRESHOLD,
-            "overbought_threshold": settings.RSI_OVERBOUGHT_THRESHOLD,
-            "timeframe": settings.RSI_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "rsi",
-            "generator": RSISignalGenerator(rsi_config),
-            "interval": settings.RSI_CHECK_INTERVAL_SECONDS
-        })
+        # RSI generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.RSI_TIMEFRAME):
+            rsi_config = {
+                "tickers": watchlist,
+                "period": settings.RSI_PERIOD,
+                "oversold_threshold": settings.RSI_OVERSOLD_THRESHOLD,
+                "overbought_threshold": settings.RSI_OVERBOUGHT_THRESHOLD,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"rsi_{tf}",
+                "generator": RSISignalGenerator(rsi_config),
+                "interval": settings.RSI_CHECK_INTERVAL_SECONDS
+            })
         
-        # MACD generator
-        macd_config = {
-            "tickers": watchlist,
-            "fast_period": settings.MACD_FAST_PERIOD,
-            "slow_period": settings.MACD_SLOW_PERIOD,
-            "signal_period": settings.MACD_SIGNAL_PERIOD,
-            "timeframe": settings.MACD_TIMEFRAME,
-            "confidence": 0.80,
-            "require_histogram_confirmation": True
-        }
-        self.generators.append({
-            "name": "macd",
-            "generator": MACDSignalGenerator(macd_config),
-            "interval": settings.MACD_CHECK_INTERVAL_SECONDS
-        })
+        # MACD generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.MACD_TIMEFRAME):
+            macd_config = {
+                "tickers": watchlist,
+                "fast_period": settings.MACD_FAST_PERIOD,
+                "slow_period": settings.MACD_SLOW_PERIOD,
+                "signal_period": settings.MACD_SIGNAL_PERIOD,
+                "timeframe": tf,
+                "confidence": 0.80,
+                "require_histogram_confirmation": True
+            }
+            self.generators.append({
+                "name": f"macd_{tf}",
+                "generator": MACDSignalGenerator(macd_config),
+                "interval": settings.MACD_CHECK_INTERVAL_SECONDS
+            })
         
-        # Volume Spike generator
-        volume_spike_config = {
-            "tickers": watchlist,
-            "volume_period": settings.VOLUME_SPIKE_PERIOD,
-            "spike_threshold": settings.VOLUME_SPIKE_THRESHOLD,
-            "timeframe": settings.VOLUME_SPIKE_TIMEFRAME,
-            "confidence": 0.70,
-            "use_price_direction": True,
-            "min_price_change_pct": 1.0
-        }
-        self.generators.append({
-            "name": "volume_spike",
-            "generator": VolumeSpikeSignalGenerator(volume_spike_config),
-            "interval": settings.VOLUME_SPIKE_CHECK_INTERVAL_SECONDS
-        })
+        # Volume Spike generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.VOLUME_SPIKE_TIMEFRAME):
+            volume_spike_config = {
+                "tickers": watchlist,
+                "volume_period": settings.VOLUME_SPIKE_PERIOD,
+                "spike_threshold": settings.VOLUME_SPIKE_THRESHOLD,
+                "timeframe": tf,
+                "confidence": 0.70,
+                "use_price_direction": True,
+                "min_price_change_pct": 1.0
+            }
+            self.generators.append({
+                "name": f"volume_spike_{tf}",
+                "generator": VolumeSpikeSignalGenerator(volume_spike_config),
+                "interval": settings.VOLUME_SPIKE_CHECK_INTERVAL_SECONDS
+            })
         
-        # Bollinger Bands generator
-        bbands_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.BBANDS_TIMEPERIOD,
-            "nbdevup": settings.BBANDS_NBDEVUP,
-            "nbdevdn": settings.BBANDS_NBDEVDN,
-            "timeframe": settings.BBANDS_TIMEFRAME,
-            "confidence": 0.75,
-            "signal_type": settings.BBANDS_SIGNAL_TYPE
-        }
-        self.generators.append({
-            "name": "bollinger_bands",
-            "generator": BollingerBandsSignalGenerator(bbands_config),
-            "interval": settings.BBANDS_CHECK_INTERVAL_SECONDS
-        })
+        # Bollinger Bands generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.BBANDS_TIMEFRAME):
+            bbands_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.BBANDS_TIMEPERIOD,
+                "nbdevup": settings.BBANDS_NBDEVUP,
+                "nbdevdn": settings.BBANDS_NBDEVDN,
+                "timeframe": tf,
+                "confidence": 0.75,
+                "signal_type": settings.BBANDS_SIGNAL_TYPE
+            }
+            self.generators.append({
+                "name": f"bollinger_bands_{tf}",
+                "generator": BollingerBandsSignalGenerator(bbands_config),
+                "interval": settings.BBANDS_CHECK_INTERVAL_SECONDS
+            })
         
-        # Stochastic generator
-        stoch_config = {
-            "tickers": watchlist,
-            "fastk_period": settings.STOCH_FASTK_PERIOD,
-            "slowk_period": settings.STOCH_SLOWK_PERIOD,
-            "slowd_period": settings.STOCH_SLOWD_PERIOD,
-            "overbought": settings.STOCH_OVERBOUGHT,
-            "oversold": settings.STOCH_OVERSOLD,
-            "timeframe": settings.STOCH_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "stochastic",
-            "generator": StochasticSignalGenerator(stoch_config),
-            "interval": settings.STOCH_CHECK_INTERVAL_SECONDS
-        })
+        # Stochastic generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.STOCH_TIMEFRAME):
+            stoch_config = {
+                "tickers": watchlist,
+                "fastk_period": settings.STOCH_FASTK_PERIOD,
+                "slowk_period": settings.STOCH_SLOWK_PERIOD,
+                "slowd_period": settings.STOCH_SLOWD_PERIOD,
+                "overbought": settings.STOCH_OVERBOUGHT,
+                "oversold": settings.STOCH_OVERSOLD,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"stochastic_{tf}",
+                "generator": StochasticSignalGenerator(stoch_config),
+                "interval": settings.STOCH_CHECK_INTERVAL_SECONDS
+            })
         
-        # ADX generator
-        adx_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.ADX_TIMEPERIOD,
-            "strong_trend": settings.ADX_STRONG_TREND,
-            "weak_trend": settings.ADX_WEAK_TREND,
-            "timeframe": settings.ADX_TIMEFRAME,
-            "confidence": 0.70
-        }
-        self.generators.append({
-            "name": "adx",
-            "generator": ADXSignalGenerator(adx_config),
-            "interval": settings.ADX_CHECK_INTERVAL_SECONDS
-        })
+        # ADX generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.ADX_TIMEFRAME):
+            adx_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.ADX_TIMEPERIOD,
+                "strong_trend": settings.ADX_STRONG_TREND,
+                "weak_trend": settings.ADX_WEAK_TREND,
+                "timeframe": tf,
+                "confidence": 0.70
+            }
+            self.generators.append({
+                "name": f"adx_{tf}",
+                "generator": ADXSignalGenerator(adx_config),
+                "interval": settings.ADX_CHECK_INTERVAL_SECONDS
+            })
         
-        # EMA Crossover generator
-        ema_config = {
-            "tickers": watchlist,
-            "ema_fast": settings.EMA_FAST,
-            "ema_slow": settings.EMA_SLOW,
-            "timeframe": settings.EMA_TIMEFRAME,
-            "lookback_days": 5,
-            "confidence": 0.80
-        }
-        self.generators.append({
-            "name": "ema_crossover",
-            "generator": EMACrossoverSignalGenerator(ema_config),
-            "interval": settings.EMA_CHECK_INTERVAL_SECONDS
-        })
+        # EMA Crossover generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.EMA_TIMEFRAME):
+            ema_config = {
+                "tickers": watchlist,
+                "ema_fast": settings.EMA_FAST,
+                "ema_slow": settings.EMA_SLOW,
+                "timeframe": tf,
+                "lookback_days": 5,
+                "confidence": 0.80
+            }
+            self.generators.append({
+                "name": f"ema_crossover_{tf}",
+                "generator": EMACrossoverSignalGenerator(ema_config),
+                "interval": settings.EMA_CHECK_INTERVAL_SECONDS
+            })
         
-        # ATR generator
-        atr_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.ATR_TIMEPERIOD,
-            "spike_multiplier": settings.ATR_SPIKE_MULTIPLIER,
-            "compression_multiplier": settings.ATR_COMPRESSION_MULTIPLIER,
-            "lookback_for_average": settings.ATR_LOOKBACK_FOR_AVERAGE,
-            "timeframe": settings.ATR_TIMEFRAME,
-            "confidence": 0.65
-        }
-        self.generators.append({
-            "name": "atr",
-            "generator": ATRSignalGenerator(atr_config),
-            "interval": settings.ATR_CHECK_INTERVAL_SECONDS
-        })
+        # ATR generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.ATR_TIMEFRAME):
+            atr_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.ATR_TIMEPERIOD,
+                "spike_multiplier": settings.ATR_SPIKE_MULTIPLIER,
+                "compression_multiplier": settings.ATR_COMPRESSION_MULTIPLIER,
+                "lookback_for_average": settings.ATR_LOOKBACK_FOR_AVERAGE,
+                "timeframe": tf,
+                "confidence": 0.65
+            }
+            self.generators.append({
+                "name": f"atr_{tf}",
+                "generator": ATRSignalGenerator(atr_config),
+                "interval": settings.ATR_CHECK_INTERVAL_SECONDS
+            })
         
-        # CCI generator
-        cci_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.CCI_TIMEPERIOD,
-            "overbought": settings.CCI_OVERBOUGHT,
-            "oversold": settings.CCI_OVERSOLD,
-            "timeframe": settings.CCI_TIMEFRAME,
-            "confidence": 0.70
-        }
-        self.generators.append({
-            "name": "cci",
-            "generator": CCISignalGenerator(cci_config),
-            "interval": settings.CCI_CHECK_INTERVAL_SECONDS
-        })
+        # CCI generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.CCI_TIMEFRAME):
+            cci_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.CCI_TIMEPERIOD,
+                "overbought": settings.CCI_OVERBOUGHT,
+                "oversold": settings.CCI_OVERSOLD,
+                "timeframe": tf,
+                "confidence": 0.70
+            }
+            self.generators.append({
+                "name": f"cci_{tf}",
+                "generator": CCISignalGenerator(cci_config),
+                "interval": settings.CCI_CHECK_INTERVAL_SECONDS
+            })
         
-        # Stochastic RSI generator
-        stochrsi_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.STOCHRSI_TIMEPERIOD,
-            "fastk_period": settings.STOCHRSI_FASTK_PERIOD,
-            "fastd_period": settings.STOCHRSI_FASTD_PERIOD,
-            "overbought": settings.STOCHRSI_OVERBOUGHT,
-            "oversold": settings.STOCHRSI_OVERSOLD,
-            "timeframe": settings.STOCHRSI_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "stochrsi",
-            "generator": StochRSISignalGenerator(stochrsi_config),
-            "interval": settings.STOCHRSI_CHECK_INTERVAL_SECONDS
-        })
+        # Stochastic RSI generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.STOCHRSI_TIMEFRAME):
+            stochrsi_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.STOCHRSI_TIMEPERIOD,
+                "fastk_period": settings.STOCHRSI_FASTK_PERIOD,
+                "fastd_period": settings.STOCHRSI_FASTD_PERIOD,
+                "overbought": settings.STOCHRSI_OVERBOUGHT,
+                "oversold": settings.STOCHRSI_OVERSOLD,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"stochrsi_{tf}",
+                "generator": StochRSISignalGenerator(stochrsi_config),
+                "interval": settings.STOCHRSI_CHECK_INTERVAL_SECONDS
+            })
         
-        # Williams %R generator
-        willr_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.WILLR_TIMEPERIOD,
-            "overbought": settings.WILLR_OVERBOUGHT,
-            "oversold": settings.WILLR_OVERSOLD,
-            "timeframe": settings.WILLR_TIMEFRAME,
-            "confidence": 0.70
-        }
-        self.generators.append({
-            "name": "williams_r",
-            "generator": WilliamsRSignalGenerator(willr_config),
-            "interval": settings.WILLR_CHECK_INTERVAL_SECONDS
-        })
+        # Williams %R generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.WILLR_TIMEFRAME):
+            willr_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.WILLR_TIMEPERIOD,
+                "overbought": settings.WILLR_OVERBOUGHT,
+                "oversold": settings.WILLR_OVERSOLD,
+                "timeframe": tf,
+                "confidence": 0.70
+            }
+            self.generators.append({
+                "name": f"williams_r_{tf}",
+                "generator": WilliamsRSignalGenerator(willr_config),
+                "interval": settings.WILLR_CHECK_INTERVAL_SECONDS
+            })
         
-        # AROON generator
-        aroon_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.AROON_TIMEPERIOD,
-            "trend_threshold": settings.AROON_TREND_THRESHOLD,
-            "timeframe": settings.AROON_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "aroon",
-            "generator": AroonSignalGenerator(aroon_config),
-            "interval": settings.AROON_CHECK_INTERVAL_SECONDS
-        })
+        # AROON generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.AROON_TIMEFRAME):
+            aroon_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.AROON_TIMEPERIOD,
+                "trend_threshold": settings.AROON_TREND_THRESHOLD,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"aroon_{tf}",
+                "generator": AroonSignalGenerator(aroon_config),
+                "interval": settings.AROON_CHECK_INTERVAL_SECONDS
+            })
         
-        # MFI generator
-        mfi_config = {
-            "tickers": watchlist,
-            "timeperiod": settings.MFI_TIMEPERIOD,
-            "overbought": settings.MFI_OVERBOUGHT,
-            "oversold": settings.MFI_OVERSOLD,
-            "timeframe": settings.MFI_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "mfi",
-            "generator": MFISignalGenerator(mfi_config),
-            "interval": settings.MFI_CHECK_INTERVAL_SECONDS
-        })
+        # MFI generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.MFI_TIMEFRAME):
+            mfi_config = {
+                "tickers": watchlist,
+                "timeperiod": settings.MFI_TIMEPERIOD,
+                "overbought": settings.MFI_OVERBOUGHT,
+                "oversold": settings.MFI_OVERSOLD,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"mfi_{tf}",
+                "generator": MFISignalGenerator(mfi_config),
+                "interval": settings.MFI_CHECK_INTERVAL_SECONDS
+            })
         
-        # OBV generator
-        obv_config = {
-            "tickers": watchlist,
-            "sma_period": settings.OBV_SMA_PERIOD,
-            "divergence_lookback": settings.OBV_DIVERGENCE_LOOKBACK,
-            "min_price_change": settings.OBV_MIN_PRICE_CHANGE,
-            "timeframe": settings.OBV_TIMEFRAME,
-            "confidence": 0.70
-        }
-        self.generators.append({
-            "name": "obv",
-            "generator": OBVSignalGenerator(obv_config),
-            "interval": settings.OBV_CHECK_INTERVAL_SECONDS
-        })
+        # OBV generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.OBV_TIMEFRAME):
+            obv_config = {
+                "tickers": watchlist,
+                "sma_period": settings.OBV_SMA_PERIOD,
+                "divergence_lookback": settings.OBV_DIVERGENCE_LOOKBACK,
+                "min_price_change": settings.OBV_MIN_PRICE_CHANGE,
+                "timeframe": tf,
+                "confidence": 0.70
+            }
+            self.generators.append({
+                "name": f"obv_{tf}",
+                "generator": OBVSignalGenerator(obv_config),
+                "interval": settings.OBV_CHECK_INTERVAL_SECONDS
+            })
         
-        # SAR generator
-        sar_config = {
-            "tickers": watchlist,
-            "acceleration": settings.SAR_ACCELERATION,
-            "maximum": settings.SAR_MAXIMUM,
-            "timeframe": settings.SAR_TIMEFRAME,
-            "confidence": 0.75
-        }
-        self.generators.append({
-            "name": "sar",
-            "generator": SARSignalGenerator(sar_config),
-            "interval": settings.SAR_CHECK_INTERVAL_SECONDS
-        })
+        # SAR generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.SAR_TIMEFRAME):
+            sar_config = {
+                "tickers": watchlist,
+                "acceleration": settings.SAR_ACCELERATION,
+                "maximum": settings.SAR_MAXIMUM,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"sar_{tf}",
+                "generator": SARSignalGenerator(sar_config),
+                "interval": settings.SAR_CHECK_INTERVAL_SECONDS
+            })
         
         logger.info(
             "generators_initialized",

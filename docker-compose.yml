@@ -66,6 +66,8 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://dev:devpass@postgres:5432/trading_platform}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
@@ -132,6 +134,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.orchestration.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Celery Beat (Scheduler)
   celery-beat:
@@ -222,6 +230,7 @@ services:
       - "8003:8001"  # Prometheus metrics endpoint
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - ADDITIONAL_TIMEFRAMES=15,60
       - LOG_LEVEL=INFO
       - MOCK_GENERATOR_INTERVAL_SECONDS=60
       - GOLDEN_CROSS_CHECK_INTERVAL_SECONDS=300

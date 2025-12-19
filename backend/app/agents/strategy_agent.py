@@ -116,6 +116,11 @@ class StrategyAgent(BaseAgent):
             # Prepare context
             market_context = self._prepare_market_context(state, strategy_tf)
             bias_context = self._prepare_bias_context(state)
+            safe_current_price = (
+                float(state.market_data.current_price)
+                if state.market_data and state.market_data.current_price is not None
+                else 0.0
+            )
             
             # Get candle data for tools that need it
             candles = state.get_timeframe_data(strategy_tf)
@@ -167,7 +172,7 @@ YOUR INSTRUCTIONS:
 {instructions}
 
 REQUIREMENTS:
-- Current Price: ${state.market_data.current_price:.2f if state.market_data and state.market_data.current_price else 0}
+- Current Price: ${safe_current_price:.2f}
 
 Use the available tools as needed to analyze the market and find trade setups.
 
@@ -213,6 +218,28 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                 state,
                 f"✓ Strategy: {strategy_result.action} @ ${strategy_result.entry_price:.2f} "
                 f"(confidence: {strategy_result.confidence:.0%})"
+            )
+
+            # Record structured report for UI (executive + drill-down)
+            self.record_report(
+                state,
+                title="Strategy Decision",
+                summary=(
+                    f"{strategy_result.action} {state.symbol} "
+                    f"(confidence {strategy_result.confidence:.0%})"
+                ),
+                metrics={
+                    "action": strategy_result.action,
+                    "confidence": round(strategy_result.confidence, 3),
+                    "entry_price": strategy_result.entry_price,
+                    "stop_loss": strategy_result.stop_loss,
+                    "take_profit": strategy_result.take_profit,
+                },
+                data={
+                    "pattern_detected": getattr(strategy_result, "pattern_detected", ""),
+                    "reasoning": getattr(strategy_result, "reasoning", ""),
+                    "timeframe": strategy_tf,
+                },
             )
             
             # Generate chart visualization
@@ -309,13 +336,20 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
     
     def _prepare_bias_context(self, state: PipelineState) -> str:
         """Prepare bias context if available."""
-        if not state.bias:
+        if not state.biases:
             return "No bias analysis available."
-        
+
+        # Prefer bias for the primary pipeline timeframe if present, otherwise take any available bias.
+        preferred_tf = state.timeframes[0] if getattr(state, "timeframes", None) else None
+        bias = state.biases.get(preferred_tf) if preferred_tf else None
+        if not bias:
+            # Fall back to first available bias result
+            bias = next(iter(state.biases.values()))
+
         return (
-            f"Overall Bias: {state.bias.bias}\n"
-            f"Confidence: {state.bias.confidence:.0%}\n"
-            f"Reasoning: {state.bias.reasoning[:200]}..."
+            f"Bias ({bias.timeframe}): {bias.bias}\n"
+            f"Confidence: {bias.confidence:.0%}\n"
+            f"Reasoning: {bias.reasoning[:200]}..."
         )
     
     def _parse_strategy_result(self, result: Any, state: PipelineState) -> StrategyResult:
@@ -328,6 +362,7 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         if json_match:
             try:
                 data = json.loads(json_match.group())
+                raw_reasoning = data.get("reasoning", result_str)
                 return StrategyResult(
                     action=data.get("action", "HOLD"),
                     entry_price=float(data.get("entry_price", 0)),
@@ -335,7 +370,7 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                     take_profit=float(data.get("take_profit", 0)) if data.get("take_profit") else None,
                     confidence=float(data.get("confidence", 0.5)),
                     pattern_detected=data.get("pattern_detected", ""),
-                    reasoning=data.get("reasoning", result_str)
+                    reasoning=self._clean_reasoning(raw_reasoning)  # Clean reasoning
                 )
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -354,6 +389,32 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             take_profit=None,
             confidence=0.5,
             pattern_detected="",
-            reasoning=result_str[:500]
+            reasoning=self._clean_reasoning(result_str)  # Clean reasoning in fallback too
         )
+    
+    def _clean_reasoning(self, text: str) -> str:
+        """Make reasoning safe and readable for end users."""
+        import re
+        if not text:
+            return ""
+        cleaned = text
+        # Remove CrewAI tool-call artifacts
+        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
+        # Remove JSON blobs
+        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
+        # Remove HTML/XML tags
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        # Collapse whitespace
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # Extract meaningful sentences if still has artifacts
+        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
+            sentences = re.split(r'[.!?]\s+', cleaned)
+            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
+            if clean_sentences:
+                cleaned = ". ".join(clean_sentences[:3]) + "."
+            else:
+                return "Strategy analysis completed based on market conditions and technical patterns."
+        return cleaned[:600].strip()
 

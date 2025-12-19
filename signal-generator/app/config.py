@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 from typing import Optional, List
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import structlog
 
@@ -39,6 +40,9 @@ class Settings(BaseSettings):
     DEATH_CROSS_SMA_SHORT: int = 50
     DEATH_CROSS_SMA_LONG: int = 200
     DEATH_CROSS_TIMEFRAME: str = "D"
+    
+    # Global additional timeframes (comma-separated string like "15,60,120")
+    ADDITIONAL_TIMEFRAMES: str = ""
     
     # RSI Settings
     RSI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes

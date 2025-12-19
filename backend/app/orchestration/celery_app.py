@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 # Create Celery app
 celery_app = Celery(
     "trading_platform",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
+    broker=settings.CELERY_BROKER_URL,
+    backend=settings.CELERY_RESULT_BACKEND,
     include=["app.orchestration.tasks"]
 )
 
@@ -35,6 +35,25 @@ celery_app.conf.update(
     # Task resilience: prevent task loss on worker restart
     task_acks_late=True,  # Don't acknowledge task until it's fully completed
     task_reject_on_worker_lost=True,  # Requeue task if worker dies unexpectedly
+    
+    # Broker connection settings to prevent blocking
+    broker_connection_retry=True,  # Auto-retry on connection loss
+    broker_connection_retry_on_startup=True,  # Retry on startup
+    broker_connection_max_retries=10,  # Max retry attempts
+    broker_pool_limit=10,  # Max connections in pool
+    
+    # Result backend settings
+    result_backend_transport_options={
+        'socket_timeout': 5,  # 5 second timeout for result backend
+        'socket_connect_timeout': 5,
+    },
+    
+    # Broker transport options
+    broker_transport_options={
+        'socket_timeout': 5,  # 5 second timeout for broker
+        'socket_connect_timeout': 5,
+        'socket_keepalive': True,
+    },
 )
 
 # Celery Beat schedule for periodic tasks

@@ -18,6 +18,7 @@ from app.models.execution import Execution, ExecutionStatus
 from app.models.cost_tracking import UserBudget
 from app.orchestration.executor import PipelineExecutor
 from app.agents.base import TriggerNotMetException
+from app.agents.base import AgentError, InsufficientDataError, AgentProcessingError
 
 logger = structlog.get_logger()
 
@@ -109,6 +110,10 @@ def execute_pipeline(
             else:
                 # Update existing execution
                 execution.status = ExecutionStatus.RUNNING
+                # Clear prior completion/error fields if this execution is being re-used
+                execution.completed_at = None
+                execution.error_message = None
+                execution.result = None
                 if not execution.started_at:
                     execution.started_at = datetime.utcnow()
                 db.commit()
@@ -130,6 +135,10 @@ def execute_pipeline(
                 execution.result = {"error": str(e)}
                 execution.error_message = str(e)
                 db.commit()
+                # Do NOT retry deterministic agent failures; they should surface to the UI as-is.
+                # Retrying here has been causing "stuck RUNNING" executions and confusing states.
+                if isinstance(e, (InsufficientDataError, AgentProcessingError, AgentError, ValueError, PermissionError)):
+                    return {"status": "failed", "execution_id": str(execution.id), "error": str(e)}
                 raise
             
             logger.info(
@@ -151,10 +160,11 @@ def execute_pipeline(
             db.close()
             
     except Exception as exc:
+        # Important: we intentionally do NOT auto-retry here. With `acks_late=True` tasks will
+        # be re-queued if the worker dies; for logical errors we want a single failure and a clear
+        # error surfaced in the execution record.
         logger.exception("celery_task_failed", task_id=self.request.id)
-        
-        # Retry with exponential backoff
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 60)
+        raise
 
 
 @celery_app.task(name="app.orchestration.tasks.check_scheduled_pipelines")

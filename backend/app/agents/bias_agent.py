@@ -176,12 +176,27 @@ Be specific about which indicators you used and what they showed.""",
             # Parse result
             bias_result = self._parse_bias_result(result, state)
             
-            # Update state
-            state.bias = bias_result
+            # Update state (biases is a dict keyed by timeframe)
+            state.biases[bias_result.timeframe] = bias_result
             
             self.log(
                 state,
-                f"✓ Bias determined: {bias_result.bias} (confidence: {bias_result.confidence:.0%})"
+                f"✓ Bias determined: {bias_result.bias} (confidence: {bias_result.confidence:.0%}) for {bias_result.timeframe}"
+            )
+
+            # Record structured report for UI (avoid raw JSON/arrays)
+            self.record_report(
+                state,
+                title="Market Bias Analysis",
+                summary=f"{bias_result.bias} bias ({bias_result.confidence:.0%}) on {bias_result.timeframe}",
+                metrics=None,  # keep empty to avoid array-of-objects rendering
+                data={
+                    "Bias": bias_result.bias,
+                    "Confidence": f"{bias_result.confidence:.0%}",
+                    "Timeframe": bias_result.timeframe,
+                    "Key Factors": ", ".join(bias_result.key_factors) if bias_result.key_factors else "None",
+                    "Reasoning": self._clean_reasoning(bias_result.reasoning),
+                },
             )
             
             # Track cost using model registry
@@ -253,11 +268,12 @@ Be specific about which indicators you used and what they showed.""",
                 data = json.loads(json_match.group())
                 # Determine primary timeframe from state
                 primary_timeframe = state.timeframes[0] if state.timeframes else "1d"
+                raw_reasoning = data.get("reasoning", result_str)
                 return BiasResult(
                     bias=data.get("bias", "NEUTRAL"),
                     confidence=float(data.get("confidence", 0.5)),
                     timeframe=primary_timeframe,
-                    reasoning=data.get("reasoning", result_str),
+                    reasoning=self._clean_reasoning(raw_reasoning),  # Clean reasoning
                     key_factors=data.get("key_factors", [])
                 )
             except (json.JSONDecodeError, ValueError):
@@ -282,6 +298,37 @@ Be specific about which indicators you used and what they showed.""",
             bias=bias,
             confidence=confidence,
             timeframe=primary_timeframe,
-            reasoning=result_str[:500],  # Truncate if too long
+            reasoning=self._clean_reasoning(result_str),  # Clean reasoning in fallback too
             key_factors=[]
         )
+
+    def _clean_reasoning(self, text: str) -> str:
+        """Make reasoning safe and readable for end users."""
+        import re
+        if not text:
+            return ""
+        cleaned = text
+        # Remove CrewAI tool-call artifacts like "commentary to=tool_name json {...}"
+        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        # Remove tool invocation patterns
+        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
+        # Remove JSON blobs enclosed in backticks
+        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
+        # Remove standalone JSON objects
+        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
+        # Remove HTML/XML-like tags
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        # Collapse multiple whitespaces
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # If still too long or still has artifacts, try to extract meaningful sentences
+        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
+            # Split into sentences and take only clean ones
+            sentences = re.split(r'[.!?]\s+', cleaned)
+            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
+            if clean_sentences:
+                cleaned = ". ".join(clean_sentences[:3]) + "."
+            else:
+                # Last resort: just say analysis completed
+                return "Market bias analysis completed based on technical indicators and market conditions."
+        # Limit length for UI readability
+        return cleaned[:600].strip()

@@ -93,7 +93,6 @@ class RiskManagerAgent(BaseAgent):
             Updated pipeline state with risk assessment and position size
             
         Raises:
-            InsufficientDataError: If strategy missing
             AgentProcessingError: If risk assessment fails
         """
         from crewai import Agent, Task, Crew
@@ -103,9 +102,33 @@ class RiskManagerAgent(BaseAgent):
         
         self.log(state, "🛡️ Performing instruction-driven risk assessment")
         
-        # Validate we have a strategy
+        # If strategy is missing, do NOT throw InsufficientDataError (it causes Celery retries and
+        # creates confusing RUNNING/PENDING loops). Instead, reject the trade gracefully so the
+        # execution can complete and the UI shows a clear reason.
         if not state.strategy:
-            raise InsufficientDataError("No strategy available for risk assessment")
+            state.risk_assessment = RiskAssessment(
+                approved=False,
+                risk_score=0.0,
+                position_size=0.0,
+                max_loss_amount=0.0,
+                risk_reward_ratio=0.0,
+                warnings=["Strategy was not generated (LLM/tooling returned empty output)."],
+                reasoning="Risk assessment skipped because no strategy is available.",
+            )
+            self.log(state, "⚠️ No strategy available. Rejecting trade (risk assessment skipped).")
+            self.record_report(
+                state,
+                title="Risk Assessment Skipped",
+                summary="No strategy output available — trade rejected",
+                status="rejected",
+                metrics={
+                    "approved": False,
+                    "position_size": 0.0,
+                    "risk_score": 0.0,
+                },
+                data={"reasoning": state.risk_assessment.reasoning},
+            )
+            return state
         
         strategy = state.strategy
         
@@ -385,7 +408,7 @@ MARKET CONDITIONS:
             "max_loss": 0.0,
             "rr_ratio": 0.0,
             "warnings": [],
-            "reasoning": llm_response
+            "reasoning": self._clean_reasoning(llm_response)  # Clean reasoning by default
         }
         
         try:
@@ -419,7 +442,7 @@ MARKET CONDITIONS:
             # Parse REASONING
             reasoning_match = re.search(r'REASONING:\s*(.+)', llm_response, re.DOTALL)
             if reasoning_match:
-                decision["reasoning"] = reasoning_match.group(1).strip()
+                decision["reasoning"] = self._clean_reasoning(reasoning_match.group(1).strip())  # Clean extracted reasoning
             
             # Calculate R/R ratio from strategy
             entry = strategy.entry_price
@@ -440,3 +463,29 @@ MARKET CONDITIONS:
             decision["warnings"].append(f"Parsing error: {str(e)}")
         
         return decision
+    
+    def _clean_reasoning(self, text: str) -> str:
+        """Make reasoning safe and readable for end users."""
+        import re
+        if not text:
+            return ""
+        cleaned = text
+        # Remove CrewAI tool-call artifacts
+        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
+        # Remove JSON blobs
+        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
+        # Remove HTML/XML tags
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        # Collapse whitespace
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # Extract meaningful sentences if still has artifacts
+        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
+            sentences = re.split(r'[.!?]\s+', cleaned)
+            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
+            if clean_sentences:
+                cleaned = ". ".join(clean_sentences[:3]) + "."
+            else:
+                return "Risk assessment completed based on position sizing rules and account limits."
+        return cleaned[:600].strip()

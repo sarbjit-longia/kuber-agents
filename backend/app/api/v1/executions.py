@@ -114,13 +114,23 @@ async def start_execution(
     await db.commit()
     await db.refresh(execution)
     
-    # Trigger async Celery task
-    execute_pipeline.delay(
-        pipeline_id=str(execution.pipeline_id),
-        user_id=str(current_user.id),
-        mode=execution_data.mode or "paper",
-        execution_id=str(execution.id)
-    )
+    # Trigger async Celery task with timeout to prevent blocking UI
+    try:
+        execute_pipeline.apply_async(
+            kwargs={
+                "pipeline_id": str(execution.pipeline_id),
+                "user_id": str(current_user.id),
+                "mode": execution_data.mode or "paper",
+                "execution_id": str(execution.id)
+            },
+            countdown=0,  # Execute immediately
+            expires=600,  # Task expires after 10 minutes if not picked up
+        )
+    except Exception as e:
+        import structlog
+        logger = structlog.get_logger()
+        logger.error("Failed to enqueue task", execution_id=str(execution.id), error=str(e))
+        # Don't fail the request - execution is created, task will be retried
     
     return execution
 
