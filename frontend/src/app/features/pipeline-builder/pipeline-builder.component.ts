@@ -693,6 +693,26 @@ export class PipelineBuilderComponent implements OnInit {
       this.selectedNode.config = JSON.parse(JSON.stringify(configToSave));
       this.originalConfig = JSON.parse(JSON.stringify(this.editingConfig)); // Keep original in local time
       
+      // 🐛 FIX: If this is a TOOL node, also update the parent agent's config['tools'] array
+      // This ensures tool configurations are persisted when the pipeline is saved
+      if (this.selectedNode.node_category === 'tool') {
+        // Find the parent agent node
+        const connection = this.connections.find(conn => conn.to === this.selectedNode!.id);
+        if (connection) {
+          const parentAgent = this.canvasNodes.find(n => n.id === connection.from);
+          if (parentAgent && parentAgent.config && parentAgent.config['tools']) {
+            // Update the tool's config in the parent agent's tools array
+            const toolIndex = parentAgent.config['tools'].findIndex(
+              (t: any) => t.tool_type === this.selectedNode!.agent_type
+            );
+            if (toolIndex !== -1) {
+              parentAgent.config['tools'][toolIndex].config = JSON.parse(JSON.stringify(configToSave));
+              console.log('✅ Updated parent agent tools array with tool config:', parentAgent.config['tools'][toolIndex]);
+            }
+          }
+        }
+      }
+      
       // 🐛 Debug logging to track instructions persistence
       console.log('💾 Config saved for node', this.selectedNode.id);
       console.log('   Agent type:', this.selectedNode.agent_type);

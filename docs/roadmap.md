@@ -1107,8 +1107,118 @@ ENTERPRISE ($299/month):
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: October 2025  
+---
+
+## Milestone 11: Instruction-Driven Agents & Advanced UI ✅ COMPLETE 🆕
+**Duration**: December 2025  
+**Status**: ✅ **COMPLETED**
+
+### Instruction-Driven Architecture
+- [x] Instructions field in agent metadata
+- [x] LLM-powered tool detection from instructions
+- [x] Regex-based timeframe parser
+- [x] Move agent config to instructions (Strategy, Bias, Risk Manager)
+- [x] Remove hardcoded config schemas for LLM agents
+
+### LLM Model Registry
+- [x] Database table for LLM models (`llm_models`)
+- [x] Model pricing (input/output tokens)
+- [x] Model capabilities metadata
+- [x] Environment-aware visibility (dev-only models)
+- [x] Dynamic model dropdown in UI
+- [x] Cost calculation based on actual model prices
+
+### Multi-Broker Support
+- [x] Broker abstraction layer (`BrokerService` interface)
+- [x] Alpaca implementation (using `alpaca-py` SDK)
+- [x] Oanda implementation (REST API)
+- [x] Tradier implementation (REST API)
+- [x] Position queries across all brokers
+- [x] Order execution with unified interface
+- [x] Account type configuration (Paper/Live/Practice/Sandbox)
+
+### Trade Manager Enhancements
+- [x] Position-aware execution (checks existing positions)
+- [x] Broker bracket order support
+- [x] Auto-detect order type from strategy (limit vs bracket)
+- [x] Dual-phase pipeline execution (Execute → Monitor)
+- [x] Self-scheduling monitoring (every 5 minutes)
+- [x] Single broker validation (frontend + backend)
+- [x] Remove hardcoded paper trading flag
+
+### Risk Manager Enhancements
+- [x] Instruction-driven risk assessment
+- [x] Broker integration for account queries
+- [x] Dynamic position sizing based on instructions
+- [x] Read-only broker tools attachment
+- [x] LLM-powered risk calculation
+
+### UI/UX Improvements
+- [x] Configuration panel redesign
+  - [x] Sticky footer for save button
+  - [x] Chip/tag-style tool display
+  - [x] Subtle colors and improved spacing
+  - [x] Better property name formatting (snake_case → Title Case)
+- [x] Agent instructions component
+  - [x] Large textarea for natural language input
+  - [x] Helpful prompts per agent type
+  - [x] Auto-save on "Save Changes"
+- [x] Tool attachment improvements
+  - [x] Visual tool nodes on canvas
+  - [x] Tool config persistence fix
+  - [x] State synchronization between canvas and config panel
+- [x] Execution reports improvements
+  - [x] TradingView chart integration
+  - [x] Markdown-to-HTML pipe for formatting
+  - [x] Section headers (bold, colored, uppercase)
+  - [x] Bullet points for readability
+  - [x] Line break preservation
+  - [x] Auto-redirect to login on timeout
+- [x] PDF Report Generation
+  - [x] Pre-generated PDFs on pipeline completion
+  - [x] WeasyPrint backend rendering
+  - [x] Professional layout with charts
+  - [x] Download endpoint for fast access
+- [x] Langfuse Integration
+  - [x] LLM tracing for all agent calls
+  - [x] Token tracking
+  - [x] Cost tracking
+  - [x] Error tracking
+
+### Multi-Timeframe Signal Generation
+- [x] `ADDITIONAL_TIMEFRAMES` environment variable
+- [x] Support for comma-separated timeframes (e.g., "15,60,240")
+- [x] Multi-instance generators (one per timeframe per indicator)
+- [x] Signal differentiation by timeframe in Kafka
+
+### Backend Improvements
+- [x] Celery resilience settings
+  - [x] Task acknowledgement after execution
+  - [x] Task requeue on worker crash
+  - [x] Socket timeout configuration
+  - [x] Reduced task time limits
+- [x] Agent report formatting fixes
+  - [x] Number removal from LLM output
+  - [x] Proper section header detection
+  - [x] Bullet point preservation
+  - [x] Reasoning truncation with smart boundaries
+- [x] Logger fixes (Risk Manager error handling)
+- [x] Tool state synchronization fixes
+
+### Deliverables
+- ✅ **Instruction-driven agents** - No coding required for strategy configuration
+- ✅ **LLM model registry** - Dynamic model selection with accurate pricing
+- ✅ **Multi-broker support** - Alpaca, Oanda, and Tradier integrated
+- ✅ **Professional UI/UX** - Management-ready reports and clean interface
+- ✅ **Position-aware trading** - Prevents duplicate trades
+- ✅ **Pre-generated PDF reports** - Fast downloads with professional layout
+- ✅ **Multi-timeframe signals** - 15m, 60m, and Daily timeframe support
+- ✅ **Production-ready monitoring** - Langfuse tracing integrated
+
+---
+
+**Document Version**: 1.1  
+**Last Updated**: December 19, 2025  
 **Status**: Active Development  
-**Next Review**: End of Week 2
+**Next Review**: End of Month
 

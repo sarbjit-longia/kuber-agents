@@ -185,17 +185,19 @@ Be specific about which indicators you used and what they showed.""",
             )
 
             # Record structured report for UI (avoid raw JSON/arrays)
+            cleaned_reasoning = self._clean_reasoning(bias_result.reasoning)
+            key_factors_text = ", ".join(bias_result.key_factors) if bias_result.key_factors else "None identified"
+            
             self.record_report(
                 state,
                 title="Market Bias Analysis",
                 summary=f"{bias_result.bias} bias ({bias_result.confidence:.0%}) on {bias_result.timeframe}",
-                metrics=None,  # keep empty to avoid array-of-objects rendering
                 data={
-                    "Bias": bias_result.bias,
-                    "Confidence": f"{bias_result.confidence:.0%}",
-                    "Timeframe": bias_result.timeframe,
-                    "Key Factors": ", ".join(bias_result.key_factors) if bias_result.key_factors else "None",
-                    "Reasoning": self._clean_reasoning(bias_result.reasoning),
+                    "Market Bias": bias_result.bias,
+                    "Confidence Level": f"{bias_result.confidence:.0%}",
+                    "Analyzed Timeframe": bias_result.timeframe,
+                    "Key Market Factors": key_factors_text,
+                    "Detailed Analysis": cleaned_reasoning or "Multi-timeframe technical analysis completed. Price action, momentum, and trend indicators evaluated.",
                 },
             )
             
@@ -306,29 +308,37 @@ Be specific about which indicators you used and what they showed.""",
         """Make reasoning safe and readable for end users."""
         import re
         if not text:
-            return ""
+            return "Market bias analysis completed based on technical indicators and market conditions."
+        
         cleaned = text
-        # Remove CrewAI tool-call artifacts like "commentary to=tool_name json {...}"
-        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        # Remove tool invocation patterns
-        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
-        # Remove JSON blobs enclosed in backticks
-        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
-        # Remove standalone JSON objects
-        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
-        # Remove HTML/XML-like tags
+        
+        # Remove CrewAI tool-call artifacts (only very specific patterns)
+        cleaned = re.sub(r"commentary\s+to=\w+\s+tool_code=\w+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove code blocks with triple backticks
+        cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)
+        
+        # Remove ONLY obvious standalone JSON objects (starting with { on new line, ending with } on new line)
+        cleaned = re.sub(r"^\s*\{[\s\S]*?\}\s*$", "", cleaned, flags=re.MULTILINE)
+        
+        # Remove HTML/XML tags
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-        # Collapse multiple whitespaces
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        # If still too long or still has artifacts, try to extract meaningful sentences
-        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
-            # Split into sentences and take only clean ones
-            sentences = re.split(r'[.!?]\s+', cleaned)
-            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
-            if clean_sentences:
-                cleaned = ". ".join(clean_sentences[:3]) + "."
+        
+        # Collapse multiple whitespaces and newlines
+        cleaned = re.sub(r"\n\s*\n", "\n\n", cleaned)  # Preserve paragraph breaks
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)  # Collapse spaces/tabs
+        cleaned = cleaned.strip()
+        
+        # If still too long, truncate smartly at sentence boundary
+        if len(cleaned) > 1000:
+            truncate_at = cleaned.rfind(".", 0, 1000)
+            if truncate_at > 500:
+                cleaned = cleaned[:truncate_at + 1] + "\n\n[Analysis truncated]"
             else:
-                # Last resort: just say analysis completed
-                return "Market bias analysis completed based on technical indicators and market conditions."
-        # Limit length for UI readability
-        return cleaned[:600].strip()
+                cleaned = cleaned[:1000] + "..."
+        
+        # If cleaned is empty or too short after all cleaning, return a default
+        if len(cleaned.strip()) < 20:
+            return "Multi-timeframe technical analysis completed. Price action, momentum, and trend indicators evaluated."
+        
+        return cleaned

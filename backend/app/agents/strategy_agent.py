@@ -7,7 +7,7 @@ to generate trading strategies.
 import structlog
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from crewai import Agent, Task, Crew
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
@@ -144,15 +144,18 @@ class StrategyAgent(BaseAgent):
             
             self.log(state, f"Available tools: {[t.name for t in tools]}")
             
-            # Create single strategist agent with user instructions
+            # STAGE 1: Call tools directly to get analysis data
+            tool_results_text = self._call_tools_and_format(tools, state, candle_dicts)
+            
+            # STAGE 2: Create agent WITHOUT tools, but WITH tool results in prompt
+            # This prevents CrewAI from stopping after tool calls
             strategist = Agent(
                 role="Trading Strategist",
                 goal=instructions,  # User's natural language instructions!
                 backstory=f"""You are an expert trading strategist for {state.symbol}.
-                You have access to various technical analysis tools (RSI, MACD, FVG detector, etc.).
-                Use them as needed to generate high-probability trade setups.
+                You analyze technical data, patterns, and market structure to generate high-probability trade setups.
                 Always ensure proper risk management with clear entry, stop loss, and take profit levels.""",
-                tools=tools,
+                tools=[],  # Don't give tools to agent - we already called them
                 llm=self.model,
                 verbose=True,
                 allow_delegation=False
@@ -174,42 +177,101 @@ YOUR INSTRUCTIONS:
 REQUIREMENTS:
 - Current Price: ${safe_current_price:.2f}
 
-Use the available tools as needed to analyze the market and find trade setups.
+TECHNICAL ANALYSIS & TOOL RESULTS:
+{tool_results_text}
 
-Provide your strategy in this JSON format:
+CRITICAL: Your FINAL response must be ONLY the JSON object below, nothing else:
+
+YOUR FINAL OUTPUT MUST BE THIS EXACT JSON FORMAT:
 {{
     "action": "BUY|SELL|HOLD",
     "entry_price": 0.00,
     "stop_loss": 0.00,
     "take_profit": 0.00,
     "confidence": 0.0-1.0,
-    "pattern_detected": "name of pattern/setup",
-    "reasoning": "detailed explanation including which tools you used and what they showed"
+    "pattern_detected": "name of pattern/setup (e.g., Bull Flag, FVG, Head & Shoulders, etc.)",
+    "reasoning": "YOUR COMPLETE ANALYSIS - BE SPECIFIC AND DESCRIPTIVE:
+    
+1. MARKET STRUCTURE: Describe the current trend, key support/resistance levels with specific prices
+2. PATTERNS IDENTIFIED: If you detect any patterns (Fair Value Gaps, Bull/Bear Flags, Triangles, Channels, etc.), describe them with price ranges. For example: 'Bullish FVG between $445.20-$446.50' or 'Bull flag forming with support at $444.00 and resistance at $448.00'
+3. TOOL ANALYSIS: Explain what each tool you used showed and how it supports your decision
+4. ENTRY RATIONALE: Why this specific entry price?
+5. EXIT STRATEGY: Why these specific stop loss and take profit levels?
+6. RISK FACTORS: What could invalidate this setup?
+
+Be detailed and specific with price levels - this analysis will be shown to traders and used to annotate charts."
 }}
 
 Only suggest trades (BUY/SELL) if:
 1. There's a clear high-probability setup
 2. Entry, stop loss, and take profit are clearly defined
 
-Otherwise, return action=HOLD with reasoning.
+Otherwise, return action=HOLD with reasoning that explains what you're waiting for.
+
+CRITICAL REMINDERS:
+- Use tools as needed to analyze the market
+- After using tools, synthesize your findings
+- Your FINAL output must be the complete JSON object shown above
+- Do NOT stop after calling tools without providing the JSON
 
 Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                 agent=strategist,
-                expected_output="JSON with complete trade strategy or HOLD recommendation"
+                expected_output="A complete, valid JSON object (and ONLY JSON) with all required fields: action, entry_price, stop_loss, take_profit, confidence, pattern_detected, and detailed reasoning. The reasoning should reference any tools used and their results."
             )
             
             # Execute crew
             crew = Crew(
                 agents=[strategist],
                 tasks=[strategy_task],
-                verbose=False
+                verbose=True  # Enable verbose to see what's happening with tool calls
             )
             
             self.log(state, "Executing strategy generation...")
-            result = crew.kickoff()
+            crew_result = crew.kickoff()
+            
+            # Try to get task output instead of crew output
+            # The task output should have the final JSON, not just tool calls
+            final_output = None
+            
+            # First, try to get the task output directly
+            if hasattr(crew_result, 'tasks_output') and crew_result.tasks_output:
+                task_output = crew_result.tasks_output[0] if isinstance(crew_result.tasks_output, list) else crew_result.tasks_output
+                if hasattr(task_output, 'raw'):
+                    final_output = str(task_output.raw)
+                    self.log(state, "📝 Using tasks_output[0].raw")
+                elif hasattr(task_output, 'output'):
+                    final_output = str(task_output.output)
+                    self.log(state, "📝 Using tasks_output[0].output")
+                else:
+                    final_output = str(task_output)
+                    self.log(state, "📝 Using str(tasks_output[0])")
+            
+            # Fallback to crew result attributes
+            if not final_output or len(final_output) < 200:
+                self.log(state, "📝 Task output too short, trying crew result attributes...")
+                if hasattr(crew_result, 'raw'):
+                    final_output = str(crew_result.raw)
+                    self.log(state, "📝 Using crew_result.raw")
+                elif hasattr(crew_result, 'output'):
+                    final_output = str(crew_result.output)
+                    self.log(state, "📝 Using crew_result.output")
+                else:
+                    final_output = str(crew_result)
+                    self.log(state, "📝 Using str(crew_result)")
+            
+            # Log raw result for debugging
+            self.log(state, f"📝 Raw LLM result length: {len(final_output)} characters")
+            self.log(state, f"📝 Raw LLM result preview: {final_output[:500]}...")
+            
+            # Use final_output for parsing
+            result = final_output
             
             # Parse result
             strategy_result = self._parse_strategy_result(result, state)
+            
+            # Log parsed reasoning
+            self.log(state, f"📝 Parsed reasoning length: {len(strategy_result.reasoning)} characters")
+            self.log(state, f"📝 Parsed reasoning preview: {strategy_result.reasoning[:200] if strategy_result.reasoning else 'EMPTY'}")
             
             # Update state
             state.strategy = strategy_result
@@ -221,6 +283,48 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             )
 
             # Record structured report for UI (executive + drill-down)
+            reasoning = getattr(strategy_result, "reasoning", "No detailed analysis provided.")
+            pattern = getattr(strategy_result, "pattern_detected", "")
+            
+            # Format reasoning for better readability
+            formatted_reasoning = self._format_reasoning(reasoning)
+            
+            # Build human-readable summary
+            action_text = f"**Decision:** {strategy_result.action}"
+            confidence_text = f"**Confidence:** {strategy_result.confidence:.0%}"
+            
+            trade_levels = []
+            if strategy_result.entry_price:
+                trade_levels.append(f"**Entry:** ${strategy_result.entry_price:.2f}")
+            if strategy_result.stop_loss:
+                trade_levels.append(f"**Stop Loss:** ${strategy_result.stop_loss:.2f}")
+            if strategy_result.take_profit:
+                trade_levels.append(f"**Take Profit:** ${strategy_result.take_profit:.2f}")
+            
+            # Calculate risk/reward if we have levels
+            rr_text = ""
+            if strategy_result.entry_price and strategy_result.stop_loss and strategy_result.take_profit:
+                risk = abs(strategy_result.entry_price - strategy_result.stop_loss)
+                reward = abs(strategy_result.take_profit - strategy_result.entry_price)
+                if risk > 0:
+                    rr_ratio = reward / risk
+                    rr_text = f"\n**Risk/Reward Ratio:** {rr_ratio:.2f}:1"
+            
+            report_data = {
+                "Decision": strategy_result.action,
+                "Confidence": f"{strategy_result.confidence:.0%}",
+                "Timeframe": strategy_tf,
+            }
+            
+            if pattern:
+                report_data["Pattern Detected"] = pattern
+            
+            if trade_levels:
+                report_data["Trade Levels"] = " | ".join(trade_levels)
+            
+            # Add formatted reasoning as the main content
+            report_data["Analysis & Reasoning"] = formatted_reasoning
+            
             self.record_report(
                 state,
                 title="Strategy Decision",
@@ -228,18 +332,7 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                     f"{strategy_result.action} {state.symbol} "
                     f"(confidence {strategy_result.confidence:.0%})"
                 ),
-                metrics={
-                    "action": strategy_result.action,
-                    "confidence": round(strategy_result.confidence, 3),
-                    "entry_price": strategy_result.entry_price,
-                    "stop_loss": strategy_result.stop_loss,
-                    "take_profit": strategy_result.take_profit,
-                },
-                data={
-                    "pattern_detected": getattr(strategy_result, "pattern_detected", ""),
-                    "reasoning": getattr(strategy_result, "reasoning", ""),
-                    "timeframe": strategy_tf,
-                },
+                data=report_data,
             )
             
             # Generate chart visualization
@@ -315,6 +408,120 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             logger.exception("strategy_agent_failed", error=str(e))
             raise AgentProcessingError(error_msg) from e
     
+    def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict]) -> str:
+        """Call tools directly and format their results as text for the LLM prompt."""
+        if not tools or not candles:
+            return self._compute_technical_analysis(state, candles)
+        
+        results_lines = []
+        
+        # Call each tool and format results
+        for tool in tools:
+            tool_name = tool.name
+            try:
+                self.log(state, f"Calling tool: {tool_name}")
+                
+                # Call the tool function directly with appropriate params
+                if tool_name == "fvg_detector":
+                    result = tool.func(timeframe="5m", lookback_candles=20)
+                    if result and isinstance(result, dict):
+                        results_lines.append(f"\n**FVG ANALYSIS:**")
+                        if result.get("bullish_fvgs"):
+                            for fvg in result["bullish_fvgs"][:3]:  # Top 3
+                                results_lines.append(f"  • Bullish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                        if result.get("bearish_fvgs"):
+                            for fvg in result["bearish_fvgs"][:3]:
+                                results_lines.append(f"  • Bearish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                        if not result.get("bullish_fvgs") and not result.get("bearish_fvgs"):
+                            results_lines.append(f"  • No significant FVGs detected")
+                
+                elif tool_name == "premium_discount_zone":
+                    result = tool.func()
+                    if result and isinstance(result, dict):
+                        results_lines.append(f"\n**PREMIUM/DISCOUNT ZONES:**")
+                        results_lines.append(f"  • Current Zone: {result.get('current_zone', 'N/A')}")
+                        results_lines.append(f"  • Zone Level: {result.get('zone_percentage', 0):.1f}%")
+                        if result.get('eq_level'):
+                            results_lines.append(f"  • Equilibrium: ${result['eq_level']:.2f}")
+                
+                elif tool_name in ["rsi_calculator", "macd_calculator"]:
+                    # For indicator tools, we already have the data in state
+                    continue
+                
+            except Exception as e:
+                self.log(state, f"Tool {tool_name} failed: {str(e)}")
+                continue
+        
+        # If no tool results, use basic technical analysis
+        if not results_lines:
+            return self._compute_technical_analysis(state, candles)
+        
+        # Add basic price action at the top
+        basic_analysis = self._compute_technical_analysis(state, candles)
+        return basic_analysis + "\n\n" + "\n".join(results_lines)
+    
+    def _compute_technical_analysis(self, state: PipelineState, candles: List[Dict]) -> str:
+        """Pre-compute technical indicators and return as formatted text."""
+        if not candles or len(candles) < 20:
+            return "Insufficient candle data for technical analysis."
+        
+        analysis_lines = []
+        
+        # Price action summary
+        latest = candles[-1]
+        oldest = candles[0]
+        price_change = ((latest['close'] - oldest['open']) / oldest['open']) * 100
+        
+        analysis_lines.append("**PRICE ACTION:**")
+        analysis_lines.append(f"- Current: ${latest['close']:.2f}")
+        analysis_lines.append(f"- Period Change: {price_change:+.2f}%")
+        analysis_lines.append(f"- High: ${max(c['high'] for c in candles):.2f}")
+        analysis_lines.append(f"- Low: ${min(c['low'] for c in candles):.2f}")
+        
+        # Simple trend detection
+        closes = [c['close'] for c in candles]
+        recent_closes = closes[-10:]
+        if all(recent_closes[i] >= recent_closes[i-1] for i in range(1, len(recent_closes))):
+            analysis_lines.append(f"- Trend: **Strong Uptrend** (10 consecutive higher closes)")
+        elif all(recent_closes[i] <= recent_closes[i-1] for i in range(1, len(recent_closes))):
+            analysis_lines.append(f"- Trend: **Strong Downtrend** (10 consecutive lower closes)")
+        elif recent_closes[-1] > recent_closes[0]:
+            analysis_lines.append(f"- Trend: **Bullish** (higher close over last 10 periods)")
+        elif recent_closes[-1] < recent_closes[0]:
+            analysis_lines.append(f"- Trend: **Bearish** (lower close over last 10 periods)")
+        else:
+            analysis_lines.append(f"- Trend: **Ranging/Neutral**")
+        
+        # Volume analysis
+        if 'volume' in latest and latest['volume']:
+            volumes = [c['volume'] for c in candles if 'volume' in c and c['volume']]
+            if volumes:
+                avg_volume = sum(volumes) / len(volumes)
+                volume_ratio = latest['volume'] / avg_volume if avg_volume > 0 else 1
+                analysis_lines.append(f"\n**VOLUME:**")
+                analysis_lines.append(f"- Current: {latest['volume']:,.0f}")
+                analysis_lines.append(f"- Average: {avg_volume:,.0f}")
+                if volume_ratio > 1.5:
+                    analysis_lines.append(f"- Status: **High volume spike** ({volume_ratio:.1f}x average)")
+                elif volume_ratio < 0.7:
+                    analysis_lines.append(f"- Status: **Low volume** ({volume_ratio:.1f}x average)")
+                else:
+                    analysis_lines.append(f"- Status: Normal ({volume_ratio:.1f}x average)")
+        
+        # Support/Resistance (simple)
+        recent_highs = [c['high'] for c in candles[-20:]]
+        recent_lows = [c['low'] for c in candles[-20:]]
+        resistance = max(recent_highs)
+        support = min(recent_lows)
+        
+        analysis_lines.append(f"\n**KEY LEVELS:**")
+        analysis_lines.append(f"- Resistance: ${resistance:.2f}")
+        analysis_lines.append(f"- Support: ${support:.2f}")
+        analysis_lines.append(f"- Distance to resistance: {((resistance - latest['close']) / latest['close'] * 100):+.2f}%")
+        analysis_lines.append(f"- Distance to support: {((support - latest['close']) / latest['close'] * 100):+.2f}%")
+        
+        return "\n".join(analysis_lines)
+    
     def _prepare_market_context(self, state: PipelineState, timeframe: str) -> str:
         """Prepare market data context."""
         lines = [f"Symbol: {state.symbol}", f"Timeframe: {timeframe}"]
@@ -354,28 +561,66 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
     
     def _parse_strategy_result(self, result: Any, state: PipelineState) -> StrategyResult:
         """Parse CrewAI result into StrategyResult."""
+        import json
+        import re
+        
         result_str = str(result)
         
-        # Try to extract JSON
-        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', result_str, re.DOTALL)
+        # Log for debugging
+        logger.info("parsing_strategy_result", result_length=len(result_str), preview=result_str[:300])
         
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
-                raw_reasoning = data.get("reasoning", result_str)
-                return StrategyResult(
-                    action=data.get("action", "HOLD"),
-                    entry_price=float(data.get("entry_price", 0)),
-                    stop_loss=float(data.get("stop_loss", 0)) if data.get("stop_loss") else None,
-                    take_profit=float(data.get("take_profit", 0)) if data.get("take_profit") else None,
-                    confidence=float(data.get("confidence", 0.5)),
-                    pattern_detected=data.get("pattern_detected", ""),
-                    reasoning=self._clean_reasoning(raw_reasoning)  # Clean reasoning
-                )
-            except (json.JSONDecodeError, ValueError):
-                pass
+        # Try to extract JSON (look for nested JSON structures)
+        # Try different patterns to find the JSON
+        json_patterns = [
+            r'\{[^{}]*"action"[^{}]*"reasoning"[^{}]*\}',  # JSON with reasoning field
+            r'\{[^{}]*"action"[^{}]*\}',  # Basic JSON with action
+        ]
+        
+        parsed_data = None
+        for pattern in json_patterns:
+            json_match = re.search(pattern, result_str, re.DOTALL)
+            if json_match:
+                try:
+                    parsed_data = json.loads(json_match.group())
+                    logger.info("json_parsed_successfully", keys=list(parsed_data.keys()))
+                    break
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("json_parse_failed", error=str(e), pattern=pattern)
+                    continue
+        
+        if parsed_data:
+            raw_reasoning = parsed_data.get("reasoning", "")
+            
+            # If reasoning is empty or very short, try to extract it from the full result text
+            if not raw_reasoning or len(raw_reasoning) < 50:
+                logger.warning("reasoning_empty_or_short", reasoning_length=len(raw_reasoning) if raw_reasoning else 0)
+                # Look for reasoning after the JSON block
+                json_end = result_str.find(json_match.group()) + len(json_match.group()) if json_match else 0
+                remaining_text = result_str[json_end:].strip()
+                if len(remaining_text) > 50:
+                    raw_reasoning = remaining_text
+                    logger.info("extracted_reasoning_from_remaining_text", length=len(raw_reasoning))
+                elif not raw_reasoning:
+                    # Use the entire result as reasoning if JSON reasoning is empty
+                    raw_reasoning = result_str
+                    logger.info("using_full_result_as_reasoning", length=len(raw_reasoning))
+            
+            cleaned_reasoning = self._clean_reasoning(raw_reasoning)
+            formatted_reasoning = self._format_reasoning(cleaned_reasoning)
+            logger.info("formatted_reasoning", original_length=len(raw_reasoning), cleaned_length=len(cleaned_reasoning), formatted_length=len(formatted_reasoning))
+            
+            return StrategyResult(
+                action=parsed_data.get("action", "HOLD"),
+                entry_price=float(parsed_data.get("entry_price", 0)),
+                stop_loss=float(parsed_data.get("stop_loss", 0)) if parsed_data.get("stop_loss") else None,
+                take_profit=float(parsed_data.get("take_profit", 0)) if parsed_data.get("take_profit") else None,
+                confidence=float(parsed_data.get("confidence", 0.5)),
+                pattern_detected=parsed_data.get("pattern_detected", ""),
+                reasoning=formatted_reasoning
+            )
         
         # Fallback: parse from text
+        logger.warning("falling_back_to_text_parsing")
         action = "HOLD"
         if "buy" in result_str.lower() and "action" in result_str.lower():
             action = "BUY"
@@ -389,32 +634,104 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             take_profit=None,
             confidence=0.5,
             pattern_detected="",
-            reasoning=self._clean_reasoning(result_str)  # Clean reasoning in fallback too
+            reasoning=self._format_reasoning(self._clean_reasoning(result_str))
         )
+    
+    def _format_reasoning(self, text: str) -> str:
+        """Format reasoning text for better readability in UI with bullet points and structure."""
+        import re
+        
+        if not text or len(text) < 20:
+            return text
+        
+        # Step 1: Add line breaks before section headers (which are inline in the text)
+        # **MARKET STRUCTURE:** text text **PATTERNS IDENTIFIED:** -> **MARKET STRUCTURE:**\ntext text\n\n**PATTERNS IDENTIFIED:**
+        formatted = re.sub(
+            r'\s*\*\*([A-Z\s&]+):\*\*\s*',
+            r'\n\n**\1:**\n',
+            text
+        )
+        
+        # Step 2: Split into sections for better formatting
+        sections = re.split(r'\n\n(\*\*[A-Z\s&]+:\*\*)\n', formatted)
+        
+        formatted_parts = []
+        for i, part in enumerate(sections):
+            part = part.strip()
+            if not part:
+                continue
+            
+            # If this is a section header, keep it as is
+            if part.startswith('**') and part.endswith(':**'):
+                formatted_parts.append(part)
+            else:
+                # This is content - check if it already has bullets
+                if '•' in part:
+                    # Already has bullets, just keep it
+                    formatted_parts.append(part)
+                else:
+                    # Split into sentences and make bullet points
+                    sentences = re.split(r'\.(?=\s+[A-Z]|\s*$)', part)
+                    bullets = []
+                    for sentence in sentences:
+                        sentence = sentence.strip()
+                        if sentence and len(sentence) > 10:
+                            # Add period if missing
+                            if not sentence.endswith('.'):
+                                sentence += '.'
+                            bullets.append(f"  • {sentence}")
+                    
+                    if bullets:
+                        formatted_parts.append('\n'.join(bullets))
+        
+        formatted = '\n\n'.join(formatted_parts)
+        
+        # Step 3: Clean up spacing
+        formatted = re.sub(r'\n\n\n+', '\n\n', formatted)
+        formatted = formatted.strip()
+        
+        return formatted
     
     def _clean_reasoning(self, text: str) -> str:
         """Make reasoning safe and readable for end users."""
         import re
         if not text:
-            return ""
+            return "No detailed analysis provided."
+        
         cleaned = text
-        # Remove CrewAI tool-call artifacts
-        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
-        # Remove JSON blobs
-        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
-        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
+        
+        # Remove CrewAI tool-call artifacts (only very specific patterns)
+        cleaned = re.sub(r"commentary\s+to=\w+\s+tool_code=\w+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove code blocks with triple backticks
+        cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)
+        
         # Remove HTML/XML tags
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-        # Collapse whitespace
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        # Extract meaningful sentences if still has artifacts
-        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
-            sentences = re.split(r'[.!?]\s+', cleaned)
-            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
-            if clean_sentences:
-                cleaned = ". ".join(clean_sentences[:3]) + "."
+        
+        # Remove awkward numbering patterns (but be more conservative):
+        # Pattern 1: "1." on its own line
+        cleaned = re.sub(r"^\s*\d+\.\s*$", "", cleaned, flags=re.MULTILINE)
+        # Pattern 2: "1. •" or "1.•" (number directly before bullet)
+        cleaned = re.sub(r"\d+\.\s*•", "•", cleaned)
+        
+        # Collapse multiple whitespaces and newlines
+        cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)  # Collapse 3+ newlines to 2
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)  # Collapse spaces/tabs
+        cleaned = cleaned.strip()
+        
+        # If still too long, truncate smartly at sentence boundary
+        if len(cleaned) > 1200:
+            # Find a good truncation point (sentence end)
+            truncate_at = cleaned.rfind(".", 0, 1200)
+            if truncate_at > 600:  # Make sure we have substantial content
+                cleaned = cleaned[:truncate_at + 1] + "\n\n[Analysis truncated for brevity]"
             else:
-                return "Strategy analysis completed based on market conditions and technical patterns."
-        return cleaned[:600].strip()
+                cleaned = cleaned[:1200] + "..."
+        
+        # If cleaned is empty or too short after all cleaning, return a default
+        if len(cleaned.strip()) < 20:
+            return "Market analysis completed. Decision based on current price action and technical indicators."
+        
+        return cleaned
 

@@ -118,7 +118,9 @@
             <div *ngIf="$any(report.value).data" class="data-section">
               <div *ngFor="let item of $any(report.value).data | keyvalue" class="data-item">
                 <strong>{{ item.key }}:</strong>
-                <span *ngIf="!isArray(item.value) && !isObject(item.value)">{{ item.value }}</span>
+                <div *ngIf="!isArray(item.value) && !isObject(item.value)" 
+                     class="formatted-content"
+                     [innerHTML]="item.value | markdownToHtml"></div>
                 <ul *ngIf="isArray(item.value)" class="data-list">
                   <li *ngFor="let val of $any(item.value)">
                     <span *ngIf="!isObject(val)">{{ val }}</span>

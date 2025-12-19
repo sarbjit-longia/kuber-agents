@@ -20,6 +20,7 @@ import { MonitoringService } from '../../../core/services/monitoring.service';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
 import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
 import { ExecutionReportModalComponent } from '../execution-report-modal/execution-report-modal.component';
+import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe';
 
 @Component({
   selector: 'app-execution-detail',
@@ -36,6 +37,7 @@ import { ExecutionReportModalComponent } from '../execution-report-modal/executi
     MatDialogModule,
     NavbarComponent,
     TradingChartComponent,
+    MarkdownToHtmlPipe,
   ],
   templateUrl: './execution-detail.component.html',
   styleUrls: ['./execution-detail.component.scss']

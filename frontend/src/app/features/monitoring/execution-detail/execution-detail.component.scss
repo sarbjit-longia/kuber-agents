@@ -286,6 +286,38 @@
     span {
       color: #333;
       font-size: 0.9375rem;
+      white-space: pre-wrap; // Preserve line breaks and formatting
+      word-wrap: break-word;
+      display: block;
+      line-height: 1.6;
+    }
+    
+    // Formatted content with custom styling for headers and bullets
+    .formatted-content {
+      color: #333;
+      font-size: 0.9375rem;
+      line-height: 1.8;
+      
+      ::ng-deep .section-header {
+        font-weight: 700;
+        font-size: 1rem;
+        color: #667eea;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        
+        &:first-child {
+          margin-top: 0;
+        }
+      }
+      
+      ::ng-deep .bullet-item {
+        padding-left: 0.5rem;
+        margin-bottom: 0.25rem;
+        color: #555;
+        line-height: 1.8;
+      }
     }
 
     .data-list {

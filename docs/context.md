@@ -1084,171 +1084,424 @@ kuber-agents/
 
 ---
 
+---
+
 ## New Systems (Added December 2025)
 
-### Scanner System
+### Instruction-Driven Agent Architecture
 
-**What**: Reusable ticker lists for pipelines
+**What**: Agents configured with plain English instructions instead of hardcoded config schemas
 
-**Why**: Avoid duplicating ticker lists across pipelines. One scanner can be used by multiple pipelines.
+**Why**: 
+- Empowers non-technical users to create complex strategies
+- Eliminates need for frontend form development per agent
+- Enables LLM to interpret user intent dynamically
+- Makes agents truly flexible and adaptable
 
-**Example**:
+**How It Works**:
+1. User writes instructions in natural language (e.g., "Analyze market bias on 1h, 4h, and 1d timeframes using RSI and MACD")
+2. Agent receives instructions in `process()`
+3. LLM parses instructions and determines required actions
+4. For tools: Tool Detection Service identifies needed tools
+5. For timeframes: Regex parser extracts timeframes
+6. For strategy rules: LLM interprets and applies logic
+
+**Agents Using Instructions**:
+- **Bias Agent**: Analyzes market bias based on user-defined indicators and timeframes
+- **Strategy Agent**: Generates trade plans following user's strategy description
+- **Risk Manager Agent**: Calculates position sizes and validates trades per user's risk rules
+
+**Example Instructions**:
+
+**Strategy Agent**:
 ```
-Scanner: "Tech Stocks" [AAPL, GOOGL, MSFT, NVDA]
-  ├─ Pipeline 1: Golden Cross Strategy
-  ├─ Pipeline 2: News Sentiment
-  └─ Pipeline 3: RSI Mean Reversion
+Look for bullish Fair Value Gaps (FVG) on the 5-minute chart. 
+Enter when price retests the FVG and shows confirmation with rising volume.
+Set stop loss below the FVG low.
+Target 2:1 risk-reward ratio.
 ```
 
-**Types**:
-- **Manual** (Phase 1): User manually enters tickers
-- **Filter-Based** (Phase 2): User defines filters, system evaluates universe
-- **API-Based** (Phase 3): User provides webhook/API endpoint
+**Risk Manager Agent**:
+```
+Keep 60% cash on the side.
+Risk maximum 1% of account per trade.
+Require minimum 2:1 risk-reward ratio.
+Factor in today's market volatility when sizing positions.
+```
 
-**Database**: `scanners` table with `tickers` JSONB column
-
-**API**: `/api/v1/scanners` (CRUD operations)
-
-**Frontend**: `/scanners` page for management
+**Key Benefits**:
+- ✅ No JSON schemas or forms needed
+- ✅ Natural language = lower barrier to entry
+- ✅ Same agent works for infinite strategies
+- ✅ LLM handles edge cases and variations
+- ✅ Instructions stored in pipeline config
 
 ---
 
-### Signal System
+### LLM Model Registry
 
-**What**: Event-driven architecture for triggering pipelines based on market conditions
+**What**: Database-backed system for managing LLM models with dynamic pricing
 
-**Components**:
-1. **Signal Generators**: Monitor markets, emit signals to Kafka
-2. **Kafka**: Message bus for signal distribution
-3. **Trigger Dispatcher**: Matches signals to pipelines
-4. **Celery Workers**: Execute matched pipelines
+**Why**: 
+- Enables accurate cost calculation based on actual model prices
+- Allows easy addition of new models without code changes
+- Supports environment-specific model visibility (dev vs prod)
+- Provides flexibility for users to choose cost vs performance
 
-**Signal Schema**:
+**Database Schema**:
+```sql
+CREATE TABLE llm_models (
+    id UUID PRIMARY KEY,
+    provider VARCHAR(50),           -- openai, anthropic, lmstudio
+    model_name VARCHAR(100),        -- gpt-4-turbo-preview, claude-3-opus
+    display_name VARCHAR(200),      -- "GPT-4 Turbo (Latest)"
+    input_cost_per_1k_tokens DECIMAL(10, 6),
+    output_cost_per_1k_tokens DECIMAL(10, 6),
+    context_window INTEGER,
+    supports_function_calling BOOLEAN,
+    environment VARCHAR(20),        -- all, development, production
+    is_active BOOLEAN,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+**Seeded Models**:
+- `gpt-4-turbo-preview` (GPT-4 Turbo)
+- `gpt-3.5-turbo` (GPT-3.5 Turbo)
+- `gpt-4` (GPT-4)
+- `lmstudio-local` (LM Studio - dev only)
+
+**Agent Configuration**:
+```python
+class BiasAgent(BaseAgent):
+    def __init__(self, agent_id, config):
+        # Model selection from config (defaults to gpt-4)
+        model_name = config.get("model", "gpt-4")
+        self.model = self._load_model(model_name)
+```
+
+**Cost Calculation**:
+```python
+# Before: Hardcoded
+cost = 0.03 * (input_tokens / 1000) + 0.06 * (output_tokens / 1000)
+
+# After: Dynamic from registry
+model = get_model_by_name("gpt-4-turbo-preview")
+cost = (
+    model.input_cost_per_1k_tokens * (input_tokens / 1000) + 
+    model.output_cost_per_1k_tokens * (output_tokens / 1000)
+)
+```
+
+**API Endpoints**:
+- `GET /api/v1/models` - List available models (filtered by environment)
+- `GET /api/v1/models/{model_id}` - Get model details
+
+---
+
+### Multi-Broker Architecture
+
+**What**: Abstraction layer supporting multiple brokerage platforms with unified interface
+
+**Why**: 
+- User choice - pick preferred broker
+- Geographic flexibility - different brokers for different regions
+- Redundancy - fallback if one broker has issues
+- Future-proof - easy to add more brokers
+
+**Broker Abstraction**:
+```python
+class BrokerService(ABC):
+    """Abstract interface all brokers must implement"""
+    
+    @abstractmethod
+    async def get_account_info(self) -> Dict[str, Any]:
+        """Get account balance, buying power, etc."""
+        pass
+    
+    @abstractmethod
+    async def get_positions(self) -> List[Position]:
+        """Get all open positions"""
+        pass
+    
+    @abstractmethod
+    async def place_order(self, order: Order) -> str:
+        """Place order, return order ID"""
+        pass
+    
+    @abstractmethod
+    async def close_position(self, symbol: str) -> bool:
+        """Close position at market"""
+        pass
+```
+
+**Supported Brokers**:
+
+1. **Alpaca** (using `alpaca-py` SDK)
+   - Paper trading account
+   - Live trading account
+   - US stocks and ETFs
+   - Commission-free
+   
+2. **Oanda** (using REST API)
+   - Practice account
+   - Live account
+   - Forex and CFDs
+   - Popular in Europe/Asia
+   
+3. **Tradier** (using REST API)
+   - Sandbox account
+   - Live brokerage account
+   - US stocks, options, ETFs
+   - Developer-friendly
+
+**Broker Configuration**:
 ```json
 {
-  "timestamp": 1702234567,
-  "source": "golden_cross",
-  "signal_type": "golden_cross",
-  "tickers": [
-    {"ticker": "AAPL", "signal": "BULLISH", "confidence": 85}
-  ]
+  "broker_type": "alpaca",
+  "account_type": "paper",  // or "live"
+  "api_key": "...",
+  "api_secret": "...",
+  "base_url": "https://paper-api.alpaca.markets"  // auto-set based on account_type
 }
 ```
 
-**Current Generators**:
-- Mock (random test signals)
-- Golden Cross (SMA 50/200 crossover)
-
-**Future Generators**:
-- News Sentiment (AI-powered)
-- RSI, MACD, Volume Spike
-- Custom user-defined
-
-**Why Kafka?**
-- Decouples signal generation from pipeline execution
-- Horizontal scalability (add more generators/dispatchers)
-- Low latency (< 1 second from signal to execution)
-- Future: External signal providers can publish to Kafka
-
----
-
-### Subscription & Billing Model
-
-**What**: Dual revenue model - subscriptions + pay-per-use
-
-#### Subscription Tiers (Signal Buckets)
-
-Users subscribe to **Signal Buckets** that determine which signals they can access:
-
-- **FREE** ($0/month): External signals only, 2 pipelines
-- **BASIC** ($29/month): 5 signals (Golden Cross, RSI, etc.), 5 pipelines
-- **PRO** ($99/month): 9 signals (+ News Sentiment), 20 pipelines
-- **ENTERPRISE** ($299/month): All signals, unlimited pipelines
-
-#### Agent Usage Fees
-
-Agents charge per-second when pipelines execute:
-- **Free Agents**: $0/hour (Market Data, Time Trigger)
-- **Basic Agents**: $0.05/hour (Risk Manager)
-- **Premium Agents**: $0.10/hour (Bias, Strategy)
-
-#### Enforcement
-
-- **Dev Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=false`): All users get `DEFAULT_SUBSCRIPTION_TIER` (default: `enterprise`)
-- **Production Mode** (`ENFORCE_SUBSCRIPTION_LIMITS=true`): Hard limits enforced, Stripe integration
-
-**Database**: `users.subscription_tier`, `users.max_active_pipelines`
-
-**API**: `/api/v1/users/me/subscription`
+**Trade Manager Integration**:
+```python
+class TradeManagerAgent(BaseAgent):
+    def __init__(self, config):
+        broker_type = config.get("broker_type", "alpaca")
+        self.broker = BrokerFactory.create(broker_type, config)
+    
+    async def process(self, state):
+        # 1. Check existing positions
+        positions = await self.broker.get_positions()
+        
+        # 2. Execute trade
+        order_id = await self.broker.place_order(order)
+        
+        # 3. Monitor position
+        # ...
+```
 
 ---
 
-### Monitoring & Observability
+### Position-Aware Trading System
 
-**What**: Production-grade monitoring using OpenTelemetry + Prometheus + Grafana
+**What**: Trade Manager checks broker for existing positions before executing new trades
 
-**Why OpenTelemetry?**
-- Vendor-neutral (no lock-in)
-- Auto-instrumentation (FastAPI, SQLAlchemy, Redis, Celery)
-- Future-proof (can switch to CloudWatch, Datadog, etc.)
+**Why**: 
+- Prevents duplicate positions on same symbol
+- Prevents conflicting trades (e.g., buying when already short)
+- Broker is source of truth (handles manual trades too)
+- No separate position tracking database needed
 
-**Metrics Exposed**:
-- **System Health**: Active pipelines, users, success rate
-- **Pipeline Execution**: Executions by status, duration, cost
-- **Signal System**: Signals generated, matched, enqueued
-- **Auto-Instrumented**: HTTP requests, DB queries, Redis ops
+**Pre-Trade Position Check**:
+```python
+# Trade Manager Agent
+async def process(self, state):
+    # 1. Query broker for existing positions
+    positions = await self.broker.get_positions()
+    existing_position = next(
+        (p for p in positions if p.symbol == state.symbol), 
+        None
+    )
+    
+    # 2. Skip if position already exists (configurable)
+    if existing_position and not self.config.get("allow_duplicate_positions"):
+        self.record_report(
+            state,
+            title="Trade Skipped",
+            summary=f"Existing position for {state.symbol} detected",
+            data={"reason": "duplicate_position_prevention"}
+        )
+        return state
+    
+    # 3. Execute trade if no conflict
+    order_id = await self.broker.place_order(...)
+```
 
-**Prometheus**: Scrapes `/metrics` endpoints every 15 seconds
+**Monitoring Phase**:
+```python
+# After trade execution, pipeline enters MONITORING status
+# Celery task runs every 5 minutes to check position status
 
-**Grafana**: "Trading Platform Overview" dashboard with 30+ panels
-
-**Future**: Distributed tracing (Jaeger/X-Ray), log aggregation (Loki/CloudWatch), alerting
+async def monitor_position(execution_id: str):
+    # 1. Query broker for position
+    position = await broker.get_position(symbol)
+    
+    # 2. Check exit conditions
+    if position.unrealized_pl_percent <= -1.0:  # Stop loss
+        await broker.close_position(symbol)
+        # Update execution status to COMPLETED
+    
+    elif position.unrealized_pl_percent >= 2.0:  # Target
+        await broker.close_position(symbol)
+        # Update execution status to COMPLETED
+    
+    else:
+        # Re-schedule check in 5 minutes
+        monitor_position.apply_async(
+            args=[execution_id], 
+            countdown=300
+        )
+```
 
 ---
 
-## Glossary
+### Report Generation & Visualization
 
-- **Agent**: AI-powered component that performs specific task
-- **Pipeline**: Sequence of connected agents
-- **Scanner**: Reusable ticker list for pipelines
-- **Signal**: Market event/condition that triggers pipeline execution
-- **Signal Generator**: Service that monitors markets and emits signals
-- **Trigger Dispatcher**: Service that matches signals to pipelines
-- **Pipeline State**: Data object passed between agents
-- **Trigger Mode**: SIGNAL (event-driven) or PERIODIC (scheduled)
-- **Subscription Tier**: FREE, BASIC, PRO, ENTERPRISE
-- **Timeframe**: Chart timeframe (1m, 5m, 1h, 4h, 1d, etc.)
-- **CrewAI**: Multi-agent orchestration framework
-- **Celery**: Distributed task queue
-- **Kafka**: Message bus for signal distribution
-- **OpenTelemetry**: Vendor-neutral observability framework
-- **Prometheus**: Time-series metrics database
-- **Grafana**: Visualization and dashboards
-- **ECS**: Elastic Container Service (AWS)
-- **Fargate**: Serverless container execution
-- **MSK**: Managed Streaming for Kafka (AWS)
-- **RDS**: Relational Database Service (PostgreSQL)
-- **ElastiCache**: Managed Redis service
-- **ALB**: Application Load Balancer
-- **Terraform**: Infrastructure as Code tool
-- **Alembic**: Database migration tool
+**What**: Comprehensive execution reports with charts, formatted reasoning, and management-ready presentation
+
+**Why**: 
+- Transparency - users see exactly what agents decided and why
+- Debugging - identify issues in agent logic
+- Compliance - audit trail for regulatory requirements
+- Learning - understand what works and what doesn't
+
+**Report Components**:
+
+1. **Executive Summary** (LLM-generated)
+   - High-level overview of execution
+   - Key decision points
+   - Final recommendation
+   
+2. **Agent Reports** (per agent)
+   - Agent name and status
+   - Structured data (metrics, decisions)
+   - Formatted reasoning (markdown-style)
+   - Charts and visualizations
+   
+3. **TradingView Charts**
+   - Interactive candlestick charts
+   - Annotations (FVG, support/resistance, entry/exit)
+   - Trade levels visualization
+   - Pattern highlights
+
+4. **Execution Artifacts**
+   - Full pipeline state
+   - Cost breakdown
+   - Error logs
+   - Timing information
+
+**Report Formatting Pipeline**:
+```
+LLM Output → _clean_reasoning() → _format_reasoning() → Markdown → HTML → UI/PDF
+```
+
+**Text Formatting**:
+1. `_clean_reasoning()`: Remove artifacts, numbers, JSON blobs
+2. `_format_reasoning()`: Add section headers (`**HEADER:**`), bullet points
+3. Frontend pipe: Convert markdown to styled HTML
+4. PDF generation: Render HTML with charts to professional PDF
+
+**Example Formatted Output**:
+```
+**MARKET STRUCTURE:**
+  • The 5-minute chart is in a clear bearish trend
+  • Key support at $57.04 and resistance at $61.14
+  • Current price ($59.11) is between these levels
+
+**PATTERNS IDENTIFIED:**
+  • No discernible Fair Value Gap (FVG)
+  • Recent candles show minor consolidation
+
+**TOOL ANALYSIS:**
+  • MACD shows neutral bias with no strong crossover
+  • Volume is 1.3x average
+```
+
+**PDF Generation**:
+- Pre-generated on pipeline completion (not on-demand)
+- Uses WeasyPrint for professional HTML-to-PDF conversion
+- Includes all charts as embedded images
+- Stored in S3 (or local disk for dev)
+- Fast downloads via direct URL
 
 ---
 
-## Useful Links
+### Multi-Timeframe Signal Generation
 
-- **Documentation**: `./docs/`
-- **API Docs (local)**: http://localhost:8000/docs
-- **Celery Monitoring (local)**: http://localhost:5555
-- **Terraform Docs**: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
-- **CrewAI Docs**: https://docs.crewai.com/
-- **FastAPI Docs**: https://fastapi.tiangolo.com/
-- **Angular Docs**: https://angular.io/docs
+**What**: Signal generators monitor multiple timeframes simultaneously to catch signals at different granularities
+
+**Why**: 
+- Different strategies work on different timeframes
+- More signal diversity = more opportunities
+- Intraday (15m) vs swing (Daily) trading
+- Users can subscribe to specific timeframes
+
+**Configuration**:
+```bash
+# .env
+PRIMARY_TIMEFRAME=D  # Daily (default)
+ADDITIONAL_TIMEFRAMES=15,60  # Add 15-minute and 60-minute
+```
+
+**How It Works**:
+1. Signal generator creates multiple instances per indicator
+   - `golden_cross_D` (Daily)
+   - `golden_cross_15` (15-minute)
+   - `golden_cross_60` (Hourly)
+   
+2. Each instance monitors its assigned timeframe independently
+
+3. Signals published to Kafka include timeframe metadata:
+   ```json
+   {
+     "signal_type": "golden_cross",
+     "timeframe": "15",
+     "tickers": [{"ticker": "AAPL", "confidence": 85}]
+   }
+   ```
+
+4. Trigger Dispatcher matches based on timeframe + signal type
+
+**Benefits**:
+- ✅ More signals generated across timeframes
+- ✅ Day traders get intraday signals
+- ✅ Swing traders get daily signals
+- ✅ Same codebase, different configurations
+- ✅ Kafka naturally handles high-frequency signals
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: October 2025  
+### Monitoring & Observability Enhancements
+
+**What**: Langfuse integration for LLM tracing and improved agent report formatting
+
+**Langfuse Integration**:
+- Trace every LLM call with full context
+- Track token usage per agent
+- Monitor cost in real-time
+- Debug LLM failures with full conversation history
+- Session-based tracing (group all agents in one execution)
+
+**Agent Report Improvements**:
+- Clean reasoning text (no LLM artifacts)
+- Markdown-style formatting (bold headers, bullets)
+- Line break preservation in UI
+- Professional PDF generation
+- Charts embedded in reports
+
+---
+
+## Updated Glossary
+
+- **Instruction-Driven Agent**: Agent configured via natural language instead of JSON schema
+- **LLM Model Registry**: Database of available LLM models with pricing
+- **Broker Abstraction Layer**: Unified interface for multiple brokerages
+- **Position-Aware Trading**: System that checks existing positions before trading
+- **Dual-Phase Execution**: Pipeline runs in Execute phase, then Monitor phase
+- **Pre-Generated PDF**: Report PDF created at pipeline completion, not on download
+- **Multi-Timeframe Signals**: Signals generated across multiple timeframes (15m, 1h, 1d)
+- **Langfuse**: LLM observability and tracing platform
+- **WeasyPrint**: Python library for HTML-to-PDF conversion
+
+---
+
+**Document Version**: 1.1  
+**Last Updated**: December 19, 2025  
 **Maintained By**: Engineering Team
 
 **For New Developers**: Read this, then `requirements.md`, then `design.md`. Then start coding!

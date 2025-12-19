@@ -20,6 +20,7 @@ import { environment } from '../../../../environments/environment';
 
 import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
 import { ApiService } from '../../../core/services/api.service';
+import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe';
 
 @Component({
   selector: 'app-execution-report-modal',
@@ -35,6 +36,7 @@ import { ApiService } from '../../../core/services/api.service';
     MatExpansionModule,
     MatTabsModule,
     TradingChartComponent,
+    MarkdownToHtmlPipe,
   ],
   templateUrl: './execution-report-modal.component.html',
   styleUrls: ['./execution-report-modal.component.scss']

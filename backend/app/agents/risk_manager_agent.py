@@ -256,23 +256,32 @@ class RiskManagerAgent(BaseAgent):
                     f"✗ Trade REJECTED: {', '.join(risk_decision['warnings'])}"
                 )
             
+            # Build clean report data
+            decision_status = "✅ APPROVED" if risk_decision['approved'] else "❌ REJECTED"
+            warnings_text = "\n".join(f"• {w}" for w in risk_decision["warnings"]) if risk_decision["warnings"] else "None"
+            
+            report_data = {
+                "Decision": decision_status,
+                "Position Size": f"{risk_decision['position_size']:.0f} shares",
+                "Risk Score": f"{risk_decision['risk_score']:.2f}",
+                "Risk/Reward Ratio": f"{risk_decision['rr_ratio']:.2f}:1",
+                "Maximum Loss": f"${risk_decision['max_loss']:.2f}",
+            }
+            
+            if risk_decision["warnings"]:
+                report_data["Warnings"] = warnings_text
+            
+            if broker_info:
+                report_data["Account Info"] = f"Balance: ${broker_info.get('balance', 0):.2f} | Buying Power: ${broker_info.get('buying_power', 0):.2f}"
+            
+            report_data["Risk Analysis"] = risk_decision["reasoning"] or "Position sizing calculated based on account balance and risk parameters."
+            
             self.record_report(
                 state,
                 title="Risk Assessment Completed",
                 summary=f"{'APPROVED' if risk_decision['approved'] else 'REJECTED'} - Position Size: {risk_decision['position_size']:.0f} shares",
                 status="completed" if risk_decision["approved"] else "rejected",
-                metrics={
-                    "position_size": round(risk_decision["position_size"], 2),
-                    "risk_score": round(risk_decision["risk_score"], 2),
-                    "risk_reward_ratio": round(risk_decision["rr_ratio"], 2),
-                    "max_loss": round(risk_decision["max_loss"], 2)
-                },
-                data={
-                    "approved": risk_decision["approved"],
-                    "warnings": risk_decision["warnings"],
-                    "reasoning": risk_decision["reasoning"],
-                    "broker_info": broker_info
-                }
+                data=report_data
             )
             
             # Calculate and track cost
@@ -292,7 +301,7 @@ class RiskManagerAgent(BaseAgent):
             return state
             
         except Exception as e:
-            self.logger.error("Risk assessment failed", error=str(e), exc_info=True)
+            self.logger.error(f"Risk assessment failed: {str(e)}", exc_info=True)
             raise AgentProcessingError(f"Risk assessment failed: {str(e)}")
     
     def _get_broker_account_info(self, state: PipelineState) -> Dict[str, Any]:
@@ -468,24 +477,37 @@ MARKET CONDITIONS:
         """Make reasoning safe and readable for end users."""
         import re
         if not text:
-            return ""
+            return "Risk assessment completed based on position sizing rules and account limits."
+        
         cleaned = text
-        # Remove CrewAI tool-call artifacts
-        cleaned = re.sub(r"commentary\s+to=\w+.*?json(\s*\{.*?\})?", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r"tool_code=\w+", "", cleaned, flags=re.IGNORECASE)
-        # Remove JSON blobs
-        cleaned = re.sub(r"```json.*?```", "", cleaned, flags=re.DOTALL)
-        cleaned = re.sub(r"\{[^}]{10,}\}", "", cleaned)
+        
+        # Remove CrewAI tool-call artifacts (only very specific patterns)
+        cleaned = re.sub(r"commentary\s+to=\w+\s+tool_code=\w+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove code blocks with triple backticks
+        cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)
+        
+        # Remove ONLY obvious standalone JSON objects
+        cleaned = re.sub(r"^\s*\{[\s\S]*?\}\s*$", "", cleaned, flags=re.MULTILINE)
+        
         # Remove HTML/XML tags
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-        # Collapse whitespace
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        # Extract meaningful sentences if still has artifacts
-        if len(cleaned) > 600 or "commentary" in cleaned.lower() or "json" in cleaned.lower():
-            sentences = re.split(r'[.!?]\s+', cleaned)
-            clean_sentences = [s for s in sentences if len(s) > 20 and "commentary" not in s.lower() and "json" not in s.lower()]
-            if clean_sentences:
-                cleaned = ". ".join(clean_sentences[:3]) + "."
+        
+        # Collapse multiple whitespaces and newlines
+        cleaned = re.sub(r"\n\s*\n", "\n\n", cleaned)
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = cleaned.strip()
+        
+        # If still too long, truncate smartly
+        if len(cleaned) > 800:
+            truncate_at = cleaned.rfind(".", 0, 800)
+            if truncate_at > 400:
+                cleaned = cleaned[:truncate_at + 1] + "\n\n[Analysis truncated]"
             else:
-                return "Risk assessment completed based on position sizing rules and account limits."
-        return cleaned[:600].strip()
+                cleaned = cleaned[:800] + "..."
+        
+        # If cleaned is empty or too short, return default
+        if len(cleaned.strip()) < 20:
+            return "Position sizing calculated based on account balance, risk tolerance, and trade parameters."
+        
+        return cleaned

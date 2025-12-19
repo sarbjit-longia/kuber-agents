@@ -154,7 +154,9 @@
                             </ul>
                           </ng-container>
                           <ng-template #dataScalar>
-                            <span *ngIf="!isObject(item.value)">{{ item.value }}</span>
+                            <div *ngIf="!isObject(item.value)" 
+                                 class="formatted-content"
+                                 [innerHTML]="item.value | markdownToHtml"></div>
                             <pre *ngIf="isObject(item.value)">{{ item.value | json }}</pre>
                           </ng-template>
                         </div>
