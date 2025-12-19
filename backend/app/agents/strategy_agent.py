@@ -644,51 +644,53 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         if not text or len(text) < 20:
             return text
         
-        # Step 1: Add line breaks before section headers (which are inline in the text)
-        # **MARKET STRUCTURE:** text text **PATTERNS IDENTIFIED:** -> **MARKET STRUCTURE:**\ntext text\n\n**PATTERNS IDENTIFIED:**
-        formatted = re.sub(
-            r'\s*\*\*([A-Z\s&]+):\*\*\s*',
-            r'\n\n**\1:**\n',
-            text
-        )
+        logger.info("format_reasoning_input", length=len(text), preview=text[:200])
         
-        # Step 2: Split into sections for better formatting
-        sections = re.split(r'\n\n(\*\*[A-Z\s&]+:\*\*)\n', formatted)
+        # Step 1: Detect and ADD ** formatting to section headers that don't have it
+        # Pattern: "• MARKET STRUCTURE:" or just "MARKET STRUCTURE:" at start of line
+        # Convert to: "**MARKET STRUCTURE:**"
+        section_keywords = [
+            'MARKET STRUCTURE', 'PATTERNS IDENTIFIED', 'PATTERN IDENTIFIED', 
+            'TOOL ANALYSIS', 'ENTRY RATIONALE', 'EXIT STRATEGY', 'RISK FACTORS',
+            'KEY FACTORS', 'ANALYSIS', 'SUMMARY', 'DECISION', 'RECOMMENDATION'
+        ]
         
-        formatted_parts = []
-        for i, part in enumerate(sections):
-            part = part.strip()
-            if not part:
-                continue
-            
-            # If this is a section header, keep it as is
-            if part.startswith('**') and part.endswith(':**'):
-                formatted_parts.append(part)
-            else:
-                # This is content - check if it already has bullets
-                if '•' in part:
-                    # Already has bullets, just keep it
-                    formatted_parts.append(part)
-                else:
-                    # Split into sentences and make bullet points
-                    sentences = re.split(r'\.(?=\s+[A-Z]|\s*$)', part)
-                    bullets = []
-                    for sentence in sentences:
-                        sentence = sentence.strip()
-                        if sentence and len(sentence) > 10:
-                            # Add period if missing
-                            if not sentence.endswith('.'):
-                                sentence += '.'
-                            bullets.append(f"  • {sentence}")
-                    
-                    if bullets:
-                        formatted_parts.append('\n'.join(bullets))
+        for keyword in section_keywords:
+            # Remove number/bullet if present, then add ** formatting
+            # Handles: "1. MARKET STRUCTURE:", "• MARKET STRUCTURE:", or just "MARKET STRUCTURE:"
+            before_count = text.count(keyword)
+            text = re.sub(
+                rf'^\s*(?:\d+\.\s*)?•?\s*({keyword}):\s*',
+                rf'\n\n**\1:**\n',
+                text,
+                flags=re.MULTILINE | re.IGNORECASE
+            )
+            after_count = text.count(f'**{keyword}:**')
+            if before_count > 0:
+                logger.info(f"formatted_keyword_{keyword}", before=before_count, after=after_count)
         
-        formatted = '\n\n'.join(formatted_parts)
+        # Step 2: Remove standalone numbers (2., 3., 4., etc.) on their own lines
+        text = re.sub(r'^\s*\d+\.\s*$', '', text, flags=re.MULTILINE)
+        logger.info("removed_standalone_numbers")
         
-        # Step 3: Clean up spacing
+        # Step 3: Normalize bullet points - remove standalone bullets on their own line
+        text = re.sub(r'^\s*•\s*$', '', text, flags=re.MULTILINE)
+        
+        # Step 4: Handle remaining bullets before section headers (for any we missed)
+        text = re.sub(r'^\s*•\s*(?=\*\*[A-Z])', '', text, flags=re.MULTILINE)
+        
+        # Step 5: Normalize bullets at start of lines (keep the bullet, remove extra whitespace)
+        formatted = re.sub(r'^\s*•\s+', '• ', text, flags=re.MULTILINE)
+        
+        # Step 6: Clean up spacing
+        # Remove lines that are just bullets
+        formatted = re.sub(r'^•\s*$', '', formatted, flags=re.MULTILINE)
+        # Collapse multiple newlines
         formatted = re.sub(r'\n\n\n+', '\n\n', formatted)
+        # Remove leading/trailing whitespace
         formatted = formatted.strip()
+        
+        logger.info("format_reasoning_output", length=len(formatted), preview=formatted[:200])
         
         return formatted
     
@@ -709,11 +711,17 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         # Remove HTML/XML tags
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
         
-        # Remove awkward numbering patterns (but be more conservative):
-        # Pattern 1: "1." on its own line
+        # Remove numbered list formatting that LLM adds (we'll convert to bullets later)
+        # Pattern 1: "1." on its own line (empty list item)
         cleaned = re.sub(r"^\s*\d+\.\s*$", "", cleaned, flags=re.MULTILINE)
-        # Pattern 2: "1. •" or "1.•" (number directly before bullet)
+        # Pattern 2: "1." at start of line followed by section header (e.g., "1. **MARKET STRUCTURE:**")
+        cleaned = re.sub(r"^\s*\d+\.\s+(?=\*\*[A-Z])", "", cleaned, flags=re.MULTILINE)
+        # Pattern 3: "1. •" or "1.•" (number directly before bullet - redundant)
         cleaned = re.sub(r"\d+\.\s*•", "•", cleaned)
+        
+        # Fix line breaks - ensure bullets always start on a new line
+        # Pattern: text.• next bullet -> text.\n• next bullet
+        cleaned = re.sub(r'(\.)(\s*)•', r'\1\n\n•', cleaned)
         
         # Collapse multiple whitespaces and newlines
         cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)  # Collapse 3+ newlines to 2
@@ -721,13 +729,13 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         cleaned = cleaned.strip()
         
         # If still too long, truncate smartly at sentence boundary
-        if len(cleaned) > 1200:
+        if len(cleaned) > 1500:
             # Find a good truncation point (sentence end)
-            truncate_at = cleaned.rfind(".", 0, 1200)
-            if truncate_at > 600:  # Make sure we have substantial content
+            truncate_at = cleaned.rfind(".", 0, 1500)
+            if truncate_at > 800:  # Make sure we have substantial content
                 cleaned = cleaned[:truncate_at + 1] + "\n\n[Analysis truncated for brevity]"
             else:
-                cleaned = cleaned[:1200] + "..."
+                cleaned = cleaned[:1500] + "..."
         
         # If cleaned is empty or too short after all cleaning, return a default
         if len(cleaned.strip()) < 20:

@@ -312,8 +312,12 @@ Be specific about which indicators you used and what they showed.""",
         
         cleaned = text
         
-        # Remove CrewAI tool-call artifacts (only very specific patterns)
-        cleaned = re.sub(r"commentary\s+to=\w+\s+tool_code=\w+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        # Remove CrewAI tool-call artifacts - multiple patterns
+        # Pattern 1: "commentary to=tool_name json {...}"
+        cleaned = re.sub(r"commentary\s+to=[\w_]+\s+(?:tool_code=\w+\s+)?json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Pattern 2: Inline JSON tool calls like "to=macd_calculator json {...}"
+        cleaned = re.sub(r"to=[\w_]+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.IGNORECASE)
         
         # Remove code blocks with triple backticks
         cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)
@@ -325,7 +329,7 @@ Be specific about which indicators you used and what they showed.""",
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
         
         # Collapse multiple whitespaces and newlines
-        cleaned = re.sub(r"\n\s*\n", "\n\n", cleaned)  # Preserve paragraph breaks
+        cleaned = re.sub(r"\n\s*\n+", "\n\n", cleaned)  # Preserve paragraph breaks
         cleaned = re.sub(r"[ \t]+", " ", cleaned)  # Collapse spaces/tabs
         cleaned = cleaned.strip()
         
