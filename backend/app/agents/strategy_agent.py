@@ -9,6 +9,7 @@ import json
 import re
 from typing import Dict, Any, List, Optional
 from crewai import Agent, Task, Crew
+from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetadata, AgentConfigSchema
@@ -45,7 +46,7 @@ class StrategyAgent(BaseAgent):
             icon="psychology",
             pricing_rate=0.15,
             is_free=False,
-            requires_timeframes=[],  # Derived from instructions
+            requires_timeframes=["5m"],  # Always need 5m for intraday analysis
             supported_tools=[
                 # Analysis tools - Strategy Agent can use any technical indicator
                 "rsi", "macd", "sma_crossover", "bollinger_bands",
@@ -105,8 +106,16 @@ class StrategyAgent(BaseAgent):
             extracted_timeframes = instruction_parser.extract_timeframes(instructions)
             
             # Use the smallest (fastest) timeframe as primary execution timeframe
-            # Or fallback to 5m if none specified
-            strategy_tf = extracted_timeframes[0] if extracted_timeframes else "5m"
+            # If none specified in instructions, use the smallest AVAILABLE timeframe
+            if extracted_timeframes:
+                strategy_tf = extracted_timeframes[0]
+            elif state.market_data and state.market_data.timeframes:
+                # Use smallest available timeframe from state
+                available_tfs = sorted(state.market_data.timeframes.keys(), 
+                                      key=lambda x: instruction_parser._timeframe_to_minutes(x))
+                strategy_tf = available_tfs[0] if available_tfs else "1d"
+            else:
+                strategy_tf = "1d"  # Final fallback
             
             self.log(state, f"Strategy timeframe (from instructions): {strategy_tf}")
             if extracted_timeframes:
@@ -190,14 +199,40 @@ YOUR FINAL OUTPUT MUST BE THIS EXACT JSON FORMAT:
     "take_profit": 0.00,
     "confidence": 0.0-1.0,
     "pattern_detected": "name of pattern/setup (e.g., Bull Flag, FVG, Head & Shoulders, etc.)",
-    "reasoning": "YOUR COMPLETE ANALYSIS - BE SPECIFIC AND DESCRIPTIVE:
-    
-1. MARKET STRUCTURE: Describe the current trend, key support/resistance levels with specific prices
-2. PATTERNS IDENTIFIED: If you detect any patterns (Fair Value Gaps, Bull/Bear Flags, Triangles, Channels, etc.), describe them with price ranges. For example: 'Bullish FVG between $445.20-$446.50' or 'Bull flag forming with support at $444.00 and resistance at $448.00'
-3. TOOL ANALYSIS: Explain what each tool you used showed and how it supports your decision
-4. ENTRY RATIONALE: Why this specific entry price?
-5. EXIT STRATEGY: Why these specific stop loss and take profit levels?
-6. RISK FACTORS: What could invalidate this setup?
+    "reasoning": "YOUR COMPLETE ANALYSIS - BE SPECIFIC AND DESCRIPTIVE.
+
+Use this EXACT format with bold section headers (use **HEADER:** syntax):
+
+**MARKET STRUCTURE:**
+Describe the current trend, key support/resistance levels with specific prices.
+
+**PATTERNS IDENTIFIED:**
+If you detect any patterns (Fair Value Gaps, Bull/Bear Flags, Triangles, Channels, etc.), describe them with price ranges. 
+For example: 'Bullish FVG between $445.20-$446.50' or 'Bull flag forming with support at $444.00 and resistance at $448.00'
+Use bullet points (•) for multiple patterns.
+
+**TOOL ANALYSIS:**
+Explain what each tool you used showed and how it supports your decision.
+Use bullet points (•) for each tool.
+
+**ENTRY RATIONALE:**
+Why this specific entry price?
+
+**EXIT STRATEGY:**
+Why these specific stop loss and take profit levels?
+
+**RISK FACTORS:**
+What could invalidate this setup?
+Use bullet points (•) for multiple factors.
+
+CRITICAL FORMATTING RULES:
+- Section headers MUST use **HEADER:** format (double asterisks for bold)
+- Use bullet points (•) for lists
+- NO numbered prefixes before section headers
+- NO tool call syntax (e.g., 'to=tool_name json...')
+- NO JSON fragments or code blocks
+- NO standalone numbers or bullets on empty lines
+- Write in clear, professional sentences
 
 Be detailed and specific with price levels - this analysis will be shown to traders and used to annotate charts."
 }}
@@ -286,8 +321,8 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             reasoning = getattr(strategy_result, "reasoning", "No detailed analysis provided.")
             pattern = getattr(strategy_result, "pattern_detected", "")
             
-            # Format reasoning for better readability
-            formatted_reasoning = self._format_reasoning(reasoning)
+            # Use LLM synthesis to clean reasoning (falls back to regex if needed)
+            formatted_reasoning = self._synthesize_reasoning_with_llm(reasoning)
             
             # Build human-readable summary
             action_text = f"**Decision:** {strategy_result.action}"
@@ -377,6 +412,8 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                         for k in ['shapes', 'lines', 'markers', 'zones', 'text', 'arrows']
                     )
                     self.log(state, f"✓ Chart generated with {total} annotations")
+                else:
+                    self.add_warning(state, f"Chart generation skipped - no candle data available for {strategy_tf} timeframe. Ensure Market Data Agent is configured to fetch this timeframe.")
                     
             except Exception as e:
                 self.add_warning(state, f"Chart generation failed: {str(e)}")
@@ -605,9 +642,9 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
                     raw_reasoning = result_str
                     logger.info("using_full_result_as_reasoning", length=len(raw_reasoning))
             
-            cleaned_reasoning = self._clean_reasoning(raw_reasoning)
-            formatted_reasoning = self._format_reasoning(cleaned_reasoning)
-            logger.info("formatted_reasoning", original_length=len(raw_reasoning), cleaned_length=len(cleaned_reasoning), formatted_length=len(formatted_reasoning))
+            # Use LLM synthesis to clean and format reasoning (falls back to regex if needed)
+            formatted_reasoning = self._synthesize_reasoning_with_llm(raw_reasoning)
+            logger.info("formatted_reasoning", original_length=len(raw_reasoning), formatted_length=len(formatted_reasoning))
             
             return StrategyResult(
                 action=parsed_data.get("action", "HOLD"),
@@ -634,8 +671,97 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             take_profit=None,
             confidence=0.5,
             pattern_detected="",
-            reasoning=self._format_reasoning(self._clean_reasoning(result_str))
+            reasoning=self._synthesize_reasoning_with_llm(result_str)
         )
+    
+    def _synthesize_reasoning_with_llm(self, raw_text: str) -> str:
+        """
+        Use LLM to clean and synthesize reasoning if it contains artifacts.
+        This is a fallback for when the primary LLM output contains tool artifacts.
+        """
+        if not raw_text or len(raw_text.strip()) < 20:
+            return "Strategy analysis completed. Market conditions evaluated for trade opportunities."
+        
+        # Check if text has obvious artifacts
+        has_artifacts = (
+            "to=" in raw_text or
+            "json {" in raw_text.lower() or
+            "```" in raw_text or
+            "commentary" in raw_text.lower() or
+            re.search(r'^\s*\d+\.\s*$', raw_text, re.MULTILINE)  # Standalone numbers
+        )
+        
+        if not has_artifacts:
+            # No artifacts detected, just format
+            return self._format_reasoning(raw_text)
+        
+        # If text is too short even with artifacts, try formatting first
+        if len(raw_text.strip()) < 100:
+            logger.info("text_too_short_for_synthesis", length=len(raw_text), using_regex_only=True)
+            return self._format_reasoning(self._clean_reasoning(raw_text))
+        
+        # Use LLM to synthesize clean reasoning
+        try:
+            synthesis_prompt = f"""The following trading strategy analysis contains technical artifacts. 
+Please rewrite it as clean, professional analysis following this structure:
+
+**MARKET STRUCTURE:**
+(describe trend, support/resistance with EXACT PRICES)
+
+**PATTERNS IDENTIFIED:**
+(describe any patterns like Fair Value Gaps, flags, etc. with EXACT PRICE RANGES)
+
+**TOOL ANALYSIS:**
+(what indicators showed)
+
+**ENTRY RATIONALE:**
+(why this entry)
+
+**EXIT STRATEGY:**
+(why these levels)
+
+**RISK FACTORS:**
+(what could go wrong)
+
+CRITICAL REQUIREMENTS:
+- Remove tool call syntax (e.g., "to=tool_name json...")
+- Remove JSON fragments and code blocks
+- Remove standalone numbers or bullets on empty lines
+- Use **HEADER:** format for section headers (double asterisks)
+- Use bullet points (•) for lists
+- PRESERVE ALL SPECIFIC PRICE LEVELS AND PRICE RANGES (e.g., $445.20-$446.50, "support at $150")
+- PRESERVE pattern names (e.g., "Fair Value Gap", "Bull Flag", "Head and Shoulders")
+- PRESERVE level descriptions (e.g., "resistance at $155", "support around $150")
+
+These details are critical for chart visualization!
+
+If the original text lacks specific analysis, state what is missing clearly and professionally.
+
+Original analysis:
+{raw_text}
+
+Provide ONLY the cleaned, formatted analysis. Keep all specific prices and pattern descriptions intact."""
+
+            import os
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                temperature=0.3
+            )
+            cleaned = response.choices[0].message.content.strip()
+            
+            logger.info("llm_synthesis_applied", 
+                       original_length=len(raw_text), 
+                       cleaned_length=len(cleaned),
+                       had_artifacts=has_artifacts)
+            
+            return cleaned if len(cleaned) > 50 else self._format_reasoning(raw_text)
+            
+        except Exception as e:
+            logger.warning("llm_synthesis_failed", error=str(e))
+            # Fall back to regex cleaning + formatting
+            return self._format_reasoning(self._clean_reasoning(raw_text))
     
     def _format_reasoning(self, text: str) -> str:
         """Format reasoning text for better readability in UI with bullet points and structure."""

@@ -5,9 +5,11 @@ This agent is instruction-driven: it reads natural language instructions from th
 and automatically selects appropriate tools to complete the analysis.
 """
 import structlog
+import re
 from typing import Dict, Any
 from datetime import datetime
 from crewai import Agent, Task, Crew
+from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
@@ -150,17 +152,34 @@ YOUR INSTRUCTIONS:
 
 Use the available tools as needed (RSI, MACD, SMA, etc.) to complete your analysis.
 
+IMPORTANT: After calling tools and gathering data, SYNTHESIZE your findings into clean, professional analysis.
+
 Provide your final output in this JSON format:
 {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "confidence": 0.0-1.0,
-    "reasoning": "detailed explanation of your analysis",
+    "reasoning": "Your professional analysis here. See formatting rules below.",
     "key_factors": ["factor1", "factor2", "factor3"]
 }}
 
+CRITICAL RULES FOR "reasoning" FIELD:
+- Write in clear, professional English sentences
+- Synthesize what tools showed you (e.g., "The RSI on the 1d timeframe is at 65, indicating building momentum")
+- NO tool call syntax (e.g., "to=tool.rsi_calculator json...")
+- NO JSON fragments or code blocks
+- NO technical execution artifacts
+- Be specific about indicator values and what they mean
+- Make it readable for traders and portfolio managers
+
+Example of GOOD reasoning:
+"The RSI on the 1d timeframe is at 65, indicating building momentum toward overbought territory. The MACD shows a bullish crossover above the signal line, supporting upside potential. Volume is slightly elevated at 1.4× average, confirming interest."
+
+Example of BAD reasoning (DO NOT DO THIS):
+"commentary to=tool.rsi_calculator json {{...}} The market shows..."
+
 Be specific about which indicators you used and what they showed.""",
                 agent=analyst,
-                expected_output="JSON with bias determination, confidence, reasoning, and key factors"
+                expected_output="JSON with bias determination, confidence, clean professional reasoning (no tool artifacts), and key factors"
             )
             
             # Execute crew
@@ -185,7 +204,8 @@ Be specific about which indicators you used and what they showed.""",
             )
 
             # Record structured report for UI (avoid raw JSON/arrays)
-            cleaned_reasoning = self._clean_reasoning(bias_result.reasoning)
+            # First try LLM-based synthesis, then fallback to regex cleaning
+            cleaned_reasoning = self._synthesize_reasoning_with_llm(bias_result.reasoning)
             key_factors_text = ", ".join(bias_result.key_factors) if bias_result.key_factors else "None identified"
             
             self.record_report(
@@ -304,6 +324,65 @@ Be specific about which indicators you used and what they showed.""",
             key_factors=[]
         )
 
+    def _synthesize_reasoning_with_llm(self, raw_text: str) -> str:
+        """
+        Use LLM to clean and synthesize reasoning if it contains artifacts.
+        This is a fallback for when the primary LLM output contains tool artifacts.
+        """
+        if not raw_text or len(raw_text.strip()) < 20:
+            return "Market bias analysis completed based on technical indicators and market conditions."
+        
+        # Check if text has obvious artifacts
+        has_artifacts = (
+            "to=" in raw_text or
+            "json {" in raw_text.lower() or
+            "```" in raw_text or
+            "commentary" in raw_text.lower()
+        )
+        
+        if not has_artifacts:
+            # No artifacts detected, return as-is
+            return raw_text
+        
+        # Use LLM to synthesize clean reasoning
+        try:
+            import os
+            synthesis_prompt = f"""The following text contains technical artifacts from tool execution. 
+Please rewrite it as clean, professional market analysis suitable for traders and portfolio managers.
+
+Remove any:
+- Tool call syntax (e.g., "to=tool_name json...")
+- JSON fragments
+- Code blocks
+- Technical execution details
+
+Keep the core market insights and make it read like professional analysis.
+
+Original text:
+{raw_text}
+
+Provide ONLY the cleaned, professional analysis text. Do not add any preamble or explanation."""
+
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                temperature=0.3
+            )
+            cleaned = response.choices[0].message.content.strip()
+            
+            logger.info("llm_synthesis_applied", 
+                       original_length=len(raw_text), 
+                       cleaned_length=len(cleaned),
+                       had_artifacts=has_artifacts)
+            
+            return cleaned if len(cleaned) > 20 else raw_text
+            
+        except Exception as e:
+            logger.warning("llm_synthesis_failed", error=str(e))
+            # Fall back to regex cleaning
+            return self._clean_reasoning(raw_text)
+
     def _clean_reasoning(self, text: str) -> str:
         """Make reasoning safe and readable for end users."""
         import re
@@ -313,11 +392,11 @@ Be specific about which indicators you used and what they showed.""",
         cleaned = text
         
         # Remove CrewAI tool-call artifacts - multiple patterns
-        # Pattern 1: "commentary to=tool_name json {...}"
-        cleaned = re.sub(r"commentary\s+to=[\w_]+\s+(?:tool_code=\w+\s+)?json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        # Pattern 1: "commentary to=tool_name json {...}" (tool_name can have dots, e.g., tool.rsi_calculator)
+        cleaned = re.sub(r"commentary\s+to=[\w_.]+\s+(?:tool_code=\w+\s+)?json\s*\{[^}]+\}", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
         
-        # Pattern 2: Inline JSON tool calls like "to=macd_calculator json {...}"
-        cleaned = re.sub(r"to=[\w_]+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.IGNORECASE)
+        # Pattern 2: Inline JSON tool calls like "to=macd_calculator json {...}" or "to=tool.rsi_calculator json {...}"
+        cleaned = re.sub(r"to=[\w_.]+\s+json\s*\{[^}]+\}", "", cleaned, flags=re.IGNORECASE)
         
         # Remove code blocks with triple backticks
         cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)

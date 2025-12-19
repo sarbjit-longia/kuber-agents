@@ -214,11 +214,13 @@ class PipelineExecutor:
         """
         Determine which timeframes are required by agents in the pipeline.
         
-        This is now INSTRUCTION-DRIVEN: parses timeframes from natural language
-        instructions rather than hardcoded metadata.
+        Collects timeframes from ALL sources:
+        1. Agent instructions (natural language parsing)
+        2. Agent metadata (requires_timeframes)
+        3. Explicit config fields
         
         Returns:
-            List of unique timeframe strings
+            List of unique timeframe strings sorted by duration
         """
         from app.services.instruction_parser import instruction_parser
         
@@ -234,7 +236,7 @@ class PipelineExecutor:
             try:
                 config = node.get("config", {})
                 
-                # PRIMARY: Parse timeframes from instructions (instruction-driven!)
+                # 1. Parse timeframes from instructions (instruction-driven!)
                 instructions = config.get("instructions", "")
                 if instructions:
                     extracted_tfs = instruction_parser.extract_timeframes(instructions)
@@ -246,24 +248,23 @@ class PipelineExecutor:
                             extracted=extracted_tfs
                         )
                 
-                # FALLBACK: Check explicit config fields (for backward compatibility)
+                # 2. Check agent metadata (ALWAYS, not just as fallback)
+                metadata = self.registry.get_metadata(agent_type)
+                if metadata and metadata.requires_timeframes:
+                    timeframes.update(metadata.requires_timeframes)
+                    self.logger.debug(
+                        "timeframes_from_metadata",
+                        agent_type=agent_type,
+                        timeframes=metadata.requires_timeframes
+                    )
+                
+                # 3. Check explicit config fields (for backward compatibility)
                 if "strategy_timeframe" in config:
                     timeframes.add(config["strategy_timeframe"])
                 if "primary_timeframe" in config:
                     timeframes.add(config["primary_timeframe"])
                 if "secondary_timeframes" in config:
                     timeframes.update(config["secondary_timeframes"])
-                
-                # LAST RESORT: Use metadata defaults (deprecated)
-                if not timeframes:
-                    metadata = self.registry.get_metadata(agent_type)
-                    if metadata and metadata.requires_timeframes:
-                        timeframes.update(metadata.requires_timeframes)
-                        self.logger.debug(
-                            "using_fallback_timeframes_from_metadata",
-                            agent_type=agent_type,
-                            timeframes=metadata.requires_timeframes
-                        )
                     
             except Exception as e:
                 self.logger.warning(
