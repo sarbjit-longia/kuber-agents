@@ -167,6 +167,7 @@ class BiasAgent(BaseAgent):
                 tools=tools,
                 llm=self.model,
                 function_calling_llm=self.function_calling_llm,  # Dedicated LLM for tool calling!
+                max_iter=15,  # Allow more iterations for local models
                 verbose=True,
                 allow_delegation=False
             )
@@ -200,15 +201,19 @@ CRITICAL RULES FOR "reasoning" FIELD:
 - NO JSON fragments or code blocks
 - NO technical execution artifacts
 - Be specific about indicator values and what they mean
+- **MUST mention specific threshold values if custom thresholds were provided in instructions** (e.g., "RSI at 42.80 is above the oversold threshold of 40")
 - Make it readable for traders and portfolio managers
 
 Example of GOOD reasoning:
 "The RSI on the 1d timeframe is at 65, indicating building momentum toward overbought territory. The MACD shows a bullish crossover above the signal line, supporting upside potential. Volume is slightly elevated at 1.4× average, confirming interest."
 
+Example of GOOD reasoning with custom thresholds:
+"The RSI at 42.80 is above the oversold threshold of 40 and below the overbought threshold of 60, indicating neutral momentum. The MACD histogram shows moderate bullish strength."
+
 Example of BAD reasoning (DO NOT DO THIS):
 "commentary to=tool.rsi_calculator json {{...}} The market shows..."
 
-Be specific about which indicators you used and what they showed.""",
+Be specific about which indicators you used, their exact values, and any custom thresholds provided in the instructions.""",
                 agent=analyst,
                 expected_output="JSON with bias determination, confidence, clean professional reasoning (no tool artifacts), and key factors"
             )
@@ -234,9 +239,10 @@ Be specific about which indicators you used and what they showed.""",
                 f"✓ Bias determined: {bias_result.bias} (confidence: {bias_result.confidence:.0%}) for {bias_result.timeframe}"
             )
 
-            # Record structured report for UI (avoid raw JSON/arrays)
-            # First try LLM-based synthesis, then fallback to regex cleaning
-            cleaned_reasoning = self._synthesize_reasoning_with_llm(bias_result.reasoning)
+            # Record structured report for UI
+            # The LLM now produces clean reasoning directly, so we use it as-is
+            # Only apply basic cleaning to remove any stray artifacts
+            cleaned_reasoning = self._clean_reasoning(bias_result.reasoning)
             key_factors_text = ", ".join(bias_result.key_factors) if bias_result.key_factors else "None identified"
             
             self.record_report(
@@ -248,7 +254,7 @@ Be specific about which indicators you used and what they showed.""",
                     "Confidence Level": f"{bias_result.confidence:.0%}",
                     "Analyzed Timeframe": bias_result.timeframe,
                     "Key Market Factors": key_factors_text,
-                    "Detailed Analysis": cleaned_reasoning or "Multi-timeframe technical analysis completed. Price action, momentum, and trend indicators evaluated.",
+                    "Detailed Analysis": cleaned_reasoning or bias_result.reasoning or "Analysis completed.",
                 },
             )
             

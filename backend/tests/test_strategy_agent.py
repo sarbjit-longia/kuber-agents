@@ -25,7 +25,7 @@ class TestStrategyAgentAccuracy:
                 "Buy when there is a bullish FVG formed on the 5-minute chart and price returns to this FVG. "
                 "Set stop loss below the FVG and take profit at 1.5x risk."
             ),
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -69,7 +69,7 @@ class TestStrategyAgentAccuracy:
                 "Look for bull flag pattern on 5-minute chart. "
                 "Enter long when price breaks above the flag's resistance with increased volume."
             ),
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -99,7 +99,7 @@ class TestStrategyAgentAccuracy:
                 "Generate trading signals with strict 2:1 risk/reward ratio. "
                 "Entry at support/resistance levels."
             ),
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -133,7 +133,7 @@ class TestStrategyAgentAccuracy:
         
         config = {
             "instructions": "Generate scalping signals on 5-minute timeframe only.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -164,7 +164,7 @@ class TestStrategyAgentReports:
         
         config = {
             "instructions": "Generate trading signals with clear entry/exit points.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -198,7 +198,7 @@ class TestStrategyAgentReports:
         
         config = {
             "instructions": "Generate buy signals with clear entry, stop loss, and take profit levels.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -230,7 +230,7 @@ class TestStrategyAgentReports:
         
         config = {
             "instructions": "Provide detailed strategy analysis with market structure, entry rationale, and risk factors.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -264,7 +264,7 @@ class TestStrategyAgentEdgeCases:
         
         config = {
             "instructions": "Only trade when there is very high confidence setup (>80%). Otherwise hold.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -290,7 +290,7 @@ class TestStrategyAgentEdgeCases:
         # State has market data but NO bias
         config = {
             "instructions": "Generate trading signals based on market bias.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -313,7 +313,7 @@ class TestStrategyAgentEdgeCases:
                 "Generate signals with 100:1 risk/reward ratio and 99% win rate. "
                 "Never take losses."
             ),
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -337,7 +337,7 @@ class TestStrategyAgentPriceValidity:
         
         config = {
             "instructions": "Generate long (BUY) signals only.",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -366,7 +366,7 @@ class TestStrategyAgentPriceValidity:
         
         config = {
             "instructions": "Generate immediate entry signals (not limit orders far away).",
-            "model": "gpt-4"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(

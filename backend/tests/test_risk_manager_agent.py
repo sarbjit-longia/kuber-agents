@@ -26,7 +26,7 @@ class TestRiskManagerAccuracy:
                 "Maximum risk per trade: 1% of account. "
                 "Calculate position size accordingly."
             ),
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 100000  # $100k account
         }
         
@@ -57,7 +57,7 @@ class TestRiskManagerAccuracy:
                 "Position size must not exceed 25% of account value. "
                 "Reject trades that would violate this."
             ),
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 100000
         }
         
@@ -99,7 +99,7 @@ class TestRiskManagerAccuracy:
                 "Reject trades with risk/reward below 2:1. "
                 "Only approve high quality setups."
             ),
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -138,7 +138,7 @@ class TestRiskManagerAccuracy:
                 "Approve trades with risk/reward of 2:1 or better. "
                 "Risk per trade: 2% of account."
             ),
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 100000
         }
         
@@ -167,7 +167,7 @@ class TestRiskManagerReports:
         
         config = {
             "instructions": "Evaluate trade risk and provide approval decision.",
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 100000
         }
         
@@ -202,7 +202,7 @@ class TestRiskManagerReports:
         
         config = {
             "instructions": "Evaluate risk with detailed explanation.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -228,7 +228,7 @@ class TestRiskManagerReports:
         
         config = {
             "instructions": "Flag any trades with stop loss > 5% from entry as high risk.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -257,7 +257,7 @@ class TestRiskManagerEdgeCases:
         # State has bias but NO strategy
         config = {
             "instructions": "Evaluate trade risk.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -284,7 +284,7 @@ class TestRiskManagerEdgeCases:
         
         config = {
             "instructions": "Evaluate trades. If no trade, explain why.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -308,7 +308,7 @@ class TestRiskManagerEdgeCases:
         
         config = {
             "instructions": "Evaluate risk. Reject incomplete strategies.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -331,7 +331,7 @@ class TestRiskManagerEdgeCases:
         
         config = {
             "instructions": "Calculate position size based on account balance.",
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 0  # Edge case!
         }
         
@@ -371,7 +371,7 @@ class TestRiskManagerCalculations:
         
         config = {
             "instructions": "Calculate risk/reward accurately.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -409,7 +409,7 @@ class TestRiskManagerCalculations:
         
         config = {
             "instructions": "Risk 1% per trade. Calculate position size.",
-            "model": "gpt-3.5-turbo",
+            "model": "lm-studio",
             "account_balance": 100000
         }
         

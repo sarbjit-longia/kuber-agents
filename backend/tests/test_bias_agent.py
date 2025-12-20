@@ -18,6 +18,7 @@ class TestBiasAgentAccuracy:
     @pytest.mark.accuracy
     def test_custom_rsi_thresholds_40_60(self, state_with_market_data):
         """Test: Agent should use custom RSI thresholds (40/60) instead of defaults (30/70)."""
+        from tests.conftest import print_test_details
         registry = get_registry()
         
         config = {
@@ -25,7 +26,7 @@ class TestBiasAgentAccuracy:
                 "Using RSI on daily timeframe determine if the bias is bullish, bearish or neutral. "
                 "Use RSI thresholds of 40 and 60 (oversold below 40, overbought above 60)."
             ),
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -35,6 +36,18 @@ class TestBiasAgentAccuracy:
         )
         
         result = agent.process(state_with_market_data)
+        
+        # Print detailed output (visible with pytest -s)
+        expected = {
+            "reasoning_contains": "40",
+            "reasoning_not_contains": "30"
+        }
+        print_test_details(
+            "Custom RSI Thresholds (40/60)",
+            config,
+            result,
+            expected
+        )
         
         # Assert bias was determined
         assert result.biases, "Bias should be determined"
@@ -66,7 +79,7 @@ class TestBiasAgentAccuracy:
         
         config = {
             "instructions": "Analyze 4-hour timeframe to determine market bias using RSI and MACD.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -97,7 +110,7 @@ class TestBiasAgentAccuracy:
                 "Determine bias using RSI, MACD, and SMA on daily timeframe. "
                 "All three indicators must confirm before declaring strong bias."
             ),
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -133,7 +146,7 @@ class TestBiasAgentReports:
         
         config = {
             "instructions": "Determine market bias using RSI on daily timeframe.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -168,7 +181,7 @@ class TestBiasAgentReports:
         
         config = {
             "instructions": "Use RSI to determine bias on daily timeframe.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -191,7 +204,7 @@ class TestBiasAgentReports:
         
         config = {
             "instructions": "Determine bias using multiple factors: RSI, MACD, volume, and trend.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -229,7 +242,7 @@ class TestBiasAgentEdgeCases:
         
         config = {
             "instructions": "Determine bias on 1d timeframe using RSI.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -250,7 +263,7 @@ class TestBiasAgentEdgeCases:
         
         config = {
             "instructions": "Determine bias.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -274,7 +287,7 @@ class TestBiasAgentEdgeCases:
                 "Determine BULLISH bias only. Never return BEARISH or NEUTRAL. "
                 "But also be objective and honest in your analysis."
             ),
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
@@ -302,7 +315,7 @@ class TestBiasAgentToolExecution:
         
         config = {
             "instructions": "Use RSI calculator with period 14 on daily timeframe. Report the actual RSI value.",
-            "model": "gpt-3.5-turbo"
+            "model": "lm-studio"
         }
         
         agent = registry.create_agent(
