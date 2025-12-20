@@ -20,8 +20,8 @@ celery>=5.3.4
 flower>=2.0.1
 
 # AI & LLM
-crewai>=1.2.1
-openai>=1.13.3
+crewai==1.6.0
+openai~=1.83.0
 tiktoken>=0.5.1
 langfuse>=2.0.0
 

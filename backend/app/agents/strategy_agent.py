@@ -65,8 +65,9 @@ class StrategyAgent(BaseAgent):
                     "model": {
                         "type": "string",
                         "title": "AI Model",
-                        "enum": ["gpt-3.5-turbo", "gpt-4"],
-                        "default": "gpt-4"
+                        "description": "LLM model to use. OpenAI models (gpt-3.5/gpt-4) use API credits. 'lm-studio' uses your local model (free).",
+                        "enum": ["lm-studio", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
+                        "default": "lm-studio"
                     }
                 },
                 required=["instructions"]
@@ -77,7 +78,25 @@ class StrategyAgent(BaseAgent):
     
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        self.model = config.get("model", "gpt-4")
+        import os
+        
+        model_name = config.get("model", "gpt-4")
+        
+        # Route to OpenAI API for official OpenAI models, otherwise use local LM Studio
+        openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-turbo"]
+        
+        if model_name in openai_models:
+            # Use real OpenAI API (requires credits)
+            self.logger.info(f"Using OpenAI API for model: {model_name}")
+            # Strategy agent doesn't use CrewAI, so just store the model name
+            # It makes direct OpenAI API calls via openai.OpenAI client
+            self.model = model_name
+            self.use_openai_api = True
+        else:
+            # Use local LM Studio (free, uses loaded model)
+            self.logger.info(f"Using local LM Studio for model: {model_name}")
+            self.model = model_name
+            self.use_openai_api = False
     
     def process(self, state: PipelineState) -> PipelineState:
         """Generate trading strategy using LLM + tools."""
@@ -743,9 +762,23 @@ Original analysis:
 Provide ONLY the cleaned, formatted analysis. Keep all specific prices and pattern descriptions intact."""
 
             import os
-            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            
+            # Use appropriate base URL based on model selection
+            if hasattr(self, 'use_openai_api') and self.use_openai_api:
+                client = OpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    base_url="https://api.openai.com/v1"
+                )
+                synthesis_model = "gpt-3.5-turbo"
+            else:
+                client = OpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    base_url=os.getenv("OPENAI_BASE_URL", "http://host.docker.internal:1234/v1")
+                )
+                synthesis_model = self.model
+            
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=synthesis_model,
                 messages=[{"role": "user", "content": synthesis_prompt}],
                 temperature=0.3
             )

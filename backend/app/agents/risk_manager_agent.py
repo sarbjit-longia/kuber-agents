@@ -348,12 +348,10 @@ class RiskManagerAgent(BaseAgent):
             }
     
     def _get_broker_tool(self):
-        """Get any attached broker tool."""
-        broker_types = ["alpaca_broker", "oanda_broker", "tradier_broker"]
-        for broker_type in broker_types:
-            tool = self._get_tool_by_type(broker_type)
-            if tool:
-                return tool
+        """Get any attached broker tool from config."""
+        # In the new architecture, tools are accessed via the tool registry
+        # Risk Manager doesn't use attached tools anymore - it queries broker via API
+        # This is kept for backward compatibility but returns None
         return None
     
     def _prepare_risk_context(self, state: PipelineState, broker_info: Dict[str, Any]) -> str:

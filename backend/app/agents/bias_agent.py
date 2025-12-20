@@ -8,7 +8,7 @@ import structlog
 import re
 from typing import Dict, Any
 from datetime import datetime
-from crewai import Agent, Task, Crew
+from crewai import Agent, Task, Crew, LLM
 from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
@@ -65,9 +65,9 @@ class BiasAgent(BaseAgent):
                     "model": {
                         "type": "string",
                         "title": "AI Model",
-                        "description": "Which LLM model to use",
-                        "enum": ["gpt-3.5-turbo", "gpt-4"],
-                        "default": "gpt-3.5-turbo"
+                        "description": "LLM model to use. OpenAI models (gpt-3.5/gpt-4) use API credits. 'lm-studio' uses your local model (free).",
+                        "enum": ["lm-studio", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
+                        "default": "lm-studio"
                     }
                 },
                 required=["instructions"]
@@ -78,7 +78,37 @@ class BiasAgent(BaseAgent):
     
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        self.model = config.get("model", "gpt-3.5-turbo")
+        import os
+        
+        model_name = config.get("model", "lm-studio")
+        
+        # Route to OpenAI API for official OpenAI models, otherwise use local LM Studio
+        openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-turbo"]
+        
+        if model_name in openai_models:
+            # Use real OpenAI API (requires credits)
+            self.logger.info(f"Using OpenAI API for model: {model_name}")
+            self.model = LLM(
+                model=f"openai/{model_name}",
+                temperature=0.7,
+                base_url="https://api.openai.com/v1",
+                api_key=os.getenv("OPENAI_API_KEY")
+            )
+            # Use gpt-4o for function calling (best tool execution)
+            self.function_calling_llm = LLM(
+                model="openai/gpt-4o",
+                temperature=0.0,
+                base_url="https://api.openai.com/v1",
+                api_key=os.getenv("OPENAI_API_KEY")
+            )
+        else:
+            # Use local LM Studio (free, uses loaded model)
+            # The actual model name doesn't matter - LM Studio uses whatever is loaded
+            self.logger.info(f"Using local LM Studio (loaded model)")
+            # Use environment variables for LM Studio connection
+            self.model = model_name
+            # For local models, use same model for function calling
+            self.function_calling_llm = LLM(model=model_name, temperature=0.0)
     
     def process(self, state: PipelineState) -> PipelineState:
         """
@@ -136,6 +166,7 @@ class BiasAgent(BaseAgent):
                 Always provide clear reasoning for your bias determination.""",
                 tools=tools,
                 llm=self.model,
+                function_calling_llm=self.function_calling_llm,  # Dedicated LLM for tool calling!
                 verbose=True,
                 allow_delegation=False
             )
@@ -288,8 +319,11 @@ Be specific about which indicators you used and what they showed.""",
         if json_match:
             try:
                 data = json.loads(json_match.group())
-                # Determine primary timeframe from state
-                primary_timeframe = state.timeframes[0] if state.timeframes else "1d"
+                # Determine primary timeframe from instructions
+                from app.services.instruction_parser import instruction_parser
+                instructions = self.config.get("instructions", "")
+                extracted_timeframes = instruction_parser.extract_timeframes(instructions) if instructions else []
+                primary_timeframe = extracted_timeframes[0] if extracted_timeframes else (state.timeframes[0] if state.timeframes else "1d")
                 raw_reasoning = data.get("reasoning", result_str)
                 return BiasResult(
                     bias=data.get("bias", "NEUTRAL"),
@@ -313,8 +347,11 @@ Be specific about which indicators you used and what they showed.""",
             bias = "BEARISH"
             confidence = 0.7
         
-        # Determine primary timeframe from state
-        primary_timeframe = state.timeframes[0] if state.timeframes else "1d"
+        # Determine primary timeframe from instructions
+        from app.services.instruction_parser import instruction_parser
+        instructions = self.config.get("instructions", "")
+        extracted_timeframes = instruction_parser.extract_timeframes(instructions) if instructions else []
+        primary_timeframe = extracted_timeframes[0] if extracted_timeframes else (state.timeframes[0] if state.timeframes else "1d")
         
         return BiasResult(
             bias=bias,
