@@ -307,7 +307,7 @@ class TradeManagerAgent(BaseAgent):
             return None
             
         except Exception as e:
-            self.logger.error("Failed to get position", symbol=symbol, error=str(e))
+            self.logger.error(f"Failed to get position for {symbol}: {str(e)}")
             return None
     
     def _close_position(self, symbol: str, broker_tool, reason: str):
@@ -324,10 +324,10 @@ class TradeManagerAgent(BaseAgent):
             if result.get("success"):
                 self.logger.info("Position closed successfully", symbol=symbol, reason=reason)
             else:
-                self.logger.error("Failed to close position", symbol=symbol, error=result.get("error"))
+                self.logger.error(f"Failed to close position for {symbol}: {result.get('error')}")
                 
         except Exception as e:
-            self.logger.error("Error closing position", symbol=symbol, error=str(e))
+            self.logger.error(f"Error closing position for {symbol}: {str(e)}")
     
     def _send_webhook(self, state, strategy, risk, webhook_tool) -> PipelineState:
         """Send trade signal via webhook (fire-and-forget)."""
@@ -478,7 +478,7 @@ class TradeManagerAgent(BaseAgent):
             return state
             
         except Exception as e:
-            self.logger.error("Broker trade execution failed", error=str(e), exc_info=True)
+            self.logger.error(f"Broker trade execution failed: {str(e)}", exc_info=True)
             
             # Store failure
             state.trade_execution = TradeExecution(
