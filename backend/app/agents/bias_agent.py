@@ -167,7 +167,7 @@ class BiasAgent(BaseAgent):
                 tools=tools,
                 llm=self.model,
                 function_calling_llm=self.function_calling_llm,  # Dedicated LLM for tool calling!
-                max_iter=15,  # Allow more iterations for local models
+                max_iter=30,  # Increased for complex multi-indicator analysis with local models
                 verbose=True,
                 allow_delegation=False
             )
