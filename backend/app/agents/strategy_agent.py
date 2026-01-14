@@ -698,6 +698,12 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         Use LLM to clean and synthesize reasoning if it contains artifacts.
         This is a fallback for when the primary LLM output contains tool artifacts.
         """
+        # Check for CrewAI internal messages that shouldn't be shown to users
+        if "thought:" in raw_text.lower() and "now can give" in raw_text.lower():
+            logger.warning("detected_crewai_internal_message", text=raw_text)
+            # Return a professional fallback instead of the internal message
+            return "Strategy analysis in progress. Awaiting detailed market evaluation."
+        
         if not raw_text or len(raw_text.strip()) < 20:
             return "Strategy analysis completed. Market conditions evaluated for trade opportunities."
         
