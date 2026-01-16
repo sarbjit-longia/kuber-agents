@@ -114,6 +114,46 @@ class StrategyAgent(BaseAgent):
         if not self.validate_input(state):
             raise InsufficientDataError("Strategy agent requires market data")
         
+        # CHECK BIAS: If bias is NEUTRAL, skip strategy generation
+        if state.biases:
+            # Get the primary bias
+            preferred_tf = state.timeframes[0] if getattr(state, "timeframes", None) else None
+            bias = state.biases.get(preferred_tf) if preferred_tf else None
+            if not bias:
+                # Fall back to first available bias result
+                bias = next(iter(state.biases.values()), None)
+            
+            if bias and bias.bias == "NEUTRAL":
+                self.log(state, "⚠️  Bias is NEUTRAL - skipping strategy generation")
+                
+                # Return HOLD strategy
+                state.strategy = StrategyResult(
+                    action="HOLD",
+                    confidence=0.0,
+                    entry_price=state.market_data.current_price if state.market_data else 0.0,
+                    stop_loss=None,
+                    take_profit=None,
+                    position_size=None,
+                    reasoning=f"**Market Bias: NEUTRAL**\n\nNo strategy generated because the bias analysis determined the market is NEUTRAL with {bias.confidence:.0%} confidence.\n\n**Bias Reasoning:**\n{bias.reasoning}\n\n**Action:** HOLD and wait for a clear directional bias (BULLISH or BEARISH) before entering a position.",
+                    pattern_detected=""
+                )
+                
+                self.record_report(
+                    state,
+                    title="Strategy Decision",
+                    summary="HOLD - Market bias is NEUTRAL",
+                    status="completed",
+                    data={
+                        "Decision": "HOLD",
+                        "Reason": "Bias is NEUTRAL",
+                        "Bias Confidence": f"{bias.confidence:.0%}",
+                        "Recommendation": "Wait for clear directional bias"
+                    }
+                )
+                
+                self.log(state, "✓ Strategy: HOLD (bias is NEUTRAL)")
+                return state
+        
         try:
             # Get configuration
             instructions = self.config.get("instructions", "").strip()
