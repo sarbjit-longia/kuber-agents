@@ -1,0 +1,27 @@
+---
+description: Do not create unnecessary documentation files
+alwaysApply: true
+---
+
+# Documentation File Policy
+
+**NEVER create documentation files (*.md, README, guides, etc.) unless explicitly requested by the user.**
+
+## What NOT to do:
+- ❌ Do NOT create new README.md files
+- ❌ Do NOT create new TESTING.md, GUIDE.md, QUICK_START.md, or similar documentation
+- ❌ Do NOT create additional .md files "for reference" or "to help"
+- ❌ Do NOT create documentation files proactively
+
+## What TO do:
+- ✅ Update existing docs in docs folder if needed
+- ✅ ONLY create documentation files when the user explicitly asks for them
+- ✅ Update existing documentation if needed
+- ✅ Create code files, config files, scripts, and other implementation files as needed for the task
+- ✅ If you think documentation would be helpful, ASK the user first: "Would you like me to create a [filename] to document this?"
+
+## Why:
+The user prefers to create documentation on their own terms and does not want AI to create unsolicited documentation files.
+
+## Remember:
+If the user asks you to "update the test script" or "fix the code", that does NOT imply "also create documentation". Only create what is explicitly requested or absolutely necessary for the implementation.
