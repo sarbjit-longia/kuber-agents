@@ -419,6 +419,10 @@ class TriggerDispatcher:
         """
         Enqueue Celery tasks for matched pipelines.
         
+        **IMPORTANT**: Enqueues ONE execution per (pipeline_id, ticker) pair.
+        If a signal has multiple tickers for the same pipeline, we create
+        separate executions for each ticker.
+        
         Args:
             pipeline_signal_map: Dict mapping pipeline_id to list of signal_ids
         """
@@ -434,74 +438,108 @@ class TriggerDispatcher:
         skipped_count = 0
         
         for pipeline_id, signal_ids in pipeline_signal_map.items():
-            if pipeline_id in running_ids:
-                skipped_count += 1
-                logger.debug(
-                    "pipeline_already_running",
-                    pipeline_id=pipeline_id,
-                    signal_ids=signal_ids,
-                    action="skipped"
-                )
-                continue
+            # Collect all unique tickers for this pipeline from the matched signals
+            tickers_to_execute = set()
+            signal_data_by_ticker = {}  # Store signal context per ticker
             
-            try:
-                # Get user_id from pipeline cache
-                pipeline_data = self.pipeline_cache.get(pipeline_id, {})
-                user_id = pipeline_data.get('user_id')
-                
-                if not user_id:
-                    logger.error(
-                        "pipeline_missing_user_id",
-                        pipeline_id=pipeline_id
+            for signal_id in signal_ids:
+                # Find the signal in our buffer
+                for signal in self.signal_buffer:
+                    if str(signal.signal_id) == signal_id:
+                        # Extract tickers and their pipeline routing info
+                        for ticker_signal in signal.tickers:
+                            ticker = ticker_signal.get('ticker')
+                            if not ticker:
+                                continue
+                            
+                            # Check if this ticker is routed to this pipeline
+                            ticker_metadata = ticker_signal.get('metadata', {})
+                            pipelines = ticker_metadata.get('pipelines', [])
+                            
+                            # If pipeline routing is present, verify this pipeline is listed
+                            if pipelines:
+                                pipeline_match = any(
+                                    p.get('pipeline_id') == pipeline_id 
+                                    for p in pipelines
+                                )
+                                if not pipeline_match:
+                                    continue  # This ticker not routed to this pipeline
+                            
+                            tickers_to_execute.add(ticker)
+                            
+                            # Store signal context for this ticker
+                            if ticker not in signal_data_by_ticker:
+                                signal_data_by_ticker[ticker] = {
+                                    'signal_id': signal.signal_id,
+                                    'signal_type': signal.signal_type,
+                                    'source': signal.source,
+                                    'timestamp': signal.timestamp,
+                                    'ticker_signal': ticker_signal,
+                                    'metadata': signal.metadata
+                                }
+                        break
+            
+            # For each unique ticker, enqueue a separate execution
+            for ticker in tickers_to_execute:
+                # Check if pipeline with this ticker is already running
+                # (More granular check could be added here if needed)
+                if pipeline_id in running_ids:
+                    skipped_count += 1
+                    logger.debug(
+                        "pipeline_already_running",
+                        pipeline_id=pipeline_id,
+                        ticker=ticker,
+                        action="skipped"
                     )
                     continue
                 
-                # Get signal data for context (use first signal as primary)
-                signal_context = None
-                if signal_ids:
-                    # Find the first signal in our buffer
-                    for signal in self.signal_buffer:
-                        if signal.signal_id in signal_ids:
-                            signal_context = {
-                                'signal_id': signal.signal_id,
-                                'signal_type': signal.signal_type,
-                                'source': signal.source,
-                                'timestamp': signal.timestamp,
-                                'tickers': signal.tickers,
-                                'metadata': signal.metadata
-                            }
-                            break
-                
-                # Enqueue Celery task with signal context
-                celery_app.send_task(
-                    'app.orchestration.tasks.execute_pipeline',
-                    kwargs={
-                        'pipeline_id': pipeline_id,
-                        'user_id': str(user_id),
-                        'mode': 'paper',  # Signal-triggered pipelines use paper mode by default
-                        'signal_context': signal_context  # Pass signal data to pipeline
-                    }
-                )
-                
-                enqueued_count += 1
-                
-                logger.info(
-                    "pipeline_execution_enqueued",
-                    pipeline_id=pipeline_id,
-                    pipeline_name=pipeline_data.get('name'),
-                    user_id=str(user_id),
-                    signal_ids=signal_ids[:1],
-                    total_signals=len(signal_ids),
-                    mode='paper'
-                )
-                
-            except Exception as e:
-                logger.error(
-                    "pipeline_enqueue_failed",
-                    pipeline_id=pipeline_id,
-                    error=str(e),
-                    exc_info=True
-                )
+                try:
+                    # Get user_id from pipeline cache
+                    pipeline_data = self.pipeline_cache.get(pipeline_id, {})
+                    user_id = pipeline_data.get('user_id')
+                    
+                    if not user_id:
+                        logger.error(
+                            "pipeline_missing_user_id",
+                            pipeline_id=pipeline_id
+                        )
+                        continue
+                    
+                    # Get signal context for this ticker
+                    signal_context = signal_data_by_ticker.get(ticker)
+                    
+                    # Enqueue Celery task with ticker-specific signal context
+                    celery_app.send_task(
+                        'app.orchestration.tasks.execute_pipeline',
+                        kwargs={
+                            'pipeline_id': pipeline_id,
+                            'user_id': str(user_id),
+                            'symbol': ticker,  # ✅ CRITICAL: Pass the ticker as symbol
+                            'mode': 'paper',  # Signal-triggered pipelines use paper mode by default
+                            'signal_context': signal_context  # Pass signal data to pipeline
+                        }
+                    )
+                    
+                    enqueued_count += 1
+                    
+                    logger.info(
+                        "pipeline_execution_enqueued",
+                        pipeline_id=pipeline_id,
+                        pipeline_name=pipeline_data.get('name'),
+                        user_id=str(user_id),
+                        ticker=ticker,
+                        signal_type=signal_context.get('signal_type') if signal_context else None,
+                        mode='paper'
+                    )
+                    
+                except Exception as e:
+                    logger.error(
+                        "pipeline_enqueue_failed",
+                        pipeline_id=pipeline_id,
+                        ticker=ticker,
+                        error=str(e),
+                        exc_info=True
+                    )
         
         logger.info(
             "batch_enqueue_completed",

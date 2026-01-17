@@ -154,6 +154,22 @@ class Settings(BaseSettings):
     # Config file paths
     WATCHLIST_CONFIG_PATH: str = "config/watchlist.json"
     
+    # Backend Database (for scanner discovery)
+    BACKEND_DB_URL: Optional[str] = Field(
+        default=None,
+        description="PostgreSQL connection string for backend database (to query active scanners)"
+    )
+    
+    # Universe refresh interval
+    UNIVERSE_REFRESH_INTERVAL_SECONDS: int = Field(
+        default=300,  # 5 minutes
+        description="How often to refresh the ticker universe from active scanners"
+    )
+    
+    # Kafka configuration
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_SIGNAL_TOPIC: str = "trading-signals"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

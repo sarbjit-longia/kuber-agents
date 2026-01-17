@@ -67,6 +67,21 @@ class SignalGeneratorService:
         self.generators = []
         self.running = False
         self.kafka_producer: Optional[KafkaProducer] = None
+        self.scanner_universe = None
+        
+        # Initialize Scanner Universe Manager if DB URL provided
+        if settings.BACKEND_DB_URL:
+            try:
+                from app.scanner_universe import ScannerUniverseManager
+                self.scanner_universe = ScannerUniverseManager(settings.BACKEND_DB_URL)
+                self.scanner_universe.connect()
+                logger.info("scanner_universe_manager_initialized")
+            except Exception as e:
+                logger.error("scanner_universe_manager_initialization_failed", error=str(e))
+                self.scanner_universe = None
+        else:
+            logger.warning("backend_db_url_not_configured", 
+                          message="Will use static watchlist instead of dynamic scanner universe")
         
         # Initialize telemetry
         try:
@@ -178,7 +193,21 @@ class SignalGeneratorService:
     
     def _initialize_generators(self):
         """Initialize all configured generators."""
-        watchlist = settings.get_watchlist()
+        # Get watchlist from Scanner Universe Manager or fallback to static config
+        if self.scanner_universe:
+            try:
+                watchlist = self.scanner_universe.get_active_scanner_tickers()
+                if not watchlist:
+                    logger.warning("no_active_scanner_tickers", 
+                                  message="No tickers found from active scanners, falling back to static watchlist")
+                    watchlist = settings.get_watchlist()
+            except Exception as e:
+                logger.error("failed_to_get_scanner_tickers", error=str(e))
+                watchlist = settings.get_watchlist()
+        else:
+            watchlist = settings.get_watchlist()
+        
+        logger.info("initializing_generators_with_watchlist", ticker_count=len(watchlist), tickers=watchlist)
         
         # Mock generator (for testing)
         from app.schemas.signal import BiasType
@@ -544,11 +573,42 @@ class SignalGeneratorService:
         Phase 1: Log to stdout/file
         Phase 2: Publish to Kafka
         
+        For each signal ticker, enriches with pipeline_id and scanner_id if available.
+        
         Args:
             signals: List of signals to emit
             generator_name: Name of the generator that produced signals
         """
+        # Get pipeline-scanner mapping for enrichment
+        pipeline_scanner_mapping = {}
+        if self.scanner_universe:
+            try:
+                pipeline_scanner_mapping = self.scanner_universe.get_pipeline_scanner_mapping()
+            except Exception as e:
+                self.logger.warning("failed_to_get_pipeline_mapping", error=str(e))
+        
         for signal in signals:
+            # Enrich signal tickers with pipeline_id and scanner_id
+            for ticker_signal in signal.tickers:
+                ticker = ticker_signal.ticker
+                
+                # Find matching pipelines for this ticker
+                matched_pipelines = []
+                for pipeline_id, pipeline_data in pipeline_scanner_mapping.items():
+                    if ticker in pipeline_data.get('tickers', []):
+                        matched_pipelines.append({
+                            'pipeline_id': pipeline_id,
+                            'pipeline_name': pipeline_data['pipeline_name'],
+                            'scanner_id': pipeline_data['scanner_id'],
+                            'scanner_name': pipeline_data['scanner_name']
+                        })
+                
+                # Add pipeline routing info to ticker signal metadata
+                if matched_pipelines:
+                    if not hasattr(ticker_signal, 'metadata'):
+                        ticker_signal.metadata = {}
+                    ticker_signal.metadata['pipelines'] = matched_pipelines
+            
             # Convert to Kafka-ready format
             message = signal.to_kafka_message()
             
@@ -682,12 +742,50 @@ class SignalGeneratorService:
             for gen_info in self.generators
         ]
         
+        # Add universe refresh task if Scanner Universe Manager is enabled
+        if self.scanner_universe:
+            tasks.append(asyncio.create_task(self._universe_refresh_loop()))
+            logger.info("universe_refresh_task_started", 
+                       interval_seconds=settings.UNIVERSE_REFRESH_INTERVAL_SECONDS)
+        
         # Wait for all tasks (runs indefinitely until interrupted)
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("signal_generator_service_cancelled")
             raise
+    
+    async def _universe_refresh_loop(self):
+        """Periodically refresh the ticker universe from active scanners."""
+        while self.running:
+            try:
+                await asyncio.sleep(settings.UNIVERSE_REFRESH_INTERVAL_SECONDS)
+                
+                if not self.scanner_universe:
+                    break
+                
+                # Refresh universe
+                new_tickers = self.scanner_universe.get_active_scanner_tickers()
+                old_tickers = set(settings.get_watchlist())
+                
+                if set(new_tickers) != old_tickers:
+                    logger.info(
+                        "universe_changed_reinitializing_generators",
+                        old_count=len(old_tickers),
+                        new_count=len(new_tickers),
+                        added=list(set(new_tickers) - old_tickers),
+                        removed=list(old_tickers - set(new_tickers))
+                    )
+                    
+                    # Re-initialize generators with new watchlist
+                    self._initialize_generators()
+                else:
+                    logger.debug("universe_unchanged", ticker_count=len(new_tickers))
+                
+            except Exception as e:
+                logger.error("universe_refresh_error", error=str(e), exc_info=True)
+                # Continue running even if refresh fails
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
     
     async def stop(self):
         """Stop all generators and cleanup resources."""

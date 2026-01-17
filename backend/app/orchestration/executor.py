@@ -60,7 +60,8 @@ class PipelineExecutor:
         user_id: UUID,
         mode: str = "paper",
         execution_id: Optional[UUID] = None,
-        signal_context: Optional[Dict[str, Any]] = None
+        signal_context: Optional[Dict[str, Any]] = None,
+        symbol_override: Optional[str] = None
     ):
         """
         Initialize the pipeline executor.
@@ -71,12 +72,14 @@ class PipelineExecutor:
             mode: Execution mode ("live", "paper", "simulation", "validation")
             execution_id: Optional pre-created execution ID
             signal_context: Optional signal data that triggered this execution
+            symbol_override: Optional symbol override (for scanner-based pipelines)
         """
         self.pipeline = pipeline
         self.user_id = user_id
         self.mode = mode
         self.execution_id = execution_id or uuid4()
         self.signal_context = signal_context
+        self.symbol_override = symbol_override
         
         self.registry = get_registry()
         self.logger = logger.bind(
@@ -454,7 +457,7 @@ class PipelineExecutor:
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
-            symbol=self.config.get("symbol", "UNKNOWN"),
+            symbol=self.symbol_override or self.config.get("symbol", "UNKNOWN"),
             mode=self.mode,
             signal_data=signal_data
         )

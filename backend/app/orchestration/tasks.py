@@ -30,7 +30,8 @@ def execute_pipeline(
     user_id: str,
     mode: str = "paper",
     execution_id: Optional[str] = None,
-    signal_context: Optional[Dict[str, Any]] = None
+    signal_context: Optional[Dict[str, Any]] = None,
+    symbol: Optional[str] = None
 ):
     """
     Execute a trading pipeline asynchronously.
@@ -43,6 +44,7 @@ def execute_pipeline(
         mode: Execution mode ("live", "paper", "simulation", "validation")
         execution_id: Optional pre-created execution ID
         signal_context: Optional signal data that triggered this execution
+        symbol: Optional symbol override (for scanner-based pipelines)
         
     Returns:
         Dict with execution results
@@ -53,6 +55,7 @@ def execute_pipeline(
         pipeline_id=pipeline_id,
         user_id=user_id,
         mode=mode,
+        symbol=symbol,
         has_signal_context=bool(signal_context)
     )
     
@@ -87,12 +90,16 @@ def execute_pipeline(
                 user_id=UUID(user_id),
                 mode=mode,
                 execution_id=UUID(execution_id) if execution_id else None,
-                signal_context=signal_context
+                signal_context=signal_context,
+                symbol_override=symbol  # Pass symbol override for scanner-based pipelines
             )
             
             # Execute pipeline synchronously for Celery
             # Get or create execution record
             execution = db.query(Execution).filter(Execution.id == executor.execution_id).first()
+            
+            # Determine symbol for execution record
+            execution_symbol = symbol or pipeline.config.get("symbol")
             
             if not execution:
                 # Create new execution record
@@ -102,7 +109,7 @@ def execute_pipeline(
                     user_id=UUID(user_id),
                     status=ExecutionStatus.RUNNING,
                     mode=mode,
-                    symbol=pipeline.config.get("symbol"),
+                    symbol=execution_symbol,
                     started_at=datetime.utcnow()
                 )
                 db.add(execution)
@@ -110,6 +117,7 @@ def execute_pipeline(
             else:
                 # Update existing execution
                 execution.status = ExecutionStatus.RUNNING
+                execution.symbol = execution_symbol  # Update symbol if provided
                 # Clear prior completion/error fields if this execution is being re-used
                 execution.completed_at = None
                 execution.error_message = None
