@@ -12,6 +12,10 @@ structlog==24.1.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 
+# Technical Analysis (Local Indicator Calculation)
+pandas==2.1.4
+TA-Lib==0.6.8
+
 # OpenTelemetry
 opentelemetry-api==1.22.0
 opentelemetry-sdk==1.22.0

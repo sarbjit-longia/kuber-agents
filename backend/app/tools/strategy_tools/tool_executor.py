@@ -29,7 +29,7 @@ class StrategyToolExecutor:
             ticker: Stock symbol being analyzed
         """
         self.ticker = ticker
-        self.data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8001")
+        self.data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
         self.indicator_tools = IndicatorTools(ticker)
     
     async def execute_tools(

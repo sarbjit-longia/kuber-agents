@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     
     # Market Data
     FINNHUB_API_KEY: Optional[str] = None
-    MARKET_DATA_PROVIDER: str = "finnhub"  # Options: finnhub, alpha_vantage, yahoo_finance, polygon
+    MARKET_DATA_PROVIDER: str = "data_plane"  # Options: data_plane, finnhub, alpha_vantage, yahoo_finance, polygon
+    DATA_PLANE_URL: str = "http://data-plane:8000"  # Data Plane API URL
     
     # Generator Settings
     MOCK_GENERATOR_INTERVAL_SECONDS: int = 60  # Emit every 60 seconds

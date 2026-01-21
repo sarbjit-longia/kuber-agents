@@ -10,8 +10,13 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "data-plane"
     LOG_LEVEL: str = "INFO"
     
-    # Finnhub
+    # Finnhub (for stocks)
     FINNHUB_API_KEY: str
+    
+    # OANDA (for forex)
+    OANDA_API_KEY: Optional[str] = None
+    OANDA_ACCOUNT_TYPE: str = "practice"  # "practice" or "live"
+    OANDA_ACCOUNT_ID: Optional[str] = None
     
     # Redis
     REDIS_URL: str = "redis://redis:6379/1"

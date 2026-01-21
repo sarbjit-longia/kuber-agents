@@ -179,20 +179,48 @@ class BiasAgent(BaseAgent):
 CURRENT MARKET DATA:
 {market_context}
 
-YOUR INSTRUCTIONS:
+YOUR INSTRUCTIONS (FOLLOW THESE EXACTLY):
 {instructions}
+
+CRITICAL INSTRUCTION ENFORCEMENT RULES:
+1. Your instructions above take ABSOLUTE PRECEDENCE over ALL technical analysis conventions
+2. If instructions contain explicit rules (e.g., "Even for 50 make it bullish"), you MUST follow them EXACTLY
+3. DO NOT override explicit instructions by "weighing" or "considering" other conflicting indicators
+4. If instructions say "make it bullish", return BULLISH - do NOT return NEUTRAL because other indicators conflict
+5. Custom thresholds in instructions override standard technical analysis thresholds (30/70 for RSI, etc.)
+
+WRONG BEHAVIOR EXAMPLE:
+❌ Instruction: "Even for 50 make it bullish"
+❌ RSI: 50, MACD: unclear
+❌ Your response: "NEUTRAL because MACD conflicts with RSI"
+❌ This is WRONG - you ignored the explicit instruction
+
+CORRECT BEHAVIOR EXAMPLE:
+✅ Instruction: "Even for 50 make it bullish"
+✅ RSI: 50, MACD: unclear
+✅ Your response: "BULLISH per instructions, despite MACD being unclear"
+✅ This is CORRECT - you followed the explicit instruction
 
 Use the available tools as needed (RSI, MACD, SMA, etc.) to complete your analysis.
 
 IMPORTANT: After calling tools and gathering data, SYNTHESIZE your findings into clean, professional analysis.
 
+BEFORE providing your output:
+1. RE-READ the instructions above
+2. CHECK for any explicit override rules (like "make it bullish", "treat X as Y", etc.)
+3. ENSURE your bias determination EXACTLY matches those rules, ignoring conflicting indicators
+
 Provide your final output in this JSON format:
 {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "confidence": 0.0-1.0,
+    "timeframe_analyzed": "1h",
     "reasoning": "Your professional analysis here. See formatting rules below.",
     "key_factors": ["factor1", "factor2", "factor3"]
 }}
+
+IMPORTANT: The "timeframe_analyzed" field should be the PRIMARY timeframe you analyzed (e.g., "5m", "1h", "4h", "1d"). 
+Use standard format: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w
 
 CRITICAL RULES FOR "reasoning" FIELD:
 - Write in clear, professional English sentences
@@ -210,10 +238,13 @@ Example of GOOD reasoning:
 Example of GOOD reasoning with custom thresholds:
 "The RSI at 42.80 is above the oversold threshold of 40 and below the overbought threshold of 60, indicating neutral momentum. The MACD histogram shows moderate bullish strength."
 
+Example of GOOD reasoning when instructions override standard analysis:
+"The RSI is at 50, which is typically neutral territory. However, per the provided instructions to treat RSI at 50 as bullish, I'm determining a BULLISH bias. The MACD confirms this with positive momentum."
+
 Example of BAD reasoning (DO NOT DO THIS):
 "commentary to=tool.rsi_calculator json {{...}} The market shows..."
 
-Be specific about which indicators you used, their exact values, and any custom thresholds provided in the instructions.""",
+Be specific about which indicators you used, their exact values, and any custom thresholds or overrides provided in the instructions.""",
                 agent=analyst,
                 expected_output="JSON with bias determination, confidence, clean professional reasoning (no tool artifacts), and key factors"
             )
@@ -325,16 +356,18 @@ Be specific about which indicators you used, their exact values, and any custom 
         if json_match:
             try:
                 data = json.loads(json_match.group())
-                # Determine primary timeframe from instructions
-                from app.services.instruction_parser import instruction_parser
-                instructions = self.config.get("instructions", "")
-                extracted_timeframes = instruction_parser.extract_timeframes(instructions) if instructions else []
-                primary_timeframe = extracted_timeframes[0] if extracted_timeframes else (state.timeframes[0] if state.timeframes else "1d")
+                # Get timeframe from LLM output (instruction-driven!)
+                # Fallback: use first available timeframe if LLM doesn't provide it
+                timeframe_analyzed = data.get("timeframe_analyzed")
+                if not timeframe_analyzed:
+                    timeframe_analyzed = state.timeframes[0] if state.timeframes else "1d"
+                    self.logger.warning("llm_did_not_provide_timeframe", using_fallback=timeframe_analyzed)
+                
                 raw_reasoning = data.get("reasoning", result_str)
                 return BiasResult(
                     bias=data.get("bias", "NEUTRAL"),
                     confidence=float(data.get("confidence", 0.5)),
-                    timeframe=primary_timeframe,
+                    timeframe=timeframe_analyzed,  # Trust what LLM analyzed!
                     reasoning=self._clean_reasoning(raw_reasoning),  # Clean reasoning
                     key_factors=data.get("key_factors", [])
                 )
@@ -353,16 +386,36 @@ Be specific about which indicators you used, their exact values, and any custom 
             bias = "BEARISH"
             confidence = 0.7
         
-        # Determine primary timeframe from instructions
-        from app.services.instruction_parser import instruction_parser
-        instructions = self.config.get("instructions", "")
-        extracted_timeframes = instruction_parser.extract_timeframes(instructions) if instructions else []
-        primary_timeframe = extracted_timeframes[0] if extracted_timeframes else (state.timeframes[0] if state.timeframes else "1d")
+        # Fallback: Try to infer timeframe from reasoning text or use first available
+        timeframe_analyzed = state.timeframes[0] if state.timeframes else "1d"
+        
+        # Try to detect timeframe mentions in reasoning (e.g., "on 1h timeframe", "1-hour chart")
+        import re
+        tf_patterns = [
+            r'\b(\d+[mhd])\b',  # 5m, 1h, 4h, 1d
+            r'(\d+)[\s-]*(?:minute|min)\b',
+            r'(\d+)[\s-]*(?:hour)\b',
+            r'(\d+)[\s-]*(?:day)\b'
+        ]
+        for pattern in tf_patterns:
+            match = re.search(pattern, result_str.lower())
+            if match:
+                # Found a timeframe mention in reasoning, use it
+                from app.services.instruction_parser import instruction_parser
+                normalized = instruction_parser._normalize_timeframe(match.group(1))
+                if normalized:
+                    timeframe_analyzed = normalized
+                    break
+        
+        self.logger.warning("fallback_parsing_used", 
+                           detected_timeframe=timeframe_analyzed,
+                           bias=bias,
+                           confidence=confidence)
         
         return BiasResult(
             bias=bias,
             confidence=confidence,
-            timeframe=primary_timeframe,
+            timeframe=timeframe_analyzed,  # Inferred from text or fallback
             reasoning=self._clean_reasoning(result_str),  # Clean reasoning in fallback too
             key_factors=[]
         )

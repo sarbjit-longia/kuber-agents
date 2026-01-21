@@ -14,11 +14,13 @@ async def get_quote(ticker: str):
     """
     Get latest quote for a ticker (cached).
     
+    Supports both stocks (via Finnhub) and forex (via OANDA).
     Returns quote from Redis cache if available (< 60s for hot, < 5min for warm).
-    If not cached, fetches on-demand from Finnhub.
     """
     from app.database import get_redis
     from app.services.data_fetcher import DataFetcher
+    from app.providers.oanda import OANDAProvider
+    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.telemetry import get_meter
     
@@ -33,8 +35,23 @@ async def get_quote(ticker: str):
     # Cache miss - fetch on-demand
     logger.info("quote_cache_miss_fetching_on_demand", ticker=ticker)
     
+    # Determine provider based on ticker (forex pairs have underscore)
+    if "_" in ticker:
+        # Forex pair (e.g., EUR_USD)
+        if not settings.OANDA_API_KEY:
+            raise HTTPException(status_code=500, detail="OANDA API key not configured")
+        provider = OANDAProvider(
+            api_key=settings.OANDA_API_KEY,
+            account_type=settings.OANDA_ACCOUNT_TYPE
+        )
+    else:
+        # Stock ticker
+        if not settings.FINNHUB_API_KEY:
+            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
+        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+    
     meter = get_meter()
-    fetcher = DataFetcher(settings.FINNHUB_API_KEY, redis, meter)
+    fetcher = DataFetcher(provider, redis, meter)
     await fetcher.fetch_quotes_batch([ticker], ttl=60)
     
     # Try again
@@ -54,19 +71,38 @@ async def get_candles(
     """
     Get OHLCV candles for a ticker.
     
-    For Phase 1, fetches on-demand from Finnhub.
-    Phase 3 will add TimescaleDB storage for historical data.
+    Supports both stocks (via Finnhub) and forex (via OANDA).
+    Automatically routes based on ticker format (underscore = forex).
     """
     from app.services.data_fetcher import DataFetcher
+    from app.providers.oanda import OANDAProvider
+    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.database import get_redis
     from app.telemetry import get_meter
     
     logger.info("fetching_candles", ticker=ticker, timeframe=timeframe, limit=limit)
     
+    # Determine provider based on ticker (forex pairs have underscore)
+    if "_" in ticker:
+        # Forex pair (e.g., EUR_USD)
+        if not settings.OANDA_API_KEY:
+            raise HTTPException(status_code=500, detail="OANDA API key not configured")
+        provider = OANDAProvider(
+            api_key=settings.OANDA_API_KEY,
+            account_type=settings.OANDA_ACCOUNT_TYPE
+        )
+        logger.debug("using_oanda_provider", ticker=ticker)
+    else:
+        # Stock ticker
+        if not settings.FINNHUB_API_KEY:
+            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
+        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+        logger.debug("using_finnhub_provider", ticker=ticker)
+    
     redis = await get_redis()
     meter = get_meter()
-    fetcher = DataFetcher(settings.FINNHUB_API_KEY, redis, meter)
+    fetcher = DataFetcher(provider, redis, meter)
     
     candles = await fetcher.fetch_candles(ticker, timeframe, limit)
     
@@ -89,9 +125,12 @@ async def get_indicators(
     bbands_period: Optional[int] = Query(20, description="Bollinger Bands period")
 ):
     """
-    Get technical indicators for a ticker.
+    Get technical indicators for a ticker (calculated locally from candle data).
     
-    Supported indicators (Tier 1):
+    Supports both stocks (via Finnhub) and forex (via OANDA).
+    Indicators are calculated locally using TA-Lib (300x faster than API calls).
+    
+    Supported indicators:
     - sma: Simple Moving Average (default: 20)
     - ema: Exponential Moving Average (default: 12)
     - rsi: Relative Strength Index (default: 14)
@@ -100,11 +139,14 @@ async def get_indicators(
     
     Example:
         /data/indicators/AAPL?timeframe=D&indicators=sma,rsi,macd&sma_period=50
+        /data/indicators/EUR_USD?timeframe=5m&indicators=rsi&rsi_period=14
     
     Returns:
         Dictionary with indicator results for each requested indicator
     """
     from app.services.data_fetcher import DataFetcher
+    from app.providers.oanda import OANDAProvider
+    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.database import get_redis
     from app.telemetry import get_meter
@@ -118,58 +160,65 @@ async def get_indicators(
         indicators=indicator_list
     )
     
+    # Determine provider based on ticker (forex pairs have underscore)
+    if "_" in ticker:
+        # Forex pair (e.g., EUR_USD)
+        if not settings.OANDA_API_KEY:
+            raise HTTPException(status_code=500, detail="OANDA API key not configured")
+        provider = OANDAProvider(
+            api_key=settings.OANDA_API_KEY,
+            account_type=settings.OANDA_ACCOUNT_TYPE
+        )
+        logger.debug("using_oanda_provider", ticker=ticker)
+    else:
+        # Stock ticker
+        if not settings.FINNHUB_API_KEY:
+            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
+        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+        logger.debug("using_finnhub_provider", ticker=ticker)
+    
     redis = await get_redis()
     meter = get_meter()
-    fetcher = DataFetcher(settings.FINNHUB_API_KEY, redis, meter)
+    fetcher = DataFetcher(provider, redis, meter)
     
-    results = {
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "indicators": {}
+    # Build params dict for all indicators at once
+    params = {
+        "sma_period": sma_period,
+        "ema_period": ema_period,
+        "rsi_period": rsi_period,
+        "bbands_period": bbands_period
     }
     
-    # Fetch each requested indicator
-    for indicator in indicator_list:
-        try:
-            params = {}
-            
-            # Set parameters based on indicator type
-            if indicator == "sma":
-                params["timeperiod"] = sma_period
-            elif indicator == "ema":
-                params["timeperiod"] = ema_period
-            elif indicator == "rsi":
-                params["timeperiod"] = rsi_period
-            elif indicator == "bbands":
-                params["timeperiod"] = bbands_period
-            # macd uses default params (no custom params needed)
-            
-            indicator_data = await fetcher.fetch_indicators(
-                ticker=ticker,
-                timeframe=timeframe,
-                indicator=indicator,
-                params=params if params else None
+    try:
+        # Fetch all indicators at once (more efficient)
+        indicator_data = await fetcher.fetch_indicators(
+            ticker=ticker,
+            timeframe=timeframe,
+            indicators=indicator_list,
+            params=params
+        )
+        
+        if indicator_data:
+            return indicator_data
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No indicator data available for {ticker}"
             )
             
-            if indicator_data:
-                results["indicators"][indicator] = indicator_data
-            else:
-                results["indicators"][indicator] = {
-                    "error": f"Failed to fetch {indicator}"
-                }
-                
-        except Exception as e:
-            logger.error(
-                "indicator_fetch_error",
-                ticker=ticker,
-                indicator=indicator,
-                error=str(e)
-            )
-            results["indicators"][indicator] = {
-                "error": str(e)
-            }
-    
-    return results
+    except Exception as e:
+        logger.error(
+            "indicator_fetch_error",
+            ticker=ticker,
+            timeframe=timeframe,
+            indicators=indicator_list,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch indicators: {str(e)}"
+        )
 
 
 @router.get("/batch")

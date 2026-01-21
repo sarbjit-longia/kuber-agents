@@ -16,6 +16,7 @@ import structlog
 from app.config import settings
 from app.utils.market_data_provider import MarketDataProvider, ProviderType
 from app.utils.providers.finnhub_provider import FinnhubProvider
+from app.utils.providers.dataplane_provider import DataPlaneProvider
 from app.telemetry import get_meter
 
 logger = structlog.get_logger()
@@ -62,12 +63,27 @@ def get_market_data_provider(
     
     # Determine which provider to use
     if provider_type is None:
-        provider_type = getattr(settings, "MARKET_DATA_PROVIDER", ProviderType.FINNHUB)
+        provider_str = getattr(settings, "MARKET_DATA_PROVIDER", "finnhub")
+        # Convert string to ProviderType enum
+        try:
+            provider_type = ProviderType(provider_str)
+        except ValueError:
+            logger.warning(
+                "invalid_provider_type",
+                provider=provider_str,
+                using_default="data_plane"
+            )
+            provider_type = ProviderType.DATA_PLANE
     
     logger.info("creating_market_data_provider", provider=provider_type)
     
     # Create provider instance based on type
-    if provider_type == ProviderType.FINNHUB:
+    if provider_type == ProviderType.DATA_PLANE:
+        # Use Data Plane API (supports stocks + forex + local indicators)
+        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
+        provider = DataPlaneProvider(data_plane_url=data_plane_url)
+    
+    elif provider_type == ProviderType.FINNHUB:
         if not settings.FINNHUB_API_KEY:
             raise RuntimeError(
                 "Finnhub API key not configured. "

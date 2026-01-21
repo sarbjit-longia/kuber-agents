@@ -620,8 +620,20 @@ export class PipelineBuilderComponent implements OnInit {
    * Handle configuration changes from JSON Schema form (temporary, not saved yet)
    */
   onConfigChange(config: any, node: CanvasNode): void {
-    // Just update the temporary editing config, don't save to node yet
-    this.editingConfig = config;
+    console.log('⚙️ onConfigChange called for:', node.agent_type);
+    console.log('   Incoming config keys:', Object.keys(config));
+    console.log('   Current editingConfig keys:', Object.keys(this.editingConfig || {}));
+    
+    // 🐛 FIX: Merge instead of replace to preserve instructions and other fields
+    // The JSON schema form only sends fields it manages (e.g., "model", "timezone")
+    // Instructions are managed separately by agent-instructions component
+    this.editingConfig = {
+      ...this.editingConfig,  // Preserve existing fields (instructions, tools, etc.)
+      ...config               // Merge in updated fields from schema form
+    };
+    
+    console.log('   After merge - editingConfig keys:', Object.keys(this.editingConfig));
+    console.log('   After merge - Has instructions:', !!this.editingConfig['instructions']);
   }
 
   /**

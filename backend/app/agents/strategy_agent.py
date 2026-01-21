@@ -248,9 +248,15 @@ REQUIREMENTS:
 TECHNICAL ANALYSIS & TOOL RESULTS:
 {tool_results_text}
 
-CRITICAL: Your FINAL response must be ONLY the JSON object below, nothing else:
+CRITICAL: Your FINAL response must be ONLY a valid JSON object, nothing else.
 
-YOUR FINAL OUTPUT MUST BE THIS EXACT JSON FORMAT:
+IMPORTANT JSON RULES:
+- ALL string values must be enclosed in double quotes (")
+- The "reasoning" field must be a SINGLE JSON string (all content in quotes)
+- Use \\n for line breaks within the reasoning string
+- Do NOT put raw markdown outside of quotes
+
+YOUR FINAL OUTPUT MUST BE VALID JSON IN THIS EXACT FORMAT:
 {{
     "action": "BUY|SELL|HOLD",
     "entry_price": 0.00,
@@ -258,42 +264,32 @@ YOUR FINAL OUTPUT MUST BE THIS EXACT JSON FORMAT:
     "take_profit": 0.00,
     "confidence": 0.0-1.0,
     "pattern_detected": "name of pattern/setup (e.g., Bull Flag, FVG, Head & Shoulders, etc.)",
-    "reasoning": "YOUR COMPLETE ANALYSIS - BE SPECIFIC AND DESCRIPTIVE.
+    "reasoning": "YOUR COMPLETE ANALYSIS AS A SINGLE QUOTED STRING - BE SPECIFIC AND DESCRIPTIVE.
 
-Use this EXACT format with bold section headers (use **HEADER:** syntax):
 
-**MARKET STRUCTURE:**
-Describe the current trend, key support/resistance levels with specific prices.
 
-**PATTERNS IDENTIFIED:**
-If you detect any patterns (Fair Value Gaps, Bull/Bear Flags, Triangles, Channels, etc.), describe them with price ranges. 
-For example: 'Bullish FVG between $445.20-$446.50' or 'Bull flag forming with support at $444.00 and resistance at $448.00'
-Use bullet points (•) for multiple patterns.
+Within the reasoning string, use this format with bold section headers:
 
-**TOOL ANALYSIS:**
-Explain what each tool you used showed and how it supports your decision.
-Use bullet points (•) for each tool.
+\\n\\n**MARKET STRUCTURE:**\\nDescribe the current trend, key support/resistance levels with specific prices.\\n\\n**PATTERNS IDENTIFIED:**\\nIf you detect patterns (FVG, Bull/Bear Flags, etc.), describe them with price ranges. Use bullet points (•).\\n\\n**TOOL ANALYSIS:**\\nExplain what each tool showed. Use bullet points (•) for each tool.\\n\\n**ENTRY RATIONALE:**\\nWhy this specific entry price?\\n\\n**EXIT STRATEGY:**\\nWhy these specific stop loss and take profit levels?\\n\\n**RISK FACTORS:**\\nWhat could invalidate this setup? Use bullet points (•).
 
-**ENTRY RATIONALE:**
-Why this specific entry price?
+CRITICAL: ALL of the above must be INSIDE the \"reasoning\" string value (within quotes).
+Be detailed and specific with price levels - this analysis will be shown to traders.
 
-**EXIT STRATEGY:**
-Why these specific stop loss and take profit levels?
+Example of CORRECT JSON structure:
+{{
+    \"action\": \"BUY\",
+    \"entry_price\": 100.50,
+    \"stop_loss\": 98.00,
+    \"take_profit\": 105.00,
+    \"confidence\": 0.75,
+    \"pattern_detected\": \"Bull Flag\",
+    \"reasoning\": \"\\n\\n**MARKET STRUCTURE:**\\nThe market is in an uptrend...\\n\\n**ENTRY RATIONALE:**\\nEntry at current price...\"
+}}
 
-**RISK FACTORS:**
-What could invalidate this setup?
-Use bullet points (•) for multiple factors.
-
-CRITICAL FORMATTING RULES:
-- Section headers MUST use **HEADER:** format (double asterisks for bold)
-- Use bullet points (•) for lists
-- NO numbered prefixes before section headers
-- NO tool call syntax (e.g., 'to=tool_name json...')
-- NO JSON fragments or code blocks
-- NO standalone numbers or bullets on empty lines
-- Write in clear, professional sentences
-
-Be detailed and specific with price levels - this analysis will be shown to traders and used to annotate charts."
+Example of WRONG (will cause parsing error):
+{{
+    \"reasoning\": \\n\\n**MARKET STRUCTURE:**   ← WRONG! Missing quotes around value
+}}
 }}
 
 Only suggest trades (BUY/SELL) if:
@@ -665,24 +661,60 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         # Log for debugging
         logger.info("parsing_strategy_result", result_length=len(result_str), preview=result_str[:300])
         
-        # Try to extract JSON (look for nested JSON structures)
-        # Try different patterns to find the JSON
-        json_patterns = [
-            r'\{[^{}]*"action"[^{}]*"reasoning"[^{}]*\}',  # JSON with reasoning field
-            r'\{[^{}]*"action"[^{}]*\}',  # Basic JSON with action
-        ]
-        
+        # Try to extract JSON (use a more robust approach for nested structures)
         parsed_data = None
-        for pattern in json_patterns:
-            json_match = re.search(pattern, result_str, re.DOTALL)
-            if json_match:
-                try:
-                    parsed_data = json.loads(json_match.group())
-                    logger.info("json_parsed_successfully", keys=list(parsed_data.keys()))
-                    break
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning("json_parse_failed", error=str(e), pattern=pattern)
-                    continue
+        
+        # Method 1: Try to find and parse complete JSON block (handles nested structures)
+        # Look for outermost JSON braces containing "action"
+        if '"action"' in result_str:
+            # Find the start of the JSON block
+            action_index = result_str.find('"action"')
+            # Search backwards for opening brace
+            start_idx = result_str.rfind('{', 0, action_index)
+            
+            if start_idx != -1:
+                # Count braces to find matching closing brace
+                brace_count = 0
+                end_idx = start_idx
+                for i in range(start_idx, len(result_str)):
+                    if result_str[i] == '{':
+                        brace_count += 1
+                    elif result_str[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+                
+                if end_idx > start_idx:
+                    json_str = result_str[start_idx:end_idx]
+                    try:
+                        parsed_data = json.loads(json_str)
+                        logger.info("json_parsed_successfully", 
+                                  keys=list(parsed_data.keys()),
+                                  method="brace_counting")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning("json_parse_failed_brace_counting", 
+                                     error=str(e),
+                                     json_preview=json_str[:200])
+        
+        # Method 2: Fallback to regex patterns (for simpler cases)
+        if not parsed_data:
+            json_patterns = [
+                r'\{[^{}]*"action"[^{}]*\}',  # Basic JSON without nested structures
+            ]
+            
+            for pattern in json_patterns:
+                json_match = re.search(pattern, result_str, re.DOTALL)
+                if json_match:
+                    try:
+                        parsed_data = json.loads(json_match.group())
+                        logger.info("json_parsed_successfully", 
+                                  keys=list(parsed_data.keys()),
+                                  method="regex")
+                        break
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning("json_parse_failed", error=str(e), pattern=pattern)
+                        continue
         
         if parsed_data:
             raw_reasoning = parsed_data.get("reasoning", "")

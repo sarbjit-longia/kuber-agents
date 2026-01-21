@@ -21,9 +21,9 @@ class InstructionParser:
     # Timeframe patterns (covers common formats)
     TIMEFRAME_PATTERNS = [
         r'\b(\d+[mhd])\b',  # 5m, 1h, 4h, 1d
-        r'(\d+)\s*(?:minute|min)s?\b',  # 5 minute, 30 minutes, 15 min
-        r'(\d+)\s*(?:hour)s?\b',  # 1 hour, 4 hours
-        r'(\d+)\s*(?:day)s?\b',  # 1 day, 2 days
+        r'(\d+)[\s-]*(?:minute|min)s?\b',  # 5 minute, 5-minute, 30 minutes, 15 min
+        r'(\d+)[\s-]*(?:hour)s?\b',  # 1 hour, 1-hour, 4 hours, 4-hours
+        r'(\d+)[\s-]*(?:day)s?\b',  # 1 day, 1-day, 2 days
         r'\b(daily|weekly|monthly)\b',  # daily, weekly
     ]
     
@@ -32,14 +32,14 @@ class InstructionParser:
         'daily': '1d',
         'weekly': '1w',
         'monthly': '1M',
-        '1 minute': '1m',
-        '5 minute': '5m',
-        '15 minute': '15m',
-        '30 minute': '30m',
-        '1 hour': '1h',
-        '4 hour': '4h',
-        '12 hour': '12h',
-        '24 hour': '1d',
+        '1 minute': '1m', '1-minute': '1m',
+        '5 minute': '5m', '5-minute': '5m',
+        '15 minute': '15m', '15-minute': '15m',
+        '30 minute': '30m', '30-minute': '30m',
+        '1 hour': '1h', '1-hour': '1h',
+        '4 hour': '4h', '4-hour': '4h',
+        '12 hour': '12h', '12-hour': '12h',
+        '24 hour': '1d', '24-hour': '1d',
     }
     
     @classmethod

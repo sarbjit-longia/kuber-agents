@@ -4,7 +4,9 @@ Tools Package
 This package contains all tool implementations that agents can use.
 """
 from app.tools.base import BaseTool, ToolError
-from app.tools.market_data import MarketDataTool, MockMarketDataTool
+from app.tools.market_data import MarketDataTool
+# MockMarketDataTool is available for unit tests but NOT registered in production
+from app.tools.market_data import MockMarketDataTool  # Import only for tests
 from app.tools.registry import ToolRegistry, get_registry, register_tool
 from app.tools.alpaca_broker import AlpacaBrokerTool
 from app.tools.oanda_broker import OandaBrokerTool
@@ -19,7 +21,7 @@ def _initialize_registry():
     
     # Register market data tools
     registry.register(MarketDataTool)
-    registry.register(MockMarketDataTool)  # Mock for testing/development
+    # 🚫 MockMarketDataTool is NOT registered - only for unit tests
     
     # Register broker tools
     registry.register(AlpacaBrokerTool)
@@ -37,7 +39,7 @@ __all__ = [
     "BaseTool",
     "ToolError",
     "MarketDataTool",
-    "MockMarketDataTool",
+    "MockMarketDataTool",  # Exported for unit tests only
     "ToolRegistry",
     "get_registry",
     "register_tool",

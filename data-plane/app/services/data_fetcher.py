@@ -1,5 +1,4 @@
-"""Data Fetcher - Fetches data from Finnhub and caches in Redis"""
-import finnhub
+"""Data Fetcher - Fetches data from multiple providers and caches in Redis"""
 import structlog
 from typing import List, Dict, Optional
 import redis.asyncio as aioredis
@@ -8,16 +7,25 @@ from datetime import datetime, timedelta
 from opentelemetry import metrics
 import asyncio
 
+from app.providers.base import BaseProvider
+from app.services.indicator_calculator import IndicatorCalculator
+
 logger = structlog.get_logger()
 
 
 class DataFetcher:
-    """Fetches data from Finnhub and caches in Redis"""
+    """Fetches data from market data providers and caches in Redis"""
     
-    def __init__(self, api_key: str, redis: aioredis.Redis, meter: Optional[metrics.Meter] = None):
-        self.client = finnhub.Client(api_key=api_key)
+    def __init__(
+        self,
+        provider: BaseProvider,
+        redis: aioredis.Redis,
+        meter: Optional[metrics.Meter] = None
+    ):
+        self.provider = provider
         self.redis = redis
         self.meter = meter
+        self.indicator_calculator = IndicatorCalculator()
         
         # Metrics (optional, only if meter provided)
         if meter:
@@ -61,11 +69,10 @@ class DataFetcher:
         
         for ticker in tickers:
             try:
-                # Finnhub API call (synchronous, so run in executor)
-                loop = asyncio.get_event_loop()
-                quote = await loop.run_in_executor(None, self.client.quote, ticker)
+                # Provider API call (async)
+                quote = await self.provider.get_quote(ticker)
                 
-                # Add metadata
+                # Normalize quote data (provider-agnostic format)
                 quote_data = {
                     "ticker": ticker,
                     "current_price": quote.get("c"),
@@ -75,6 +82,8 @@ class DataFetcher:
                     "low": quote.get("l"),
                     "open": quote.get("o"),
                     "previous_close": quote.get("pc"),
+                    "bid": quote.get("bid"),
+                    "ask": quote.get("ask"),
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 
@@ -106,46 +115,17 @@ class DataFetcher:
         timeframe: str,
         limit: int = 100
     ) -> List[Dict]:
-        """Fetch OHLCV candles from Finnhub"""
-        
-        # Map timeframe to Finnhub resolution
-        resolution_map = {
-            "1m": "1",
-            "5m": "5",
-            "15m": "15",
-            "30m": "30",
-            "1h": "60",
-            "1d": "D",
-            "1w": "W",
-            "1M": "M"
-        }
-        
-        resolution = resolution_map.get(timeframe, "D")
+        """Fetch OHLCV candles from provider"""
         
         try:
-            # Calculate time range (last N periods)
-            to_timestamp = int(datetime.utcnow().timestamp())
-            period_seconds = self._get_period_seconds(timeframe)
-            from_timestamp = to_timestamp - (period_seconds * limit)
+            # Provider API call (async, already formatted)
+            candles = await self.provider.get_candles(ticker, timeframe, limit)
             
-            # Finnhub API call
-            loop = asyncio.get_event_loop()
-            candles = await loop.run_in_executor(
-                None,
-                self.client.stock_candles,
-                ticker,
-                resolution,
-                from_timestamp,
-                to_timestamp
-            )
-            
-            if candles.get('s') == 'ok':
-                formatted = self._format_candles(ticker, timeframe, candles)
-                
+            if candles:
                 # Metrics
                 self._increment_counter(
                     self.candles_fetched_counter,
-                    len(formatted),
+                    len(candles),
                     {"ticker": ticker, "timeframe": timeframe}
                 )
                 
@@ -153,10 +133,10 @@ class DataFetcher:
                     "candles_fetched",
                     ticker=ticker,
                     timeframe=timeframe,
-                    count=len(formatted)
+                    count=len(candles)
                 )
                 
-                return formatted
+                return candles
             else:
                 logger.warning("candles_not_found", ticker=ticker, timeframe=timeframe)
                 return []
@@ -169,22 +149,6 @@ class DataFetcher:
                 error=str(e)
             )
             return []
-    
-    def _format_candles(self, ticker: str, timeframe: str, candles: Dict) -> List[Dict]:
-        """Format Finnhub candles response"""
-        formatted = []
-        for i in range(len(candles['t'])):
-            formatted.append({
-                "ticker": ticker,
-                "timeframe": timeframe,
-                "timestamp": datetime.fromtimestamp(candles['t'][i]).isoformat(),
-                "open": candles['o'][i],
-                "high": candles['h'][i],
-                "low": candles['l'][i],
-                "close": candles['c'][i],
-                "volume": candles['v'][i]
-            })
-        return formatted
     
     def _get_period_seconds(self, timeframe: str) -> int:
         """Get seconds per period for timeframe"""
@@ -205,113 +169,97 @@ class DataFetcher:
         self,
         ticker: str,
         timeframe: str,
-        indicator: str,
+        indicators: List[str],
         params: Optional[Dict] = None
     ) -> Dict:
         """
-        Fetch technical indicators from Finnhub and cache in Redis.
+        Calculate technical indicators locally from candle data.
         
-        Supported indicators (Tier 1):
-        - sma: Simple Moving Average (timeperiod: 20, 50, 200)
-        - ema: Exponential Moving Average (timeperiod: 12, 26)
-        - rsi: Relative Strength Index (timeperiod: 14)
-        - macd: MACD (default params)
-        - bbands: Bollinger Bands (timeperiod: 20)
+        Supported indicators:
+        - rsi: Relative Strength Index (rsi_period: 14)
+        - macd: MACD (macd_fast: 12, macd_slow: 26, macd_signal: 9)
+        - sma: Simple Moving Average (sma_period: 20)
+        - ema: Exponential Moving Average (ema_period: 12)
+        - bbands: Bollinger Bands (bbands_period: 20)
+        - stoch: Stochastic Oscillator (stoch_k: 14, stoch_d: 3)
+        - atr: Average True Range (atr_period: 14)
+        - adx: Average Directional Index (adx_period: 14)
         
         Args:
-            ticker: Stock symbol
-            timeframe: Timeframe (5m, 15m, 1h, 4h, D)
-            indicator: Indicator name (sma, ema, rsi, macd, bbands)
-            params: Optional parameters for the indicator
+            ticker: Stock/forex symbol
+            timeframe: Timeframe (1m, 5m, 15m, 1h, 4h, D)
+            indicators: List of indicator names to calculate
+            params: Optional parameters for indicators
             
         Returns:
-            Dictionary with indicator values and metadata
+            Dictionary with all calculated indicator values
         """
         # Create cache key with params
+        indicators_str = ",".join(sorted(indicators))
         params_str = json.dumps(params or {}, sort_keys=True)
-        cache_key = f"indicator:{ticker}:{timeframe}:{indicator}:{params_str}"
+        cache_key = f"indicators:{ticker}:{timeframe}:{indicators_str}:{params_str}"
         
         try:
             # Check cache first (5 minute TTL)
             cached = await self.redis.get(cache_key)
             if cached:
                 logger.debug(
-                    "indicator_cache_hit",
+                    "indicators_cache_hit",
                     ticker=ticker,
-                    indicator=indicator,
+                    indicators=indicators,
                     timeframe=timeframe
                 )
                 return json.loads(cached)
             
-            # Cache miss - fetch from Finnhub
+            # Cache miss - calculate locally
             logger.info(
-                "fetching_indicator",
+                "calculating_indicators",
                 ticker=ticker,
-                indicator=indicator,
+                indicators=indicators,
                 timeframe=timeframe,
                 params=params
             )
             
-            # Convert timeframe to Finnhub resolution
-            resolution_map = {
-                "5m": "5",
-                "15m": "15",
-                "1h": "60",
-                "4h": "240",
-                "D": "D",
-            }
-            resolution = resolution_map.get(timeframe, "D")
+            # Fetch candles (need enough history for indicators)
+            # RSI needs 14+ candles, MACD needs 26+, BBands needs 20+
+            # Fetch 200 candles to be safe
+            candles = await self.fetch_candles(ticker, timeframe, limit=200)
             
-            # Calculate time range (need enough history for indicators)
-            to_timestamp = int(datetime.utcnow().timestamp())
-            # Use 1 year of data for daily, 90 days for intraday
-            lookback = 365 * 86400 if timeframe == "D" else 90 * 86400
-            from_timestamp = to_timestamp - lookback
-            
-            # Fetch from Finnhub (synchronous call, use executor)
-            loop = asyncio.get_event_loop()
-            indicator_data = await loop.run_in_executor(
-                None,
-                self.client.technical_indicator,
-                ticker,
-                resolution,
-                from_timestamp,
-                to_timestamp,
-                indicator,
-                params or {}
-            )
-            
-            if not indicator_data or indicator_data.get("s") != "ok":
+            if not candles:
                 logger.warning(
-                    "indicator_not_found",
+                    "no_candles_for_indicators",
                     ticker=ticker,
-                    indicator=indicator,
-                    response=indicator_data
+                    timeframe=timeframe
                 )
                 return {}
             
-            # Extract indicator values (exclude OHLCV keys)
+            # Calculate indicators locally (runs in thread pool to avoid blocking)
+            loop = asyncio.get_event_loop()
+            indicator_values = await loop.run_in_executor(
+                None,
+                self.indicator_calculator.calculate_indicators,
+                candles,
+                indicators,
+                params or {}
+            )
+            
+            if not indicator_values:
+                logger.warning(
+                    "indicator_calculation_failed",
+                    ticker=ticker,
+                    indicators=indicators
+                )
+                return {}
+            
+            # Format result
             result = {
-                "indicator": indicator,
-                "timeframe": timeframe,
                 "ticker": ticker,
+                "timeframe": timeframe,
                 "timestamp": datetime.utcnow().isoformat(),
-                "values": {}
+                "indicators": indicator_values
             }
             
-            excluded_keys = {"s", "t", "o", "h", "l", "c", "v"}
-            
-            for key, values in indicator_data.items():
-                if key not in excluded_keys and values:
-                    # Get latest value
-                    if isinstance(values, list) and len(values) > 0:
-                        result["values"][key] = values[-1]
-                        # Also store last 50 values for charting
-                        result["values"][f"{key}_history"] = values[-50:]
-                    else:
-                        result["values"][key] = values
-            
-            # Cache for 5 minutes (indicators don't change frequently)
+            # Cache for 5 minutes
             await self.redis.setex(
                 cache_key,
                 300,  # 5 minutes
@@ -321,30 +269,28 @@ class DataFetcher:
             # Metrics
             if self.meter:
                 indicators_counter = self.meter.create_counter(
-                    name="indicators_fetched_total",
-                    description="Total indicators fetched from Finnhub"
+                    name="indicators_calculated_total",
+                    description="Total indicators calculated locally"
                 )
-                indicators_counter.add(1, {
+                indicators_counter.add(len(indicators), {
                     "ticker": ticker,
-                    "timeframe": timeframe,
-                    "indicator": indicator
+                    "timeframe": timeframe
                 })
             
             logger.info(
-                "indicator_fetched",
+                "indicators_calculated",
                 ticker=ticker,
-                indicator=indicator,
-                timeframe=timeframe,
-                keys=list(result["values"].keys())
+                indicators=list(indicator_values.keys()),
+                timeframe=timeframe
             )
             
             return result
             
         except Exception as e:
             logger.error(
-                "indicator_fetch_failed",
+                "indicator_calculation_failed",
                 ticker=ticker,
-                indicator=indicator,
+                indicators=indicators,
                 timeframe=timeframe,
                 error=str(e)
             )
@@ -352,13 +298,12 @@ class DataFetcher:
             # Metrics
             if self.meter:
                 failures_counter = self.meter.create_counter(
-                    name="indicator_fetch_failures_total",
-                    description="Total indicator fetch failures"
+                    name="indicator_calculation_failures_total",
+                    description="Total indicator calculation failures"
                 )
                 failures_counter.add(1, {
                     "ticker": ticker,
-                    "timeframe": timeframe,
-                    "indicator": indicator
+                    "timeframe": timeframe
                 })
             
             return {}

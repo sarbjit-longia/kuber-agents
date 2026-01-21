@@ -37,6 +37,7 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
   form!: FormGroup;
   properties: any[] = [];
   userTimezone: string;
+  private isInitializing: boolean = false;
 
   constructor(private fb: FormBuilder) {
     this.userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -98,6 +99,9 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
       return;
     }
 
+    // Set flag to prevent emissions during initialization
+    this.isInitializing = true;
+
     const formControls: any = {};
     this.properties = [];
 
@@ -133,9 +137,17 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
     this.form = this.fb.group(formControls);
 
     // Emit changes WITHOUT timezone conversion (conversion happens on save)
+    // 🐛 FIX: Don't emit during initialization to prevent wiping out instructions
     this.form.valueChanges.subscribe(value => {
-      this.dataChange.emit(value);
+      if (!this.isInitializing) {
+        this.dataChange.emit(value);
+      }
     });
+    
+    // Clear initialization flag after a short delay to allow Angular to settle
+    setTimeout(() => {
+      this.isInitializing = false;
+    }, 100);
   }
 
   getFieldType(property: any): string {

@@ -16,6 +16,29 @@ class TestBiasAgentAccuracy:
     """Test that Bias Agent follows instructions accurately."""
     
     @pytest.mark.accuracy
+    def test_hyphenated_timeframe_extraction(self, state_with_market_data):
+        """Test: Parser should correctly extract hyphenated timeframes like '1-hour'."""
+        registry = get_registry()
+        
+        config = {
+            "instructions": "Analyze 1-hour timeframe using RSI. Determine market bias.",
+            "model": "gpt-3.5-turbo"
+        }
+        
+        agent = registry.create_agent(
+            agent_type="bias_agent",
+            agent_id="test-bias-hyphen-timeframe",
+            config=config
+        )
+        
+        result = agent.process(state_with_market_data)
+        
+        # Verify the bias result has the correct timeframe
+        assert result.biases, "Should have bias results"
+        bias_result = next(iter(result.biases.values()))
+        assert bias_result.timeframe == "1h", f"Expected '1h' timeframe, got '{bias_result.timeframe}'"
+    
+    @pytest.mark.accuracy
     def test_custom_rsi_thresholds_40_60(self, state_with_market_data):
         """Test: Agent should use custom RSI thresholds (40/60) instead of defaults (30/70)."""
         from tests.conftest import print_test_details

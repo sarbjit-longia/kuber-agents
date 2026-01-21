@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     
     # Data Plane
     DATA_PLANE_URL: str = Field(
-        default="http://data-plane:8001",
+        default="http://data-plane:8000",
         description="Data Plane service URL"
     )
     

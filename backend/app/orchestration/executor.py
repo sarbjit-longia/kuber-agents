@@ -198,20 +198,13 @@ class PipelineExecutor:
             mode=self.mode
         )
         
-        # Use mock data for paper/test/simulation modes
-        if self.mode in ["paper", "simulation", "validation"]:
-            state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
-            self.logger.info("using_mock_market_data")
-        else:
-            # Fetch real data from data plane
-            try:
-                state.market_data = await self._fetch_from_data_plane(state.symbol, required_timeframes)
-                self.logger.info("market_data_fetched_from_data_plane")
-            except Exception as e:
-                self.logger.error("data_plane_fetch_failed", error=str(e), exc_info=True)
-                # Fallback to mock data
-                self.logger.warning("falling_back_to_mock_data")
-                state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
+        # 🚫 RULE: NEVER USE MOCK DATA - Always fetch real data from Data Plane
+        try:
+            state.market_data = await self._fetch_from_data_plane(state.symbol, required_timeframes)
+            self.logger.info("market_data_fetched_from_data_plane", mode=self.mode)
+        except Exception as e:
+            self.logger.error("data_plane_fetch_failed", error=str(e), exc_info=True)
+            raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}. Mock data is disabled.")
     
     def _get_required_timeframes(self) -> List[str]:
         """
@@ -295,8 +288,17 @@ class PipelineExecutor:
         import random
         from app.schemas.pipeline_state import MarketData, TimeframeData
         
-        # Generate realistic mock price
-        base_price = random.uniform(50, 500)
+        # 🐛 FIX: Generate realistic mock price based on asset type
+        # Forex pairs (e.g., EUR_USD, GBP/USD) should be around 1.0-2.0
+        # Stocks should be around 50-500
+        is_forex = "/" in symbol or "_" in symbol and len(symbol.split("_")) == 2 and all(len(part) == 3 for part in symbol.split("_"))
+        
+        if is_forex:
+            base_price = random.uniform(0.5, 2.0)  # Forex range
+            volatility = 0.002  # 0.2% volatility for forex
+        else:
+            base_price = random.uniform(50, 500)  # Stock range
+            volatility = 0.02  # 2% volatility for stocks
         
         # Generate mock timeframe data
         timeframe_data = {}
@@ -306,21 +308,24 @@ class PipelineExecutor:
             
             # Generate 100 candles with random walk
             for i in range(100):
-                change = random.uniform(-0.02, 0.02)  # ±2% change
+                change = random.uniform(-volatility * 10, volatility * 10)  # Use asset-specific volatility
                 price = price * (1 + change)
                 
-                high = price * (1 + random.uniform(0, 0.01))
-                low = price * (1 - random.uniform(0, 0.01))
-                open_price = price * (1 + random.uniform(-0.005, 0.005))
+                high = price * (1 + volatility * 5)
+                low = price * (1 - volatility * 5)
+                open_price = price * (1 + random.uniform(-volatility * 2.5, volatility * 2.5))
                 close_price = price
+                
+                # Use appropriate decimal precision: 5 for forex, 2 for stocks
+                decimal_places = 5 if is_forex else 2
                 
                 candle = TimeframeData(
                     timeframe=tf,
                     timestamp=datetime.utcnow() - timedelta(minutes=(100-i) * 5),
-                    open=round(open_price, 2),
-                    high=round(high, 2),
-                    low=round(low, 2),
-                    close=round(close_price, 2),
+                    open=round(open_price, decimal_places),
+                    high=round(high, decimal_places),
+                    low=round(low, decimal_places),
+                    close=round(close_price, decimal_places),
                     volume=random.randint(100000, 10000000)
                 )
                 candles.append(candle)
@@ -329,10 +334,10 @@ class PipelineExecutor:
         
         market_data = MarketData(
             symbol=symbol,
-            current_price=round(price, 2),
-            bid=round(price * 0.999, 2),
-            ask=round(price * 1.001, 2),
-            spread=round(price * 0.002, 2),
+            current_price=round(price, 5 if is_forex else 2),
+            bid=round(price * 0.999, 5 if is_forex else 2),
+            ask=round(price * 1.001, 5 if is_forex else 2),
+            spread=round(price * 0.002, 5 if is_forex else 2),
             timeframes=timeframe_data,
             market_status="open" if self.mode == "live" else "mock",
             last_updated=datetime.utcnow()
@@ -362,11 +367,11 @@ class PipelineExecutor:
         from app.config import settings
         from app.schemas.pipeline_state import MarketData, TimeframeData
         
-        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8001")
+        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Fetch quote
-            quote_response = await client.get(f"{data_plane_url}/data/quote/{symbol}")
+            quote_response = await client.get(f"{data_plane_url}/api/v1/data/quote/{symbol}")
             quote_response.raise_for_status()
             quote_data = quote_response.json()
             
@@ -374,7 +379,7 @@ class PipelineExecutor:
             timeframe_data = {}
             for tf in timeframes:
                 candle_response = await client.get(
-                    f"{data_plane_url}/data/candles/{symbol}",
+                    f"{data_plane_url}/api/v1/data/candles/{symbol}",
                     params={"timeframe": tf, "limit": 100}
                 )
                 candle_response.raise_for_status()
@@ -409,28 +414,79 @@ class PipelineExecutor:
         # Determine which timeframes are needed by agents
         required_timeframes = self._get_required_timeframes()
 
-        # Mirror async behavior: never leave market_data empty in paper modes.
+        # Mirror async behavior: never leave market_data empty in any mode.
         if not required_timeframes:
             self.logger.warning("no_timeframes_required_defaulting", mode=self.mode)
-            if self.mode in ["paper", "simulation", "validation"]:
-                required_timeframes = ["5m", "1h", "1d"]
-            else:
-                required_timeframes = ["1d"]
+            required_timeframes = ["5m", "1h", "1d"]
         
         # Store timeframes in state for agent access
         state.timeframes = required_timeframes
         
         self.logger.info(
-            "fetching_market_data",
+            "fetching_market_data_sync",
             symbol=state.symbol,
             timeframes=required_timeframes,
             mode=self.mode
         )
         
-        # Always use mock data for now (data plane client would need async anyway)
-        # In future, could use synchronous http library or run async in thread
-        state.market_data = self._generate_mock_market_data(state.symbol, required_timeframes)
-        self.logger.info("using_mock_market_data")
+        # 🚫 RULE: NEVER USE MOCK DATA - Always fetch real data from Data Plane
+        # Use synchronous HTTP library (requests) for Celery tasks
+        import requests
+        from app.config import settings
+        from app.schemas.pipeline_state import MarketData, TimeframeData
+        
+        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
+        
+        try:
+            # Fetch quote
+            quote_response = requests.get(
+                f"{data_plane_url}/api/v1/data/quote/{state.symbol}",
+                timeout=10.0
+            )
+            quote_response.raise_for_status()
+            quote_data = quote_response.json()
+            
+            # Fetch candles for each timeframe
+            timeframe_data = {}
+            for tf in required_timeframes:
+                candle_response = requests.get(
+                    f"{data_plane_url}/api/v1/data/candles/{state.symbol}",
+                    params={"timeframe": tf, "limit": 100},
+                    timeout=10.0
+                )
+                candle_response.raise_for_status()
+                candle_data = candle_response.json()
+                
+                # Convert to TimeframeData objects
+                candles = []
+                for candle in candle_data.get("candles", []):
+                    candles.append(TimeframeData(
+                        timeframe=tf,
+                        timestamp=candle.get("time") or candle.get("timestamp"),
+                        open=candle["open"],
+                        high=candle["high"],
+                        low=candle["low"],
+                        close=candle["close"],
+                        volume=candle.get("volume", 0)
+                    ))
+                timeframe_data[tf] = candles
+            
+            state.market_data = MarketData(
+                symbol=state.symbol,
+                current_price=quote_data.get("c", 0),
+                bid=quote_data.get("b"),
+                ask=quote_data.get("a"),
+                spread=quote_data.get("a", 0) - quote_data.get("b", 0) if quote_data.get("a") and quote_data.get("b") else None,
+                timeframes=timeframe_data,
+                market_status=quote_data.get("market_status", "unknown"),
+                last_updated=datetime.utcnow()
+            )
+            
+            self.logger.info("market_data_fetched_from_data_plane_sync", mode=self.mode)
+            
+        except Exception as e:
+            self.logger.error("data_plane_fetch_sync_failed", error=str(e), exc_info=True)
+            raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}. Mock data is disabled.")
     
     async def execute(self) -> PipelineState:
         """

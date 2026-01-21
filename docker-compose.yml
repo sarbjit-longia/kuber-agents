@@ -236,6 +236,8 @@ services:
       - "8003:8001"  # Prometheus metrics endpoint
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - MARKET_DATA_PROVIDER=data_plane
+      - DATA_PLANE_URL=http://data-plane:8000
       - ADDITIONAL_TIMEFRAMES=15,60
       - LOG_LEVEL=INFO
       - MOCK_GENERATOR_INTERVAL_SECONDS=60
@@ -296,6 +298,9 @@ services:
       - SERVICE_NAME=data-plane
       - LOG_LEVEL=INFO
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - OANDA_API_KEY=${OANDA_API_KEY}
+      - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
+      - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=redis://redis:6379/1
       - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
       - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform
@@ -330,6 +335,9 @@ services:
     command: celery -A app.tasks.celery_tasks worker --loglevel=INFO -n data-plane-worker
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - OANDA_API_KEY=${OANDA_API_KEY}
+      - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
+      - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=redis://redis:6379/1
       - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
       - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform
@@ -353,6 +361,9 @@ services:
     command: celery -A app.tasks.celery_tasks beat --loglevel=INFO
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - OANDA_API_KEY=${OANDA_API_KEY}
+      - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
+      - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=redis://redis:6379/1
       - TIMESCALE_URL=postgresql+asyncpg://dev:devpass@timescaledb:5432/trading_data_plane
       - BACKEND_DB_URL=postgresql+asyncpg://dev:devpass@postgres:5432/trading_platform

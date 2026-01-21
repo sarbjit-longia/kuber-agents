@@ -363,6 +363,22 @@ class RiskManagerAgent(BaseAgent):
         stop = strategy.stop_loss
         target = strategy.take_profit
         
+        # Validate price levels
+        if entry is None or entry == 0:
+            self.logger.error(f"Strategy missing entry_price: entry={entry}")
+            raise ValueError("Strategy must provide a valid entry_price")
+        
+        if stop is None or target is None:
+            self.logger.warning(
+                f"Strategy missing price levels: entry={entry}, stop_loss={stop}, "
+                f"take_profit={target}, action={strategy.action}"
+            )
+            # Cannot assess risk without stop loss and take profit
+            raise ValueError(
+                f"Strategy must provide stop_loss and take_profit for risk assessment. "
+                f"Got: entry={entry}, stop_loss={stop}, take_profit={target}"
+            )
+        
         if strategy.action == "BUY":
             risk_per_share = abs(entry - stop)
             reward_per_share = abs(target - entry)

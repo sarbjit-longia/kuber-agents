@@ -20,6 +20,7 @@ from enum import Enum
 
 class ProviderType(str, Enum):
     """Supported market data providers."""
+    DATA_PLANE = "data_plane"  # Recommended: Uses Data Plane API (supports stocks + forex + local indicators)
     FINNHUB = "finnhub"
     ALPHA_VANTAGE = "alpha_vantage"
     YAHOO_FINANCE = "yahoo_finance"

@@ -107,18 +107,41 @@ class BrokerFactory:
         if not broker_type:
             raise ValueError(f"Unknown broker tool type: {tool_type}")
         
-        # Extract credentials
+        # Extract credentials - different brokers use different field names
         config = tool_config.get("config", {})
-        api_key = config.get("api_key")
+        
+        # 🐛 FIX: Handle different field names for different brokers
+        # Alpaca: api_key + secret_key
+        # OANDA: api_token + account_id
+        # Tradier: api_token + account_id
+        if broker_type == "oanda" or broker_type == "tradier":
+            api_key = config.get("api_token")  # OANDA/Tradier use "api_token"
+        else:
+            api_key = config.get("api_key")  # Alpaca uses "api_key"
+        
         secret_key = config.get("secret_key")
         account_id = config.get("account_id")
+        
+        # Debug logging to help troubleshoot config issues
+        logger.info(
+            "broker_config_extracted",
+            broker_type=broker_type,
+            has_api_key=bool(api_key),
+            has_account_id=bool(account_id),
+            account_type=config.get("account_type"),
+            config_keys=list(config.keys())
+        )
         
         # Determine if paper trading
         account_type = config.get("account_type", "paper")
         paper = account_type == "paper" or config.get("use_paper", True)
         
         if not api_key:
-            raise ValueError(f"API key not found in tool config for {broker_type}")
+            raise ValueError(
+                f"API key not found in tool config for {broker_type}. "
+                f"Check that 'api_token' (for OANDA/Tradier) or 'api_key' (for Alpaca) is configured in the tool. "
+                f"Available config keys: {list(config.keys())}"
+            )
         
         return cls.create(
             broker_type=broker_type,
