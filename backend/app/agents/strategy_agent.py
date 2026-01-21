@@ -181,14 +181,20 @@ class StrategyAgent(BaseAgent):
                 self.log(state, f"All timeframes: {extracted_timeframes}")
             self.log(state, f"Using instructions: {instructions[:100]}...")
             
-            # Prepare context
-            market_context = self._prepare_market_context(state, strategy_tf)
-            bias_context = self._prepare_bias_context(state)
+            # Determine if this is a forex pair (needs 5 decimal precision for pips)
+            is_forex = '_' in state.symbol  # EUR_USD, GBP_USD, etc.
+            price_precision = 5 if is_forex else 2
+            
+            # Get safe current price
             safe_current_price = (
                 float(state.market_data.current_price)
                 if state.market_data and state.market_data.current_price is not None
                 else 0.0
             )
+            
+            # Prepare context with proper precision
+            market_context = self._prepare_market_context(state, strategy_tf, price_precision)
+            bias_context = self._prepare_bias_context(state)
             
             # Get candle data for tools that need it
             candles = state.get_timeframe_data(strategy_tf)
@@ -213,98 +219,112 @@ class StrategyAgent(BaseAgent):
             self.log(state, f"Available tools: {[t.name for t in tools]}")
             
             # STAGE 1: Call tools directly to get analysis data
-            tool_results_text = self._call_tools_and_format(tools, state, candle_dicts)
+            tool_results_text = self._call_tools_and_format(tools, state, candle_dicts, price_precision)
             
             # STAGE 2: Create agent WITHOUT tools, but WITH tool results in prompt
-            # This prevents CrewAI from stopping after tool calls
+            # System prompt defines behavior, user instructions define the task
             strategist = Agent(
-                role="Trading Strategist",
-                goal=instructions,  # User's natural language instructions!
-                backstory=f"""You are an expert trading strategist for {state.symbol}.
-                You analyze technical data, patterns, and market structure to generate high-probability trade setups.
-                Always ensure proper risk management with clear entry, stop loss, and take profit levels.""",
+                role="Trading Strategy Executor",
+                goal="Follow the user's trading instructions exactly and generate a trade signal with proper risk management.",
+                backstory=f"""You are a disciplined trading strategy executor for {state.symbol}.
+
+CORE PRINCIPLES:
+1. You follow user instructions LITERALLY - if they say "enter anytime", you enter without complex analysis
+2. You USE THE PROVIDED BIAS - do NOT re-analyze or invent your own bias, use what's given in "Market Bias" section
+3. You ALWAYS provide all three prices: entry, stop loss, AND take profit (never leave any blank)
+4. You format output as valid JSON only
+5. You keep reasoning concise unless user asks for detailed analysis
+
+Your job is to EXECUTE the user's strategy using the data provided, not second-guess it or re-analyze the market.""",
                 tools=[],  # Don't give tools to agent - we already called them
                 llm=self.model,
                 verbose=True,
                 allow_delegation=False
             )
             
-            # Create strategy task
+            # Create strategy task - clean separation of data and instructions
             strategy_task = Task(
-                description=f"""Generate a trading strategy for {state.symbol} on {strategy_tf} timeframe.
+                description=f"""Execute the following trading strategy for {state.symbol}.
 
-CURRENT MARKET DATA:
-{market_context}
-
-MARKET BIAS:
-{bias_context}
-
-YOUR INSTRUCTIONS:
+═══════════════════════════════════════════════════════════
+USER'S TRADING INSTRUCTIONS:
+═══════════════════════════════════════════════════════════
 {instructions}
 
-REQUIREMENTS:
-- Current Price: ${safe_current_price:.2f}
+═══════════════════════════════════════════════════════════
+MARKET DATA (for your reference):
+═══════════════════════════════════════════════════════════
+Symbol: {state.symbol}
+Timeframe: {strategy_tf}
+Current Price: {safe_current_price:.{price_precision}f}
+Asset Type: {'FOREX (1 pip = 0.0001)' if is_forex else 'STOCK/CRYPTO'}
 
-TECHNICAL ANALYSIS & TOOL RESULTS:
+{market_context}
+
+Bias: {bias_context}
+
+Technical Analysis:
 {tool_results_text}
+
+═══════════════════════════════════════════════════════════
+YOUR TASK:
+═══════════════════════════════════════════════════════════
+Read the user's instructions above and execute them.
+- Use the BIAS shown above (do NOT re-analyze to determine bias)
+- If user wants simple entries, keep it simple
+- If user wants detailed analysis, provide detailed analysis
+- ALWAYS provide entry_price, stop_loss, AND take_profit (never leave any blank)
+- Use the pip calculations below for forex pairs
+
+{'FOREX PIP CALCULATIONS:' if is_forex else ''}
+{f'''Current price: {safe_current_price:.5f}
+1 pip = 0.0001
+
+For BUY with 1 pip SL / 2 pip TP:
+  entry: {safe_current_price:.5f}
+  stop_loss: {(safe_current_price - 0.0001):.5f}
+  take_profit: {(safe_current_price + 0.0002):.5f}
+
+For SELL with 1 pip SL / 2 pip TP:
+  entry: {safe_current_price:.5f}
+  stop_loss: {(safe_current_price + 0.0001):.5f}
+  take_profit: {(safe_current_price - 0.0002):.5f}''' if is_forex else ''}
 
 CRITICAL: Your FINAL response must be ONLY a valid JSON object, nothing else.
 
-IMPORTANT JSON RULES:
-- ALL string values must be enclosed in double quotes (")
-- The "reasoning" field must be a SINGLE JSON string (all content in quotes)
-- Use \\n for line breaks within the reasoning string
-- Do NOT put raw markdown outside of quotes
+═══════════════════════════════════════════════════════════
+OUTPUT FORMAT (CRITICAL):
+═══════════════════════════════════════════════════════════
+Respond with ONLY a valid JSON object. No other text.
 
-YOUR FINAL OUTPUT MUST BE VALID JSON IN THIS EXACT FORMAT:
+JSON STRUCTURE:
 {{
     "action": "BUY|SELL|HOLD",
-    "entry_price": 0.00,
-    "stop_loss": 0.00,
-    "take_profit": 0.00,
-    "confidence": 0.0-1.0,
-    "pattern_detected": "name of pattern/setup (e.g., Bull Flag, FVG, Head & Shoulders, etc.)",
-    "reasoning": "YOUR COMPLETE ANALYSIS AS A SINGLE QUOTED STRING - BE SPECIFIC AND DESCRIPTIVE.
+    "entry_price": <number>,
+    "stop_loss": <number>,
+    "take_profit": <number>,
+    "confidence": <0.0-1.0>,
+    "pattern_detected": "pattern name or leave empty if not applicable",
+    "reasoning": "Your explanation as a single quoted string. Keep it concise unless user asks for detailed analysis."
+}}
 
+JSON RULES:
+- ALL prices must be numbers (not strings)
+- "reasoning" is a single JSON string (use \\n for line breaks)
+- NEVER leave entry_price, stop_loss, or take_profit blank/null
 
-
-Within the reasoning string, use this format with bold section headers:
-
-\\n\\n**MARKET STRUCTURE:**\\nDescribe the current trend, key support/resistance levels with specific prices.\\n\\n**PATTERNS IDENTIFIED:**\\nIf you detect patterns (FVG, Bull/Bear Flags, etc.), describe them with price ranges. Use bullet points (•).\\n\\n**TOOL ANALYSIS:**\\nExplain what each tool showed. Use bullet points (•) for each tool.\\n\\n**ENTRY RATIONALE:**\\nWhy this specific entry price?\\n\\n**EXIT STRATEGY:**\\nWhy these specific stop loss and take profit levels?\\n\\n**RISK FACTORS:**\\nWhat could invalidate this setup? Use bullet points (•).
-
-CRITICAL: ALL of the above must be INSIDE the \"reasoning\" string value (within quotes).
-Be detailed and specific with price levels - this analysis will be shown to traders.
-
-Example of CORRECT JSON structure:
+EXAMPLE (for {state.symbol}):
 {{
     \"action\": \"BUY\",
-    \"entry_price\": 100.50,
-    \"stop_loss\": 98.00,
-    \"take_profit\": 105.00,
-    \"confidence\": 0.75,
-    \"pattern_detected\": \"Bull Flag\",
-    \"reasoning\": \"\\n\\n**MARKET STRUCTURE:**\\nThe market is in an uptrend...\\n\\n**ENTRY RATIONALE:**\\nEntry at current price...\"
+    \"entry_price\": {safe_current_price:.{price_precision}f},
+    \"stop_loss\": {(safe_current_price - (0.0001 if is_forex else 2.0)):.{price_precision}f},
+    \"take_profit\": {(safe_current_price + (0.0002 if is_forex else 5.0)):.{price_precision}f},
+    \"confidence\": 0.7,
+    \"pattern_detected\": \"Based on user instructions\",
+    \"reasoning\": \"Entering BUY per user's trading rules. Entry at current price {safe_current_price:.{price_precision}f}, SL at {(safe_current_price - (0.0001 if is_forex else 2.0)):.{price_precision}f}, TP at {(safe_current_price + (0.0002 if is_forex else 5.0)):.{price_precision}f}.\"
 }}
 
-Example of WRONG (will cause parsing error):
-{{
-    \"reasoning\": \\n\\n**MARKET STRUCTURE:**   ← WRONG! Missing quotes around value
-}}
-}}
-
-Only suggest trades (BUY/SELL) if:
-1. There's a clear high-probability setup
-2. Entry, stop loss, and take profit are clearly defined
-
-Otherwise, return action=HOLD with reasoning that explains what you're waiting for.
-
-CRITICAL REMINDERS:
-- Use tools as needed to analyze the market
-- After using tools, synthesize your findings
-- Your FINAL output must be the complete JSON object shown above
-- Do NOT stop after calling tools without providing the JSON
-
-Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
+Remember: Follow the user's instructions literally. Keep reasoning brief unless they ask for detailed analysis.""",
                 agent=strategist,
                 expected_output="A complete, valid JSON object (and ONLY JSON) with all required fields: action, entry_price, stop_loss, take_profit, confidence, pattern_detected, and detailed reasoning. The reasoning should reference any tools used and their results."
             )
@@ -385,11 +405,11 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             
             trade_levels = []
             if strategy_result.entry_price:
-                trade_levels.append(f"**Entry:** ${strategy_result.entry_price:.2f}")
+                trade_levels.append(f"**Entry:** ${strategy_result.entry_price:.{price_precision}f}")
             if strategy_result.stop_loss:
-                trade_levels.append(f"**Stop Loss:** ${strategy_result.stop_loss:.2f}")
+                trade_levels.append(f"**Stop Loss:** ${strategy_result.stop_loss:.{price_precision}f}")
             if strategy_result.take_profit:
-                trade_levels.append(f"**Take Profit:** ${strategy_result.take_profit:.2f}")
+                trade_levels.append(f"**Take Profit:** ${strategy_result.take_profit:.{price_precision}f}")
             
             # Calculate risk/reward if we have levels
             rr_text = ""
@@ -500,10 +520,10 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             logger.exception("strategy_agent_failed", error=str(e))
             raise AgentProcessingError(error_msg) from e
     
-    def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict]) -> str:
+    def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict], price_precision: int = 2) -> str:
         """Call tools directly and format their results as text for the LLM prompt."""
         if not tools or not candles:
-            return self._compute_technical_analysis(state, candles)
+            return self._compute_technical_analysis(state, candles, price_precision)
         
         results_lines = []
         
@@ -546,14 +566,14 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         
         # If no tool results, use basic technical analysis
         if not results_lines:
-            return self._compute_technical_analysis(state, candles)
+            return self._compute_technical_analysis(state, candles, price_precision)
         
         # Add basic price action at the top
-        basic_analysis = self._compute_technical_analysis(state, candles)
+        basic_analysis = self._compute_technical_analysis(state, candles, price_precision)
         return basic_analysis + "\n\n" + "\n".join(results_lines)
     
-    def _compute_technical_analysis(self, state: PipelineState, candles: List[Dict]) -> str:
-        """Pre-compute technical indicators and return as formatted text."""
+    def _compute_technical_analysis(self, state: PipelineState, candles: List[Dict], price_precision: int = 2) -> str:
+        """Pre-compute technical indicators and return as formatted text with appropriate precision."""
         if not candles or len(candles) < 20:
             return "Insufficient candle data for technical analysis."
         
@@ -565,10 +585,10 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         price_change = ((latest['close'] - oldest['open']) / oldest['open']) * 100
         
         analysis_lines.append("**PRICE ACTION:**")
-        analysis_lines.append(f"- Current: ${latest['close']:.2f}")
+        analysis_lines.append(f"- Current: {latest['close']:.{price_precision}f}")
         analysis_lines.append(f"- Period Change: {price_change:+.2f}%")
-        analysis_lines.append(f"- High: ${max(c['high'] for c in candles):.2f}")
-        analysis_lines.append(f"- Low: ${min(c['low'] for c in candles):.2f}")
+        analysis_lines.append(f"- High: {max(c['high'] for c in candles):.{price_precision}f}")
+        analysis_lines.append(f"- Low: {min(c['low'] for c in candles):.{price_precision}f}")
         
         # Simple trend detection
         closes = [c['close'] for c in candles]
@@ -607,19 +627,19 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
         support = min(recent_lows)
         
         analysis_lines.append(f"\n**KEY LEVELS:**")
-        analysis_lines.append(f"- Resistance: ${resistance:.2f}")
-        analysis_lines.append(f"- Support: ${support:.2f}")
+        analysis_lines.append(f"- Resistance: {resistance:.{price_precision}f}")
+        analysis_lines.append(f"- Support: {support:.{price_precision}f}")
         analysis_lines.append(f"- Distance to resistance: {((resistance - latest['close']) / latest['close'] * 100):+.2f}%")
         analysis_lines.append(f"- Distance to support: {((support - latest['close']) / latest['close'] * 100):+.2f}%")
         
         return "\n".join(analysis_lines)
     
-    def _prepare_market_context(self, state: PipelineState, timeframe: str) -> str:
-        """Prepare market data context."""
+    def _prepare_market_context(self, state: PipelineState, timeframe: str, price_precision: int = 2) -> str:
+        """Prepare market data context with appropriate price precision."""
         lines = [f"Symbol: {state.symbol}", f"Timeframe: {timeframe}"]
         
         if state.market_data and state.market_data.current_price:
-            lines.append(f"Current Price: ${state.market_data.current_price:.2f}")
+            lines.append(f"Current Price: {state.market_data.current_price:.{price_precision}f}")
         
         # Show recent candles
         candles = state.get_timeframe_data(timeframe)
@@ -627,8 +647,8 @@ Note: Risk/Reward validation will be handled by the Risk Manager Agent.""",
             lines.append(f"\nLast 3 candles:")
             for c in candles[-3:]:
                 lines.append(
-                    f"  {c.timestamp}: O=${c.open:.2f} H=${c.high:.2f} "
-                    f"L=${c.low:.2f} C=${c.close:.2f}"
+                    f"  {c.timestamp}: O={c.open:.{price_precision}f} H={c.high:.{price_precision}f} "
+                    f"L={c.low:.{price_precision}f} C={c.close:.{price_precision}f}"
                 )
         
         return "\n".join(lines)

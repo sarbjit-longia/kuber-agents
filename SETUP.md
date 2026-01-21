@@ -59,9 +59,17 @@ docker-compose logs -f backend
 # Run database migrations
 docker exec -it trading-backend alembic upgrade head
 
+# Seed the database with default data (LLM models, etc.)
+docker exec trading-backend python seed_database.py
+
 # Verify migrations
 docker exec -it trading-backend alembic current
 ```
+
+**Note**: The seed script populates the database with:
+- 8 LLM models (GPT-3.5, GPT-4, GPT-4 Turbo, GPT-4o, GPT-4o-mini, O1-preview, O1-mini, LM Studio)
+- Model pricing and capability information
+- It's safe to run multiple times (idempotent)
 
 ### 5. Access the Application
 

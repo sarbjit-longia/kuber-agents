@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from app.schemas.pipeline_state import PipelineState
 from app.models.pipeline import Pipeline
 from app.models.execution import Execution, ExecutionStatus
+from app.models.scanner import Scanner
 from app.agents import get_registry
 from app.agents.base import AgentError, TriggerNotMetException
 
@@ -61,7 +62,8 @@ class PipelineExecutor:
         mode: str = "paper",
         execution_id: Optional[UUID] = None,
         signal_context: Optional[Dict[str, Any]] = None,
-        symbol_override: Optional[str] = None
+        symbol_override: Optional[str] = None,
+        db_session: Optional[Any] = None
     ):
         """
         Initialize the pipeline executor.
@@ -73,6 +75,7 @@ class PipelineExecutor:
             execution_id: Optional pre-created execution ID
             signal_context: Optional signal data that triggered this execution
             symbol_override: Optional symbol override (for scanner-based pipelines)
+            db_session: Optional database session for loading scanner
         """
         self.pipeline = pipeline
         self.user_id = user_id
@@ -80,6 +83,7 @@ class PipelineExecutor:
         self.execution_id = execution_id or uuid4()
         self.signal_context = signal_context
         self.symbol_override = symbol_override
+        self.db_session = db_session
         
         self.registry = get_registry()
         self.logger = logger.bind(
@@ -92,6 +96,23 @@ class PipelineExecutor:
         self.config = pipeline.config
         self.nodes = self.config.get("nodes", [])
         self.edges = self.config.get("edges", [])
+        
+        # Load scanner tickers if pipeline uses a scanner
+        self.scanner_tickers = []
+        self.logger.info("scanner_check", has_scanner_id=bool(pipeline.scanner_id), has_db_session=bool(db_session), scanner_id=str(pipeline.scanner_id) if pipeline.scanner_id else None)
+        
+        if pipeline.scanner_id and db_session:
+            try:
+                scanner = db_session.query(Scanner).filter(Scanner.id == pipeline.scanner_id).first()
+                if scanner:
+                    self.scanner_tickers = scanner.get_tickers()
+                    self.logger.info("scanner_loaded", scanner_id=str(scanner.id), ticker_count=len(self.scanner_tickers), tickers=self.scanner_tickers[:3])
+                else:
+                    self.logger.warning("scanner_not_found", scanner_id=str(pipeline.scanner_id))
+            except Exception as e:
+                self.logger.error("scanner_load_error", error=str(e), exc_info=True)
+        else:
+            self.logger.info("scanner_loading_skipped", reason="no_scanner_id" if not pipeline.scanner_id else "no_db_session")
         
         # Validate configuration
         self._validate_config()
@@ -509,11 +530,36 @@ class PipelineExecutor:
         if self.signal_context:
             signal_data = SignalData(**self.signal_context)
         
+        # DEBUG: Log scanner tickers state at beginning of execute
+        self.logger.info("execute_symbol_debug", 
+                        has_symbol_override=bool(self.symbol_override),
+                        symbol_override=self.symbol_override,
+                        scanner_tickers_type=type(self.scanner_tickers).__name__,
+                        scanner_tickers_len=len(self.scanner_tickers) if self.scanner_tickers else 0,
+                        scanner_tickers_bool=bool(self.scanner_tickers),
+                        scanner_tickers_value=self.scanner_tickers if self.scanner_tickers else None,
+                        config_symbol=self.config.get("symbol"))
+        
+        # Determine the symbol to use for this execution
+        # Priority: 1. symbol_override (from signal), 2. scanner tickers, 3. config symbol, 4. UNKNOWN
+        execution_symbol = "UNKNOWN"
+        if self.symbol_override:
+            execution_symbol = self.symbol_override
+            self.logger.info("using_symbol_override", symbol=execution_symbol)
+        elif self.scanner_tickers:
+            # For scanner-based pipelines, use the first ticker
+            # (Signal-based execution should provide symbol_override)
+            execution_symbol = self.scanner_tickers[0]
+            self.logger.info("using_scanner_ticker", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
+        elif self.config.get("symbol"):
+            execution_symbol = self.config.get("symbol")
+            self.logger.info("using_config_symbol", symbol=execution_symbol)
+        
         state = PipelineState(
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
-            symbol=self.symbol_override or self.config.get("symbol", "UNKNOWN"),
+            symbol=execution_symbol,
             mode=self.mode,
             signal_data=signal_data
         )
@@ -698,11 +744,26 @@ class PipelineExecutor:
         if self.signal_context:
             signal_data = SignalData(**self.signal_context)
         
+        # Determine the symbol to use for this execution
+        # Priority: 1. symbol_override (from signal), 2. scanner tickers, 3. config symbol, 4. UNKNOWN
+        execution_symbol = "UNKNOWN"
+        if self.symbol_override:
+            execution_symbol = self.symbol_override
+            self.logger.info("sync_using_symbol_override", symbol=execution_symbol)
+        elif self.scanner_tickers:
+            # For scanner-based pipelines, use the first ticker
+            # (Signal-based execution should provide symbol_override)
+            execution_symbol = self.scanner_tickers[0]
+            self.logger.info("sync_using_scanner_ticker", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
+        elif self.config.get("symbol"):
+            execution_symbol = self.config.get("symbol")
+            self.logger.info("sync_using_config_symbol", symbol=execution_symbol)
+        
         state = PipelineState(
             pipeline_id=self.pipeline.id,
             execution_id=self.execution_id,
             user_id=self.user_id,
-            symbol=self.config.get("symbol", "UNKNOWN"),
+            symbol=execution_symbol,
             mode=self.mode,
             signal_data=signal_data
         )
@@ -1473,7 +1534,7 @@ class ExecutionManager:
             raise PermissionError("Pipeline does not belong to user")
         
         # Create executor and run
-        executor = PipelineExecutor(pipeline, user_id, mode)
+        executor = PipelineExecutor(pipeline, user_id, mode, db_session=db_session)
         execution = await executor.execute_with_db_tracking(db_session)
         
         return execution

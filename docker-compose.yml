@@ -177,10 +177,12 @@ services:
     ports:
       - "5555:5555"
     environment:
+      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - redis
+      - postgres
       - celery-worker
 
   # Zookeeper (required for Kafka)

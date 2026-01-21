@@ -69,21 +69,37 @@ class DataFetcher:
         
         for ticker in tickers:
             try:
-                # Provider API call (async)
+                # Provider API call (async) - returns standardized format per BaseProvider interface
                 quote = await self.provider.get_quote(ticker)
                 
-                # Normalize quote data (provider-agnostic format)
+                # All providers MUST return data in standardized format (defined in BaseProvider):
+                # {
+                #   "symbol": str,
+                #   "current_price": float,
+                #   "bid": float, "ask": float, "spread": float,
+                #   "high": float, "low": float, "open": float, "previous_close": float,
+                #   "volume": int, "timestamp": datetime
+                # }
+                
+                # Cache in standardized format with backward compatibility keys
                 quote_data = {
                     "ticker": ticker,
-                    "current_price": quote.get("c"),
-                    "change": quote.get("d"),
-                    "percent_change": quote.get("dp"),
-                    "high": quote.get("h"),
-                    "low": quote.get("l"),
-                    "open": quote.get("o"),
-                    "previous_close": quote.get("pc"),
+                    "current_price": quote.get("current_price"),
+                    "c": quote.get("current_price"),  # Backward compatibility
                     "bid": quote.get("bid"),
+                    "b": quote.get("bid"),  # Backward compatibility
                     "ask": quote.get("ask"),
+                    "a": quote.get("ask"),  # Backward compatibility
+                    "spread": quote.get("spread"),
+                    "high": quote.get("high"),
+                    "h": quote.get("high"),  # Backward compatibility
+                    "low": quote.get("low"),
+                    "l": quote.get("low"),  # Backward compatibility
+                    "open": quote.get("open"),
+                    "o": quote.get("open"),  # Backward compatibility
+                    "previous_close": quote.get("previous_close"),
+                    "pc": quote.get("previous_close"),  # Backward compatibility
+                    "volume": quote.get("volume", 0),
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 

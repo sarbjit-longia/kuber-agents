@@ -84,14 +84,15 @@ def execute_pipeline(
                     logger.warning("budget_exceeded", user_id=user_id, reason=reason)
                     return {"status": "skipped", "reason": reason}
             
-            # Create executor with signal context
+            # Create executor with signal context and database session
             executor = PipelineExecutor(
                 pipeline=pipeline,
                 user_id=UUID(user_id),
                 mode=mode,
                 execution_id=UUID(execution_id) if execution_id else None,
                 signal_context=signal_context,
-                symbol_override=symbol  # Pass symbol override for scanner-based pipelines
+                symbol_override=symbol,  # Pass symbol override for scanner-based pipelines
+                db_session=db  # Pass database session to load scanner
             )
             
             # Execute pipeline synchronously for Celery
@@ -99,7 +100,16 @@ def execute_pipeline(
             execution = db.query(Execution).filter(Execution.id == executor.execution_id).first()
             
             # Determine symbol for execution record
-            execution_symbol = symbol or pipeline.config.get("symbol")
+            # Priority: 1. symbol override, 2. scanner tickers, 3. config symbol
+            execution_symbol = symbol
+            if not execution_symbol and executor.scanner_tickers:
+                execution_symbol = executor.scanner_tickers[0]
+                logger.info("using_scanner_ticker_in_task", 
+                           execution_id=str(executor.execution_id),
+                           symbol=execution_symbol, 
+                           total_tickers=len(executor.scanner_tickers))
+            if not execution_symbol:
+                execution_symbol = pipeline.config.get("symbol")
             
             if not execution:
                 # Create new execution record
