@@ -445,7 +445,7 @@ class TradeManagerAgent(BaseAgent):
             
             # Enter monitoring mode
             state.execution_phase = "monitoring"
-            state.monitor_interval_minutes = 5
+            state.monitor_interval_minutes = 1  # Check every 1 minute
             
             # Determine price precision for display
             is_forex = "_" in state.symbol

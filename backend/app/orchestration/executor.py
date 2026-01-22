@@ -975,6 +975,7 @@ class PipelineExecutor:
         execution.cost_breakdown = state.agent_costs
         
         # Mark JSONB columns as modified
+        flag_modified(execution, "result")  # CRITICAL: Mark result column (contains execution_artifacts/chart)
         flag_modified(execution, "agent_states")
         flag_modified(execution, "logs")
         flag_modified(execution, "reports")

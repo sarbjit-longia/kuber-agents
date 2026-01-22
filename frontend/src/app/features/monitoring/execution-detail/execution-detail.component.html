@@ -80,6 +80,92 @@
         </mat-card>
       </div>
 
+      <!-- Live Position Monitoring Section -->
+      <mat-card *ngIf="isMonitoring()" class="monitoring-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon class="monitoring-icon">visibility</mat-icon>
+            Live Position Monitoring
+          </mat-card-title>
+          <div class="monitoring-actions">
+            <button mat-icon-button (click)="refreshExecution()" matTooltip="Refresh">
+              <mat-icon>refresh</mat-icon>
+            </button>
+            <button mat-raised-button color="warn" (click)="closePosition()" matTooltip="Close position immediately">
+              <mat-icon>close</mat-icon>
+              Close Position
+            </button>
+          </div>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="monitoring-grid" *ngIf="getPositionData() as position">
+            <div class="monitoring-section">
+              <h3>Position Details</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Symbol:</span>
+                <span class="monitoring-value">{{ position.symbol }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Side:</span>
+                <span class="monitoring-value" [ngClass]="position.action === 'BUY' ? 'text-success' : 'text-danger'">
+                  {{ position.action }}
+                </span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Quantity:</span>
+                <span class="monitoring-value">{{ position.qty | number }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Entry Price:</span>
+                <span class="monitoring-value">${{ position.entryPrice | number: '1.2-5' }}</span>
+              </div>
+            </div>
+
+            <div class="monitoring-section pnl-section">
+              <h3>Profit & Loss</h3>
+              <div class="monitoring-item pnl-item">
+                <span class="monitoring-label">Unrealized P&L:</span>
+                <span class="monitoring-value pnl-value" 
+                      [ngClass]="position.unrealizedPl >= 0 ? 'text-success' : 'text-danger'">
+                  {{ position.unrealizedPl >= 0 ? '+' : '' }}${{ position.unrealizedPl | number: '1.2-2' }}
+                </span>
+              </div>
+              <div class="monitoring-item pnl-item">
+                <span class="monitoring-label">P&L Percent:</span>
+                <span class="monitoring-value pnl-percent" 
+                      [ngClass]="position.pnlPercent >= 0 ? 'text-success' : 'text-danger'">
+                  {{ position.pnlPercent >= 0 ? '+' : '' }}{{ position.pnlPercent | number: '1.2-2' }}%
+                </span>
+              </div>
+            </div>
+
+            <div class="monitoring-section">
+              <h3>Risk Parameters</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Stop Loss:</span>
+                <span class="monitoring-value text-danger">${{ position.stopLoss | number: '1.2-5' }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Take Profit:</span>
+                <span class="monitoring-value text-success">${{ position.takeProfit | number: '1.2-5' }}</span>
+              </div>
+            </div>
+
+            <div class="monitoring-section">
+              <h3>Monitoring Status</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Check Interval:</span>
+                <span class="monitoring-value">{{ position.monitorInterval }} minute(s)</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Next Check In:</span>
+                <span class="monitoring-value countdown-value">{{ timeUntilNextCheck }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- Main Content Tabs -->
       <mat-card class="content-card">
         <mat-tab-group>

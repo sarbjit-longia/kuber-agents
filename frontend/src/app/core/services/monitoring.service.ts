@@ -92,6 +92,13 @@ export class MonitoringService {
   }
 
   /**
+   * Close position for monitoring execution
+   */
+  closePosition(executionId: string): Observable<any> {
+    return this.apiService.post<any>(`/api/v1/executions/${executionId}/close-position`, {});
+  }
+
+  /**
    * Start polling for updates (every 3 seconds)
    */
   startPolling(executionId: string): void {

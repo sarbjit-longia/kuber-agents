@@ -202,6 +202,10 @@ async def get_execution(
         "started_at": execution.started_at.isoformat() if execution.started_at else None,
         "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
         "created_at": execution.created_at.isoformat() if execution.created_at else None,
+        # Add monitoring fields
+        "execution_phase": execution.execution_phase,
+        "next_check_at": execution.next_check_at.isoformat() + 'Z' if execution.next_check_at else None,  # Add Z for UTC
+        "monitor_interval_minutes": execution.monitor_interval_minutes,
     }
     
     return execution_dict
@@ -375,6 +379,141 @@ async def stop_execution_endpoint(
     )
     
     return {"message": "Stop request sent", "execution_id": str(execution_id)}
+
+
+@router.post("/{execution_id}/close-position", response_model=dict)
+async def close_position_endpoint(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """
+    Close an open position for a monitoring execution.
+    
+    This endpoint allows manual closure of positions from the UI.
+    It verifies the execution is in MONITORING status, closes the position
+    via the broker, and marks the execution as COMPLETED.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Result of the close operation
+    """
+    # Load execution
+    result = await db.execute(
+        select(Execution, Pipeline)
+        .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .where(Execution.id == execution_id)
+    )
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    execution, pipeline = row
+    
+    # Verify ownership
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to close this position"
+        )
+    
+    # Verify execution is in monitoring status
+    if execution.status != ExecutionStatus.MONITORING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot close position for execution with status: {execution.status.value}. Only MONITORING executions can be closed."
+        )
+    
+    # Get broker configuration from pipeline
+    pipeline_config = pipeline.config or {}
+    nodes = pipeline_config.get("nodes", [])
+    
+    # Find trade manager node to get broker config
+    trade_manager_node = next(
+        (node for node in nodes if node.get("agent_type") == "trade_manager_agent"),
+        None
+    )
+    
+    if not trade_manager_node:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No trade manager configuration found in pipeline"
+        )
+    
+    broker_name = trade_manager_node.get("config", {}).get("broker", "alpaca")
+    execution_mode = trade_manager_node.get("config", {}).get("execution_mode", "paper")
+    
+    try:
+        # Import broker factory
+        from app.services.brokers.factory import broker_factory
+        from app.tools.broker_tool import BrokerTool
+        
+        # Create broker tool
+        broker_tool = BrokerTool(broker=broker_name, mode=execution_mode)
+        
+        # Get broker service
+        broker = broker_factory.from_tool_config(broker_tool)
+        
+        # Close the position
+        logger.info(
+            "closing_position_from_ui",
+            execution_id=str(execution_id),
+            symbol=execution.symbol,
+            broker=broker_name,
+            mode=execution_mode
+        )
+        
+        close_result = broker.close_position(execution.symbol)
+        
+        if not close_result.get("success", False):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to close position: {close_result.get('error', 'Unknown error')}"
+            )
+        
+        # Update execution status
+        execution.status = ExecutionStatus.COMPLETED
+        execution.completed_at = datetime.utcnow()
+        execution.execution_phase = "completed"
+        execution.next_check_at = None
+        
+        await db.commit()
+        
+        logger.info(
+            "position_closed_from_ui",
+            execution_id=str(execution_id),
+            symbol=execution.symbol,
+            close_result=close_result
+        )
+        
+        return {
+            "success": True,
+            "message": f"Position for {execution.symbol} closed successfully",
+            "execution_id": str(execution_id),
+            "close_result": close_result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "close_position_failed",
+            execution_id=str(execution_id),
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to close position: {str(e)}"
+        )
 
 
 @router.get("/{execution_id}/logs", response_model=List[dict])

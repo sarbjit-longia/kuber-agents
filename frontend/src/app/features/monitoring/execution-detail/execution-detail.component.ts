@@ -4,7 +4,7 @@
  * Displays detailed information about a pipeline execution including agent reports and charts
  */
 
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -15,6 +15,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MonitoringService } from '../../../core/services/monitoring.service';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
@@ -35,6 +36,7 @@ import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe'
     MatTabsModule,
     MatExpansionModule,
     MatDialogModule,
+    MatTooltipModule,
     NavbarComponent,
     TradingChartComponent,
     MarkdownToHtmlPipe,
@@ -42,10 +44,13 @@ import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe'
   templateUrl: './execution-detail.component.html',
   styleUrls: ['./execution-detail.component.scss']
 })
-export class ExecutionDetailComponent implements OnInit {
+export class ExecutionDetailComponent implements OnInit, OnDestroy {
   execution: any = null;
   loading = true;
   error: string | null = null;
+  private refreshInterval: any;
+  private countdownInterval: any;
+  timeUntilNextCheck: string = '-';
 
   constructor(
     private route: ActivatedRoute,
@@ -58,10 +63,50 @@ export class ExecutionDetailComponent implements OnInit {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.loadExecution(id);
+      
+      // Auto-refresh every 10 seconds if monitoring
+      this.refreshInterval = setInterval(() => {
+        if (this.isMonitoring()) {
+          this.loadExecution(id);
+        } else {
+          // Stop auto-refresh if no longer monitoring
+          this.stopAutoRefresh();
+        }
+      }, 10000); // 10 seconds
+      
+      // Update countdown every second
+      this.countdownInterval = setInterval(() => {
+        if (this.isMonitoring()) {
+          this.updateCountdown();
+        }
+      }, 1000); // 1 second
     } else {
       this.error = 'No execution ID provided';
       this.loading = false;
     }
+  }
+
+  ngOnDestroy(): void {
+    this.stopAutoRefresh();
+    this.stopCountdown();
+  }
+
+  private stopAutoRefresh(): void {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+    }
+  }
+
+  private stopCountdown(): void {
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+  }
+
+  private updateCountdown(): void {
+    this.timeUntilNextCheck = this.getTimeUntilNextCheck();
   }
 
   loadExecution(id: string): void {
@@ -69,6 +114,11 @@ export class ExecutionDetailComponent implements OnInit {
       next: (data) => {
         this.execution = data;
         this.loading = false;
+        
+        // Initialize countdown immediately after loading
+        if (this.isMonitoring()) {
+          this.updateCountdown();
+        }
       },
       error: (error) => {
         console.error('Failed to load execution:', error);
@@ -168,5 +218,92 @@ export class ExecutionDetailComponent implements OnInit {
 
   isString(value: any): boolean {
     return typeof value === 'string';
+  }
+
+  // Monitoring-specific methods
+  isMonitoring(): boolean {
+    return this.execution?.status === 'MONITORING';
+  }
+
+  getPositionData(): any {
+    if (!this.isMonitoring()) return null;
+    
+    // Get the latest trade manager report
+    const tradeManagerAgent = this.execution?.agent_states?.find(
+      (agent: any) => agent.agent_type === 'trade_manager_agent'
+    );
+    
+    if (!tradeManagerAgent) return null;
+    
+    const report = this.execution?.reports?.[tradeManagerAgent.agent_id];
+    
+    // Get position data from the latest monitoring report
+    const positionData = report?.data;
+    
+    // Get strategy and trade execution info
+    const strategy = this.execution?.result?.strategy;
+    const tradeExecution = this.execution?.result?.trade_execution;
+    
+    return {
+      symbol: this.execution.symbol,
+      action: strategy?.action,
+      qty: positionData?.qty || tradeExecution?.quantity,
+      entryPrice: strategy?.entry_price,
+      stopLoss: strategy?.stop_loss,
+      takeProfit: strategy?.take_profit,
+      unrealizedPl: positionData?.unrealized_pl,
+      pnlPercent: positionData?.pnl_percent,
+      nextCheckAt: this.execution.next_check_at,
+      monitorInterval: this.execution.monitor_interval_minutes || 1
+    };
+  }
+
+  getTimeUntilNextCheck(): string {
+    if (!this.execution?.next_check_at) {
+      return '-';
+    }
+    
+    // Parse the ISO date string properly (it's in UTC)
+    const now = Date.now();
+    const nextCheck = new Date(this.execution.next_check_at).getTime();
+    const diff = nextCheck - now;
+    
+    if (diff < 0) return 'Checking now...';
+    
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  }
+
+  refreshExecution(): void {
+    if (this.execution?.id) {
+      this.loadExecution(this.execution.id);
+    }
+  }
+
+  closePosition(): void {
+    if (!this.execution?.id) return;
+    
+    if (!confirm(`Are you sure you want to close the position for ${this.execution.symbol}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    this.monitoringService.closePosition(this.execution.id).subscribe({
+      next: (result) => {
+        console.log('Position closed successfully:', result);
+        // Reload execution to show updated status
+        this.loadExecution(this.execution.id);
+      },
+      error: (error) => {
+        console.error('Failed to close position:', error);
+        alert(`Failed to close position: ${error.error?.detail || error.message || 'Unknown error'}`);
+      }
+    });
   }
 }

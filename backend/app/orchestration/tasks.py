@@ -556,7 +556,8 @@ def schedule_monitoring_check(self, execution_id: str):
         
         else:
             # Schedule next check
-            interval = updated_state.monitor_interval_minutes or 5
+            # Use interval from execution (database) instead of state for flexibility
+            interval = execution.monitor_interval_minutes or updated_state.monitor_interval_minutes or 1
             execution.next_check_at = datetime.utcnow() + timedelta(minutes=interval)
             
             db.commit()
@@ -601,11 +602,28 @@ def _serialize_logs(logs):
 
 def _serialize_reports(reports):
     """Helper to serialize agent reports."""
+    from datetime import datetime
+    
+    def serialize_value(value):
+        """Recursively serialize values, converting datetime to ISO string."""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        elif isinstance(value, dict):
+            return {k: serialize_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [serialize_value(item) for item in value]
+        else:
+            return value
+    
     serialized = {}
     for agent_id, report in reports.items():
         if hasattr(report, 'dict'):
-            serialized[agent_id] = report.dict()
+            report_dict = report.dict()
         else:
-            serialized[agent_id] = report
+            report_dict = report
+        
+        # Recursively serialize all values in the report
+        serialized[agent_id] = serialize_value(report_dict)
+    
     return serialized
 
