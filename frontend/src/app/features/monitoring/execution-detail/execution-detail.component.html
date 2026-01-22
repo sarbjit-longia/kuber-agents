@@ -154,9 +154,15 @@
                             </ul>
                           </ng-container>
                           <ng-template #dataScalar>
-                            <div *ngIf="!isObject(item.value)" 
+                            <!-- For numbers, display directly -->
+                            <span *ngIf="isNumber(item.value)" class="formatted-content">
+                              {{ item.value }}
+                            </span>
+                            <!-- For strings, use markdown rendering -->
+                            <div *ngIf="isString(item.value)" 
                                  class="formatted-content"
                                  [innerHTML]="item.value | markdownToHtml"></div>
+                            <!-- For objects, show JSON -->
                             <pre *ngIf="isObject(item.value)">{{ item.value | json }}</pre>
                           </ng-template>
                         </div>

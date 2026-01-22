@@ -161,4 +161,12 @@ export class ExecutionDetailComponent implements OnInit {
   isObject(value: any): boolean {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
+
+  isNumber(value: any): boolean {
+    return typeof value === 'number';
+  }
+
+  isString(value: any): boolean {
+    return typeof value === 'string';
+  }
 }

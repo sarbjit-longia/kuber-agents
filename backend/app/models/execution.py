@@ -13,14 +13,14 @@ from ..database import Base
 
 class ExecutionStatus(str, PyEnum):
     """Execution status enum."""
-    PENDING = "pending"
-    RUNNING = "running"
-    MONITORING = "monitoring"  # Position monitoring mode (Trade Manager)
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    PAUSED = "paused"
-    SKIPPED = "skipped"  # When trigger not met or budget exceeded
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    MONITORING = "MONITORING"  # Position monitoring mode (Trade Manager)
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    PAUSED = "PAUSED"
+    SKIPPED = "SKIPPED"  # When trigger not met or budget exceeded
 
 
 class Execution(Base):

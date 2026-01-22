@@ -274,21 +274,15 @@ Read the user's instructions above and execute them.
 - If user wants simple entries, keep it simple
 - If user wants detailed analysis, provide detailed analysis
 - ALWAYS provide entry_price, stop_loss, AND take_profit (never leave any blank)
-- Use the pip calculations below for forex pairs
 
-{'FOREX PIP CALCULATIONS:' if is_forex else ''}
-{f'''Current price: {safe_current_price:.5f}
-1 pip = 0.0001
+{'CRITICAL FOREX PIP CALCULATIONS:' if is_forex else ''}
+{'''1 pip = 0.0001
+10 pips = 10 × 0.0001 = 0.0010
+20 pips = 20 × 0.0001 = 0.0020
+100 pips = 100 × 0.0001 = 0.0100
 
-For BUY with 1 pip SL / 2 pip TP:
-  entry: {safe_current_price:.5f}
-  stop_loss: {(safe_current_price - 0.0001):.5f}
-  take_profit: {(safe_current_price + 0.0002):.5f}
-
-For SELL with 1 pip SL / 2 pip TP:
-  entry: {safe_current_price:.5f}
-  stop_loss: {(safe_current_price + 0.0001):.5f}
-  take_profit: {(safe_current_price - 0.0002):.5f}''' if is_forex else ''}
+For SELL: stop_loss = entry + (pips × 0.0001), take_profit = entry - (pips × 0.0001)
+For BUY: stop_loss = entry - (pips × 0.0001), take_profit = entry + (pips × 0.0001)''' if is_forex else ''}
 
 CRITICAL: Your FINAL response must be ONLY a valid JSON object, nothing else.
 
@@ -312,17 +306,7 @@ JSON RULES:
 - ALL prices must be numbers (not strings)
 - "reasoning" is a single JSON string (use \\n for line breaks)
 - NEVER leave entry_price, stop_loss, or take_profit blank/null
-
-EXAMPLE (for {state.symbol}):
-{{
-    \"action\": \"BUY\",
-    \"entry_price\": {safe_current_price:.{price_precision}f},
-    \"stop_loss\": {(safe_current_price - (0.0001 if is_forex else 2.0)):.{price_precision}f},
-    \"take_profit\": {(safe_current_price + (0.0002 if is_forex else 5.0)):.{price_precision}f},
-    \"confidence\": 0.7,
-    \"pattern_detected\": \"Based on user instructions\",
-    \"reasoning\": \"Entering BUY per user's trading rules. Entry at current price {safe_current_price:.{price_precision}f}, SL at {(safe_current_price - (0.0001 if is_forex else 2.0)):.{price_precision}f}, TP at {(safe_current_price + (0.0002 if is_forex else 5.0)):.{price_precision}f}.\"
-}}
+- Calculate stop_loss and take_profit using the pip values from user instructions
 
 Remember: Follow the user's instructions literally. Keep reasoning brief unless they ask for detailed analysis.""",
                 agent=strategist,
