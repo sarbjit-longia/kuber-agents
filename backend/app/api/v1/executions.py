@@ -504,16 +504,24 @@ async def close_position_endpoint(
         # Use the broker tool config which contains the user's credentials
         broker = broker_factory.from_tool_config(broker_tool_config)
         
+        # Extract trade ID from execution result (for bracket orders)
+        trade_id = None
+        if execution.result and 'trade_execution' in execution.result:
+            trade_exec = execution.result.get('trade_execution', {})
+            trade_id = trade_exec.get('order_id')
+        
         # Close the position
         logger.info(
             "closing_position_from_ui",
             execution_id=str(execution_id),
             symbol=execution.symbol,
             broker=broker_name,
-            mode=execution_mode
+            mode=execution_mode,
+            trade_id=trade_id
         )
         
-        close_result = broker.close_position(execution.symbol)
+        # Pass trade_id for proper bracket order closure
+        close_result = broker.close_position(execution.symbol, trade_id=trade_id)
         
         if not close_result.get("success", False):
             raise HTTPException(

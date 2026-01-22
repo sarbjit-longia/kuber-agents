@@ -381,19 +381,96 @@ class OandaBrokerService(BrokerService):
             self.logger.error("Failed to cancel Oanda order", error=str(e))
             return {"success": False, "error": str(e)}
     
-    def close_position(
+    def close_trade_by_id(
         self,
-        symbol: str,
-        qty: Optional[float] = None,
+        trade_id: str,
         account_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Close a position"""
+        """
+        Close a specific trade by its ID.
+        This is the correct method for closing bracket orders (trades with SL/TP).
+        """
         target_account = account_id or self.account_id
         if not target_account:
             return {"success": False, "error": "No account ID provided"}
         
+        try:
+            # Close the trade - this automatically cancels associated SL/TP orders
+            result = self._make_request("PUT", f"/accounts/{target_account}/trades/{trade_id}/close", data={})
+            
+            # Check if there's an error in the response
+            if "error" in result:
+                error_msg = result["error"]
+                self.logger.error("Failed to close Oanda trade", trade_id=trade_id, error=error_msg)
+                return {"success": False, "error": error_msg}
+            
+            self.logger.info("Oanda trade closed", trade_id=trade_id)
+            
+            # Extract P&L from the close transaction
+            close_txn = result.get("orderFillTransaction") or result.get("orderCreateTransaction", {})
+            final_pl = float(close_txn.get("pl", 0)) if close_txn else 0.0
+            
+            return {
+                "success": True, 
+                "trade_id": trade_id,
+                "final_pnl": final_pl,
+                "result": result
+            }
+        except Exception as e:
+            self.logger.error("Failed to close Oanda trade", trade_id=trade_id, error=str(e))
+            return {"success": False, "error": str(e)}
+    
+    def close_position(
+        self,
+        symbol: str,
+        qty: Optional[float] = None,
+        account_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Close a position.
+        If trade_id is provided, closes the specific trade (recommended for bracket orders).
+        Otherwise, attempts to close all positions for the symbol.
+        """
+        target_account = account_id or self.account_id
+        if not target_account:
+            return {"success": False, "error": "No account ID provided"}
+        
+        # If we have a trade ID, use the trade close endpoint (correct for bracket orders)
+        if trade_id:
+            return self.close_trade_by_id(trade_id, target_account)
+        
+        # Otherwise, try position close endpoint
         instrument = symbol.replace("/", "_") if "/" in symbol else symbol
         
+        # First, try to get all open trades for this instrument and close them individually
+        try:
+            trades_result = self._make_request("GET", f"/accounts/{target_account}/openTrades", params={"instrument": instrument})
+            trades = trades_result.get("trades", [])
+            
+            if trades:
+                self.logger.info("Found open trades for instrument, closing individually", instrument=instrument, count=len(trades))
+                results = []
+                for trade in trades:
+                    trade_id = trade.get("id")
+                    close_result = self.close_trade_by_id(trade_id, target_account)
+                    results.append(close_result)
+                
+                # Return success if all trades closed successfully
+                all_success = all(r.get("success") for r in results)
+                total_pnl = sum(r.get("final_pnl", 0) for r in results)
+                
+                return {
+                    "success": all_success,
+                    "symbol": instrument,
+                    "trades_closed": len(results),
+                    "final_pnl": total_pnl,
+                    "results": results
+                }
+        except Exception as e:
+            self.logger.warning("Could not fetch open trades, falling back to position close", error=str(e))
+        
+        # Fallback: use position close endpoint
         # Determine units to close
         if qty:
             data = {"longUnits": str(int(qty))} if qty > 0 else {"shortUnits": str(int(abs(qty)))}
