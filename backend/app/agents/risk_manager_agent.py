@@ -175,12 +175,19 @@ class RiskManagerAgent(BaseAgent):
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
             
-            # Create CrewAI agent
+            # Create CrewAI agent - follows user's risk rules exactly
             risk_analyst = Agent(
-                role="Risk Manager",
-                goal=f"Analyze the proposed trade and determine safe position size following these rules: {instructions}",
-                backstory="""You are an expert risk manager responsible for protecting capital and ensuring
-                        trades are properly sized according to the user's risk rules.""",
+                role="Risk Manager Executor",
+                goal="Follow the user's risk management instructions exactly and calculate position size.",
+                backstory="""You are a disciplined risk calculator who follows rules literally.
+
+CORE PRINCIPLES:
+1. You follow user's risk instructions EXACTLY - if they say "1% risk", use 1% not 2%
+2. You do NOT add your own rules - if user doesn't mention RR ratio, don't enforce one
+3. You calculate position size mathematically based on user's specifications
+4. You approve trades that meet user's rules, reject those that don't
+
+Your job is to EXECUTE the user's risk rules, not add your own "conservative" interpretations.""",
                 verbose=False,
                 allow_delegation=False,
                 llm=model_id
@@ -189,32 +196,44 @@ class RiskManagerAgent(BaseAgent):
             # Create task
             task = Task(
                 description=f"""
-                Analyze this trade proposal and make a risk decision:
-                
-                {context}
-                
-                Risk Management Instructions:
-                {instructions}
-                
-                You MUST provide your response in this EXACT format:
-                APPROVED: Yes/No
-                POSITION_SIZE: <number of shares/contracts>
-                RISK_SCORE: <0.0 to 1.0>
-                MAX_LOSS: <dollar amount>
-                WARNINGS: <list any warnings, or "None">
-                REASONING: <detailed explanation of your decision>
-                
-                Calculate position size based on:
-                1. Account balance and cash requirements from instructions
-                2. Maximum loss per trade (from instructions)
-                3. Distance from entry to stop loss
-                4. Risk/reward ratio requirements
-                5. Existing positions and exposure
-                
-                Be conservative. Safety is paramount.
+═══════════════════════════════════════════════════════════
+USER'S RISK MANAGEMENT INSTRUCTIONS:
+═══════════════════════════════════════════════════════════
+{instructions}
+
+═══════════════════════════════════════════════════════════
+TRADE PROPOSAL TO EVALUATE:
+═══════════════════════════════════════════════════════════
+{context}
+
+═══════════════════════════════════════════════════════════
+YOUR TASK:
+═══════════════════════════════════════════════════════════
+Read the user's risk instructions above and execute them exactly.
+
+Calculate position size using:
+1. User's specified risk percentage (e.g., "1% risk" means use 1%, not 2%)
+2. Distance from entry to stop loss (in dollars/pips)
+3. Account balance
+4. ONLY enforce rules the user mentioned (don't add your own)
+
+Formula for position size:
+- Risk Amount = Account Balance × Risk Percentage
+- Position Size = Risk Amount ÷ Distance to Stop Loss
+
+═══════════════════════════════════════════════════════════
+OUTPUT FORMAT (CRITICAL):
+═══════════════════════════════════════════════════════════
+You MUST provide your response in this EXACT format:
+APPROVED: Yes/No
+POSITION_SIZE: <number of shares/contracts>
+RISK_SCORE: <0.0 to 1.0>
+MAX_LOSS: <dollar amount>
+WARNINGS: <list any warnings, or "None">
+REASONING: <brief explanation of your calculation>
                 """,
                 agent=risk_analyst,
-                expected_output="Risk decision with position size calculation"
+                expected_output="Risk decision with position size calculation following user's exact specifications"
             )
             
             # Execute
@@ -388,15 +407,19 @@ class RiskManagerAgent(BaseAgent):
         
         rr_ratio = reward_per_share / risk_per_share if risk_per_share > 0 else 0
         
+        # Determine price precision based on asset type
+        is_forex = "_" in state.symbol
+        price_precision = 5 if is_forex else 2
+        
         context = f"""
 PROPOSED TRADE:
 - Symbol: {state.symbol}
 - Action: {strategy.action}
-- Entry Price: ${entry:.2f}
-- Stop Loss: ${stop:.2f}
-- Take Profit: ${target:.2f}
-- Risk per share: ${risk_per_share:.2f}
-- Reward per share: ${reward_per_share:.2f}
+- Entry Price: ${entry:.{price_precision}f}
+- Stop Loss: ${stop:.{price_precision}f}
+- Take Profit: ${target:.{price_precision}f}
+- Risk per share: ${risk_per_share:.{price_precision}f}
+- Reward per share: ${reward_per_share:.{price_precision}f}
 - Risk/Reward Ratio: {rr_ratio:.2f}:1
 - Strategy Confidence: {strategy.confidence:.1%}
 

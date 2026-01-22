@@ -448,6 +448,21 @@ class OandaBrokerService(BrokerService):
         time_in_force: TimeInForce
     ) -> Order:
         """Convert Oanda order to standard Order model"""
+        # Parse timestamp - OANDA returns Unix timestamp (due to Accept-Datetime-Format: UNIX header)
+        submitted_at = None
+        if oanda_order.get("time"):
+            try:
+                # Try parsing as Unix timestamp first (string or float)
+                timestamp = float(oanda_order["time"])
+                submitted_at = datetime.fromtimestamp(timestamp)
+            except (ValueError, TypeError):
+                # Fallback: try ISO format
+                try:
+                    submitted_at = datetime.fromisoformat(oanda_order["time"].replace("Z", "+00:00"))
+                except:
+                    self.logger.warning("failed_to_parse_oanda_timestamp", time=oanda_order.get("time"))
+                    submitted_at = None
+        
         return Order(
             order_id=str(oanda_order.get("id", "unknown")),
             symbol=instrument,
@@ -458,7 +473,7 @@ class OandaBrokerService(BrokerService):
             filled_qty=qty if oanda_order.get("type") == "ORDER_FILL" else 0.0,
             filled_price=float(oanda_order.get("price", 0)) if oanda_order.get("price") else None,
             time_in_force=time_in_force,
-            submitted_at=datetime.fromisoformat(oanda_order.get("time", "").replace("Z", "+00:00")) if oanda_order.get("time") else None,
+            submitted_at=submitted_at,
             broker_data=oanda_order
         )
 

@@ -390,10 +390,14 @@ class TradeManagerAgent(BaseAgent):
             # 🎯 AUTO-DETECT ORDER TYPE: If strategy provides TP/SL, use bracket order
             has_targets = take_profit is not None and stop_loss is not None
             
+            # Determine price precision for logging
+            is_forex = "_" in state.symbol
+            price_precision = 5 if is_forex else 2
+            
             if has_targets:
                 # Strategy provided targets → Use bracket order (entry + TP + SL)
                 order_type_used = "bracket"
-                self.log(state, f"📊 Executing bracket order: Entry=${entry:.2f}, TP=${take_profit:.2f}, SL=${stop_loss:.2f}")
+                self.log(state, f"📊 Executing bracket order: Entry=${entry:.{price_precision}f}, TP=${take_profit:.{price_precision}f}, SL=${stop_loss:.{price_precision}f}")
                 
                 order = broker.place_bracket_order(
                     symbol=state.symbol,
@@ -408,7 +412,7 @@ class TradeManagerAgent(BaseAgent):
             else:
                 # No targets from strategy → Use simple market order
                 order_type_used = "market"
-                self.log(state, f"📊 Executing market order (no TP/SL from strategy): Entry=${entry:.2f}")
+                self.log(state, f"📊 Executing market order (no TP/SL from strategy): Entry=${entry:.{price_precision}f}")
                 
                 order = broker.place_order(
                     symbol=state.symbol,
@@ -443,8 +447,12 @@ class TradeManagerAgent(BaseAgent):
             state.execution_phase = "monitoring"
             state.monitor_interval_minutes = 5
             
+            # Determine price precision for display
+            is_forex = "_" in state.symbol
+            price_precision = 5 if is_forex else 2
+            
             # Log execution details
-            self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} shares @ ${entry:.2f}")
+            self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} shares @ ${entry:.{price_precision}f}")
             self.log(state, f"  Order ID: {order.order_id}")
             self.log(state, f"  Order Type: {order_type_used.upper()}")
             
@@ -452,15 +460,19 @@ class TradeManagerAgent(BaseAgent):
                 # Calculate percentages for bracket orders
                 tp_pct = ((take_profit - entry) / entry * 100) if entry > 0 else 0
                 sl_pct = abs((stop_loss - entry) / entry * 100) if entry > 0 else 0
-                self.log(state, f"  Take Profit: ${take_profit:.2f} ({tp_pct:+.2f}%)")
-                self.log(state, f"  Stop Loss: ${stop_loss:.2f} ({-sl_pct:.2f}%)")
+                self.log(state, f"  Take Profit: ${take_profit:.{price_precision}f} ({tp_pct:+.2f}%)")
+                self.log(state, f"  Stop Loss: ${stop_loss:.{price_precision}f} ({-sl_pct:.2f}%)")
             
             self.log(state, "Entering MONITORING mode")
+            
+            # Determine price precision for display
+            is_forex = "_" in state.symbol
+            price_precision = 5 if is_forex else 2
             
             self.record_report(
                 state,
                 title="Trade executed",
-                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.2f}",
+                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.{price_precision}f}",
                 status="completed",
                 data={
                     "action": strategy.action,

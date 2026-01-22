@@ -88,16 +88,31 @@ export class StrategyChartComponent implements OnInit, AfterViewInit, OnDestroy 
       },
       
       resolveSymbol: (symbolName: string, onSymbolResolvedCallback: any, onResolveErrorCallback: any) => {
+        // Detect if symbol is forex (contains underscore like EUR_USD)
+        const isForex = chartData.meta.symbol.includes('_');
+        
+        // For forex: 5 decimals (100000) except JPY pairs which use 3 decimals (1000)
+        // For stocks/crypto: 2 decimals (100)
+        let pricescale = 100; // Default: stocks (2 decimals)
+        if (isForex) {
+          // Check if JPY pair (3 decimals)
+          if (chartData.meta.symbol.includes('JPY')) {
+            pricescale = 1000; // 3 decimals for JPY pairs
+          } else {
+            pricescale = 100000; // 5 decimals for other forex
+          }
+        }
+        
         const symbolInfo = {
           name: chartData.meta.symbol,
           description: chartData.meta.symbol,
-          type: 'stock',
+          type: isForex ? 'forex' : 'stock',
           session: '24x7',
           timezone: 'Etc/UTC',
           ticker: chartData.meta.symbol,
           exchange: '',
           minmov: 1,
-          pricescale: 100,
+          pricescale: pricescale, // Dynamic based on asset type
           has_intraday: true,
           supported_resolutions: ['1', '5', '15', '30', '60', '240', 'D'],
           volume_precision: 2,
