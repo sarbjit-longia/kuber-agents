@@ -16,12 +16,15 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { interval, Subscription, switchMap } from 'rxjs';
 
 import { MonitoringService } from '../../../core/services/monitoring.service';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
 import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
 import { ExecutionReportModalComponent } from '../execution-report-modal/execution-report-modal.component';
 import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-execution-detail',
@@ -37,6 +40,7 @@ import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe'
     MatExpansionModule,
     MatDialogModule,
     MatTooltipModule,
+    MatSnackBarModule,
     NavbarComponent,
     TradingChartComponent,
     MarkdownToHtmlPipe,
@@ -56,7 +60,8 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private router: Router,
     private monitoringService: MonitoringService,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
@@ -170,11 +175,6 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     return `$${cost.toFixed(4)}`;
   }
 
-  formatDate(dateString: string): string {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleString();
-  }
-
   getAgentIcon(agentType: string): string {
     const icons: any = {
       'bias_agent': 'analytics',
@@ -223,6 +223,56 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
   // Monitoring-specific methods
   isMonitoring(): boolean {
     return this.execution?.status === 'MONITORING';
+  }
+
+  isCompleted(): boolean {
+    return this.execution?.status === 'COMPLETED';
+  }
+
+  hasFinalPnL(): boolean {
+    return this.isCompleted() && (
+      this.execution?.result?.final_pnl !== null && 
+      this.execution?.result?.final_pnl !== undefined
+    );
+  }
+
+  getFinalPnL(): any {
+    if (!this.hasFinalPnL()) return null;
+    
+    const finalPnl = this.execution.result.final_pnl;
+    const finalPnlPercent = this.execution.result.final_pnl_percent;
+    const strategy = this.execution?.result?.strategy;
+    const tradeExecution = this.execution?.result?.trade_execution;
+    
+    return {
+      symbol: this.execution.symbol,
+      action: strategy?.action,
+      qty: tradeExecution?.filled_quantity,
+      entryPrice: strategy?.entry_price,
+      stopLoss: strategy?.stop_loss,
+      takeProfit: strategy?.take_profit,
+      finalPnl: finalPnl,
+      finalPnlPercent: finalPnlPercent,
+      closedAt: this.execution.result.closed_at || this.execution.completed_at
+    };
+  }
+
+  formatDate(date: string | null | undefined): string {
+    if (!date) return 'N/A';
+    
+    try {
+      const dateObj = new Date(date);
+      return dateObj.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
   }
 
   getPositionData(): any {
@@ -290,19 +340,33 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
   closePosition(): void {
     if (!this.execution?.id) return;
     
-    if (!confirm(`Are you sure you want to close the position for ${this.execution.symbol}? This action cannot be undone.`)) {
-      return;
-    }
-    
-    this.monitoringService.closePosition(this.execution.id).subscribe({
-      next: (result) => {
-        console.log('Position closed successfully:', result);
-        // Reload execution to show updated status
-        this.loadExecution(this.execution.id);
-      },
-      error: (error) => {
-        console.error('Failed to close position:', error);
-        alert(`Failed to close position: ${error.error?.detail || error.message || 'Unknown error'}`);
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '400px',
+      data: {
+        title: 'Close Position',
+        message: `Are you sure you want to close the position for ${this.execution.symbol}? This will immediately close the trade in the broker.`,
+        confirmText: 'Close Position',
+        cancelText: 'Cancel'
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.monitoringService.closePosition(this.execution.id).subscribe({
+          next: (result) => {
+            this.snackBar.open('Position closed successfully!', 'Dismiss', { duration: 3000 });
+            // Reload execution to show updated status
+            this.loadExecution(this.execution.id);
+          },
+          error: (error) => {
+            console.error('Failed to close position:', error);
+            this.snackBar.open(
+              `Failed to close position: ${error.error?.detail || error.message || 'Unknown error'}`, 
+              'Dismiss', 
+              { duration: 5000 }
+            );
+          }
+        });
       }
     });
   }

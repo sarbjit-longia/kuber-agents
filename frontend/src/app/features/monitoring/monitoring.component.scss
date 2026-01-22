@@ -270,6 +270,24 @@
     }
   }
 
+  .pnl-cell {
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    width: fit-content;
+
+    &.pnl-positive {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    &.pnl-negative {
+      background: #ffebee;
+      color: #c62828;
+    }
+  }
+
   mat-chip {
     font-size: 0.75rem;
     font-weight: 600;

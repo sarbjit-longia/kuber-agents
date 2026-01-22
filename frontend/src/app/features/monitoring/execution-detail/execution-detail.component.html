@@ -166,6 +166,83 @@
         </mat-card-content>
       </mat-card>
 
+      <!-- Final P&L Section (for completed executions) -->
+      <mat-card *ngIf="hasFinalPnL()" class="final-pnl-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon class="pnl-icon">check_circle</mat-icon>
+            Trade Completed - Final Results
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="monitoring-grid" *ngIf="getFinalPnL() as pnl">
+            <div class="monitoring-section">
+              <h3>Position Details</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Symbol:</span>
+                <span class="monitoring-value">{{ pnl.symbol }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Side:</span>
+                <span class="monitoring-value" [ngClass]="pnl.action === 'BUY' ? 'text-success' : 'text-danger'">
+                  {{ pnl.action }}
+                </span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Quantity:</span>
+                <span class="monitoring-value">{{ pnl.qty | number }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Entry Price:</span>
+                <span class="monitoring-value">${{ pnl.entryPrice | number: '1.2-5' }}</span>
+              </div>
+            </div>
+
+            <div class="monitoring-section pnl-section">
+              <h3>Final Profit & Loss</h3>
+              <div class="monitoring-item pnl-item">
+                <span class="monitoring-label">Final P&L:</span>
+                <span class="monitoring-value pnl-value" 
+                      [ngClass]="pnl.finalPnl >= 0 ? 'text-success' : 'text-danger'">
+                  {{ pnl.finalPnl >= 0 ? '+' : '' }}${{ pnl.finalPnl | number: '1.2-2' }}
+                </span>
+              </div>
+              <div class="monitoring-item pnl-item">
+                <span class="monitoring-label">P&L Percent:</span>
+                <span class="monitoring-value pnl-percent" 
+                      [ngClass]="pnl.finalPnlPercent >= 0 ? 'text-success' : 'text-danger'">
+                  {{ pnl.finalPnlPercent >= 0 ? '+' : '' }}{{ pnl.finalPnlPercent | number: '1.2-2' }}%
+                </span>
+              </div>
+            </div>
+
+            <div class="monitoring-section">
+              <h3>Risk Parameters</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Stop Loss:</span>
+                <span class="monitoring-value text-danger">${{ pnl.stopLoss | number: '1.2-5' }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Take Profit:</span>
+                <span class="monitoring-value text-success">${{ pnl.takeProfit | number: '1.2-5' }}</span>
+              </div>
+            </div>
+
+            <div class="monitoring-section">
+              <h3>Completion Info</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Closed At:</span>
+                <span class="monitoring-value">{{ formatDate(pnl.closedAt) }}</span>
+              </div>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Status:</span>
+                <span class="monitoring-value text-success">Position Closed</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- Main Content Tabs -->
       <mat-card class="content-card">
         <mat-tab-group>

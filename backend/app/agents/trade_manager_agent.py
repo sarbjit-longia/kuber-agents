@@ -225,12 +225,32 @@ class TradeManagerAgent(BaseAgent):
             # Position closed (bracket orders worked or manually closed)
             self.log(state, "✓ Position closed - monitoring complete")
             state.should_complete = True
+            
+            # Try to get final P&L from trade_execution or last monitoring report
+            final_pnl = None
+            final_pnl_percent = None
+            
+            # Check if we have trade execution data with entry price
+            if state.trade_execution and state.strategy:
+                # Get last known P&L from previous reports if available
+                if hasattr(state, 'agent_reports') and self.agent_id in state.agent_reports:
+                    last_report = state.agent_reports[self.agent_id]
+                    if isinstance(last_report, dict) and 'data' in last_report:
+                        final_pnl = last_report['data'].get('unrealized_pl')
+                        final_pnl_percent = last_report['data'].get('pnl_percent')
+            
             self.record_report(
                 state,
                 title="Position closed",
-                summary=f"{state.symbol} position no longer open",
+                summary=f"{state.symbol} position closed" + (f" | Final P&L: ${final_pnl:+.2f} ({final_pnl_percent:+.2f}%)" if final_pnl is not None else ""),
                 status="completed",
-                data={"symbol": state.symbol, "reason": "Position closed"},
+                data={
+                    "symbol": state.symbol,
+                    "reason": "Position closed",
+                    "final_pnl": final_pnl,
+                    "final_pnl_percent": final_pnl_percent,
+                    "closed_at": datetime.now().isoformat()
+                },
             )
             return state
         
@@ -245,28 +265,41 @@ class TradeManagerAgent(BaseAgent):
             self.log(state, f"🚨 Emergency exit triggered: {reason}")
             self._close_position(state.symbol, broker_tool, reason)
             state.should_complete = True
+            
+            unrealized_pl = position.get("unrealized_pl", 0)
+            
             self.record_report(
                 state,
                 title="Emergency exit executed",
-                summary=f"Position closed due to: {reason}",
+                summary=f"Position closed due to: {reason} | P&L: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
                 status="completed",
                 data={
                     "symbol": state.symbol,
                     "reason": reason,
-                    "pnl_percent": pnl_percent
+                    "unrealized_pl": unrealized_pl,
+                    "pnl_percent": pnl_percent,
+                    "closed_at": datetime.now().isoformat()
                 },
             )
             return state
         
         # Continue monitoring
+        unrealized_pl = position.get("unrealized_pl", 0)
+        
         self.record_report(
             state,
             title="Position monitoring",
-            summary=f"Monitoring {state.symbol}: {pnl_percent:+.2f}% P&L",
+            summary=f"Monitoring {state.symbol}: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
             data={
+                "symbol": state.symbol,
                 "qty": position["qty"],
-                "unrealized_pl": position["unrealized_pl"],
-                "pnl_percent": pnl_percent
+                "unrealized_pl": unrealized_pl,
+                "pnl_percent": pnl_percent,
+                "current_price": position.get("current_price"),
+                "cost_basis": position.get("cost_basis"),
+                "entry_price": state.strategy.entry_price if state.strategy else None,
+                "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                "take_profit": state.strategy.take_profit if state.strategy else None
             },
         )
         

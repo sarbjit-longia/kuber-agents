@@ -45,7 +45,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   executions: ExecutionSummary[] = [];
   stats: ExecutionStats | null = null;
   loading = true;
-  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'status', 'actions'];
+  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'pnl', 'status', 'actions'];
 
   private refreshInterval: any;
 
@@ -300,6 +300,58 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       'unknown': 'help_outline'
     };
     return icons[outcome] || 'help_outline';
+  }
+
+  getPnL(execution: any): { value: number | null, percent: number | null } {
+    // Check if we have final P&L (completed trades)
+    if (execution.result?.final_pnl !== null && execution.result?.final_pnl !== undefined) {
+      return {
+        value: execution.result.final_pnl,
+        percent: execution.result.final_pnl_percent
+      };
+    }
+
+    // Check if we have monitoring data (live trades)
+    if (execution.reports) {
+      // Find trade manager report
+      for (const agentId in execution.reports) {
+        const report = execution.reports[agentId];
+        if (report.agent_type === 'trade_manager_agent' && report.data) {
+          if (report.data.unrealized_pl !== null && report.data.unrealized_pl !== undefined) {
+            return {
+              value: report.data.unrealized_pl,
+              percent: report.data.pnl_percent
+            };
+          }
+        }
+      }
+    }
+
+    return { value: null, percent: null };
+  }
+
+  formatPnL(execution: any): string {
+    const pnl = this.getPnL(execution);
+    
+    if (pnl.value === null || pnl.value === undefined) {
+      return '-';
+    }
+
+    const sign = pnl.value >= 0 ? '+' : '';
+    const valueStr = `${sign}$${pnl.value.toFixed(2)}`;
+    const percentStr = pnl.percent !== null && pnl.percent !== undefined 
+      ? ` (${sign}${pnl.percent.toFixed(2)}%)` 
+      : '';
+
+    return `${valueStr}${percentStr}`;
+  }
+
+  getPnLClass(execution: any): string {
+    const pnl = this.getPnL(execution);
+    if (pnl.value === null || pnl.value === undefined) {
+      return '';
+    }
+    return pnl.value >= 0 ? 'pnl-positive' : 'pnl-negative';
   }
 }
 

@@ -79,6 +79,9 @@ services:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - OANDA_API_KEY=${OANDA_API_KEY}
+      - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
+      - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       - ENV=${ENV:-development}
       - ENVIRONMENT=${ENVIRONMENT:-development}

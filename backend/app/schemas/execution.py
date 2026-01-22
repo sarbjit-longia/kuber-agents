@@ -81,6 +81,8 @@ class ExecutionSummary(BaseModel):
     strategy_action: Optional[str] = None  # BUY, SELL, HOLD
     strategy_confidence: Optional[float] = None  # 0.0 - 1.0
     trade_outcome: Optional[str] = None  # executed, skipped, rejected, pending, N/A
+    result: Optional[Dict[str, Any]] = None  # Include full result for P&L
+    reports: Optional[Dict[str, Any]] = None  # Include reports for monitoring P&L
 
 
 class ExecutionStats(BaseModel):

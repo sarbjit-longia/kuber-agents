@@ -16,6 +16,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from pathlib import Path
+import structlog
 
 from app.database import get_db
 from app.models.user import User
@@ -27,6 +28,8 @@ from app.orchestration.tasks import execute_pipeline, stop_execution
 from app.orchestration.validator import PipelineValidator
 from app.services.executive_report_generator import executive_report_generator
 from app.services.langfuse_service import get_langfuse_client
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
@@ -326,7 +329,9 @@ async def list_executions(
             error_message=execution.error_message,
             strategy_action=strategy_action,
             strategy_confidence=strategy_confidence,
-            trade_outcome=trade_outcome
+            trade_outcome=trade_outcome,
+            result=execution.result,  # Include full result for P&L
+            reports=execution.reports  # Include reports for monitoring P&L
         ))
     
     return summaries
@@ -432,35 +437,72 @@ async def close_position_endpoint(
             detail=f"Cannot close position for execution with status: {execution.status.value}. Only MONITORING executions can be closed."
         )
     
-    # Get broker configuration from pipeline
+    # Get broker configuration from the pipeline config
+    # The tools are stored in the pipeline nodes, not in agent_states
     pipeline_config = pipeline.config or {}
     nodes = pipeline_config.get("nodes", [])
     
-    # Find trade manager node to get broker config
-    trade_manager_node = next(
-        (node for node in nodes if node.get("agent_type") == "trade_manager_agent"),
-        None
-    )
+    # Find trade manager node
+    trade_manager_node = None
+    for node in nodes:
+        if node.get("agent_type") == "trade_manager_agent":
+            trade_manager_node = node
+            break
     
     if not trade_manager_node:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No trade manager configuration found in pipeline"
+            detail="No trade manager agent found in pipeline configuration"
         )
     
-    broker_name = trade_manager_node.get("config", {}).get("broker", "alpaca")
-    execution_mode = trade_manager_node.get("config", {}).get("execution_mode", "paper")
+    logger.info(
+        "found_trade_manager_node",
+        execution_id=str(execution_id),
+        node_id=trade_manager_node.get("id"),
+        has_config=bool(trade_manager_node.get("config"))
+    )
+    
+    # Get broker from trade manager node config
+    node_config = trade_manager_node.get("config", {})
+    broker_name = node_config.get("broker", "alpaca")
+    execution_mode = node_config.get("execution_mode", "paper")
+    
+    # Get tools from the trade manager node - this is where user's broker credentials are stored
+    tools = node_config.get("tools", [])
+    
+    logger.info(
+        "extracted_trade_manager_config",
+        execution_id=str(execution_id),
+        broker=broker_name,
+        mode=execution_mode,
+        tools_count=len(tools)
+    )
+    
+    # Find the broker tool with credentials
+    broker_tool_config = None
+    for tool in tools:
+        tool_type = tool.get("tool_type", "")
+        if "broker" in tool_type.lower():  # oanda_broker, alpaca_broker, etc.
+            broker_tool_config = tool
+            logger.info(
+                "found_broker_tool",
+                execution_id=str(execution_id),
+                tool_type=tool_type,
+                has_config=bool(tool.get("config"))
+            )
+            break
+    
+    if not broker_tool_config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No broker tool found in trade manager configuration. Available tools: {[t.get('tool_type') for t in tools]}"
+        )
     
     try:
-        # Import broker factory
         from app.services.brokers.factory import broker_factory
-        from app.tools.broker_tool import BrokerTool
         
-        # Create broker tool
-        broker_tool = BrokerTool(broker=broker_name, mode=execution_mode)
-        
-        # Get broker service
-        broker = broker_factory.from_tool_config(broker_tool)
+        # Use the broker tool config which contains the user's credentials
+        broker = broker_factory.from_tool_config(broker_tool_config)
         
         # Close the position
         logger.info(
@@ -479,11 +521,37 @@ async def close_position_endpoint(
                 detail=f"Failed to close position: {close_result.get('error', 'Unknown error')}"
             )
         
-        # Update execution status
+        # Get final P&L from the last monitoring report
+        final_pnl = None
+        final_pnl_percent = None
+        
+        if execution.reports:
+            # Find trade manager report
+            trade_manager_report = None
+            for agent_id, report in execution.reports.items():
+                if report.get('agent_type') == 'trade_manager_agent':
+                    trade_manager_report = report
+                    break
+            
+            if trade_manager_report and 'data' in trade_manager_report:
+                final_pnl = trade_manager_report['data'].get('unrealized_pl')
+                final_pnl_percent = trade_manager_report['data'].get('pnl_percent')
+        
+        # Update execution status and save final P&L
         execution.status = ExecutionStatus.COMPLETED
         execution.completed_at = datetime.utcnow()
         execution.execution_phase = "completed"
         execution.next_check_at = None
+        
+        # Update the result to include final P&L
+        if execution.result:
+            execution.result['final_pnl'] = final_pnl
+            execution.result['final_pnl_percent'] = final_pnl_percent
+            execution.result['closed_from_ui'] = True
+            execution.result['closed_at'] = datetime.utcnow().isoformat()
+        
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(execution, 'result')
         
         await db.commit()
         
