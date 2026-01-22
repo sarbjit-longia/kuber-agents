@@ -998,16 +998,18 @@ class PipelineExecutor:
         # Schedule monitoring task if entering monitoring mode
         if execution.status == ExecutionStatus.MONITORING:
             from app.orchestration.tasks import schedule_monitoring_check
-            interval = execution.monitor_interval_minutes
+            # Schedule first check immediately (countdown=0) so UI shows P&L right away
+            # Subsequent checks will use the configured interval
             schedule_monitoring_check.apply_async(
                 args=[str(execution.id)],
-                countdown=interval * 60  # Convert minutes to seconds
+                countdown=0  # First check happens immediately
             )
             self.logger.info(
                 "monitoring_scheduled",
                 execution_id=str(execution.id),
-                interval_minutes=interval,
-                next_check_at=execution.next_check_at.isoformat()
+                first_check="immediate",
+                interval_minutes=execution.monitor_interval_minutes,
+                next_check_at=execution.next_check_at.isoformat() if execution.next_check_at else "immediate"
             )
         
         return execution

@@ -402,6 +402,25 @@ class OandaBrokerService(BrokerService):
         
         try:
             result = self._make_request("PUT", f"/accounts/{target_account}/positions/{instrument}/close", data=data)
+            
+            # Check if there's an error in the response
+            if "error" in result:
+                error_msg = result["error"]
+                
+                # If position doesn't exist, it's already closed - treat as success
+                if "CLOSEOUT_POSITION_DOESNT_EXIST" in error_msg or "does not exist" in error_msg:
+                    self.logger.info("Oanda position already closed", instrument=instrument)
+                    return {
+                        "success": True, 
+                        "symbol": instrument, 
+                        "message": "Position was already closed",
+                        "already_closed": True
+                    }
+                else:
+                    # Other errors are actual failures
+                    self.logger.error("Failed to close Oanda position", error=error_msg)
+                    return {"success": False, "error": error_msg}
+            
             self.logger.info("Oanda position closed", instrument=instrument)
             return {"success": True, "symbol": instrument, "result": result}
         except Exception as e:
