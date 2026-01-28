@@ -222,7 +222,7 @@ def prefetch_indicators_task():
                             await fetcher.fetch_indicators(
                                 ticker=ticker,
                                 timeframe=timeframe,
-                                indicator=indicator,
+                                indicators=[indicator],  # Pass as list, not string
                                 params=params
                             )
                             total_fetched += 1

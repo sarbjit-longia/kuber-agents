@@ -3380,11 +3380,11 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "sum(increase(quotes_fetched_total[$__range])) or vector(0)",
-          "legendFormat": "Total Quotes Fetched (5m)",
+          "legendFormat": "Total Quotes Fetched",
           "refId": "A"
         }
       ],
-      "title": "Quotes Fetched (5min window)",
+      "title": "Quotes Fetched",
       "type": "timeseries"
     },
     {
@@ -3586,7 +3586,7 @@
           "refId": "A"
         }
       ],
-      "title": "Candles Fetched (5m)",
+      "title": "Candles Fetched (Total)",
       "type": "stat"
     },
     {
