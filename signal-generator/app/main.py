@@ -18,7 +18,7 @@ from kafka.errors import KafkaError
 from app.config import settings
 from app.generators import (
     get_registry,
-    MockSignalGenerator,
+    # MockSignalGenerator removed - not for production use
     GoldenCrossSignalGenerator,
     DeathCrossSignalGenerator,
     RSISignalGenerator,
@@ -209,19 +209,10 @@ class SignalGeneratorService:
         
         logger.info("initializing_generators_with_watchlist", ticker_count=len(watchlist), tickers=watchlist)
         
-        # Mock generator (for testing)
-        from app.schemas.signal import BiasType
-        
-        mock_config = {
-            "tickers": watchlist[:3],  # First 3 tickers
-            "emission_probability": 0.3,
-            "bias_options": [BiasType.BULLISH, BiasType.BEARISH]
-        }
-        self.generators.append({
-            "name": "mock",
-            "generator": MockSignalGenerator(mock_config),
-            "interval": settings.MOCK_GENERATOR_INTERVAL_SECONDS
-        })
+        # NOTE: Mock generator removed - not for production use
+        # from app.schemas.signal import BiasType
+        # mock_config = {"tickers": watchlist[:3], "emission_probability": 0.3, "bias_options": [BiasType.BULLISH, BiasType.BEARISH]}
+        # self.generators.append({"name": "mock", "generator": MockSignalGenerator(mock_config), "interval": settings.MOCK_GENERATOR_INTERVAL_SECONDS})
         
         # Golden cross generator (multi-timeframe)
         for tf in self._merge_timeframes(settings.GOLDEN_CROSS_TIMEFRAME):

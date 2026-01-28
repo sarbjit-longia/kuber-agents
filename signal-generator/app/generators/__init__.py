@@ -5,7 +5,7 @@ from app.generators.registry import (
     get_registry,
     register_generator
 )
-from app.generators.mock import MockSignalGenerator
+# Removed MockSignalGenerator import - not for production use
 from app.generators.golden_cross import GoldenCrossSignalGenerator
 from app.generators.death_cross import DeathCrossSignalGenerator
 from app.generators.rsi import RSISignalGenerator
@@ -30,7 +30,8 @@ def _initialize_registry():
     """Initialize the generator registry with all available generators."""
     registry = get_registry()
     
-    registry.register(MockSignalGenerator)
+    # DO NOT register MockSignalGenerator in production
+    # registry.register(MockSignalGenerator)
     registry.register(GoldenCrossSignalGenerator)
     registry.register(DeathCrossSignalGenerator)
     registry.register(RSISignalGenerator)
@@ -60,7 +61,7 @@ __all__ = [
     "SignalGeneratorRegistry",
     "get_registry",
     "register_generator",
-    "MockSignalGenerator",
+    # "MockSignalGenerator",  # Removed from exports
     "GoldenCrossSignalGenerator",
     "DeathCrossSignalGenerator",
     "RSISignalGenerator",
@@ -79,4 +80,5 @@ __all__ = [
     "OBVSignalGenerator",
     "SARSignalGenerator",
 ]
+
 

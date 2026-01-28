@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
         app.state.metrics = MetricsHelper(meter)
         logger.info("telemetry_initialized")
     except Exception as e:
-        logger.error("telemetry_initialization_failed", error=str(e))
+        logger.error("telemetry_initialization_failed", error=str(e), exc_info=True)
     
     # Startup logic here
     yield
