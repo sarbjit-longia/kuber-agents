@@ -89,7 +89,7 @@ def init_worker_telemetry(**kwargs):
         setup_telemetry_minimal(
             service_name="trading-celery-worker",
             service_version="1.0.0",
-            metrics_port=8001
+            metrics_port=8001  # Internal container port
         )
         logger.info("Celery worker telemetry initialized")
     except Exception as e:

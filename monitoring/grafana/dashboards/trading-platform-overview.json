@@ -883,7 +883,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(signals_generated_total)",
+          "expr": "sum(increase(signals_generated_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -936,7 +936,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(kafka_publish_success_total)",
+          "expr": "sum(increase(kafka_publish_success_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -993,7 +993,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(kafka_publish_failure_total) or vector(0)",
+          "expr": "sum(increase(kafka_publish_failure_total[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
@@ -1056,7 +1056,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "(sum(kafka_publish_success_total) or vector(0)) / ((sum(kafka_publish_success_total) or vector(0)) + (sum(kafka_publish_failure_total) or vector(0)) or vector(1)) * 100",
+          "expr": "(sum(increase(kafka_publish_success_total[$__range])) or vector(0)) / ((sum(increase(kafka_publish_success_total[$__range])) or vector(0)) + (sum(increase(kafka_publish_failure_total[$__range])) or vector(0)) or vector(1)) * 100",
           "refId": "A"
         }
       ],
@@ -1291,12 +1291,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (generator) (signals_generated_total)",
+          "expr": "sum by (generator) (increase(signals_generated_total[$__range]))",
           "legendFormat": "{{generator}}",
           "refId": "A"
         }
       ],
-      "title": "\ud83d\udd0d Total Signals Distribution by Generator",
+      "title": "\ud83d\udcca Total Signals Distribution by Generator",
       "type": "piechart"
     },
     {
@@ -1353,7 +1353,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (signal_type) (signals_generated_total)",
+          "expr": "sum by (signal_type) (increase(signals_generated_total[$__range]))",
           "legendFormat": "{{signal_type}}",
           "refId": "A"
         }
@@ -1494,19 +1494,19 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum by (generator) (signals_generated_total)",
+          "expr": "sum by (generator) (increase(signals_generated_total[$__range]))",
           "format": "table",
           "instant": true,
           "refId": "A"
         },
         {
-          "expr": "sum by (generator) (generator_scans_total)",
+          "expr": "sum by (generator) (increase(generator_scans_total[$__range]))",
           "format": "table",
           "instant": true,
           "refId": "B"
         },
         {
-          "expr": "sum by (generator) (generator_scan_errors_total) or sum by (generator) (generator_scans_total * 0)",
+          "expr": "sum by (generator) (increase(generator_scan_errors_total[$__range])) or sum by (generator) (generator_scans_total * 0)",
           "format": "table",
           "instant": true,
           "refId": "C"
@@ -2177,6 +2177,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2230,6 +2231,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2269,7 +2271,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(signals_consumed_total)",
+          "expr": "sum(increase(signals_consumed_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -2283,6 +2285,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2322,7 +2325,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipelines_matched_total)",
+          "expr": "sum(increase(pipelines_matched_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -2336,6 +2339,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2375,7 +2379,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipelines_enqueued_total)",
+          "expr": "sum(increase(pipelines_enqueued_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -2389,6 +2393,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2432,7 +2437,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipelines_skipped_running_total) or vector(0)",
+          "expr": "sum(increase(pipelines_skipped_running_total[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
@@ -2692,6 +2697,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2731,7 +2737,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipeline_executions_total)",
+          "expr": "sum(increase(pipeline_executions_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -2745,6 +2751,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2784,7 +2791,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipeline_executions_total{status=\"completed\"})",
+          "expr": "sum(increase(pipeline_executions_total{status=\"completed\"}[$__range]))",
           "refId": "A"
         }
       ],
@@ -2798,6 +2805,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2841,7 +2849,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(pipeline_executions_total{status=\"failed\"}) or vector(0)",
+          "expr": "sum(increase(pipeline_executions_total{status=\"failed\"}[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
@@ -2904,7 +2912,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "(sum(pipeline_executions_total{status=\"completed\"}) or vector(0)) / (sum(pipeline_executions_total) or vector(1)) * 100",
+          "expr": "(sum(increase(pipeline_executions_total{status=\"completed\"}[$__range])) or vector(0)) / (sum(increase(pipeline_executions_total[$__range])) or vector(1)) * 100",
           "refId": "A"
         }
       ],
@@ -3371,7 +3379,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(quotes_fetched_total) or vector(0)",
+          "expr": "sum(increase(quotes_fetched_total[$__range])) or vector(0)",
           "legendFormat": "Total Quotes Fetched (5m)",
           "refId": "A"
         }
@@ -3451,7 +3459,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(quotes_fetched_total) or vector(0)",
+          "expr": "sum(rate(quotes_fetched_total[1m])) or vector(0)",
           "legendFormat": "{{ticker}}",
           "refId": "A"
         }
@@ -3513,7 +3521,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(quotes_fetch_failures_total) or vector(0)",
+          "expr": "sum(increase(quotes_fetch_failures_total[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
@@ -3574,7 +3582,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(candles_fetched_total) or vector(0)",
+          "expr": "sum(increase(candles_fetched_total[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
@@ -3722,7 +3730,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(increase(indicator_fetch_failures_total[1h])) or vector(0)",
+          "expr": "sum(increase(indicator_fetch_failures_total[$__range])) or vector(0)",
           "refId": "A"
         }
       ],

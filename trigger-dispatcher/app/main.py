@@ -79,6 +79,7 @@ class TriggerDispatcher:
         """Initialize the dispatcher."""
         self.pipeline_cache: Dict[str, Dict[str, Any]] = {}
         self.last_cache_refresh: float = 0
+        self.last_cache_size: int = 0  # Track last cache size for delta calculation
         self.signal_buffer: List[Signal] = []
         self.last_batch_process: float = time.time()
         self.running = False
@@ -255,9 +256,12 @@ class TriggerDispatcher:
                 self.pipeline_cache = new_cache
                 self.last_cache_refresh = time.time()
                 
-                # Track cache size
+                # Track cache size with delta (UpDownCounter accumulates)
+                new_cache_size = len(new_cache)
                 if self.meter:
-                    self.cache_size.add(len(new_cache))
+                    delta = new_cache_size - self.last_cache_size
+                    self.cache_size.add(delta)
+                    self.last_cache_size = new_cache_size
                 
                 logger.info(
                     "pipeline_cache_refreshed",
@@ -414,7 +418,8 @@ class TriggerDispatcher:
     
     async def enqueue_pipeline_executions(
         self,
-        pipeline_signal_map: Dict[str, List[str]]
+        pipeline_signal_map: Dict[str, List[str]],
+        signals: List[Signal]  # Add signals parameter
     ):
         """
         Enqueue Celery tasks for matched pipelines.
@@ -425,6 +430,7 @@ class TriggerDispatcher:
         
         Args:
             pipeline_signal_map: Dict mapping pipeline_id to list of signal_ids
+            signals: List of Signal objects from the current batch
         """
         if not pipeline_signal_map:
             return
@@ -442,42 +448,82 @@ class TriggerDispatcher:
             tickers_to_execute = set()
             signal_data_by_ticker = {}  # Store signal context per ticker
             
+            logger.debug(
+                "processing_pipeline_signals",
+                pipeline_id=pipeline_id,
+                signal_ids=signal_ids,
+                signals_count=len(signals),
+                signal_ids_in_batch=[str(s.signal_id) for s in signals[:5]]  # First 5
+            )
+            
             for signal_id in signal_ids:
-                # Find the signal in our buffer
-                for signal in self.signal_buffer:
+                # Find the signal in the provided signals list (not self.signal_buffer which is now empty)
+                for signal in signals:
                     if str(signal.signal_id) == signal_id:
                         # Extract tickers and their pipeline routing info
+                        # Get pipeline routing from signal-level metadata (not ticker-level)
+                        ticker_pipelines = signal.metadata.get('ticker_pipelines', {})
+                        
+                        logger.debug(
+                            "checking_ticker_routing",
+                            signal_id=str(signal.signal_id),
+                            pipeline_id=pipeline_id,
+                            ticker_pipelines_keys=list(ticker_pipelines.keys()) if ticker_pipelines else [],
+                            has_routing_metadata=bool(ticker_pipelines)
+                        )
+                        
                         for ticker_signal in signal.tickers:
                             ticker = ticker_signal.get('ticker')
                             if not ticker:
                                 continue
                             
                             # Check if this ticker is routed to this pipeline
-                            ticker_metadata = ticker_signal.get('metadata', {})
-                            pipelines = ticker_metadata.get('pipelines', [])
-                            
-                            # If pipeline routing is present, verify this pipeline is listed
-                            if pipelines:
-                                pipeline_match = any(
-                                    p.get('pipeline_id') == pipeline_id 
-                                    for p in pipelines
+                            # If routing metadata exists, verify this pipeline is listed for this ticker
+                            if ticker_pipelines:
+                                pipelines_for_ticker = ticker_pipelines.get(ticker, [])
+                                logger.debug(
+                                    "ticker_routing_check",
+                                    ticker=ticker,
+                                    pipeline_id=pipeline_id,
+                                    pipelines_for_ticker=pipelines_for_ticker,
+                                    num_pipelines=len(pipelines_for_ticker) if pipelines_for_ticker else 0
                                 )
-                                if not pipeline_match:
-                                    continue  # This ticker not routed to this pipeline
+                                if pipelines_for_ticker:
+                                    pipeline_match = any(
+                                        p.get('pipeline_id') == pipeline_id 
+                                        for p in pipelines_for_ticker
+                                    )
+                                    if not pipeline_match:
+                                        logger.debug(
+                                            "ticker_not_routed_to_pipeline",
+                                            ticker=ticker,
+                                            pipeline_id=pipeline_id,
+                                            action="skipped"
+                                        )
+                                        continue  # This ticker not routed to this pipeline
                             
-                            tickers_to_execute.add(ticker)
-                            
-                            # Store signal context for this ticker
-                            if ticker not in signal_data_by_ticker:
-                                signal_data_by_ticker[ticker] = {
-                                    'signal_id': signal.signal_id,
-                                    'signal_type': signal.signal_type,
-                                    'source': signal.source,
-                                    'timestamp': signal.timestamp,
-                                    'ticker_signal': ticker_signal,
-                                    'metadata': signal.metadata
-                                }
+                        tickers_to_execute.add(ticker)
+                        
+                        # Store signal context for this ticker
+                        # Transform to match SignalData schema expectations
+                        if ticker not in signal_data_by_ticker:
+                            signal_data_by_ticker[ticker] = {
+                                'signal_id': str(signal.signal_id),
+                                'signal_type': signal.signal_type,
+                                'source': signal.source,
+                                'timestamp': signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else signal.timestamp,
+                                'tickers': [ticker],  # SignalData expects a list of ticker symbols
+                                'confidence': ticker_signal.get('confidence', 50.0),  # Extract confidence from ticker_signal
+                                'metadata': signal.metadata
+                            }
                         break
+            
+            logger.debug(
+                "tickers_collected_for_pipeline",
+                pipeline_id=pipeline_id,
+                tickers_to_execute=list(tickers_to_execute),
+                num_tickers=len(tickers_to_execute)
+            )
             
             # For each unique ticker, enqueue a separate execution
             for ticker in tickers_to_execute:
@@ -585,7 +631,7 @@ class TriggerDispatcher:
             return
         
         # Step 2: Check running status + enqueue tasks
-        await self.enqueue_pipeline_executions(pipeline_signal_map)
+        await self.enqueue_pipeline_executions(pipeline_signal_map, signals)
         
         # Track batch processing duration
         if self.meter:

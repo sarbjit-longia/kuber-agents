@@ -16,7 +16,7 @@ from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
-from prometheus_client import start_http_server, Gauge
+from prometheus_client import start_http_server, Gauge, Histogram, Counter
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,21 @@ _meter: Optional[metrics.Meter] = None
 
 # Prometheus Gauges for system metrics (using prometheus_client directly)
 _system_gauges = {}
+
+# Prometheus Histogram for pipeline execution duration
+pipeline_duration_histogram = Histogram(
+    'pipeline_execution_duration_seconds',
+    'Pipeline execution duration in seconds',
+    ['status', 'pipeline_id'],
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600]  # 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
+)
+
+# Prometheus Counter for pipeline executions (respects time filters)
+pipeline_executions_counter = Counter(
+    'pipeline_executions_total',
+    'Total pipeline executions',
+    ['status', 'pipeline_id']
+)
 
 
 def setup_telemetry(
@@ -143,7 +158,20 @@ def setup_telemetry_minimal(
         "service.namespace": "trading-platform",
     })
     
-    logger.info(f"Setting up OpenTelemetry for {service_name}")
+    logger.info(f"Setting up OpenTelemetry for {service_name} on port {metrics_port}")
+    
+    # Start Prometheus HTTP server for metrics
+    try:
+        from prometheus_client import start_http_server
+        start_http_server(metrics_port)
+        logger.info(f"Prometheus metrics server started on port {metrics_port}")
+    except OSError as e:
+        if "Address already in use" in str(e):
+            logger.warning(f"Metrics port {metrics_port} already in use (expected for worker forks)")
+        else:
+            logger.error(f"Failed to start metrics server: {e}")
+    except Exception as e:
+        logger.error(f"Failed to start metrics server: {e}")
     
     # Setup Metrics with Prometheus exporter
     prometheus_reader = PrometheusMetricReader()

@@ -723,18 +723,9 @@ class PipelineExecutor:
         
         # Track execution metrics
         start_time = time.time()
-        metrics = _get_metrics()
         
-        if metrics:
-            exec_counter = metrics.counter(
-                "pipeline_executions_total",
-                description="Total pipeline executions"
-            )
-            exec_duration = metrics.histogram(
-                "pipeline_execution_duration_seconds",
-                description="Pipeline execution duration",
-                unit="s"
-            )
+        # Use prometheus_client histogram and counter for metrics tracking
+        from app.telemetry import pipeline_duration_histogram, pipeline_executions_counter
         
         # Initialize state
         # Create pipeline state with signal context if available
@@ -913,16 +904,16 @@ class PipelineExecutor:
         execution_time = time.time() - start_time
         final_status = "completed" if not state.errors else "failed"
         
-        if metrics:
-            exec_counter.add(1, {
-                "status": final_status,
-                "pipeline_id": str(self.pipeline.id),
-                "trigger_mode": self.pipeline.trigger_mode.value if hasattr(self.pipeline, 'trigger_mode') else "unknown"
-            })
-            exec_duration.record(execution_time, {
-                "status": final_status,
-                "pipeline_id": str(self.pipeline.id)
-            })
+        # Record execution metrics in Prometheus
+        pipeline_executions_counter.labels(
+            status=final_status,
+            pipeline_id=str(self.pipeline.id)
+        ).inc()
+        
+        pipeline_duration_histogram.labels(
+            status=final_status,
+            pipeline_id=str(self.pipeline.id)
+        ).observe(execution_time)
         
         # Update final execution record
         # Check if entering monitoring mode (Trade Manager)

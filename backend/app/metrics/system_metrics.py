@@ -47,6 +47,9 @@ class SystemMetricsCollector:
                 'executions_today': self._get_executions_today_count(db),
                 'executions_running': self._get_running_executions_count(db),
                 'executions_pending': self._get_pending_executions_count(db),
+                'executions_total': self._get_total_executions_count(db),
+                'executions_completed': self._get_completed_executions_count(db),
+                'executions_failed': self._get_failed_executions_count(db),
                 'success_rate_24h': self._get_success_rate_24h(db),
             }
             
@@ -135,6 +138,29 @@ class SystemMetricsCollector:
         result = db.execute(
             select(func.count(Execution.id)).where(
                 Execution.status == ExecutionStatus.PENDING
+            )
+        )
+        return result.scalar() or 0
+    
+    def _get_total_executions_count(self, db: Session) -> int:
+        """Total count of all executions."""
+        result = db.execute(select(func.count(Execution.id)))
+        return result.scalar() or 0
+    
+    def _get_completed_executions_count(self, db: Session) -> int:
+        """Count of completed executions."""
+        result = db.execute(
+            select(func.count(Execution.id)).where(
+                Execution.status == ExecutionStatus.COMPLETED
+            )
+        )
+        return result.scalar() or 0
+    
+    def _get_failed_executions_count(self, db: Session) -> int:
+        """Count of failed executions."""
+        result = db.execute(
+            select(func.count(Execution.id)).where(
+                Execution.status == ExecutionStatus.FAILED
             )
         )
         return result.scalar() or 0
