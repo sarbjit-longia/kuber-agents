@@ -95,12 +95,13 @@ class IndicatorCalculator:
             logger.warning("no_valid_candles_after_cleaning")
             return {}
         
-        # Extract OHLCV arrays
-        close = df['close'].values
-        high = df['high'].values if 'high' in df.columns else close
-        low = df['low'].values if 'low' in df.columns else close
-        open_price = df['open'].values if 'open' in df.columns else close
-        volume = df['volume'].values if 'volume' in df.columns else None
+        # Extract OHLCV arrays (TA-Lib requires float64 dtype)
+        import numpy as np
+        close = df['close'].astype(np.float64).values
+        high = df['high'].astype(np.float64).values if 'high' in df.columns else close
+        low = df['low'].astype(np.float64).values if 'low' in df.columns else close
+        open_price = df['open'].astype(np.float64).values if 'open' in df.columns else close
+        volume = df['volume'].astype(np.float64).values if 'volume' in df.columns else None
         
         results = {}
         

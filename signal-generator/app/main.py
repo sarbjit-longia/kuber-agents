@@ -576,10 +576,12 @@ class SignalGeneratorService:
             try:
                 pipeline_scanner_mapping = self.scanner_universe.get_pipeline_scanner_mapping()
             except Exception as e:
-                self.logger.warning("failed_to_get_pipeline_mapping", error=str(e))
+                logger.warning("failed_to_get_pipeline_mapping", error=str(e))
         
         for signal in signals:
-            # Enrich signal tickers with pipeline_id and scanner_id
+            # Enrich signal with pipeline routing info
+            # Build a ticker->pipelines mapping
+            ticker_to_pipelines = {}
             for ticker_signal in signal.tickers:
                 ticker = ticker_signal.ticker
                 
@@ -594,11 +596,14 @@ class SignalGeneratorService:
                             'scanner_name': pipeline_data['scanner_name']
                         })
                 
-                # Add pipeline routing info to ticker signal metadata
                 if matched_pipelines:
-                    if not hasattr(ticker_signal, 'metadata'):
-                        ticker_signal.metadata = {}
-                    ticker_signal.metadata['pipelines'] = matched_pipelines
+                    ticker_to_pipelines[ticker] = matched_pipelines
+            
+            # Add pipeline routing info to signal metadata (not ticker metadata)
+            if ticker_to_pipelines:
+                if not signal.metadata:
+                    signal.metadata = {}
+                signal.metadata['ticker_pipelines'] = ticker_to_pipelines
             
             # Convert to Kafka-ready format
             message = signal.to_kafka_message()
