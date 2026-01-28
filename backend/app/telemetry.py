@@ -16,12 +16,15 @@ from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
-from prometheus_client import start_http_server
+from prometheus_client import start_http_server, Gauge
 
 logger = logging.getLogger(__name__)
 
 # Global meter instance
 _meter: Optional[metrics.Meter] = None
+
+# Prometheus Gauges for system metrics (using prometheus_client directly)
+_system_gauges = {}
 
 
 def setup_telemetry(
@@ -239,138 +242,71 @@ class MetricsHelper:
 
 def setup_system_metrics(meter: metrics.Meter):
     """
-    Setup system metrics collection via observable gauges.
+    Setup system metrics collection using prometheus_client Gauges.
     
-    These metrics are automatically updated when Prometheus scrapes them.
+    These metrics are updated periodically and exposed via the Prometheus HTTP endpoint.
     
     Args:
-        meter: OpenTelemetry meter instance
+        meter: OpenTelemetry meter instance (unused, kept for API compatibility)
     """
+    global _system_gauges
     from app.metrics.system_metrics import system_metrics_collector
     
-    logger.info("Setting up system metrics collection")
+    logger.info("Setting up system metrics collection with prometheus_client")
     
-    def observe_metrics(options):
-        """Callback to observe all system metrics."""
-        try:
-            metrics_data = system_metrics_collector.collect_all_metrics()
+    # Create Prometheus Gauges (these are automatically exposed on /metrics)
+    _system_gauges['active_pipelines'] = Gauge(
+        'system_active_pipelines',
+        'Number of active pipelines'
+    )
+    _system_gauges['active_users'] = Gauge(
+        'system_active_users',
+        'Number of active users with active pipelines'
+    )
+    _system_gauges['success_rate_24h'] = Gauge(
+        'system_success_rate_24h_percent',
+        'Success rate of executions in last 24 hours (percentage)'
+    )
+    _system_gauges['executions_today'] = Gauge(
+        'system_executions_today_executions',
+        'Number of executions started today'
+    )
+    _system_gauges['executions_running'] = Gauge(
+        'system_executions_running_executions',
+        'Number of currently running executions'
+    )
+    _system_gauges['executions_pending'] = Gauge(
+        'system_executions_pending_executions',
+        'Number of pending executions'
+    )
+    
+    # Start background task to update metrics periodically
+    import threading
+    import time
+    
+    def update_metrics_loop():
+        """Background task to update metrics every 15 seconds."""
+        while True:
+            try:
+                metrics_data = system_metrics_collector.collect_all_metrics()
+                
+                _system_gauges['active_pipelines'].set(metrics_data.get('active_pipelines', 0))
+                _system_gauges['active_users'].set(metrics_data.get('active_users', 0))
+                _system_gauges['success_rate_24h'].set(metrics_data.get('success_rate_24h', 0.0))
+                _system_gauges['executions_today'].set(metrics_data.get('executions_today', 0))
+                _system_gauges['executions_running'].set(metrics_data.get('executions_running', 0))
+                _system_gauges['executions_pending'].set(metrics_data.get('executions_pending', 0))
+                
+                logger.debug("system_metrics_updated", metrics=metrics_data)
+            except Exception as e:
+                logger.error("system_metrics_update_failed", error=str(e), exc_info=True)
             
-            # Yield all metrics
-            for metric_name, value in metrics_data.items():
-                yield metrics.Observation(value=value, attributes={"metric": metric_name})
-        except Exception as e:
-            logger.error(f"Error collecting system metrics: {e}", exc_info=True)
+            time.sleep(15)  # Update every 15 seconds
     
-    # Create observable gauges for system metrics
-    meter.create_observable_gauge(
-        name="system_active_pipelines",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('active_pipelines', 0)
-            )
-        ]],
-        description="Number of active pipelines",
-        unit="pipelines"
-    )
+    # Start update thread as daemon (will stop when main program exits)
+    update_thread = threading.Thread(target=update_metrics_loop, daemon=True)
+    update_thread.start()
     
-    meter.create_observable_gauge(
-        name="system_total_pipelines",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('total_pipelines', 0)
-            )
-        ]],
-        description="Total number of pipelines",
-        unit="pipelines"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_signal_pipelines",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('signal_pipelines', 0)
-            )
-        ]],
-        description="Number of active signal-based pipelines",
-        unit="pipelines"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_periodic_pipelines",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('periodic_pipelines', 0)
-            )
-        ]],
-        description="Number of active periodic pipelines",
-        unit="pipelines"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_active_users",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('active_users', 0)
-            )
-        ]],
-        description="Number of active users (with active pipelines)",
-        unit="users"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_total_users",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('total_users', 0)
-            )
-        ]],
-        description="Total number of users",
-        unit="users"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_executions_today",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('executions_today', 0)
-            )
-        ]],
-        description="Number of executions started today",
-        unit="executions"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_executions_running",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('executions_running', 0)
-            )
-        ]],
-        description="Number of currently running executions",
-        unit="executions"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_executions_pending",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('executions_pending', 0)
-            )
-        ]],
-        description="Number of pending executions",
-        unit="executions"
-    )
-    
-    meter.create_observable_gauge(
-        name="system_success_rate_24h",
-        callbacks=[lambda options: [
-            metrics.Observation(
-                value=system_metrics_collector.collect_all_metrics().get('success_rate_24h', 0.0)
-            )
-        ]],
-        description="Success rate of executions in last 24 hours",
-        unit="%"
-    )
-    
-    logger.info("System metrics collection configured")
+    logger.info("System metrics collection configured and background updater started")
+
 
