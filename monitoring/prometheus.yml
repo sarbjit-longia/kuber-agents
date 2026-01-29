@@ -54,3 +54,9 @@ scrape_configs:
       - targets: ['data-plane:8000']
     metrics_path: '/api/v1/data/metrics-universe'
 
+  # cAdvisor - Container Resource Metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 15s
+    scrape_timeout: 10s
