@@ -6,6 +6,7 @@ Abstract base class that all signal generators must inherit from.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 import structlog
+import pandas as pd
 
 from app.schemas.signal import Signal
 
@@ -76,6 +77,61 @@ class BaseSignalGenerator(ABC):
             ValueError: If configuration is invalid
         """
         pass
+    
+    def _dataframe_to_candles(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Convert DataFrame to list of candle dicts with normalized column names.
+        
+        Handles both DataFrame and dict/list formats for compatibility.
+        Normalizes column names to: o, h, l, c, v, t
+        
+        Args:
+            df: DataFrame with columns like: open/o, high/h, low/l, close/c, volume/v, timestamp/t
+            
+        Returns:
+            List of candle dicts: [{"o": ..., "h": ..., "l": ..., "c": ..., "v": ..., "t": ...}]
+            Empty list if df is None or empty
+        """
+        # If None, return empty list
+        if df is None:
+            return []
+        
+        # If already a list, return as-is (assume already normalized)
+        if isinstance(df, list):
+            return df
+        
+        # If DataFrame, convert to list of dicts with normalized names
+        if isinstance(df, pd.DataFrame):
+            if df.empty:
+                return []
+            
+            # Create a copy and rename columns to short names
+            df_normalized = df.copy()
+            
+            # Map long names to short names
+            column_mapping = {
+                'open': 'o',
+                'high': 'h',
+                'low': 'l',
+                'close': 'c',
+                'volume': 'v',
+                'timestamp': 't'
+            }
+            
+            # Rename columns if they exist
+            df_normalized.rename(columns=column_mapping, inplace=True)
+            
+            # Convert to records (list of dicts)
+            candles = df_normalized.to_dict('records')
+            return candles
+        
+        # If dict, wrap in list
+        if isinstance(df, dict):
+            return [df]
+        
+        # Unknown format
+        logger.warning("unknown_candle_format", type=type(df).__name__)
+        return []
     
     @property
     def generator_type(self) -> str:

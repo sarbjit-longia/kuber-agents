@@ -35,7 +35,18 @@ from app.generators import (
     AroonSignalGenerator,
     MFISignalGenerator,
     OBVSignalGenerator,
-    SARSignalGenerator
+    SARSignalGenerator,
+    EMA200CrossoverSignalGenerator,
+    SwingPointBreakSignalGenerator,
+    MomentumDivergenceSignalGenerator,
+    FairValueGapSignalGenerator,
+    LiquiditySweepSignalGenerator,
+    BreakOfStructureSignalGenerator,
+    OrderBlockSignalGenerator,
+    ChangeOfCharacterSignalGenerator,
+    VolumeProfilePOCSignalGenerator,
+    AccumulationDistributionSignalGenerator,
+    HTFTrendAlignmentSignalGenerator
 )
 from app.schemas.signal import Signal
 from app.telemetry import setup_telemetry
@@ -490,6 +501,172 @@ class SignalGeneratorService:
                 "name": f"sar_{tf}",
                 "generator": SARSignalGenerator(sar_config),
                 "interval": settings.SAR_CHECK_INTERVAL_SECONDS
+            })
+        
+        # 200 EMA Crossover generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.EMA_200_TIMEFRAME):
+            ema200_config = {
+                "tickers": watchlist,
+                "ema_period": settings.EMA_200_PERIOD,
+                "timeframe": tf,
+                "lookback_periods": 3,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"ema_200_crossover_{tf}",
+                "generator": EMA200CrossoverSignalGenerator(ema200_config),
+                "interval": settings.EMA_200_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Swing Point Break generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.SWING_POINT_TIMEFRAME):
+            swing_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.SWING_POINT_LOOKBACK_PERIODS,
+                "timeframe": tf,
+                "min_swing_strength": settings.SWING_POINT_MIN_STRENGTH,
+                "confidence": 0.80
+            }
+            self.generators.append({
+                "name": f"swing_point_break_{tf}",
+                "generator": SwingPointBreakSignalGenerator(swing_config),
+                "interval": settings.SWING_POINT_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Momentum Divergence generator (RSI - multi-timeframe)
+        for tf in self._merge_timeframes(settings.DIVERGENCE_TIMEFRAME):
+            rsi_div_config = {
+                "tickers": watchlist,
+                "indicator": settings.DIVERGENCE_INDICATOR,
+                "rsi_period": settings.DIVERGENCE_RSI_PERIOD,
+                "lookback_periods": settings.DIVERGENCE_LOOKBACK_PERIODS,
+                "timeframe": tf,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"rsi_divergence_{tf}",
+                "generator": MomentumDivergenceSignalGenerator(rsi_div_config),
+                "interval": settings.DIVERGENCE_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Fair Value Gap generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.FVG_TIMEFRAME):
+            fvg_config = {
+                "tickers": watchlist,
+                "min_gap_pips": settings.FVG_MIN_GAP_PIPS,
+                "timeframe": tf,
+                "confidence": 0.80
+            }
+            self.generators.append({
+                "name": f"fvg_{tf}",
+                "generator": FairValueGapSignalGenerator(fvg_config),
+                "interval": settings.FVG_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Liquidity Sweep generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.LIQUIDITY_SWEEP_TIMEFRAME):
+            liq_sweep_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.LIQUIDITY_SWEEP_LOOKBACK_PERIODS,
+                "sweep_tolerance_pips": settings.LIQUIDITY_SWEEP_TOLERANCE_PIPS,
+                "timeframe": tf,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"liquidity_sweep_{tf}",
+                "generator": LiquiditySweepSignalGenerator(liq_sweep_config),
+                "interval": settings.LIQUIDITY_SWEEP_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Break of Structure generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.BOS_TIMEFRAME):
+            bos_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.BOS_LOOKBACK_PERIODS,
+                "min_swing_strength": settings.BOS_MIN_SWING_STRENGTH,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"bos_{tf}",
+                "generator": BreakOfStructureSignalGenerator(bos_config),
+                "interval": settings.BOS_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Order Block generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.ORDER_BLOCK_TIMEFRAME):
+            order_block_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.ORDER_BLOCK_LOOKBACK_PERIODS,
+                "min_move_pips": settings.ORDER_BLOCK_MIN_MOVE_PIPS,
+                "timeframe": tf,
+                "confidence": 0.80
+            }
+            self.generators.append({
+                "name": f"order_block_{tf}",
+                "generator": OrderBlockSignalGenerator(order_block_config),
+                "interval": settings.ORDER_BLOCK_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Change of Character generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.CHOCH_TIMEFRAME):
+            choch_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.CHOCH_LOOKBACK_PERIODS,
+                "min_swing_strength": settings.CHOCH_MIN_SWING_STRENGTH,
+                "timeframe": tf,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"choch_{tf}",
+                "generator": ChangeOfCharacterSignalGenerator(choch_config),
+                "interval": settings.CHOCH_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Volume Profile POC Break generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.POC_TIMEFRAME):
+            poc_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.POC_LOOKBACK_PERIODS,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"poc_break_{tf}",
+                "generator": VolumeProfilePOCSignalGenerator(poc_config),
+                "interval": settings.POC_CHECK_INTERVAL_SECONDS
+            })
+        
+        # Accumulation/Distribution generator (multi-timeframe)
+        for tf in self._merge_timeframes(settings.ACCUM_DIST_TIMEFRAME):
+            accum_dist_config = {
+                "tickers": watchlist,
+                "lookback_periods": settings.ACCUM_DIST_LOOKBACK_PERIODS,
+                "min_slope_threshold": settings.ACCUM_DIST_MIN_SLOPE,
+                "timeframe": tf,
+                "confidence": 0.75
+            }
+            self.generators.append({
+                "name": f"accum_dist_{tf}",
+                "generator": AccumulationDistributionSignalGenerator(accum_dist_config),
+                "interval": settings.ACCUM_DIST_CHECK_INTERVAL_SECONDS
+            })
+        
+        # HTF Trend Alignment generator (multi-timeframe)
+        htf_timeframes_list = [tf.strip() for tf in settings.HTF_TREND_TIMEFRAMES.split(",") if tf.strip()]
+        for tf in self._merge_timeframes(settings.HTF_TREND_TIMEFRAME):
+            htf_trend_config = {
+                "tickers": watchlist,
+                "ema_period": settings.HTF_TREND_EMA_PERIOD,
+                "htf_timeframes": htf_timeframes_list,
+                "min_alignment": settings.HTF_TREND_MIN_ALIGNMENT,
+                "timeframe": tf,
+                "confidence": 0.85
+            }
+            self.generators.append({
+                "name": f"htf_trend_{tf}",
+                "generator": HTFTrendAlignmentSignalGenerator(htf_trend_config),
+                "interval": settings.HTF_TREND_CHECK_INTERVAL_SECONDS
             })
         
         logger.info(

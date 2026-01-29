@@ -69,6 +69,41 @@ class SignalType(str, Enum):
     # SAR
     SAR_BULLISH_REVERSAL = "sar_bullish_reversal"
     SAR_BEARISH_REVERSAL = "sar_bearish_reversal"
+    # 200 EMA Crossover
+    EMA_200_BULLISH_CROSSOVER = "ema_200_bullish_crossover"
+    EMA_200_BEARISH_CROSSOVER = "ema_200_bearish_crossover"
+    # Swing Point Break
+    SWING_POINT_BREAK_BULLISH = "swing_point_break_bullish"
+    SWING_POINT_BREAK_BEARISH = "swing_point_break_bearish"
+    # Momentum Divergence
+    RSI_BULLISH_DIVERGENCE = "rsi_bullish_divergence"
+    RSI_BEARISH_DIVERGENCE = "rsi_bearish_divergence"
+    MACD_BULLISH_DIVERGENCE = "macd_bullish_divergence"
+    MACD_BEARISH_DIVERGENCE = "macd_bearish_divergence"
+    # Fair Value Gap
+    FVG_BULLISH = "fvg_bullish"
+    FVG_BEARISH = "fvg_bearish"
+    # Liquidity Sweep
+    LIQUIDITY_SWEEP_BULLISH = "liquidity_sweep_bullish"
+    LIQUIDITY_SWEEP_BEARISH = "liquidity_sweep_bearish"
+    # Break of Structure
+    BREAK_OF_STRUCTURE_BULLISH = "break_of_structure_bullish"
+    BREAK_OF_STRUCTURE_BEARISH = "break_of_structure_bearish"
+    # Order Block
+    ORDER_BLOCK_BULLISH = "order_block_bullish"
+    ORDER_BLOCK_BEARISH = "order_block_bearish"
+    # Change of Character
+    CHOCH_BULLISH = "choch_bullish"
+    CHOCH_BEARISH = "choch_bearish"
+    # Volume Profile POC
+    POC_BREAK_BULLISH = "poc_break_bullish"
+    POC_BREAK_BEARISH = "poc_break_bearish"
+    # Accumulation/Distribution
+    ACCUMULATION_SIGNAL = "accumulation_signal"
+    DISTRIBUTION_SIGNAL = "distribution_signal"
+    # HTF Trend Alignment
+    HTF_TREND_ALIGNED_BULLISH = "htf_trend_aligned_bullish"
+    HTF_TREND_ALIGNED_BEARISH = "htf_trend_aligned_bearish"
     # Generic
     PRICE_LEVEL = "price_level"
     VOLATILITY = "volatility"

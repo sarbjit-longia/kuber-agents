@@ -23,6 +23,17 @@ from app.generators.aroon import AroonSignalGenerator
 from app.generators.mfi import MFISignalGenerator
 from app.generators.obv import OBVSignalGenerator
 from app.generators.sar import SARSignalGenerator
+from app.generators.ema_200_crossover import EMA200CrossoverSignalGenerator
+from app.generators.swing_point_break import SwingPointBreakSignalGenerator
+from app.generators.momentum_divergence import MomentumDivergenceSignalGenerator
+from app.generators.fair_value_gap import FairValueGapSignalGenerator
+from app.generators.liquidity_sweep import LiquiditySweepSignalGenerator
+from app.generators.break_of_structure import BreakOfStructureSignalGenerator
+from app.generators.order_block import OrderBlockSignalGenerator
+from app.generators.change_of_character import ChangeOfCharacterSignalGenerator
+from app.generators.volume_profile_poc import VolumeProfilePOCSignalGenerator
+from app.generators.accumulation_distribution import AccumulationDistributionSignalGenerator
+from app.generators.htf_trend_alignment import HTFTrendAlignmentSignalGenerator
 
 
 # Register all generators
@@ -49,6 +60,17 @@ def _initialize_registry():
     registry.register(MFISignalGenerator)
     registry.register(OBVSignalGenerator)
     registry.register(SARSignalGenerator)
+    registry.register(EMA200CrossoverSignalGenerator)
+    registry.register(SwingPointBreakSignalGenerator)
+    registry.register(MomentumDivergenceSignalGenerator)
+    registry.register(FairValueGapSignalGenerator)
+    registry.register(LiquiditySweepSignalGenerator)
+    registry.register(BreakOfStructureSignalGenerator)
+    registry.register(OrderBlockSignalGenerator)
+    registry.register(ChangeOfCharacterSignalGenerator)
+    registry.register(VolumeProfilePOCSignalGenerator)
+    registry.register(AccumulationDistributionSignalGenerator)
+    registry.register(HTFTrendAlignmentSignalGenerator)
 
 
 # Initialize registry on import
@@ -79,6 +101,17 @@ __all__ = [
     "MFISignalGenerator",
     "OBVSignalGenerator",
     "SARSignalGenerator",
+    "EMA200CrossoverSignalGenerator",
+    "SwingPointBreakSignalGenerator",
+    "MomentumDivergenceSignalGenerator",
+    "FairValueGapSignalGenerator",
+    "LiquiditySweepSignalGenerator",
+    "BreakOfStructureSignalGenerator",
+    "OrderBlockSignalGenerator",
+    "ChangeOfCharacterSignalGenerator",
+    "VolumeProfilePOCSignalGenerator",
+    "AccumulationDistributionSignalGenerator",
+    "HTFTrendAlignmentSignalGenerator",
 ]
 
 

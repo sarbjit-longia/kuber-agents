@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     DEATH_CROSS_SMA_LONG: int = 200
     DEATH_CROSS_TIMEFRAME: str = "D"
     
-    # Global additional timeframes (comma-separated string like "15,60,120")
-    ADDITIONAL_TIMEFRAMES: str = ""
+    # Global additional timeframes (comma-separated string like "5,15,60")
+    # These will be added to each generator's primary timeframe
+    ADDITIONAL_TIMEFRAMES: str = "5,15,60"
     
     # RSI Settings
     RSI_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
@@ -151,6 +152,71 @@ class Settings(BaseSettings):
     SAR_ACCELERATION: float = 0.02
     SAR_MAXIMUM: float = 0.20
     SAR_TIMEFRAME: str = "D"
+    
+    # 200 EMA Crossover Settings
+    EMA_200_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    EMA_200_PERIOD: int = 200
+    EMA_200_TIMEFRAME: str = "D"
+    
+    # Swing Point Break Settings
+    SWING_POINT_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    SWING_POINT_LOOKBACK_PERIODS: int = 20
+    SWING_POINT_MIN_STRENGTH: int = 2
+    SWING_POINT_TIMEFRAME: str = "D"
+    
+    # Momentum Divergence Settings
+    DIVERGENCE_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    DIVERGENCE_INDICATOR: str = "rsi"  # "rsi" or "macd"
+    DIVERGENCE_RSI_PERIOD: int = 14
+    DIVERGENCE_LOOKBACK_PERIODS: int = 14
+    DIVERGENCE_TIMEFRAME: str = "D"
+    
+    # Fair Value Gap Settings
+    FVG_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    FVG_MIN_GAP_PIPS: int = 10
+    FVG_TIMEFRAME: str = "D"
+    
+    # Liquidity Sweep Settings
+    LIQUIDITY_SWEEP_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    LIQUIDITY_SWEEP_LOOKBACK_PERIODS: int = 20
+    LIQUIDITY_SWEEP_TOLERANCE_PIPS: int = 5
+    LIQUIDITY_SWEEP_TIMEFRAME: str = "D"
+    
+    # Break of Structure Settings
+    BOS_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    BOS_LOOKBACK_PERIODS: int = 20
+    BOS_MIN_SWING_STRENGTH: int = 3
+    BOS_TIMEFRAME: str = "D"
+    
+    # Order Block Settings
+    ORDER_BLOCK_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    ORDER_BLOCK_LOOKBACK_PERIODS: int = 30
+    ORDER_BLOCK_MIN_MOVE_PIPS: int = 20
+    ORDER_BLOCK_TIMEFRAME: str = "D"
+    
+    # Change of Character Settings
+    CHOCH_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    CHOCH_LOOKBACK_PERIODS: int = 30
+    CHOCH_MIN_SWING_STRENGTH: int = 3
+    CHOCH_TIMEFRAME: str = "D"
+    
+    # Volume Profile POC Settings
+    POC_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    POC_LOOKBACK_PERIODS: int = 20
+    POC_TIMEFRAME: str = "D"
+    
+    # Accumulation/Distribution Settings
+    ACCUM_DIST_CHECK_INTERVAL_SECONDS: int = 180  # Check every 3 minutes
+    ACCUM_DIST_LOOKBACK_PERIODS: int = 14
+    ACCUM_DIST_MIN_SLOPE: float = 0.001
+    ACCUM_DIST_TIMEFRAME: str = "D"
+    
+    # HTF Trend Alignment Settings
+    HTF_TREND_CHECK_INTERVAL_SECONDS: int = 240  # Check every 4 minutes
+    HTF_TREND_EMA_PERIOD: int = 50
+    HTF_TREND_TIMEFRAMES: str = "60,240,D"  # Comma-separated HTF timeframes
+    HTF_TREND_MIN_ALIGNMENT: int = 2
+    HTF_TREND_TIMEFRAME: str = "15"  # Current timeframe
     
     # Config file paths
     WATCHLIST_CONFIG_PATH: str = "config/watchlist.json"
