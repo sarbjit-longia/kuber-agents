@@ -63,6 +63,9 @@ class IndicatorTools:
             
             rsi_values = data.get("indicators", {}).get("rsi", [])
             
+            # Filter out None values (RSI needs warmup period)
+            rsi_values = [v for v in rsi_values if v is not None]
+            
             if not rsi_values:
                 return self._empty_rsi_result()
             
@@ -190,6 +193,11 @@ class IndicatorTools:
             signal_values = macd_data.get("macd_signal", [])
             hist_values = macd_data.get("macd_hist", [])
             
+            # Filter out None values (MACD needs warmup period)
+            macd_values = [v for v in macd_values if v is not None]
+            signal_values = [v for v in signal_values if v is not None]
+            hist_values = [v for v in hist_values if v is not None]
+            
             if not all([macd_values, signal_values, hist_values]):
                 return self._empty_macd_result()
             
@@ -259,6 +267,11 @@ class IndicatorTools:
             upper_values = bbands_data.get("upper", [])
             middle_values = bbands_data.get("middle", [])
             lower_values = bbands_data.get("lower", [])
+            
+            # Filter out None values (Bollinger Bands need warmup period)
+            upper_values = [v for v in upper_values if v is not None]
+            middle_values = [v for v in middle_values if v is not None]
+            lower_values = [v for v in lower_values if v is not None]
             
             if not all([upper_values, middle_values, lower_values]):
                 return self._empty_bbands_result()
