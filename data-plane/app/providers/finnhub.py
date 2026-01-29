@@ -12,12 +12,18 @@ Premium Tier ($59-99/mo):
 - Forex, crypto, international stocks
 - Higher rate limits
 
+Rate Limit Headers:
+- X-Ratelimit-Limit: Total calls allowed per minute
+- X-Ratelimit-Remaining: Remaining calls in current minute
+- X-Ratelimit-Reset: Unix timestamp when limit resets
+
 Documentation: https://finnhub.io/docs/api
 """
 import httpx
 from typing import List, Dict
 from datetime import datetime, timedelta
 import structlog
+import time
 
 from .base import BaseProvider, ProviderType, AssetClass
 
@@ -87,11 +93,29 @@ class FinnhubProvider(BaseProvider):
             "token": self.api_key
         }
         
+        start_time = time.time()
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, params=params, timeout=10.0)
+                duration = time.time() - start_time
+                
+                # Track rate limit from response headers
+                rate_limit_limit = response.headers.get("X-Ratelimit-Limit")
+                rate_limit_remaining = response.headers.get("X-Ratelimit-Remaining")
+                rate_limit_reset = response.headers.get("X-Ratelimit-Reset")
+                
+                if rate_limit_limit and rate_limit_remaining:
+                    self._track_rate_limit(
+                        remaining=int(rate_limit_remaining),
+                        total=int(rate_limit_limit),
+                        reset_time=int(rate_limit_reset) if rate_limit_reset else None
+                    )
+                
                 response.raise_for_status()
                 data = response.json()
+                
+                # Track successful API call
+                self._track_api_call("quote", duration, "success")
                 
                 if "error" in data:
                     raise ValueError(f"Finnhub error: {data['error']}")
@@ -113,6 +137,8 @@ class FinnhubProvider(BaseProvider):
                 }
         
         except httpx.HTTPStatusError as e:
+            duration = time.time() - start_time
+            self._track_api_call("quote", duration, "error")
             logger.error(
                 "finnhub_quote_http_error",
                 symbol=symbol,
@@ -121,6 +147,8 @@ class FinnhubProvider(BaseProvider):
             )
             raise
         except Exception as e:
+            duration = time.time() - start_time
+            self._track_api_call("quote", duration, "error")
             logger.error(
                 "finnhub_quote_error",
                 symbol=symbol,
@@ -171,11 +199,29 @@ class FinnhubProvider(BaseProvider):
             "token": self.api_key
         }
         
+        start_time = time.time()
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, params=params, timeout=15.0)
+                duration = time.time() - start_time
+                
+                # Track rate limit
+                rate_limit_limit = response.headers.get("X-Ratelimit-Limit")
+                rate_limit_remaining = response.headers.get("X-Ratelimit-Remaining")
+                rate_limit_reset = response.headers.get("X-Ratelimit-Reset")
+                
+                if rate_limit_limit and rate_limit_remaining:
+                    self._track_rate_limit(
+                        remaining=int(rate_limit_remaining),
+                        total=int(rate_limit_limit),
+                        reset_time=int(rate_limit_reset) if rate_limit_reset else None
+                    )
+                
                 response.raise_for_status()
                 data = response.json()
+                
+                # Track successful API call
+                self._track_api_call("candles", duration, "success")
                 
                 if data.get("s") == "no_data":
                     logger.warning("finnhub_no_candle_data", symbol=symbol, timeframe=timeframe)
@@ -206,6 +252,8 @@ class FinnhubProvider(BaseProvider):
                 return candles
         
         except httpx.HTTPStatusError as e:
+            duration = time.time() - start_time
+            self._track_api_call("candles", duration, "error")
             logger.error(
                 "finnhub_candles_http_error",
                 symbol=symbol,
@@ -214,6 +262,8 @@ class FinnhubProvider(BaseProvider):
             )
             raise
         except Exception as e:
+            duration = time.time() - start_time
+            self._track_api_call("candles", duration, "error")
             logger.error(
                 "finnhub_candles_error",
                 symbol=symbol,

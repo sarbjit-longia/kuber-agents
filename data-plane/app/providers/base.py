@@ -7,6 +7,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Dict, Optional
 from datetime import datetime
+import time
+import structlog
+
+logger = structlog.get_logger()
 
 
 class ProviderType(str, Enum):
@@ -45,6 +49,58 @@ class BaseProvider(ABC):
         """
         self.api_key = api_key
         self.config = kwargs
+        self.rate_limit_remaining = None
+        self.rate_limit_total = None
+        self.rate_limit_reset_time = None
+    
+    def _track_rate_limit(self, remaining: Optional[int], total: Optional[int], reset_time: Optional[int] = None):
+        """
+        Track rate limit information from API response headers.
+        
+        Args:
+            remaining: Remaining API calls
+            total: Total API calls allowed
+            reset_time: Unix timestamp when rate limit resets
+        """
+        self.rate_limit_remaining = remaining
+        self.rate_limit_total = total
+        self.rate_limit_reset_time = reset_time
+        
+        # Update Prometheus metrics
+        if remaining is not None and total is not None:
+            from app.telemetry import api_rate_limit_remaining, api_rate_limit_total
+            api_rate_limit_remaining.labels(provider=self.provider_type.value).set(remaining)
+            api_rate_limit_total.labels(provider=self.provider_type.value).set(total)
+            
+            logger.debug(
+                "rate_limit_tracked",
+                provider=self.provider_type.value,
+                remaining=remaining,
+                total=total,
+                usage_pct=round((1 - remaining/total) * 100, 1) if total > 0 else 0
+            )
+    
+    def _track_api_call(self, endpoint: str, duration: float, status: str = "success"):
+        """
+        Track API call metrics.
+        
+        Args:
+            endpoint: API endpoint called (e.g., "quote", "candles")
+            duration: Call duration in seconds
+            status: "success" or "error"
+        """
+        from app.telemetry import api_calls_total, api_call_duration_seconds
+        
+        api_calls_total.labels(
+            provider=self.provider_type.value,
+            endpoint=endpoint,
+            status=status
+        ).inc()
+        
+        api_call_duration_seconds.labels(
+            provider=self.provider_type.value,
+            endpoint=endpoint
+        ).observe(duration)
     
     @property
     @abstractmethod

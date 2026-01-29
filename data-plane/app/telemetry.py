@@ -8,12 +8,38 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from prometheus_client import start_http_server
+from prometheus_client import start_http_server, Gauge, Counter, Histogram
 
 logger = structlog.get_logger()
 
 _meter_provider = None
 _meter = None
+
+# Prometheus metrics for rate limiting and API calls
+api_rate_limit_remaining = Gauge(
+    'api_rate_limit_remaining',
+    'Remaining API calls in the current window',
+    ['provider']
+)
+
+api_rate_limit_total = Gauge(
+    'api_rate_limit_total',
+    'Total API calls allowed per window',
+    ['provider']
+)
+
+api_calls_total = Counter(
+    'api_calls_total',
+    'Total API calls made',
+    ['provider', 'endpoint', 'status']
+)
+
+api_call_duration_seconds = Histogram(
+    'api_call_duration_seconds',
+    'API call duration in seconds',
+    ['provider', 'endpoint'],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+)
 
 
 def setup_telemetry(app=None, service_name="data-plane", metrics_port=8001):

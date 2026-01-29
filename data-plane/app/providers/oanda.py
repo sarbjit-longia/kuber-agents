@@ -17,6 +17,7 @@ import httpx
 from typing import List, Dict
 from datetime import datetime
 import structlog
+import time
 
 from .base import BaseProvider, ProviderType, AssetClass
 
@@ -101,6 +102,7 @@ class OANDAProvider(BaseProvider):
         url = f"{self.base_url}/v3/accounts/{await self._get_account_id()}/pricing"
         params = {"instruments": normalized_symbol}
         
+        start_time = time.time()
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -109,8 +111,13 @@ class OANDAProvider(BaseProvider):
                     headers=self.headers,
                     timeout=10.0
                 )
+                duration = time.time() - start_time
+                
                 response.raise_for_status()
                 data = response.json()
+                
+                # Track successful API call (OANDA has no rate limits)
+                self._track_api_call("quote", duration, "success")
                 
                 if not data.get("prices"):
                     raise ValueError(f"No price data for {symbol}")
@@ -137,6 +144,8 @@ class OANDAProvider(BaseProvider):
                 }
         
         except httpx.HTTPStatusError as e:
+            duration = time.time() - start_time
+            self._track_api_call("quote", duration, "error")
             logger.error(
                 "oanda_quote_http_error",
                 symbol=symbol,
@@ -145,6 +154,8 @@ class OANDAProvider(BaseProvider):
             )
             raise
         except Exception as e:
+            duration = time.time() - start_time
+            self._track_api_call("quote", duration, "error")
             logger.error(
                 "oanda_quote_error",
                 symbol=symbol,
@@ -184,6 +195,7 @@ class OANDAProvider(BaseProvider):
             "count": min(count, 5000)  # OANDA max is 5000
         }
         
+        start_time = time.time()
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -192,8 +204,13 @@ class OANDAProvider(BaseProvider):
                     headers=self.headers,
                     timeout=15.0
                 )
+                duration = time.time() - start_time
+                
                 response.raise_for_status()
                 data = response.json()
+                
+                # Track successful API call
+                self._track_api_call("candles", duration, "success")
                 
                 candles = []
                 for candle in data.get("candles", []):
@@ -220,6 +237,8 @@ class OANDAProvider(BaseProvider):
                 return candles
         
         except httpx.HTTPStatusError as e:
+            duration = time.time() - start_time
+            self._track_api_call("candles", duration, "error")
             logger.error(
                 "oanda_candles_http_error",
                 symbol=symbol,
@@ -228,6 +247,8 @@ class OANDAProvider(BaseProvider):
             )
             raise
         except Exception as e:
+            duration = time.time() - start_time
+            self._track_api_call("candles", duration, "error")
             logger.error(
                 "oanda_candles_error",
                 symbol=symbol,

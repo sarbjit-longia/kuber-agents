@@ -1757,16 +1757,16 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^provider$/",
+          "fields": "",
           "values": false
         },
-        "textMode": "name",
+        "textMode": "value_and_name",
         "text": {}
       },
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "max(provider_api_calls_total) by (provider)",
+          "expr": "count by (provider) (count_over_time(api_calls_total[5m]))",
           "instant": true,
           "legendFormat": "{{provider}}",
           "refId": "A"
@@ -1828,7 +1828,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "provider_rate_limit_remaining",
+          "expr": "api_rate_limit_remaining{provider=\"finnhub\"}",
           "refId": "A"
         }
       ],
@@ -1888,7 +1888,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "provider_rate_limit_usage_percent",
+          "expr": "100 * (1 - (api_rate_limit_remaining{provider=\"finnhub\"} / api_rate_limit_total{provider=\"finnhub\"}))",
           "refId": "A"
         }
       ],
@@ -1973,7 +1973,7 @@
       },
       "targets": [
         {
-          "expr": "rate(provider_api_calls_total[1m])",
+          "expr": "rate(api_calls_total[$__rate_interval])",
           "legendFormat": "{{provider}}/{{endpoint}}",
           "refId": "A"
         }
@@ -2059,12 +2059,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(provider_api_call_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(api_call_duration_seconds_bucket[$__rate_interval]))",
           "legendFormat": "{{provider}}/{{endpoint}} p95",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.50, rate(provider_api_call_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(api_call_duration_seconds_bucket[$__rate_interval]))",
           "legendFormat": "{{provider}}/{{endpoint}} p50",
           "refId": "B"
         }
@@ -2149,7 +2149,7 @@
       },
       "targets": [
         {
-          "expr": "provider_rate_limit_usage_percent",
+          "expr": "100 * (1 - (api_rate_limit_remaining{provider=\"finnhub\"} / api_rate_limit_total{provider=\"finnhub\"}))",
           "legendFormat": "{{provider}} Rate Limit Usage",
           "refId": "A"
         }
