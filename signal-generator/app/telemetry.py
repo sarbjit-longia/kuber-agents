@@ -6,18 +6,46 @@ Supports both local (Prometheus) and cloud (AWS CloudWatch) backends.
 """
 import logging
 from typing import Optional
+import psutil
+import threading
+import time
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
-from prometheus_client import start_http_server
+from prometheus_client import start_http_server, Gauge
 import os
 
 logger = logging.getLogger(__name__)
 
 # Global meter instance
 _meter: Optional[metrics.Meter] = None
+
+# Process resource metrics
+process_cpu_percent = Gauge(
+    'process_cpu_percent',
+    'CPU usage percentage of this process',
+    ['service']
+)
+
+process_memory_bytes = Gauge(
+    'process_memory_bytes',
+    'Memory usage in bytes of this process',
+    ['service', 'type']  # type: rss, vms
+)
+
+process_threads = Gauge(
+    'process_threads',
+    'Number of threads in this process',
+    ['service']
+)
+
+process_open_files = Gauge(
+    'process_open_files',
+    'Number of open file descriptors',
+    ['service']
+)
 
 
 def setup_telemetry(
@@ -66,9 +94,56 @@ def setup_telemetry(
     # Create and cache meter
     _meter = meter_provider.get_meter(service_name)
     
+    # Start process metrics collection thread
+    start_process_metrics_collection(service_name)
+    
     logger.info(f"OpenTelemetry setup complete for {service_name}")
     
     return _meter
+
+
+def start_process_metrics_collection(service_name: str, interval: int = 15):
+    """
+    Start background thread to collect process resource metrics.
+    
+    Args:
+        service_name: Name of the service for labeling
+        interval: Collection interval in seconds
+    """
+    process = psutil.Process()
+    
+    def collect_metrics():
+        while True:
+            try:
+                # CPU percentage
+                cpu_percent = process.cpu_percent(interval=1)
+                process_cpu_percent.labels(service=service_name).set(cpu_percent)
+                
+                # Memory info
+                mem_info = process.memory_info()
+                process_memory_bytes.labels(service=service_name, type='rss').set(mem_info.rss)
+                process_memory_bytes.labels(service=service_name, type='vms').set(mem_info.vms)
+                
+                # Threads
+                num_threads = process.num_threads()
+                process_threads.labels(service=service_name).set(num_threads)
+                
+                # Open files
+                try:
+                    num_fds = len(process.open_files())
+                    process_open_files.labels(service=service_name).set(num_fds)
+                except (psutil.AccessDenied, AttributeError):
+                    pass  # May not have permission on some systems
+                    
+            except Exception as e:
+                logger.error(f"Error collecting process metrics: {e}")
+            
+            time.sleep(interval)
+    
+    # Start daemon thread
+    metrics_thread = threading.Thread(target=collect_metrics, daemon=True)
+    metrics_thread.start()
+    logger.info(f"Process metrics collection started for {service_name}")
 
 
 def get_meter() -> metrics.Meter:

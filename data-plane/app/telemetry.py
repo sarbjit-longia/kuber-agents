@@ -1,5 +1,8 @@
 """OpenTelemetry configuration for Data Plane"""
 import structlog
+import psutil
+import threading
+import time
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import Resource
@@ -39,6 +42,31 @@ api_call_duration_seconds = Histogram(
     'API call duration in seconds',
     ['provider', 'endpoint'],
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+)
+
+# Process resource metrics
+process_cpu_percent = Gauge(
+    'process_cpu_percent',
+    'CPU usage percentage of this process',
+    ['service']
+)
+
+process_memory_bytes = Gauge(
+    'process_memory_bytes',
+    'Memory usage in bytes of this process',
+    ['service', 'type']  # type: rss, vms
+)
+
+process_threads = Gauge(
+    'process_threads',
+    'Number of threads in this process',
+    ['service']
+)
+
+process_open_files = Gauge(
+    'process_open_files',
+    'Number of open file descriptors',
+    ['service']
 )
 
 
@@ -97,7 +125,54 @@ def setup_telemetry(app=None, service_name="data-plane", metrics_port=8001):
         # Port already in use (multiple workers or already started)
         logger.warning("prometheus_metrics_server_already_running", port=metrics_port, error=str(e))
     
+    # Start process metrics collection thread
+    start_process_metrics_collection(service_name)
+    
     return _meter
+
+
+def start_process_metrics_collection(service_name: str, interval: int = 15):
+    """
+    Start background thread to collect process resource metrics.
+    
+    Args:
+        service_name: Name of the service for labeling
+        interval: Collection interval in seconds
+    """
+    process = psutil.Process()
+    
+    def collect_metrics():
+        while True:
+            try:
+                # CPU percentage
+                cpu_percent = process.cpu_percent(interval=1)
+                process_cpu_percent.labels(service=service_name).set(cpu_percent)
+                
+                # Memory info
+                mem_info = process.memory_info()
+                process_memory_bytes.labels(service=service_name, type='rss').set(mem_info.rss)
+                process_memory_bytes.labels(service=service_name, type='vms').set(mem_info.vms)
+                
+                # Threads
+                num_threads = process.num_threads()
+                process_threads.labels(service=service_name).set(num_threads)
+                
+                # Open files
+                try:
+                    num_fds = len(process.open_files())
+                    process_open_files.labels(service=service_name).set(num_fds)
+                except (psutil.AccessDenied, AttributeError):
+                    pass  # May not have permission on some systems
+                    
+            except Exception as e:
+                logger.error("process_metrics_collection_error", error=str(e))
+            
+            time.sleep(interval)
+    
+    # Start daemon thread
+    metrics_thread = threading.Thread(target=collect_metrics, daemon=True)
+    metrics_thread.start()
+    logger.info("process_metrics_collection_started", service=service_name)
 
 
 def get_meter():
