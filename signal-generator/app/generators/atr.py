@@ -125,14 +125,14 @@ class ATRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.ATR_VOLATILITY_SPIKE,
                         source="atr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_atr": round(current_atr, 2),
                             "average_atr": round(average_atr, 2),
                             "atr_increase_pct": round(atr_increase_pct, 1),
                             "spike_multiplier": self.spike_multiplier,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -157,14 +157,14 @@ class ATRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.ATR_VOLATILITY_COMPRESSION,
                         source="atr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_atr": round(current_atr, 2),
                             "average_atr": round(average_atr, 2),
                             "atr_decrease_pct": round(atr_decrease_pct, 1),
                             "compression_multiplier": self.compression_multiplier,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

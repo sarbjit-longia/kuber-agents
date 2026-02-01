@@ -135,12 +135,12 @@ class VolumeProfilePOCSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.POC_BREAK_BULLISH,
                         source="poc_break_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "poc": poc,
                             "previous_close": previous_close,
                             "current_close": current_close,
                             "distance_pips": distance_pips
-                        }
+                        })
                     )
                     signals.append(signal)
                 
@@ -174,12 +174,12 @@ class VolumeProfilePOCSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.POC_BREAK_BEARISH,
                         source="poc_break_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "poc": poc,
                             "previous_close": previous_close,
                             "current_close": current_close,
                             "distance_pips": distance_pips
-                        }
+                        })
                     )
                     signals.append(signal)
                 

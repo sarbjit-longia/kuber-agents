@@ -141,14 +141,14 @@ class RSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.RSI_OVERSOLD,
                         source="rsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "rsi_period": self.period,
                             "current_rsi": round(current_rsi, 2),
                             "previous_rsi": round(previous_rsi, 2),
                             "oversold_threshold": self.oversold_threshold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -176,14 +176,14 @@ class RSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.RSI_OVERBOUGHT,
                         source="rsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "rsi_period": self.period,
                             "current_rsi": round(current_rsi, 2),
                             "previous_rsi": round(previous_rsi, 2),
                             "overbought_threshold": self.overbought_threshold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

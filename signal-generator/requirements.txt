@@ -14,4 +14,6 @@ finnhub-python==2.4.20
 sqlalchemy>=2.0.23
 psycopg2-binary>=2.9.9
 psutil==5.9.0  # Process and system monitoring
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
 

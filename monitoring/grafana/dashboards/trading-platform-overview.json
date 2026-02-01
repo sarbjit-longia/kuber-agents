@@ -1814,26 +1814,12 @@
       },
       "id": 422,
       "options": {
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "content": "### ✅ No Rate Limits\n\n**OANDA** (current provider) has **no rate limits** for API calls.\n\nThis panel would show Finnhub rate limits if stock trading was enabled.",
+        "mode": "markdown"
       },
       "pluginVersion": "10.2.0",
-      "targets": [
-        {
-          "expr": "api_rate_limit_remaining{provider=\"finnhub\"}",
-          "refId": "A"
-        }
-      ],
-      "title": "\u23f1\ufe0f Rate Limit Remaining",
-      "type": "gauge"
+      "title": "\u23f1\ufe0f Rate Limit Status",
+      "type": "text"
     },
     {
       "datasource": "Prometheus",
@@ -1874,26 +1860,12 @@
       },
       "id": 423,
       "options": {
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "content": "### ♾️ Unlimited\n\n**OANDA API** has no rate limiting, allowing unlimited market data requests.\n\nPerfect for high-frequency forex trading strategies!",
+        "mode": "markdown"
       },
       "pluginVersion": "10.2.0",
-      "targets": [
-        {
-          "expr": "100 * (1 - (api_rate_limit_remaining{provider=\"finnhub\"} / api_rate_limit_total{provider=\"finnhub\"}))",
-          "refId": "A"
-        }
-      ],
       "title": "\ud83d\udcca Rate Limit Usage",
-      "type": "gauge"
+      "type": "text"
     },
     {
       "datasource": "Prometheus",
@@ -2132,30 +2104,11 @@
       },
       "id": 426,
       "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max",
-            "last"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "content": "### 🚀 No Rate Limiting with OANDA\n\nThe current market data provider (**OANDA**) does not impose rate limits on API requests.\n\n**Benefits:**\n- ✅ Unlimited market data fetches\n- ✅ Real-time price updates without throttling\n- ✅ Ideal for high-frequency trading strategies\n- ✅ No need to manage rate limit budgets\n\n---\n\n**Note:** If you switch to **Finnhub** for stock trading in the future, rate limit tracking will be displayed here.",
+        "mode": "markdown"
       },
-      "targets": [
-        {
-          "expr": "100 * (1 - (api_rate_limit_remaining{provider=\"finnhub\"} / api_rate_limit_total{provider=\"finnhub\"}))",
-          "legendFormat": "{{provider}} Rate Limit Usage",
-          "refId": "A"
-        }
-      ],
-      "title": "\ud83d\udea6 Rate Limit Usage Over Time",
-      "type": "timeseries"
+      "title": "\ud83d\udea6 Rate Limit Status",
+      "type": "text"
     },
     {
       "collapsed": false,

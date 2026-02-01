@@ -119,13 +119,13 @@ class WilliamsRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.WILLR_OVERSOLD,
                         source="willr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_willr": round(current_willr, 2),
                             "previous_willr": round(previous_willr, 2),
                             "oversold_threshold": self.oversold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -147,13 +147,13 @@ class WilliamsRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.WILLR_OVERBOUGHT,
                         source="willr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_willr": round(current_willr, 2),
                             "previous_willr": round(previous_willr, 2),
                             "overbought_threshold": self.overbought,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -174,11 +174,11 @@ class WilliamsRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.WILLR_BULLISH_MOMENTUM,
                         source="willr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_willr": round(current_willr, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -199,11 +199,11 @@ class WilliamsRSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.WILLR_BEARISH_MOMENTUM,
                         source="willr_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_willr": round(current_willr, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

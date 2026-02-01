@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: Infinity
+    type: yesoreyeram-infinity-datasource
+    uid: PD0067CAD9A63E081
+    access: proxy
+    isDefault: false
+    jsonData:
+      tlsSkipVerify: true
+    editable: true

@@ -149,7 +149,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BBANDS_UPPER_BREAKOUT,
                             source="bollinger_bands_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "timeperiod": self.timeperiod,
                                 "current_price": round(current_price, 2),
                                 "upper_band": round(current_upper, 2),
@@ -157,7 +157,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                                 "lower_band": round(current_lower, 2),
                                 "band_width_pct": round(band_width, 2),
                                 "timeframe": self.timeframe
-                            }
+                            })
                         )
                         
                         signals.append(signal)
@@ -179,7 +179,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BBANDS_LOWER_BREAKOUT,
                             source="bollinger_bands_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "timeperiod": self.timeperiod,
                                 "current_price": round(current_price, 2),
                                 "upper_band": round(current_upper, 2),
@@ -187,7 +187,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                                 "lower_band": round(current_lower, 2),
                                 "band_width_pct": round(band_width, 2),
                                 "timeframe": self.timeframe
-                            }
+                            })
                         )
                         
                         signals.append(signal)
@@ -211,7 +211,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BBANDS_LOWER_BOUNCE,
                             source="bollinger_bands_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "timeperiod": self.timeperiod,
                                 "current_price": round(current_price, 2),
                                 "upper_band": round(current_upper, 2),
@@ -219,7 +219,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                                 "lower_band": round(current_lower, 2),
                                 "band_width_pct": round(band_width, 2),
                                 "timeframe": self.timeframe
-                            }
+                            })
                         )
                         
                         signals.append(signal)
@@ -241,7 +241,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BBANDS_UPPER_BOUNCE,
                             source="bollinger_bands_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "timeperiod": self.timeperiod,
                                 "current_price": round(current_price, 2),
                                 "upper_band": round(current_upper, 2),
@@ -249,7 +249,7 @@ class BollingerBandsSignalGenerator(BaseSignalGenerator):
                                 "lower_band": round(current_lower, 2),
                                 "band_width_pct": round(band_width, 2),
                                 "timeframe": self.timeframe
-                            }
+                            })
                         )
                         
                         signals.append(signal)

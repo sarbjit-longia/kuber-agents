@@ -151,13 +151,13 @@ class HTFTrendAlignmentSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.HTF_TREND_ALIGNED_BULLISH,
                         source="htf_trend_alignment_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "aligned_timeframes": aligned_tfs,
                             "alignment_count": bullish_count,
                             "total_timeframes": len(self.htf_timeframes),
                             "avg_slope_pct": slope_pct,
                             "ema_period": self.ema_period
-                        }
+                        })
                     )
                     signals.append(signal)
                 
@@ -192,13 +192,13 @@ class HTFTrendAlignmentSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.HTF_TREND_ALIGNED_BEARISH,
                         source="htf_trend_alignment_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "aligned_timeframes": aligned_tfs,
                             "alignment_count": bearish_count,
                             "total_timeframes": len(self.htf_timeframes),
                             "avg_slope_pct": slope_pct,
                             "ema_period": self.ema_period
-                        }
+                        })
                     )
                     signals.append(signal)
                 

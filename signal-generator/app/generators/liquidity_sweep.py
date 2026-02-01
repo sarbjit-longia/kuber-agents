@@ -173,13 +173,13 @@ class LiquiditySweepSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.LIQUIDITY_SWEEP_BULLISH,
                             source="liquidity_sweep_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "swing_low": swing_low,
                                 "sweep_low": prev_candle["l"],
                                 "current_close": curr_candle["c"],
                                 "sweep_pips": sweep_pips,
                                 "bars_since_swing": bars_since_swing
-                            }
+                            })
                         )
                         signals.append(signal)
                 
@@ -218,13 +218,13 @@ class LiquiditySweepSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.LIQUIDITY_SWEEP_BEARISH,
                             source="liquidity_sweep_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "swing_high": swing_high,
                                 "sweep_high": prev_candle["h"],
                                 "current_close": curr_candle["c"],
                                 "sweep_pips": sweep_pips,
                                 "bars_since_swing": bars_since_swing
-                            }
+                            })
                         )
                         signals.append(signal)
                 

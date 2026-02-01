@@ -196,13 +196,13 @@ class MomentumDivergenceSignalGenerator(BaseSignalGenerator):
                                 signal_type=signal_type_bullish,
                                 source=f"{self.indicator}_divergence_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "indicator": self.indicator,
                                     "price_low_1": recent_price_lows[0][1],
                                     "price_low_2": recent_price_lows[1][1],
                                     "indicator_low_1": recent_ind_lows[0][1],
                                     "indicator_low_2": recent_ind_lows[1][1]
-                                }
+                                })
                             )
                             signals.append(signal)
                 
@@ -240,13 +240,13 @@ class MomentumDivergenceSignalGenerator(BaseSignalGenerator):
                                 signal_type=signal_type_bearish,
                                 source=f"{self.indicator}_divergence_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "indicator": self.indicator,
                                     "price_high_1": recent_price_highs[0][1],
                                     "price_high_2": recent_price_highs[1][1],
                                     "indicator_high_1": recent_ind_highs[0][1],
                                     "indicator_high_2": recent_ind_highs[1][1]
-                                }
+                                })
                             )
                             signals.append(signal)
                 

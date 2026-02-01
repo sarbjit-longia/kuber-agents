@@ -118,13 +118,13 @@ class ADXSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.ADX_STRONG_TREND,
                         source="adx_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_adx": round(current_adx, 2),
                             "previous_adx": round(previous_adx, 2),
                             "strong_threshold": self.strong_trend,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -146,13 +146,13 @@ class ADXSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.ADX_WEAK_TREND,
                         source="adx_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_adx": round(current_adx, 2),
                             "previous_adx": round(previous_adx, 2),
                             "weak_threshold": self.weak_trend,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

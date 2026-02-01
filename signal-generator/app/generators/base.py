@@ -78,6 +78,42 @@ class BaseSignalGenerator(ABC):
         """
         pass
     
+    def _enrich_metadata(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Enrich signal metadata with generator information.
+        
+        Automatically adds timeframe info from config if available.
+        This should be called when creating Signal objects to ensure
+        timeframe info is consistently included.
+        
+        Args:
+            metadata: Existing metadata dict (or None)
+            
+        Returns:
+            Enriched metadata dict with timeframe info
+            
+        Example:
+            signal = Signal(
+                signal_type=SignalType.RSI_OVERSOLD,
+                tickers=[ticker_signal],
+                metadata=self._enrich_metadata({
+                    "rsi": current_rsi,
+                    "threshold": self.threshold
+                })
+            )
+        """
+        enriched = metadata.copy() if metadata else {}
+        
+        # Add primary timeframe from config if present and not already in metadata
+        if "timeframe" in self.config and "timeframe" not in enriched:
+            enriched["timeframe"] = self.config["timeframe"]
+        
+        # Add multiple timeframes if present (for HTF generators)
+        if "htf_timeframes" in self.config and "timeframes" not in enriched:
+            enriched["timeframes"] = self.config["htf_timeframes"]
+        
+        return enriched
+    
     def _dataframe_to_candles(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
         Convert DataFrame to list of candle dicts with normalized column names.

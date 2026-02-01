@@ -194,11 +194,11 @@ class SwingPointBreakSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.SWING_POINT_BREAK_BULLISH,
                             source="swing_point_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "swing_high": last_swing_high,
                                 "bars_ago": bars_ago,
                                 "current_price": current_close
-                            }
+                            })
                         )
                         signals.append(signal)
                 
@@ -237,11 +237,11 @@ class SwingPointBreakSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.SWING_POINT_BREAK_BEARISH,
                             source="swing_point_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "swing_low": last_swing_low,
                                 "bars_ago": bars_ago,
                                 "current_price": current_close
-                            }
+                            })
                         )
                         signals.append(signal)
                 

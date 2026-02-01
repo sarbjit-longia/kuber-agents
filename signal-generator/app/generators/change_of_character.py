@@ -188,11 +188,11 @@ class ChangeOfCharacterSignalGenerator(BaseSignalGenerator):
                                 signal_type=SignalType.CHOCH_BULLISH,
                                 source="choch_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "previous_lower_high": previous_lower_high,
                                     "current_price": current_close,
                                     "trend": "downtrend_to_uptrend"
-                                }
+                                })
                             )
                             signals.append(signal)
                 
@@ -230,11 +230,11 @@ class ChangeOfCharacterSignalGenerator(BaseSignalGenerator):
                                 signal_type=SignalType.CHOCH_BEARISH,
                                 source="choch_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "previous_higher_low": previous_higher_low,
                                     "current_price": current_close,
                                     "trend": "uptrend_to_downtrend"
-                                }
+                                })
                             )
                             signals.append(signal)
                 

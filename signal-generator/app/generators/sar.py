@@ -120,14 +120,14 @@ class SARSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.SAR_BULLISH_REVERSAL,
                         source="sar_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_sar": round(current_sar, 2),
                             "current_price": round(current_price, 2),
                             "sar_distance_pct": round(sar_distance_pct, 2),
                             "acceleration": self.acceleration,
                             "maximum": self.maximum,
                             "timeframe": self.timeframe
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -149,14 +149,14 @@ class SARSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.SAR_BEARISH_REVERSAL,
                         source="sar_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_sar": round(current_sar, 2),
                             "current_price": round(current_price, 2),
                             "sar_distance_pct": round(sar_distance_pct, 2),
                             "acceleration": self.acceleration,
                             "maximum": self.maximum,
                             "timeframe": self.timeframe
-                        }
+                        })
                     )
                     
                     signals.append(signal)

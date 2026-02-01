@@ -127,12 +127,12 @@ class FairValueGapSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.FVG_BULLISH,
                         source="fvg_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "gap_pips": gap_pips,
                             "gap_low": candle_n_minus_2.get("h"),
                             "gap_high": candle_n.get("l"),
                             "middle_candle_time": str(candle_n_minus_1.get("t"))
-                        }
+                        })
                     )
                     signals.append(signal)
                 
@@ -167,12 +167,12 @@ class FairValueGapSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.FVG_BEARISH,
                         source="fvg_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "gap_pips": gap_pips,
                             "gap_high": candle_n_minus_2.get("l"),
                             "gap_low": candle_n.get("h"),
                             "middle_candle_time": str(candle_n_minus_1.get("t"))
-                        }
+                        })
                     )
                     signals.append(signal)
                 

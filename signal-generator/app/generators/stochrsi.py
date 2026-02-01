@@ -130,14 +130,14 @@ class StochRSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCHRSI_OVERSOLD,
                         source="stochrsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "previous_k": round(previous_k, 2),
                             "current_d": round(current_d, 2) if current_d else None,
                             "oversold_threshold": self.oversold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -159,14 +159,14 @@ class StochRSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCHRSI_OVERBOUGHT,
                         source="stochrsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "previous_k": round(previous_k, 2),
                             "current_d": round(current_d, 2) if current_d else None,
                             "overbought_threshold": self.overbought,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -188,12 +188,12 @@ class StochRSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCHRSI_BULLISH_CROSS,
                         source="stochrsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "current_d": round(current_d, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -215,12 +215,12 @@ class StochRSISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCHRSI_BEARISH_CROSS,
                         source="stochrsi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "current_d": round(current_d, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

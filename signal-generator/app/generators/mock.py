@@ -83,11 +83,11 @@ class MockSignalGenerator(BaseSignalGenerator):
             signal_type=SignalType.MOCK,
             source="mock_generator",
             tickers=ticker_signals,
-            metadata={
+            metadata=self._enrich_metadata({
                 "generator": "mock",
                 "emission_probability": emission_prob,
                 "note": "This is test data for development"
-            }
+            })
         )
         
         logger.info(

@@ -156,14 +156,14 @@ class EMACrossoverSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.EMA_BULLISH_CROSSOVER,
                         source="ema_crossover_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "ema_fast": self.ema_fast,
                             "ema_slow": self.ema_slow,
                             "current_fast_ema": round(current_fast_ema, 2),
                             "current_slow_ema": round(current_slow_ema, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -184,14 +184,14 @@ class EMACrossoverSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.EMA_BEARISH_CROSSOVER,
                         source="ema_crossover_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "ema_fast": self.ema_fast,
                             "ema_slow": self.ema_slow,
                             "current_fast_ema": round(current_fast_ema, 2),
                             "current_slow_ema": round(current_slow_ema, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

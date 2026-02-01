@@ -148,7 +148,7 @@ class VolumeSpikeSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.VOLUME_SPIKE,
                         source="volume_spike_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "volume_period": self.volume_period,
                             "spike_threshold": self.spike_threshold,
                             "current_volume": int(current_volume),
@@ -157,7 +157,7 @@ class VolumeSpikeSignalGenerator(BaseSignalGenerator):
                             "price_change_pct": round(price_change_pct, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_close, 2)
-                        }
+                        })
                     )
                     
                     signals.append(signal)

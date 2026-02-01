@@ -239,6 +239,7 @@ services:
         condition: service_healthy
     ports:
       - "8003:8001"  # Prometheus metrics endpoint
+      - "8007:8007"  # Recent signals monitoring API
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - MARKET_DATA_PROVIDER=data_plane
@@ -414,7 +415,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
-      - GF_INSTALL_PLUGINS=
+      - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
     volumes:
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro

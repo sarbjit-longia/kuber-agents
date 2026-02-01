@@ -161,13 +161,13 @@ class AccumulationDistributionSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.ACCUMULATION_SIGNAL,
                         source="accumulation_distribution_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "ad_slope": ad_slope,
                             "normalized_slope": normalized_slope,
                             "ad_change_pct": ad_change_pct,
                             "current_price": current_price,
                             "lookback_periods": self.lookback_periods
-                        }
+                        })
                     )
                     signals.append(signal)
                 
@@ -200,13 +200,13 @@ class AccumulationDistributionSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.DISTRIBUTION_SIGNAL,
                         source="accumulation_distribution_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "ad_slope": ad_slope,
                             "normalized_slope": normalized_slope,
                             "ad_change_pct": ad_change_pct,
                             "current_price": current_price,
                             "lookback_periods": self.lookback_periods
-                        }
+                        })
                     )
                     signals.append(signal)
                 

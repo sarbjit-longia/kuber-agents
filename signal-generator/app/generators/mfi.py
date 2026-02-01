@@ -119,13 +119,13 @@ class MFISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.MFI_OVERSOLD,
                         source="mfi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_mfi": round(current_mfi, 2),
                             "previous_mfi": round(previous_mfi, 2),
                             "oversold_threshold": self.oversold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -147,13 +147,13 @@ class MFISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.MFI_OVERBOUGHT,
                         source="mfi_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_mfi": round(current_mfi, 2),
                             "previous_mfi": round(previous_mfi, 2),
                             "overbought_threshold": self.overbought,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

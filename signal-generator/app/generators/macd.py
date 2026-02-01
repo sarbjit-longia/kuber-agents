@@ -161,7 +161,7 @@ class MACDSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.MACD_BULLISH,
                         source="macd_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "fast_period": self.fast_period,
                             "slow_period": self.slow_period,
                             "signal_period": self.signal_period,
@@ -172,7 +172,7 @@ class MACDSignalGenerator(BaseSignalGenerator):
                             "previous_signal": round(previous_signal, 4),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -211,7 +211,7 @@ class MACDSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.MACD_BEARISH,
                         source="macd_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "fast_period": self.fast_period,
                             "slow_period": self.slow_period,
                             "signal_period": self.signal_period,
@@ -222,7 +222,7 @@ class MACDSignalGenerator(BaseSignalGenerator):
                             "previous_signal": round(previous_signal, 4),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

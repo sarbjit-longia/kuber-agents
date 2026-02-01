@@ -114,12 +114,12 @@ class AroonSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.AROON_UPTREND,
                             source="aroon_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "aroon_up": round(current_up, 2),
                                 "aroon_down": round(current_down, 2),
                                 "timeframe": self.timeframe,
                                 "current_price": round(current_price, 2) if current_price else None
-                            }
+                            })
                         )
                         
                         signals.append(signal)
@@ -142,12 +142,12 @@ class AroonSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.AROON_DOWNTREND,
                             source="aroon_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "aroon_up": round(current_up, 2),
                                 "aroon_down": round(current_down, 2),
                                 "timeframe": self.timeframe,
                                 "current_price": round(current_price, 2) if current_price else None
-                            }
+                            })
                         )
                         
                         signals.append(signal)
@@ -169,12 +169,12 @@ class AroonSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.AROON_BULLISH_CROSS,
                         source="aroon_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "aroon_up": round(current_up, 2),
                             "aroon_down": round(current_down, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -196,12 +196,12 @@ class AroonSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.AROON_BEARISH_CROSS,
                         source="aroon_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "aroon_up": round(current_up, 2),
                             "aroon_down": round(current_down, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -224,12 +224,12 @@ class AroonSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.AROON_CONSOLIDATION,
                             source="aroon_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "aroon_up": round(current_up, 2),
                                 "aroon_down": round(current_down, 2),
                                 "timeframe": self.timeframe,
                                 "current_price": round(current_price, 2) if current_price else None
-                            }
+                            })
                         )
                         
                         signals.append(signal)

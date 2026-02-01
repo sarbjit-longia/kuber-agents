@@ -119,14 +119,14 @@ class CCISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.CCI_OVERSOLD,
                         source="cci_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "timeperiod": self.timeperiod,
                             "current_cci": round(current_cci, 2),
                             "previous_cci": round(previous_cci, 2),
                             "oversold_threshold": self.oversold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -148,14 +148,14 @@ class CCISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.CCI_OVERBOUGHT,
                         source="cci_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "timeperiod": self.timeperiod,
                             "current_cci": round(current_cci, 2),
                             "previous_cci": round(previous_cci, 2),
                             "overbought_threshold": self.overbought,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -177,13 +177,13 @@ class CCISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.CCI_BULLISH_ZERO_CROSS,
                         source="cci_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "timeperiod": self.timeperiod,
                             "current_cci": round(current_cci, 2),
                             "previous_cci": round(previous_cci, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -205,13 +205,13 @@ class CCISignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.CCI_BEARISH_ZERO_CROSS,
                         source="cci_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "timeperiod": self.timeperiod,
                             "current_cci": round(current_cci, 2),
                             "previous_cci": round(previous_cci, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

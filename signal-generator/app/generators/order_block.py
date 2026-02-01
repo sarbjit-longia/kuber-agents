@@ -140,13 +140,13 @@ class OrderBlockSignalGenerator(BaseSignalGenerator):
                                 signal_type=SignalType.ORDER_BLOCK_BULLISH,
                                 source="order_block_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "order_block_low": current["l"],
                                     "order_block_high": current["h"],
                                     "current_price": current_price,
                                     "move_pips": move_pips,
                                     "bars_ago": bars_ago
-                                }
+                                })
                             )
                             signals.append(signal)
                             break  # Only one signal per ticker per scan
@@ -198,13 +198,13 @@ class OrderBlockSignalGenerator(BaseSignalGenerator):
                                 signal_type=SignalType.ORDER_BLOCK_BEARISH,
                                 source="order_block_generator",
                                 tickers=[ticker_signal],
-                                metadata={
+                                metadata=self._enrich_metadata({
                                     "order_block_low": current["l"],
                                     "order_block_high": current["h"],
                                     "current_price": current_price,
                                     "move_pips": move_pips,
                                     "bars_ago": bars_ago
-                                }
+                                })
                             )
                             signals.append(signal)
                             break  # Only one signal per ticker per scan

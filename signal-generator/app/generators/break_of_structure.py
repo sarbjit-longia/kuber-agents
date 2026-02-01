@@ -168,11 +168,11 @@ class BreakOfStructureSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BREAK_OF_STRUCTURE_BULLISH,
                             source="bos_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "structure_high": most_recent_high,
                                 "current_price": current_close,
                                 "bars_since": bars_since
-                            }
+                            })
                         )
                         signals.append(signal)
                 
@@ -222,11 +222,11 @@ class BreakOfStructureSignalGenerator(BaseSignalGenerator):
                             signal_type=SignalType.BREAK_OF_STRUCTURE_BEARISH,
                             source="bos_generator",
                             tickers=[ticker_signal],
-                            metadata={
+                            metadata=self._enrich_metadata({
                                 "structure_low": most_recent_low,
                                 "current_price": current_close,
                                 "bars_since": bars_since
-                            }
+                            })
                         )
                         signals.append(signal)
                 

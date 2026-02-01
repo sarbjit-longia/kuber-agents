@@ -181,7 +181,7 @@ class DeathCrossSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.DEATH_CROSS,
                         source="death_cross_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "sma_short": self.sma_short,
                             "sma_long": self.sma_long,
                             "timeframe": self.timeframe,
@@ -189,7 +189,7 @@ class DeathCrossSignalGenerator(BaseSignalGenerator):
                             "current_sma_long": round(current_long_sma, 2),
                             "current_price": round(current_price, 2) if current_price else None,
                             "lookback_days": self.lookback_days
-                        }
+                        })
                     )
                     
                     signals.append(signal)

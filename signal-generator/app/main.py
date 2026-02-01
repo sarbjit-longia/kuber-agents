@@ -8,6 +8,7 @@ or Kafka (Phase 2).
 import asyncio
 import json
 import time
+from collections import deque
 from copy import deepcopy
 from datetime import datetime
 from typing import List, Optional
@@ -79,6 +80,9 @@ class SignalGeneratorService:
         self.running = False
         self.kafka_producer: Optional[KafkaProducer] = None
         self.scanner_universe = None
+        
+        # Recent signals buffer (keep last 50 signals)
+        self.recent_signals = deque(maxlen=50)
         
         # Initialize Scanner Universe Manager if DB URL provided
         if settings.BACKEND_DB_URL:
@@ -785,6 +789,9 @@ class SignalGeneratorService:
             # Convert to Kafka-ready format
             message = signal.to_kafka_message()
             
+            # Add to recent signals buffer for monitoring
+            self._add_to_recent_signals(signal)
+            
             # Track metrics
             if self.meter:
                 self.signals_generated.add(1, {
@@ -960,6 +967,41 @@ class SignalGeneratorService:
                 # Continue running even if refresh fails
                 await asyncio.sleep(60)  # Wait 1 minute before retrying
     
+    def _add_to_recent_signals(self, signal: Signal):
+        """Add signal to recent signals buffer for monitoring."""
+        try:
+            signal_info = {
+                "signal_id": str(signal.signal_id),
+                "signal_type": signal.signal_type.value,
+                "timestamp": signal.timestamp.isoformat() if signal.timestamp else datetime.utcnow().isoformat(),
+                "source": signal.source,
+                "tickers": [
+                    {
+                        "ticker": ts.ticker,
+                        "signal": ts.signal.value,
+                        "confidence": ts.confidence,
+                        "reasoning": ts.reasoning
+                    }
+                    for ts in signal.tickers
+                ],
+                "metadata": signal.metadata or {}
+            }
+            self.recent_signals.append(signal_info)
+        except Exception as e:
+            logger.error("failed_to_add_signal_to_buffer", error=str(e))
+    
+    def get_recent_signals(self, limit: int = 50) -> List[dict]:
+        """
+        Get recent signals for monitoring.
+        
+        Args:
+            limit: Maximum number of signals to return
+            
+        Returns:
+            List of recent signals
+        """
+        return list(self.recent_signals)[-limit:]
+    
     async def stop(self):
         """Stop all generators and cleanup resources."""
         self.running = False
@@ -981,8 +1023,34 @@ async def main():
     """Main entry point."""
     service = SignalGeneratorService()
     
+    # Set the global service instance for API access
+    from app.api import set_service_instance
+    set_service_instance(service)
+    
+    # Start HTTP API server
+    import uvicorn
+    from app.api import app
+    
+    # Start API server in background
+    api_server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=8007,
+            log_level="info"
+        )
+    )
+    
+    async def start_api():
+        """Start the API server."""
+        await api_server.serve()
+    
+    # Start both API server and signal generation
     try:
-        await service.start()
+        await asyncio.gather(
+            start_api(),
+            service.start()
+        )
     except KeyboardInterrupt:
         logger.info("keyboard_interrupt_received")
         await service.stop()

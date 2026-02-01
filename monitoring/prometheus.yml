@@ -30,6 +30,13 @@ scrape_configs:
           service: 'signal-generator'
           component: 'generator'
   
+  # Signal Generator - Recent Signals API
+  - job_name: 'signal-generator-api'
+    static_configs:
+      - targets: ['signal-generator:8007']
+    metrics_path: '/recent-signals'
+    scrape_interval: 30s
+  
   # Trigger Dispatcher
   - job_name: 'trigger-dispatcher'
     static_configs:

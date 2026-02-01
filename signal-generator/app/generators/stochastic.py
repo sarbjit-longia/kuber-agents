@@ -135,7 +135,7 @@ class StochasticSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCH_BULLISH,
                         source="stochastic_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "current_d": round(current_d, 2),
                             "previous_k": round(previous_k, 2),
@@ -143,7 +143,7 @@ class StochasticSignalGenerator(BaseSignalGenerator):
                             "in_oversold": in_oversold,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -170,7 +170,7 @@ class StochasticSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.STOCH_BEARISH,
                         source="stochastic_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_k": round(current_k, 2),
                             "current_d": round(current_d, 2),
                             "previous_k": round(previous_k, 2),
@@ -178,7 +178,7 @@ class StochasticSignalGenerator(BaseSignalGenerator):
                             "in_overbought": in_overbought,
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2) if current_price else None
-                        }
+                        })
                     )
                     
                     signals.append(signal)

@@ -116,13 +116,13 @@ class OBVSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.OBV_BULLISH_DIVERGENCE,
                         source="obv_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_obv": int(current_obv),
                             "obv_change_pct": round(obv_change_pct, 2),
                             "price_change_pct": round(price_change_pct, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2)
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -144,13 +144,13 @@ class OBVSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.OBV_BEARISH_DIVERGENCE,
                         source="obv_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_obv": int(current_obv),
                             "obv_change_pct": round(obv_change_pct, 2),
                             "price_change_pct": round(price_change_pct, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2)
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -172,13 +172,13 @@ class OBVSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.OBV_BULLISH_BREAKOUT,
                         source="obv_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_obv": int(current_obv),
                             "obv_change_pct": round(obv_change_pct, 2),
                             "price_change_pct": round(price_change_pct, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2)
-                        }
+                        })
                     )
                     
                     signals.append(signal)
@@ -200,13 +200,13 @@ class OBVSignalGenerator(BaseSignalGenerator):
                         signal_type=SignalType.OBV_BEARISH_BREAKDOWN,
                         source="obv_generator",
                         tickers=[ticker_signal],
-                        metadata={
+                        metadata=self._enrich_metadata({
                             "current_obv": int(current_obv),
                             "obv_change_pct": round(obv_change_pct, 2),
                             "price_change_pct": round(price_change_pct, 2),
                             "timeframe": self.timeframe,
                             "current_price": round(current_price, 2)
-                        }
+                        })
                     )
                     
                     signals.append(signal)
