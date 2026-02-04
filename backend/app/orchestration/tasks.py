@@ -19,6 +19,7 @@ from app.models.cost_tracking import UserBudget
 from app.orchestration.executor import PipelineExecutor
 from app.agents.base import TriggerNotMetException
 from app.agents.base import AgentError, InsufficientDataError, AgentProcessingError
+from billiard.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 
 logger = structlog.get_logger()
 
@@ -168,6 +169,35 @@ def execute_pipeline(
                     finally:
                         db2.close()
                 
+            except (SoftTimeLimitExceeded, TimeLimitExceeded) as e:
+                # Celery time limit exceeded. Persist FAILED to avoid leaving executions stuck in RUNNING.
+                try:
+                    db.rollback()
+                except Exception:  # pragma: no cover
+                    pass
+                execution = db.query(Execution).filter(Execution.id == executor.execution_id).first() or execution
+                execution.status = ExecutionStatus.FAILED
+                execution.completed_at = datetime.utcnow()
+                execution.error_message = f"Celery time limit exceeded: {str(e)}"
+                execution.result = {"error": execution.error_message}
+                try:
+                    db.commit()
+                except Exception:
+                    # Last resort: update status using a new session so we never leave RUNNING stuck
+                    db.close()
+                    db2 = SessionLocal()
+                    try:
+                        ex2 = db2.query(Execution).filter(Execution.id == executor.execution_id).first()
+                        if ex2:
+                            ex2.status = ExecutionStatus.FAILED
+                            ex2.completed_at = datetime.utcnow()
+                            ex2.error_message = f"Celery time limit exceeded: {str(e)}"
+                            ex2.result = {"error": ex2.error_message}
+                            db2.commit()
+                    finally:
+                        db2.close()
+                return {"status": "failed", "execution_id": str(execution.id), "error": execution.error_message}
+
             except Exception as e:
                 # Critical: if executor DB tracking hit a flush error, this Session may be in
                 # "pending rollback" state; rollback before attempting to persist FAILED.
@@ -520,6 +550,54 @@ def cleanup_old_executions(days_to_keep: int = 30):
         logger.info("old_executions_cleaned", deleted=deleted)
         return {"deleted": deleted}
         
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.orchestration.tasks.cleanup_stale_running_executions")
+def cleanup_stale_running_executions(max_age_minutes: int = 20):
+    """
+    Fail stale RUNNING/PENDING executions so one orphaned ticker doesn't block the pipeline.
+
+    Why this exists:
+    - If a worker restarts or a task is killed mid-flight, the DB can be left with executions
+      stuck in RUNNING. The trigger-dispatcher treats any RUNNING execution as a pipeline-wide lock,
+      so a single orphan can stop the entire pipeline from triggering on other tickers.
+
+    Args:
+        max_age_minutes: Age threshold to consider an in-flight execution stale.
+    """
+    db = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+
+        stale = (
+            db.query(Execution)
+            .filter(
+                Execution.status.in_([ExecutionStatus.RUNNING, ExecutionStatus.PENDING]),
+                # Prefer started_at when present; fall back to created_at
+                ((Execution.started_at.isnot(None) & (Execution.started_at < cutoff)))
+                | ((Execution.started_at.is_(None)) & (Execution.created_at < cutoff))
+            )
+            .all()
+        )
+
+        if not stale:
+            return {"stale_failed": 0}
+
+        for ex in stale:
+            ex.status = ExecutionStatus.FAILED
+            ex.completed_at = datetime.utcnow()
+            msg = (
+                f"Stale in-flight execution auto-failed after {max_age_minutes}m "
+                f"(status={ex.status}, phase={getattr(ex, 'execution_phase', None)})."
+            )
+            ex.error_message = msg
+            ex.result = (ex.result or {}) | {"error": msg, "stale_auto_failed": True}
+
+        db.commit()
+        logger.warning("stale_executions_failed", count=len(stale), max_age_minutes=max_age_minutes)
+        return {"stale_failed": len(stale)}
     finally:
         db.close()
 

@@ -809,6 +809,9 @@ class PipelineExecutor:
             # Update DB with current progress
             execution.agent_states = agent_states
             execution.logs = self._serialize_logs(state.execution_log)
+            # JSONB mutation: mark modified so "running" status is persisted even if agent hangs
+            flag_modified(execution, "agent_states")
+            flag_modified(execution, "logs")
             db_session.commit()
             
             self.logger.info(

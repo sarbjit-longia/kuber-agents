@@ -386,24 +386,26 @@ class TriggerDispatcher:
         
         return matches
     
-    async def check_running_pipelines(self, pipeline_ids: List[str]) -> Set[str]:
+    async def check_running_pipeline_tickers(self, pipeline_ids: List[str]) -> Dict[str, Set[str]]:
         """
-        Check which pipelines are currently running.
+        Check which (pipeline_id, ticker) pairs are currently running.
         
         Args:
             pipeline_ids: List of pipeline IDs to check
             
         Returns:
-            Set of pipeline IDs that are currently running
+            Dict mapping pipeline_id -> set(symbols/tickers) currently in PENDING/RUNNING
         """
         if not pipeline_ids:
-            return set()
+            return {}
         
         try:
             async with AsyncSessionLocal() as session:
                 from sqlalchemy import Table, MetaData, Column
                 from sqlalchemy.dialects.postgresql import UUID
-                from sqlalchemy import String
+                from sqlalchemy import String, DateTime
+                from sqlalchemy import update
+                from datetime import datetime, timedelta
                 
                 metadata = MetaData()
                 executions_table = Table(
@@ -412,14 +414,26 @@ class TriggerDispatcher:
                     Column('id', UUID(as_uuid=True), primary_key=True),
                     Column('pipeline_id', UUID(as_uuid=True)),
                     Column('status', String(50)),
+                    Column('symbol', String(50)),
+                    Column('created_at', DateTime),
+                    Column('started_at', DateTime),
+                    Column('completed_at', DateTime),
+                    Column('error_message', String),
                 )
                 
                 # Convert string IDs to UUID
                 from uuid import UUID as PyUUID
                 pipeline_uuids = [PyUUID(pid) for pid in pipeline_ids]
                 
-                # Query for running executions
-                query = select(executions_table.c.pipeline_id).where(
+                # Query for running executions (per ticker)
+                query = select(
+                    executions_table.c.id,
+                    executions_table.c.pipeline_id,
+                    executions_table.c.symbol,
+                    executions_table.c.status,
+                    executions_table.c.created_at,
+                    executions_table.c.started_at,
+                ).where(
                     and_(
                         executions_table.c.pipeline_id.in_(pipeline_uuids),
                         cast(executions_table.c.status, String).in_(['PENDING', 'RUNNING'])
@@ -427,17 +441,55 @@ class TriggerDispatcher:
                 )
                 
                 result = await session.execute(query)
-                running = result.fetchall()
+                rows = result.fetchall()
                 
-                return {str(row.pipeline_id) for row in running}
+                # Best-effort: treat very old "in-flight" executions as stale and do NOT let them block triggering
+                stale_cutoff = datetime.utcnow() - timedelta(minutes=12)
+
+                running_map: Dict[str, Set[str]] = {}
+                stale_ids = []
+
+                for row in rows:
+                    pid = str(row.pipeline_id)
+                    sym = row.symbol or "*"
+
+                    started = row.started_at or row.created_at
+                    if started and started < stale_cutoff:
+                        stale_ids.append(row.id)
+                        continue
+
+                    if pid not in running_map:
+                        running_map[pid] = set()
+                    running_map[pid].add(sym)
+
+                # Mark stale executions as FAILED so they stop blocking the pipeline (best-effort)
+                if stale_ids:
+                    try:
+                        msg = "Stale in-flight execution auto-failed by trigger-dispatcher (age > 12m)."
+                        upd = (
+                            update(executions_table)
+                            .where(executions_table.c.id.in_(stale_ids))
+                            .values(
+                                status="FAILED",
+                                completed_at=datetime.utcnow(),
+                                error_message=msg,
+                            )
+                        )
+                        await session.execute(upd)
+                        await session.commit()
+                        logger.warning("stale_executions_failed", count=len(stale_ids))
+                    except Exception as e:
+                        logger.error("stale_execution_fail_update_failed", error=str(e), exc_info=True)
+
+                return running_map
                 
         except Exception as e:
             logger.error(
-                "check_running_pipelines_failed",
+                "check_running_pipeline_tickers_failed",
                 error=str(e),
                 exc_info=True
             )
-            return set()
+            return {}
     
     async def enqueue_pipeline_executions(
         self,
@@ -460,7 +512,7 @@ class TriggerDispatcher:
         
         # Check which pipelines are already running
         pipeline_ids = list(pipeline_signal_map.keys())
-        running_ids = await self.check_running_pipelines(pipeline_ids)
+        running_by_pipeline = await self.check_running_pipeline_tickers(pipeline_ids)
         
         # Enqueue tasks for pipelines that aren't running
         enqueued_count = 0
@@ -550,9 +602,10 @@ class TriggerDispatcher:
             
             # For each unique ticker, enqueue a separate execution
             for ticker in tickers_to_execute:
-                # Check if pipeline with this ticker is already running
-                # (More granular check could be added here if needed)
-                if pipeline_id in running_ids:
+                # Check if THIS ticker is already running for this pipeline.
+                # Do NOT block the whole pipeline because of one stuck ticker.
+                running_syms = running_by_pipeline.get(pipeline_id, set())
+                if "*" in running_syms or ticker in running_syms:
                     skipped_count += 1
                     logger.debug(
                         "pipeline_already_running",

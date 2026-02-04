@@ -42,6 +42,10 @@ class TradierBrokerService(BrokerService):
         })
         
         self.logger.info("Tradier broker initialized", account_id=account_id, paper=paper)
+
+        # Prevent Celery tasks from hanging indefinitely on broker I/O
+        # (connect_timeout, read_timeout) in seconds
+        self._http_timeout = (5, 20)
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict[str, Any]:
         """Make HTTP request to Tradier API"""
@@ -49,19 +53,22 @@ class TradierBrokerService(BrokerService):
         
         try:
             if method.upper() == 'GET':
-                response = self.session.get(url, params=params)
+                response = self.session.get(url, params=params, timeout=self._http_timeout)
             elif method.upper() == 'POST':
-                response = self.session.post(url, params=params, data=data)
+                response = self.session.post(url, params=params, data=data, timeout=self._http_timeout)
             elif method.upper() == 'PUT':
-                response = self.session.put(url, params=params, data=data)
+                response = self.session.put(url, params=params, data=data, timeout=self._http_timeout)
             elif method.upper() == 'DELETE':
-                response = self.session.delete(url, params=params)
+                response = self.session.delete(url, params=params, timeout=self._http_timeout)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
             response.raise_for_status()
             return response.json()
             
+        except requests.exceptions.Timeout as e:
+            self.logger.error(f"Tradier API timeout: {e}")
+            return {"error": f"Tradier API timeout: {str(e)}"}
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Tradier API request failed: {e}")
             return {"error": str(e)}

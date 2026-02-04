@@ -138,6 +138,16 @@
               <mat-hint *ngIf="triggerMode === TriggerMode.SIGNAL">Required for signal-triggered pipelines</mat-hint>
             </mat-form-field>
           </div>
+
+          <mat-form-field appearance="outline" class="pipeline-description">
+            <mat-label>Description</mat-label>
+            <textarea
+              matInput
+              [(ngModel)]="pipelineDescription"
+              rows="3"
+              placeholder="Optional: what does this pipeline do?"
+            ></textarea>
+          </mat-form-field>
         </div>
 
         <!-- Broker settings -->

@@ -52,6 +52,10 @@ class OandaBrokerService(BrokerService):
                 pass
         
         self.logger.info("Oanda broker initialized", account_id=self.account_id, paper=paper)
+
+        # Prevent Celery tasks from hanging indefinitely on broker I/O
+        # (connect_timeout, read_timeout) in seconds
+        self._http_timeout = (5, 20)
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict[str, Any]:
         """Make HTTP request to Oanda API"""
@@ -59,13 +63,13 @@ class OandaBrokerService(BrokerService):
         
         try:
             if method.upper() == "GET":
-                response = self.session.get(url, params=params)
+                response = self.session.get(url, params=params, timeout=self._http_timeout)
             elif method.upper() == "POST":
-                response = self.session.post(url, json=data, params=params)
+                response = self.session.post(url, json=data, params=params, timeout=self._http_timeout)
             elif method.upper() == "PUT":
-                response = self.session.put(url, json=data, params=params)
+                response = self.session.put(url, json=data, params=params, timeout=self._http_timeout)
             elif method.upper() == "DELETE":
-                response = self.session.delete(url, params=params)
+                response = self.session.delete(url, params=params, timeout=self._http_timeout)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
@@ -85,6 +89,10 @@ class OandaBrokerService(BrokerService):
                 except:
                     error_msg += f" - {e.response.text}"
             
+            self.logger.error(error_msg)
+            return {"error": error_msg}
+        except requests.exceptions.Timeout as e:
+            error_msg = f"Oanda API timeout: {str(e)}"
             self.logger.error(error_msg)
             return {"error": error_msg}
         except Exception as e:

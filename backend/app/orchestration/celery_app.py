@@ -73,6 +73,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.orchestration.tasks.cleanup_old_executions",
         "schedule": crontab(hour=3, minute=0),  # 3 AM daily
     },
+    # Fail stale RUNNING/PENDING executions every minute (prevents pipeline-wide blocking)
+    "cleanup-stale-running-executions": {
+        "task": "app.orchestration.tasks.cleanup_stale_running_executions",
+        "schedule": crontab(minute="*"),  # Every minute
+        "args": (12,),  # 12 minutes stale threshold (task_time_limit is 10m)
+    },
     # Reset daily budgets
     "reset-daily-budgets": {
         "task": "app.orchestration.tasks.reset_daily_budgets",
