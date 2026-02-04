@@ -35,12 +35,15 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
   @Input() agentType: string = 'strategy';
   @Input() initialInstructions: string = '';
   @Input() initialDocumentUrl: string = '';
+  @Input() autoDetect: boolean = true;
+  @Input() showDetectButton: boolean = false;
   
   @Output() instructionsChange = new EventEmitter<{
     instructions: string;
     documentUrl: string;
     detectedTools: DetectedTool[];
     totalCost: number;
+    llmCost: number;
   }>();
 
   instructions: string = '';
@@ -72,18 +75,20 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     this.instructions = this.initialInstructions;
     this.documentUrl = this.initialDocumentUrl;
 
-    // Debounced tool detection (wait 2 seconds after user stops typing)
-    this.instructionsChanged$
-      .pipe(
-        debounceTime(2000),
-        distinctUntilChanged(),
-        takeUntil(this.destroy$)
-      )
-      .subscribe(instructions => {
-        if (instructions && instructions.length >= 20) {
-          this.detectTools();
-        }
-      });
+    if (this.autoDetect) {
+      // Debounced tool detection (wait 2 seconds after user stops typing)
+      this.instructionsChanged$
+        .pipe(
+          debounceTime(2000),
+          distinctUntilChanged(),
+          takeUntil(this.destroy$)
+        )
+        .subscribe(instructions => {
+          if (instructions && instructions.length >= 20) {
+            this.detectTools();
+          }
+        });
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -232,7 +237,8 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
       instructions: this.instructions,
       documentUrl: this.documentUrl,
       detectedTools: this.detectedTools,
-      totalCost: this.totalCost
+      totalCost: this.totalCost,
+      llmCost: this.llmCost
     });
   }
 

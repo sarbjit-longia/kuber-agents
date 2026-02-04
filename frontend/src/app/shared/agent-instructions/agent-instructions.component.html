@@ -15,8 +15,19 @@ Examples:
       rows="8"
       class="instructions-textarea"
     ></textarea>
-    <mat-hint>Enter at least 20 characters for tool detection</mat-hint>
+    <mat-hint>
+      <span *ngIf="autoDetect">Enter at least 20 characters for tool detection</span>
+      <span *ngIf="!autoDetect">Write instructions, then click “Detect tools”</span>
+    </mat-hint>
   </mat-form-field>
+
+  <!-- Manual tool detection -->
+  <div class="manual-detect" *ngIf="showDetectButton">
+    <button mat-stroked-button type="button" (click)="detectTools()" [disabled]="detecting || !instructions || instructions.length < 20">
+      <mat-icon>search</mat-icon>
+      Detect tools
+    </button>
+  </div>
 
   <!-- PDF Upload -->
   <div class="file-upload-section">

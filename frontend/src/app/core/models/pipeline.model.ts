@@ -42,6 +42,11 @@ export interface PipelineEdge {
 export interface PipelineConfig {
   symbol?: string;
   mode?: 'live' | 'paper' | 'simulation' | 'validation';
+  /**
+   * Optional pipeline-level broker tool configuration. Used by the guided builder
+   * to enforce a single broker across Risk Manager + Trade Manager.
+   */
+  broker_tool?: any;
   nodes: PipelineNode[];
   edges: PipelineEdge[];
 }

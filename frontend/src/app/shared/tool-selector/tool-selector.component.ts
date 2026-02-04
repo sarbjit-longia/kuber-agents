@@ -39,6 +39,7 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
   @Input() attachedTools: ToolInstance[] = [];  // Currently attached tools
   @Output() toolsChange = new EventEmitter<ToolInstance[]>();
 
+  allTools: ToolMetadata[] = [];
   availableTools: ToolMetadata[] = [];
   loading = false;
 
@@ -69,6 +70,7 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
       next: (tools) => {
         console.log('All tools from API:', tools);
         console.log('Supported tools for this agent:', this.supportedTools);
+        this.allTools = tools;
         // Filter to only show supported tools
         this.availableTools = tools.filter(tool => 
           this.supportedTools.includes(tool.tool_type)
@@ -89,10 +91,18 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
     // Add metadata to attached tools
     this.attachedTools.forEach(tool => {
       if (!tool.metadata) {
-        tool.metadata = this.availableTools.find(t => t.tool_type === tool.tool_type);
+        // Prefer full list so we can show names even if a tool isn't currently "supportedTools"
+        tool.metadata = this.allTools.find(t => t.tool_type === tool.tool_type) || this.availableTools.find(t => t.tool_type === tool.tool_type);
       }
     });
     console.log('Attached tools after enrichment:', this.attachedTools);
+  }
+
+  formatToolType(toolType: string): string {
+    if (!toolType) return '';
+    return toolType
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
   }
 
   addTool(toolType: string): void {

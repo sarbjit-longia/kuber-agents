@@ -21,7 +21,7 @@
         (removed)="removeTool(tool.tool_type)"
         class="tool-chip">
         <mat-icon matChipAvatar>{{tool.metadata?.icon || 'extension'}}</mat-icon>
-        {{tool.metadata?.name}}
+        {{tool.metadata?.name || formatToolType(tool.tool_type)}}
         <button matChipRemove aria-label="Remove tool">
           <mat-icon>cancel</mat-icon>
         </button>

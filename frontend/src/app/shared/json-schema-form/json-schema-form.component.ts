@@ -32,6 +32,11 @@ import { AgentConfigSchema } from '../../core/models/pipeline.model';
 export class JsonSchemaFormComponent implements OnInit, OnChanges {
   @Input() schema!: AgentConfigSchema;
   @Input() data: any = {};
+  /**
+   * Optional key to force a full rebuild when the parent selection changes.
+   * This avoids stale values when switching between different nodes that share similar schemas.
+   */
+  @Input() rebuildKey: string | number | null = null;
   @Output() dataChange = new EventEmitter<any>();
 
   form!: FormGroup;
@@ -48,10 +53,13 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    const rebuildKeyChanged = changes['rebuildKey'] && !changes['rebuildKey'].firstChange;
     const schemaChanged = changes['schema'] && !changes['schema'].firstChange;
     const dataChanged = changes['data'] && !changes['data'].firstChange;
     
-    if (schemaChanged) {
+    if (rebuildKeyChanged) {
+      this.buildForm();
+    } else if (schemaChanged) {
       // Schema changed - completely rebuild form (includes UTC→Local conversion)
       this.buildForm();
     } else if (dataChanged && this.form) {

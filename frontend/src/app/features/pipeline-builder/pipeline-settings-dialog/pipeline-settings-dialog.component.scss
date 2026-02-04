@@ -55,6 +55,43 @@ mat-dialog-content {
       line-height: 1.4;
     }
 
+    .quick-add {
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+
+      .quick-add-row {
+        display: grid;
+        grid-template-columns: 1fr 160px 140px auto;
+        gap: 1rem;
+        align-items: start;
+      }
+
+      .quick-signal-search {
+        width: 100%;
+      }
+
+      .quick-timeframe,
+      .quick-confidence {
+        width: 100%;
+      }
+
+      .quick-chips {
+        margin-top: 0.75rem;
+      }
+
+      mat-chip-option {
+        .signal-icon {
+          margin-right: 0.35rem;
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
+    }
+
     .trigger-mode-group {
       display: flex;
       flex-direction: column;

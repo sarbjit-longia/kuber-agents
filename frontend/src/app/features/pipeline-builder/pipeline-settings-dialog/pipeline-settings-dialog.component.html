@@ -86,6 +86,68 @@
         Subscribe to specific signal types and set confidence thresholds. Leave empty to accept all signal types.
       </mat-hint>
 
+      <!-- Quick multi-select -->
+      <div class="quick-add" *ngIf="signalTypes.length > 0">
+        <div class="quick-add-row">
+          <mat-form-field appearance="outline" class="quick-signal-search">
+            <mat-label>Quick add signal types</mat-label>
+            <input
+              matInput
+              [formControl]="signalTypeSearchCtrl"
+              [matAutocomplete]="autoSignalTypes"
+              placeholder="Search (e.g. FVG, liquidity, RSI, MACD)"
+            />
+            <mat-autocomplete #autoSignalTypes="matAutocomplete" (optionSelected)="addBulkSignalType($event.option.value)">
+              <mat-option *ngFor="let st of (filteredSignalTypes$ | async) || []" [value]="st">
+                <div class="signal-type-option">
+                  <div class="signal-header">
+                    <mat-icon class="signal-icon">{{ st.icon }}</mat-icon>
+                    <strong>{{ st.name }}</strong>
+                  </div>
+                  <div class="signal-description">{{ st.description }}</div>
+                  <div class="signal-meta">
+                    <span class="frequency">{{ st.typical_frequency }}</span>
+                    <span class="badge" [class.free]="st.is_free">{{ st.is_free ? 'FREE' : 'PAID' }}</span>
+                  </div>
+                </div>
+              </mat-option>
+            </mat-autocomplete>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="quick-timeframe">
+            <mat-label>Timeframe</mat-label>
+            <mat-select [formControl]="bulkTimeframeCtrl">
+              <mat-option [value]="null">Any timeframe</mat-option>
+              <mat-option value="1">1 Minute</mat-option>
+              <mat-option value="5">5 Minutes</mat-option>
+              <mat-option value="15">15 Minutes</mat-option>
+              <mat-option value="60">1 Hour</mat-option>
+              <mat-option value="240">4 Hours</mat-option>
+              <mat-option value="D">Daily</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="quick-confidence">
+            <mat-label>Min Conf %</mat-label>
+            <input matInput type="number" [formControl]="bulkMinConfidenceCtrl" placeholder="0-100" min="0" max="100" />
+          </mat-form-field>
+
+          <button mat-raised-button color="primary" type="button" (click)="applyBulkSelection()" [disabled]="selectedSignalTypes.length === 0">
+            Add selected
+          </button>
+        </div>
+
+        <mat-chip-listbox class="quick-chips" *ngIf="selectedSignalTypes.length > 0">
+          <mat-chip-option *ngFor="let st of selectedSignalTypes" selected="true" (removed)="removeBulkSignalType(st)">
+            <mat-icon class="signal-icon">{{ st.icon }}</mat-icon>
+            {{ st.name }}
+            <button matChipRemove>
+              <mat-icon>cancel</mat-icon>
+            </button>
+          </mat-chip-option>
+        </mat-chip-listbox>
+      </div>
+
       <div class="subscriptions-list" *ngIf="signalSubscriptions.length > 0">
         <div class="subscription-item" *ngFor="let sub of signalSubscriptions.controls; let i = index" [formGroup]="$any(sub)">
           <mat-form-field appearance="outline" class="signal-type-field">

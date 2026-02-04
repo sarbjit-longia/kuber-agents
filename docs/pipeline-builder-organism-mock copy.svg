@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1400" height="820" viewBox="0 0 1400 820" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#0F1A33"/>
+    </linearGradient>
+    <linearGradient id="coreGlow" x1="520" y1="140" x2="1060" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#22C55E" stop-opacity="0.25"/>
+    </linearGradient>
+    <linearGradient id="pill" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <filter id="shadow" x="-40" y="-40" width="2000" height="1200" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="softGlow" x="-50" y="-50" width="2000" height="1200" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.28 0" />
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+    <style>
+      .title { font: 700 18px Inter, ui-sans-serif, system-ui; fill: #E5E7EB; }
+      .muted { font: 500 12px Inter, ui-sans-serif, system-ui; fill: #94A3B8; }
+      .label { font: 600 12px Inter, ui-sans-serif, system-ui; fill: #CBD5E1; }
+      .small { font: 500 11px Inter, ui-sans-serif, system-ui; fill: #AAB7CF; }
+      .chipText { font: 700 11px Inter, ui-sans-serif, system-ui; fill: #0B1220; }
+      .sectionTitle { font: 700 13px Inter, ui-sans-serif, system-ui; fill: #E5E7EB; }
+      .card { fill: rgba(255,255,255,0.06); stroke: rgba(148,163,184,0.18); stroke-width: 1; }
+      .stroke { stroke: rgba(148,163,184,0.22); stroke-width: 1; }
+      .tentacle { stroke: rgba(99,102,241,0.60); stroke-width: 3; fill: none; }
+      .tentacle2 { stroke: rgba(34,197,94,0.55); stroke-width: 3; fill: none; }
+      .tentacle3 { stroke: rgba(245,158,11,0.55); stroke-width: 3; fill: none; }
+      .tentacleDashed { stroke-dasharray: 8 8; }
+      .dot { fill: rgba(226,232,240,0.75); }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="820" fill="url(#bg)"/>
+
+  <!-- Frame -->
+  <rect x="32" y="24" width="1336" height="772" rx="18" class="card" filter="url(#shadow)"/>
+
+  <!-- Top toolbar -->
+  <rect x="56" y="44" width="1288" height="66" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="78" y="72" class="title">Pipeline: Forex London Breakout</text>
+  <text x="78" y="94" class="muted">Draft • Validation: 2 warnings • Est: $0.12 / run</text>
+
+  <!-- Mode pill -->
+  <rect x="1078" y="62" width="118" height="30" rx="15" fill="url(#pill)"/>
+  <text x="1108" y="81" class="chipText">PAPER</text>
+  <text x="1174" y="81" class="chipText">▾</text>
+
+  <!-- Buttons -->
+  <rect x="1210" y="62" width="64" height="30" rx="10" fill="rgba(255,255,255,0.08)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="1228" y="81" class="label">Save</text>
+  <rect x="1282" y="62" width="62" height="30" rx="10" fill="rgba(34,197,94,0.22)" stroke="rgba(34,197,94,0.55)"/>
+  <text x="1296" y="81" class="label">Run</text>
+
+  <!-- Left rail -->
+  <rect x="56" y="128" width="300" height="648" rx="16" class="card"/>
+  <text x="78" y="160" class="sectionTitle">Guided setup</text>
+  <text x="78" y="182" class="muted">Fixed agents • configure behavior + tools</text>
+
+  <!-- Steps -->
+  <g>
+    <rect x="76" y="206" width="260" height="56" rx="12" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.40)"/>
+    <text x="96" y="230" class="label">1) Name + Mode</text>
+    <text x="96" y="250" class="small">Done</text>
+    <circle cx="322" cy="234" r="10" fill="#22C55E"/>
+    <text x="317" y="238" class="chipText">✓</text>
+  </g>
+  <g>
+    <rect x="76" y="272" width="260" height="56" rx="12" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.38)"/>
+    <text x="96" y="296" class="label">2) Universe (Scanner)</text>
+    <text x="96" y="316" class="small">Select tickers / scanner</text>
+    <circle cx="322" cy="300" r="10" fill="#F59E0B"/>
+    <text x="316" y="304" class="chipText">!</text>
+  </g>
+  <g>
+    <rect x="76" y="338" width="260" height="56" rx="12" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.40)"/>
+    <text x="96" y="362" class="label">3) Triggers</text>
+    <text x="96" y="382" class="small">Signal + timeframe set</text>
+    <circle cx="322" cy="366" r="10" fill="#22C55E"/>
+    <text x="317" y="370" class="chipText">✓</text>
+  </g>
+  <g>
+    <rect x="76" y="404" width="260" height="56" rx="12" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.38)"/>
+    <text x="96" y="428" class="label">4) Tools (per agent)</text>
+    <text x="96" y="448" class="small">Detect + attach to agents</text>
+    <circle cx="322" cy="432" r="10" fill="#F59E0B"/>
+    <text x="316" y="436" class="chipText">!</text>
+  </g>
+  <g>
+    <rect x="76" y="470" width="260" height="56" rx="12" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.38)"/>
+    <text x="96" y="494" class="label">5) Instructions</text>
+    <text x="96" y="514" class="small">Bias + strategy text missing</text>
+    <circle cx="322" cy="498" r="10" fill="#F59E0B"/>
+    <text x="316" y="502" class="chipText">!</text>
+  </g>
+  <g>
+    <rect x="76" y="536" width="260" height="56" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+    <text x="96" y="560" class="label">6) Review + Cost</text>
+    <text x="96" y="580" class="small">Preview plan + validation</text>
+    <circle cx="322" cy="564" r="10" fill="#334155"/>
+    <text x="316" y="568" class="chipText">·</text>
+  </g>
+  <g>
+    <rect x="76" y="602" width="260" height="56" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+    <text x="96" y="626" class="label">7) Activate</text>
+    <text x="96" y="646" class="small">Enable pipeline</text>
+    <circle cx="322" cy="630" r="10" fill="#334155"/>
+    <text x="316" y="634" class="chipText">·</text>
+  </g>
+
+  <!-- Right panel -->
+  <rect x="1096" y="128" width="248" height="648" rx="16" class="card"/>
+  <text x="1118" y="160" class="sectionTitle">Details</text>
+  <text x="1118" y="182" class="muted">Context • validation • JSON</text>
+  <rect x="1116" y="206" width="208" height="90" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="1132" y="230" class="label">Blocking issues</text>
+  <text x="1132" y="252" class="small">• Universe not selected</text>
+  <text x="1132" y="272" class="small">• Bias instructions missing</text>
+  <rect x="1116" y="314" width="208" height="164" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="1132" y="338" class="label">Agent config</text>
+  <text x="1132" y="360" class="small">Bias → Instructions</text>
+  <rect x="1132" y="376" width="176" height="78" rx="10" fill="rgba(15,23,42,0.65)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="1142" y="398" class="small">Write instructions…</text>
+  <text x="1142" y="418" class="small">Use provided bias context</text>
+  <text x="1142" y="438" class="small">Avoid inventing bias</text>
+  <rect x="1116" y="462" width="208" height="160" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="1132" y="486" class="label">Tools (for selected agent)</text>
+  <text x="1132" y="508" class="small">Attached:</text>
+  <text x="1188" y="508" class="small">RSI, ATR</text>
+  <text x="1132" y="530" class="small">Missing:</text>
+  <text x="1188" y="530" class="small">ADX (LLM will try best)</text>
+  <rect x="1132" y="552" width="176" height="28" rx="10" fill="rgba(99,102,241,0.16)" stroke="rgba(99,102,241,0.50)"/>
+  <text x="1148" y="571" class="label">Detect tools</text>
+  <text x="1132" y="604" class="muted">Runs on button press (not per keystroke)</text>
+
+  <!-- Center organism core -->
+  <rect x="380" y="128" width="696" height="648" rx="18" fill="rgba(255,255,255,0.035)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="404" y="160" class="sectionTitle">PIPELINE CORE</text>
+  <text x="404" y="182" class="muted">Fixed agent chain • configure each section</text>
+
+  <!-- Blob / core body -->
+  <path d="M520 210 C 620 150, 820 150, 920 210
+           C 1010 265, 1010 390, 955 460
+           C 910 520, 910 620, 970 670
+           C 890 730, 690 740, 580 680
+           C 470 620, 465 520, 515 450
+           C 560 390, 460 270, 520 210 Z"
+        fill="url(#coreGlow)" stroke="rgba(226,232,240,0.14)" stroke-width="1.2" filter="url(#softGlow)"/>
+
+  <!-- Agent sections inside -->
+  <g>
+    <!-- Market Data (green) -->
+    <rect x="458" y="230" width="540" height="76" rx="16" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.50)"/>
+    <text x="486" y="260" class="sectionTitle">Market Data Agent</text>
+    <text x="486" y="282" class="small">Timeframes: 5, 60, 240, D • Source: Data Plane</text>
+    <rect x="900" y="246" width="78" height="26" rx="13" fill="#22C55E"/>
+    <text x="922" y="263" class="chipText">READY</text>
+    <text x="486" y="302" class="small">Tools: see Details →</text>
+
+    <!-- Bias (yellow) -->
+    <rect x="458" y="320" width="540" height="76" rx="16" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.50)"/>
+    <text x="486" y="350" class="sectionTitle">Bias Agent</text>
+    <text x="486" y="372" class="small">Missing: instructions • Uses: EMA/MACD • HTF: 60/240/D</text>
+    <rect x="892" y="336" width="86" height="26" rx="13" fill="#F59E0B"/>
+    <text x="915" y="353" class="chipText">SETUP</text>
+    <text x="486" y="392" class="small">Tools: see Details →</text>
+
+    <!-- Strategy (yellow) -->
+    <rect x="458" y="410" width="540" height="76" rx="16" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.50)"/>
+    <text x="486" y="440" class="sectionTitle">Strategy Agent</text>
+    <text x="486" y="462" class="small">Primary TF: 5 • Needs: instructions • Must follow bias context</text>
+    <rect x="892" y="426" width="86" height="26" rx="13" fill="#F59E0B"/>
+    <text x="915" y="443" class="chipText">SETUP</text>
+    <text x="486" y="482" class="small">Tools: see Details →</text>
+
+    <!-- Risk (gray) -->
+    <rect x="458" y="500" width="540" height="76" rx="16" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+    <text x="486" y="530" class="sectionTitle">Risk Manager</text>
+    <text x="486" y="552" class="small">Rule: 1% risk • Target 25–35% margin • Needs broker account</text>
+    <rect x="906" y="516" width="72" height="26" rx="13" fill="#334155"/>
+    <text x="924" y="533" class="chipText">TODO</text>
+    <text x="486" y="572" class="small">Tools: see Details →</text>
+
+    <!-- Trade Manager (gray) -->
+    <rect x="458" y="590" width="540" height="76" rx="16" fill="rgba(255,255,255,0.05)" stroke="rgba(148,163,184,0.18)"/>
+    <text x="486" y="620" class="sectionTitle">Trade Manager</text>
+    <text x="486" y="642" class="small">Exec: limit/bracket • Monitor: 15s • Needs broker/webhook tool</text>
+    <rect x="906" y="606" width="72" height="26" rx="13" fill="#334155"/>
+    <text x="924" y="623" class="chipText">TODO</text>
+    <text x="486" y="662" class="small">Tools: see Details →</text>
+  </g>
+
+  <!-- Footer note -->
+  <text x="56" y="808" class="muted">Updated: tool visualization moved into the Details pane (per-agent). “Detect tools” runs on button press; missing tools show “LLM will try best without tool”.</text>
+</svg>
+

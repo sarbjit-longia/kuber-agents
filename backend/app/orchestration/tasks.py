@@ -141,18 +141,63 @@ def execute_pipeline(
                 execution = executor.execute_with_sync_db_tracking(db, execution)
                 
             except TriggerNotMetException as e:
+                # Ensure session is usable after any flush/commit errors inside executor tracking
+                try:
+                    db.rollback()
+                except Exception:  # pragma: no cover
+                    pass
+                # Re-load execution in a fresh transaction
+                execution = db.query(Execution).filter(Execution.id == executor.execution_id).first() or execution
                 # Trigger not met - mark as COMPLETED (successfully determined not to execute)
                 execution.status = ExecutionStatus.COMPLETED
                 execution.completed_at = datetime.utcnow()
                 execution.result = {"trigger_met": False, "reason": str(e)}
-                db.commit()
+                try:
+                    db.commit()
+                except Exception:
+                    # Last resort: update status using a new session so we never leave RUNNING stuck
+                    db.close()
+                    db2 = SessionLocal()
+                    try:
+                        ex2 = db2.query(Execution).filter(Execution.id == executor.execution_id).first()
+                        if ex2:
+                            ex2.status = ExecutionStatus.COMPLETED
+                            ex2.completed_at = datetime.utcnow()
+                            ex2.result = {"trigger_met": False, "reason": str(e)}
+                            db2.commit()
+                    finally:
+                        db2.close()
                 
             except Exception as e:
+                # Critical: if executor DB tracking hit a flush error, this Session may be in
+                # "pending rollback" state; rollback before attempting to persist FAILED.
+                try:
+                    db.rollback()
+                except Exception:  # pragma: no cover
+                    pass
+                # Re-load execution in a fresh transaction
+                execution = db.query(Execution).filter(Execution.id == executor.execution_id).first() or execution
+
                 execution.status = ExecutionStatus.FAILED
                 execution.completed_at = datetime.utcnow()
                 execution.result = {"error": str(e)}
                 execution.error_message = str(e)
-                db.commit()
+                try:
+                    db.commit()
+                except Exception:
+                    # Last resort: update status using a new session so we never leave RUNNING stuck
+                    db.close()
+                    db2 = SessionLocal()
+                    try:
+                        ex2 = db2.query(Execution).filter(Execution.id == executor.execution_id).first()
+                        if ex2:
+                            ex2.status = ExecutionStatus.FAILED
+                            ex2.completed_at = datetime.utcnow()
+                            ex2.result = {"error": str(e)}
+                            ex2.error_message = str(e)
+                            db2.commit()
+                    finally:
+                        db2.close()
                 # Do NOT retry deterministic agent failures; they should surface to the UI as-is.
                 # Retrying here has been causing "stuck RUNNING" executions and confusing states.
                 if isinstance(e, (InsufficientDataError, AgentProcessingError, AgentError, ValueError, PermissionError)):

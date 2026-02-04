@@ -1,0 +1,352 @@
+<app-navbar></app-navbar>
+
+<div class="guided-builder">
+  <!-- Top toolbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <mat-icon class="topbar-icon">account_tree</mat-icon>
+      <mat-form-field appearance="outline" class="name-field">
+        <mat-label>Pipeline name</mat-label>
+        <input matInput [(ngModel)]="pipelineName" />
+      </mat-form-field>
+    </div>
+
+    <div class="topbar-right">
+      <div class="topbar-metrics">
+        <div class="readiness" [class.ready]="getReadiness().ready" [class.not-ready]="!getReadiness().ready">
+          <mat-icon>{{ getReadiness().ready ? 'check_circle' : 'error' }}</mat-icon>
+          <span class="readiness-text">
+            {{ getReadiness().ready ? 'Fully configured' : (getReadiness().missing.length + ' missing') }}
+          </span>
+        </div>
+        <div class="cost-pill" *ngIf="estimatedPipelineCost > 0">
+          <mat-icon>attach_money</mat-icon>
+          <span>Est: ${{ estimatedPipelineCost.toFixed(3) }}/run</span>
+        </div>
+      </div>
+      <button mat-stroked-button (click)="savePipeline()" [disabled]="saving">
+        <mat-icon>save</mat-icon>
+        {{ saving ? 'Saving…' : 'Save' }}
+      </button>
+      <button mat-raised-button color="primary" (click)="executePipeline()" [disabled]="executing">
+        <mat-icon>play_arrow</mat-icon>
+        {{ executing ? 'Running…' : 'Run' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Center: fixed chain -->
+    <div class="core">
+      <div class="core-header">
+        <div class="core-title">Pipeline core</div>
+        <div class="core-subtitle">Fixed agent chain — click a block to configure it</div>
+      </div>
+
+      <div class="setup-items">
+        <div
+          class="setup-card"
+          *ngFor="let item of setupItems"
+          [class.selected]="selectedItemKey === item.key"
+          (click)="selectItem(item.key)"
+        >
+          <div class="setup-left">
+            <div class="setup-icon">
+              <mat-icon>{{ item.icon }}</mat-icon>
+            </div>
+            <div class="setup-text">
+              <div class="setup-title">{{ item.title }}</div>
+              <div class="setup-subtitle" *ngIf="selectedItemKey === item.key">{{ item.subtitle }}</div>
+            </div>
+          </div>
+          <div class="setup-right">
+            <span class="status-pill" [attr.data-status]="getSetupItemStatus(item.key)">
+              {{ getSetupItemStatus(item.key) }}
+            </span>
+            <mat-icon class="chev">chevron_right</mat-icon>
+          </div>
+        </div>
+      </div>
+
+      <div class="chain">
+        <div
+          class="agent-card"
+          *ngFor="let slot of slots"
+          [class.selected]="selectedItemKey === ('agent:' + slot.agent_type)"
+          (click)="selectItem('agent:' + slot.agent_type)"
+        >
+          <div class="agent-left">
+            <div class="agent-icon">
+              <mat-icon>{{ slot.icon }}</mat-icon>
+            </div>
+            <div class="agent-text">
+              <div class="agent-title">{{ slot.title }}</div>
+              <div class="agent-subtitle" *ngIf="selectedItemKey === ('agent:' + slot.agent_type)">{{ slot.subtitle }}</div>
+            </div>
+          </div>
+
+          <div class="agent-right">
+            <span class="status-pill" [attr.data-status]="getSlotStatus(slot.agent_type)">
+              {{ getSlotStatus(slot.agent_type) }}
+            </span>
+            <mat-icon class="chev">chevron_right</mat-icon>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: details pane -->
+    <div class="details">
+      <div class="details-header">
+        <div class="details-title">
+          <mat-icon>tune</mat-icon>
+          Setup
+        </div>
+        <button mat-raised-button color="primary" (click)="applyRightPaneChanges()">
+          <mat-icon>save</mat-icon>
+          Apply
+        </button>
+      </div>
+
+      <mat-divider></mat-divider>
+
+      <div class="details-body">
+        <!-- Pipeline settings -->
+        <div class="section" *ngIf="selectedItemKey === 'pipeline_settings'">
+          <div class="section-title">
+            <mat-icon>settings</mat-icon>
+            Pipeline settings
+          </div>
+
+          <div class="pipeline-setup-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Trigger mode</mat-label>
+              <mat-select [(ngModel)]="triggerMode">
+                <mat-option [value]="TriggerMode.PERIODIC">Periodic</mat-option>
+                <mat-option [value]="TriggerMode.SIGNAL">Signal</mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Scanner {{ triggerMode === TriggerMode.SIGNAL ? '*' : '(optional)' }}</mat-label>
+              <mat-select [(ngModel)]="scannerId">
+                <mat-option [value]="null">None</mat-option>
+                <mat-option *ngFor="let sc of scanners" [value]="sc.id">
+                  {{ sc.name }}
+                </mat-option>
+              </mat-select>
+              <mat-hint *ngIf="triggerMode === TriggerMode.SIGNAL">Required for signal-triggered pipelines</mat-hint>
+            </mat-form-field>
+          </div>
+        </div>
+
+        <!-- Broker settings -->
+        <div class="section" *ngIf="selectedItemKey === 'broker_settings'">
+          <div class="section-title">
+            <mat-icon>account_balance</mat-icon>
+            Broker
+          </div>
+
+          <div class="hint">
+            Configure broker once. Risk Manager + Trade Manager will always use this broker.
+          </div>
+
+          <mat-form-field appearance="outline" class="broker-type">
+            <mat-label>Broker</mat-label>
+            <mat-select [(ngModel)]="brokerToolType" (selectionChange)="onBrokerToolTypeChange($event.value)">
+              <mat-option [value]="null">Select…</mat-option>
+              <mat-option *ngFor="let bt of brokerTools" [value]="bt.tool_type">
+                {{ bt.name || bt.tool_type }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <div class="broker-form" *ngIf="getSelectedBrokerMeta() as bmeta">
+            <app-json-schema-form
+              [schema]="bmeta.config_schema"
+              [data]="brokerToolConfig"
+              [rebuildKey]="'broker:' + (brokerToolType || '') + ':' + brokerSetupRebuildKey"
+              (dataChange)="onBrokerConfigChange($event)"
+            >
+            </app-json-schema-form>
+          </div>
+        </div>
+
+        <!-- Signal filters -->
+        <div class="section" *ngIf="selectedItemKey === 'signal_filters'">
+          <div class="section-title">
+            <mat-icon>tune</mat-icon>
+            Signal filters
+          </div>
+
+          <div class="accept-all" *ngIf="triggerMode !== TriggerMode.SIGNAL">
+            <mat-icon>info</mat-icon>
+            Enable Trigger mode = SIGNAL to use filters
+          </div>
+
+          <ng-container *ngIf="triggerMode === TriggerMode.SIGNAL">
+            <div class="hint">Click a tag to subscribe (defaults to 80% confidence). Leave empty to accept all.</div>
+
+            <mat-form-field appearance="outline" class="signal-search">
+              <mat-label>Search signals</mat-label>
+              <input matInput [formControl]="signalSearchCtrl" placeholder="e.g. fvg, rsi, liquidity, macd" />
+            </mat-form-field>
+
+            <div class="signal-two-col">
+              <!-- Left: Catalog -->
+              <div class="signal-col">
+                <div class="col-title">All signals</div>
+                <div class="signal-catalog" *ngIf="(filteredSignalCatalog$ | async) as catalog">
+                  <div class="signal-row" *ngFor="let st of catalog">
+                    <div class="signal-meta">
+                      <mat-icon class="signal-icon">{{ st.icon }}</mat-icon>
+                      <div class="signal-text">
+                        <div class="signal-name">{{ st.name }}</div>
+                        <div class="signal-desc">{{ st.description }}</div>
+                      </div>
+                    </div>
+
+                    <div class="tf-tags">
+                      <button
+                        *ngFor="let tf of SIGNAL_TIMEFRAMES"
+                        mat-stroked-button
+                        type="button"
+                        class="tf-tag"
+                        [class.selected]="isSignalSubscribed(st.signal_type, tf.value)"
+                        (click)="toggleSignalSubscription(st.signal_type, tf.value)"
+                      >
+                        {{ st.signal_type }} ({{ tf.label }})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Selected -->
+              <div class="signal-col">
+                <div class="col-title">Selected</div>
+                <div class="selected-filters" *ngIf="signalSubscriptions && signalSubscriptions.length > 0; else acceptAllFilters">
+                  <div class="selected-header">
+                    <div class="selected-title">Selected ({{ signalSubscriptions.length }})</div>
+                    <div class="selected-actions">
+                      <div class="bulk-conf">
+                        <label class="bulk-label">Set all Min %</label>
+                        <input class="num-input" type="number" [formControl]="bulkSelectedMinConfidenceCtrl" min="0" max="100" />
+                      </div>
+                      <button mat-stroked-button type="button" (click)="applyBulkSelectedMinConfidence()">
+                        Apply
+                      </button>
+                      <button mat-button type="button" (click)="clearAllSignalSubscriptions()">
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                  <div class="filter-row" *ngFor="let sub of signalSubscriptions; let i = index">
+                    <div class="filter-left">
+                      <mat-icon class="row-icon">{{ getSignalTypeMeta(sub.signal_type)?.icon || 'bolt' }}</mat-icon>
+                      <div class="row-text">
+                        <div class="row-title-line">
+                          <span class="row-name">{{ getSignalTypeMeta(sub.signal_type)?.name || sub.signal_type }}</span>
+                          <span class="tf-pill">{{ formatTimeframe(sub.timeframe) }}</span>
+                        </div>
+                        <div class="row-sub">{{ sub.signal_type }}</div>
+                      </div>
+                    </div>
+                      <div class="conf-plain">
+                        <label class="conf-label">Min %</label>
+                        <input
+                          class="num-input"
+                          type="number"
+                          [ngModel]="sub.min_confidence ?? DEFAULT_MIN_CONFIDENCE"
+                          (ngModelChange)="updateSubscriptionConfidence(i, $event)"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                    <button mat-icon-button type="button" (click)="removeSignalSubscriptionAt(i)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </div>
+                </div>
+
+                <ng-template #acceptAllFilters>
+                  <div class="accept-all">
+                    <mat-icon>all_inclusive</mat-icon>
+                    Accepting all signal types
+                  </div>
+                </ng-template>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+
+        <!-- Agent settings -->
+        <ng-container *ngIf="getSelectedAgentType() as at">
+          <div class="meta">
+          <div class="meta-row">
+            <span class="k">Agent</span>
+            <span class="v">{{ getAgentMetadata(at)?.name || at }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="k">Type</span>
+            <span class="v monospace">{{ at }}</span>
+          </div>
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <!-- Instructions (only for relevant agents) -->
+        <div class="section" *ngIf="agentNeedsInstructions(at)">
+          <div class="section-title">
+            <mat-icon>psychology</mat-icon>
+            Instructions
+          </div>
+          <app-agent-instructions
+            [agentType]="at"
+            [initialInstructions]="editingConfig['instructions'] || ''"
+            [initialDocumentUrl]="editingConfig['strategy_document_url'] || ''"
+            [autoDetect]="false"
+            [showDetectButton]="true"
+            (instructionsChange)="onInstructionsChange($event)"
+          >
+          </app-agent-instructions>
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <!-- Extra config schema (if any) -->
+        <div class="section" *ngIf="getAgentAdditionalSchema(at) as addSchema">
+          <div class="section-title">
+            <mat-icon>settings</mat-icon>
+            Additional settings
+          </div>
+          <app-json-schema-form
+            [schema]="addSchema"
+            [data]="editingConfig"
+            [rebuildKey]="selectedItemKey"
+            (dataChange)="onConfigChange($event)"
+          >
+          </app-json-schema-form>
+        </div>
+
+        <mat-divider *ngIf="getSupportedTools(at).length > 0"></mat-divider>
+
+        <!-- Tools -->
+        <div class="section" *ngIf="getSupportedTools(at).length > 0">
+          <div class="section-title">
+            <mat-icon>extension</mat-icon>
+            Tools
+          </div>
+          <app-tool-selector
+            [supportedTools]="getSupportedTools(at)"
+            [attachedTools]="editingConfig['tools'] || []"
+            (toolsChange)="onToolsChange($event)"
+          >
+          </app-tool-selector>
+        </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+</div>
+

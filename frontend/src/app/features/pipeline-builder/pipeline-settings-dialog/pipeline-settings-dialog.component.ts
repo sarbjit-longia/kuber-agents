@@ -14,6 +14,9 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { Observable } from 'rxjs';
+import { map, startWith } from 'rxjs/operators';
 import { TriggerMode, SignalSubscription, Pipeline } from '../../../core/models/pipeline.model';
 import { Scanner, SignalType } from '../../../core/models/scanner.model';
 import { ScannerService } from '../../../core/services/scanner.service';
@@ -31,7 +34,8 @@ import { ScannerService } from '../../../core/services/scanner.service';
     MatSelectModule,
     MatFormFieldModule,
     MatInputModule,
-    MatChipsModule
+    MatChipsModule,
+    MatAutocompleteModule
   ],
   templateUrl: './pipeline-settings-dialog.component.html',
   styleUrls: ['./pipeline-settings-dialog.component.scss']
@@ -42,6 +46,13 @@ export class PipelineSettingsDialogComponent implements OnInit {
   scanners: Scanner[] = [];
   signalTypes: SignalType[] = [];
   loading = false;
+
+  // Quick multi-select for signal filters
+  signalTypeSearchCtrl = new FormControl<string>('');
+  filteredSignalTypes$!: Observable<SignalType[]>;
+  selectedSignalTypes: SignalType[] = [];
+  bulkTimeframeCtrl = new FormControl<string | null>(null);
+  bulkMinConfidenceCtrl = new FormControl<number | null>(null);
 
   constructor(
     private fb: FormBuilder,
@@ -76,6 +87,18 @@ export class PipelineSettingsDialogComponent implements OnInit {
       }
       this.settingsForm.get('scanner_id')?.updateValueAndValidity();
     });
+
+    this.filteredSignalTypes$ = this.signalTypeSearchCtrl.valueChanges.pipe(
+      startWith(''),
+      map(value => (value || '').toLowerCase().trim()),
+      map(query => {
+        if (!query) return this.signalTypes;
+        return this.signalTypes.filter(st => {
+          const hay = `${st.name} ${st.signal_type} ${st.description || ''}`.toLowerCase();
+          return hay.includes(query);
+        });
+      })
+    );
   }
 
   loadScanners(): void {
@@ -114,6 +137,38 @@ export class PipelineSettingsDialogComponent implements OnInit {
       min_confidence: [subscription?.min_confidence || null, [Validators.min(0), Validators.max(100)]]
     });
     this.signalSubscriptions.push(subGroup);
+  }
+
+  addBulkSignalType(signalType: SignalType): void {
+    if (this.selectedSignalTypes.some(st => st.signal_type === signalType.signal_type)) return;
+    this.selectedSignalTypes = [...this.selectedSignalTypes, signalType];
+  }
+
+  removeBulkSignalType(signalType: SignalType): void {
+    this.selectedSignalTypes = this.selectedSignalTypes.filter(st => st.signal_type !== signalType.signal_type);
+  }
+
+  applyBulkSelection(): void {
+    const timeframe = this.bulkTimeframeCtrl.value ?? null;
+    const minConfidence = this.bulkMinConfidenceCtrl.value ?? null;
+
+    for (const st of this.selectedSignalTypes) {
+      const exists = this.signalSubscriptions.controls.some(ctrl => {
+        const t = ctrl.get('signal_type')?.value;
+        const tf = ctrl.get('timeframe')?.value ?? null;
+        return t === st.signal_type && tf === timeframe;
+      });
+      if (exists) continue;
+      this.addSignalSubscription({
+        signal_type: st.signal_type,
+        timeframe: timeframe ?? undefined,
+        min_confidence: minConfidence ?? undefined
+      });
+    }
+
+    // Clear selection after adding
+    this.selectedSignalTypes = [];
+    this.signalTypeSearchCtrl.setValue('');
   }
 
   removeSignalSubscription(index: number): void {

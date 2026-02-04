@@ -30,11 +30,21 @@ export const routes: Routes = [
   },
   {
     path: 'pipeline-builder',
-    loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
+    loadComponent: () => import('./features/pipeline-builder-guided/pipeline-builder-guided.component').then(m => m.PipelineBuilderGuidedComponent),
     canActivate: [authGuard]
   },
   {
     path: 'pipeline-builder/:id',
+    loadComponent: () => import('./features/pipeline-builder-guided/pipeline-builder-guided.component').then(m => m.PipelineBuilderGuidedComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'pipeline-builder-legacy',
+    loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'pipeline-builder-legacy/:id',
     loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
     canActivate: [authGuard]
   },
