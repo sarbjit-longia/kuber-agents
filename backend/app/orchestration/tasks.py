@@ -491,6 +491,16 @@ def schedule_monitoring_check(self, execution_id: str):
             from app.schemas.pipeline_state import TradeExecution
             state.trade_execution = TradeExecution(**state_dict["trade_execution"])
         
+        # **CRITICAL**: Restore existing agent reports from database to preserve them
+        # Otherwise, bias/strategy/risk reports will be lost when monitoring updates
+        if execution.reports:
+            from app.schemas.pipeline_state import AgentReport
+            for agent_id, report_data in execution.reports.items():
+                if isinstance(report_data, dict):
+                    state.agent_reports[agent_id] = report_data
+                else:
+                    state.agent_reports[agent_id] = report_data
+        
         # Find Trade Manager agent in pipeline
         trade_manager_node = None
         for node in pipeline.config.get("nodes", []):
