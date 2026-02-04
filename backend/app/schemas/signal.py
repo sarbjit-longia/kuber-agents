@@ -69,11 +69,32 @@ class SignalType(str, Enum):
     # SAR
     SAR_BULLISH_REVERSAL = "sar_bullish_reversal"
     SAR_BEARISH_REVERSAL = "sar_bearish_reversal"
+    # ICT Concepts
+    FVG_BULLISH = "fvg_bullish"
+    FVG_BEARISH = "fvg_bearish"
+    ORDER_BLOCK_BULLISH = "order_block_bullish"
+    ORDER_BLOCK_BEARISH = "order_block_bearish"
+    BREAK_OF_STRUCTURE_BULLISH = "break_of_structure_bullish"
+    BREAK_OF_STRUCTURE_BEARISH = "break_of_structure_bearish"
+    LIQUIDITY_SWEEP_BULLISH = "liquidity_sweep_bullish"
+    LIQUIDITY_SWEEP_BEARISH = "liquidity_sweep_bearish"
+    CHOCH_BULLISH = "choch_bullish"
+    CHOCH_BEARISH = "choch_bearish"
+    SWING_POINT_BREAK_BULLISH = "swing_point_break_bullish"
+    SWING_POINT_BREAK_BEARISH = "swing_point_break_bearish"
+    # Volume Analysis
+    ACCUMULATION_SIGNAL = "accumulation_signal"
+    DISTRIBUTION_SIGNAL = "distribution_signal"
+    POC_BREAK_BULLISH = "poc_break_bullish"
+    POC_BREAK_BEARISH = "poc_break_bearish"
+    # Multi-Timeframe
+    HTF_TREND_ALIGNED_BULLISH = "htf_trend_aligned_bullish"
+    HTF_TREND_ALIGNED_BEARISH = "htf_trend_aligned_bearish"
     # Generic
+    BREAKOUT = "breakout"
     PRICE_LEVEL = "price_level"
     VOLATILITY = "volatility"
     EXTERNAL = "external"
-    MOCK = "mock"
 
 
 class BiasType(str, Enum):

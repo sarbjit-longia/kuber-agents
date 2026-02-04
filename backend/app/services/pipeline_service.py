@@ -5,6 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.pipeline import Pipeline
 from app.schemas.pipeline import PipelineCreate, PipelineUpdate
@@ -101,8 +102,19 @@ async def update_pipeline(
         return None
     
     update_data = pipeline_update.model_dump(exclude_unset=True)
+    
+    # Track which JSONB fields are being updated
+    jsonb_fields = []
+    
     for field, value in update_data.items():
         setattr(pipeline, field, value)
+        # Flag JSONB columns as modified so SQLAlchemy persists the changes
+        if field in ['config', 'signal_subscriptions', 'scanner_tickers']:
+            jsonb_fields.append(field)
+    
+    # Explicitly mark JSONB columns as modified
+    for field in jsonb_fields:
+        flag_modified(pipeline, field)
     
     await db.commit()
     await db.refresh(pipeline)

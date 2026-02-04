@@ -53,6 +53,7 @@ export enum TriggerMode {
 
 export interface SignalSubscription {
   signal_type: string;
+  timeframe?: string;
   min_confidence?: number;
 }
 

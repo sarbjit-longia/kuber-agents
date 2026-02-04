@@ -14,6 +14,7 @@ from app.models.scanner import ScannerType
 class SignalSubscription(BaseModel):
     """Signal subscription configuration for pipelines."""
     signal_type: str = Field(..., description="Type of signal to subscribe to")
+    timeframe: Optional[str] = Field(None, description="Timeframe filter (e.g., '5m', '1h', 'D'). If not specified, matches all timeframes.")
     min_confidence: Optional[float] = Field(None, ge=0, le=100, description="Minimum confidence threshold (0-100)")
 
 

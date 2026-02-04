@@ -312,30 +312,49 @@ class TriggerDispatcher:
                     # Pipeline has specific signal subscriptions
                     # Check if this signal type is subscribed
                     subscribed = False
+                    signal_timeframe = signal.metadata.get('timeframe') if signal.metadata else None
+                    
                     for subscription in signal_subscriptions:
-                        if subscription.get('signal_type') == signal.signal_type:
-                            # Check 3: Confidence threshold (if specified)
-                            min_confidence = subscription.get('min_confidence')
-                            if min_confidence is not None:
-                                # For multi-ticker signals, check if any ticker meets threshold
-                                # Get max confidence across matched tickers
-                                max_confidence = 0
-                                for ticker_signal in signal.tickers:
-                                    if ticker_signal.ticker in matched_tickers:
-                                        max_confidence = max(max_confidence, ticker_signal.confidence or 0)
-                                
-                                if max_confidence < min_confidence:
-                                    logger.debug(
-                                        "signal_filtered_by_confidence",
-                                        signal_id=str(signal.signal_id),
-                                        pipeline_id=pipeline_id,
-                                        signal_confidence=max_confidence,
-                                        required_confidence=min_confidence
-                                    )
-                                    continue  # Signal doesn't meet confidence threshold
+                        # Check signal type match
+                        if subscription.get('signal_type') != signal.signal_type:
+                            continue
+                        
+                        # Check timeframe match (if subscription specifies a timeframe)
+                        subscription_timeframe = subscription.get('timeframe')
+                        if subscription_timeframe and signal_timeframe:
+                            if subscription_timeframe != signal_timeframe:
+                                logger.debug(
+                                    "signal_filtered_by_timeframe",
+                                    signal_id=str(signal.signal_id),
+                                    pipeline_id=pipeline_id,
+                                    signal_timeframe=signal_timeframe,
+                                    required_timeframe=subscription_timeframe
+                                )
+                                continue  # Timeframe doesn't match
+                        
+                        # Check confidence threshold (if specified)
+                        min_confidence = subscription.get('min_confidence')
+                        if min_confidence is not None:
+                            # For multi-ticker signals, check if any ticker meets threshold
+                            # Get max confidence across matched tickers
+                            max_confidence = 0
+                            for ticker_signal in signal.tickers:
+                                ticker_symbol = ticker_signal.get('ticker')
+                                if ticker_symbol and ticker_symbol in matched_tickers:
+                                    max_confidence = max(max_confidence, ticker_signal.get('confidence', 0))
                             
-                            subscribed = True
-                            break
+                            if max_confidence < min_confidence:
+                                logger.debug(
+                                    "signal_filtered_by_confidence",
+                                    signal_id=str(signal.signal_id),
+                                    pipeline_id=pipeline_id,
+                                    signal_confidence=max_confidence,
+                                    required_confidence=min_confidence
+                                )
+                                continue  # Signal doesn't meet confidence threshold
+                        
+                        subscribed = True
+                        break
                     
                     if not subscribed:
                         logger.debug(
@@ -343,9 +362,13 @@ class TriggerDispatcher:
                             signal_id=str(signal.signal_id),
                             pipeline_id=pipeline_id,
                             signal_type=signal.signal_type,
-                            subscriptions=[s.get('signal_type') for s in signal_subscriptions]
+                            signal_timeframe=signal_timeframe,
+                            subscriptions=[
+                                f"{s.get('signal_type')}@{s.get('timeframe', 'any')}" 
+                                for s in signal_subscriptions
+                            ]
                         )
-                        continue  # Pipeline not subscribed to this signal type
+                        continue  # Pipeline not subscribed to this signal type/timeframe
                 
                 # Match found!
                 if pipeline_id not in matches:

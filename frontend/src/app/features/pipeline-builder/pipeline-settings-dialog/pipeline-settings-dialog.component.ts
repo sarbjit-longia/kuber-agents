@@ -110,6 +110,7 @@ export class PipelineSettingsDialogComponent implements OnInit {
   addSignalSubscription(subscription?: SignalSubscription): void {
     const subGroup = this.fb.group({
       signal_type: [subscription?.signal_type || '', Validators.required],
+      timeframe: [subscription?.timeframe || null],
       min_confidence: [subscription?.min_confidence || null, [Validators.min(0), Validators.max(100)]]
     });
     this.signalSubscriptions.push(subGroup);
@@ -143,10 +144,23 @@ export class PipelineSettingsDialogComponent implements OnInit {
       // Clean up signal subscriptions
       const cleanedSubscriptions = formValue.signal_subscriptions
         .filter((sub: any) => sub.signal_type)
-        .map((sub: any) => ({
-          signal_type: sub.signal_type,
-          min_confidence: sub.min_confidence || undefined
-        }));
+        .map((sub: any) => {
+          const subscription: any = {
+            signal_type: sub.signal_type
+          };
+          
+          // Only include timeframe if it's set
+          if (sub.timeframe) {
+            subscription.timeframe = sub.timeframe;
+          }
+          
+          // Only include min_confidence if it's set
+          if (sub.min_confidence != null) {
+            subscription.min_confidence = sub.min_confidence;
+          }
+          
+          return subscription;
+        });
 
       const result = {
         trigger_mode: formValue.trigger_mode,
