@@ -410,6 +410,29 @@ class TradeManagerAgent(BaseAgent):
             # Create broker service
             broker = broker_factory.from_tool_config(broker_tool)
             
+            # Check for duplicate open orders first
+            existing_orders = broker.get_orders()
+            for order in existing_orders:
+                if order.symbol == state.symbol or order.symbol.replace("_", "/") == state.symbol.replace("_", "/"):
+                    self.log(state, f"⚠️ Duplicate order detected: {order.order_id} for {state.symbol}")
+                    state.trade_execution = TradeExecution(
+                        order_id=None,
+                        status="skipped",
+                        filled_price=None,
+                        filled_quantity=None,
+                        commission=None,
+                        execution_time=datetime.utcnow(),
+                        broker_response={"reason": f"Duplicate order exists: {order.order_id}"}
+                    )
+                    self.record_report(
+                        state,
+                        title="Trade skipped - duplicate order",
+                        summary=f"Skipped {strategy.action} for {state.symbol} - open order already exists",
+                        status="skipped",
+                        data={"reason": "Duplicate open order detected", "existing_order_id": order.order_id},
+                    )
+                    return state
+            
             # Get strategy details
             entry = strategy.entry_price
             take_profit = strategy.take_profit
@@ -428,20 +451,21 @@ class TradeManagerAgent(BaseAgent):
             price_precision = 5 if is_forex else 2
             
             if has_targets:
-                # Strategy provided targets → Use bracket order (entry + TP + SL)
-                order_type_used = "bracket"
-                self.log(state, f"📊 Executing bracket order: Entry=${entry:.{price_precision}f}, TP=${take_profit:.{price_precision}f}, SL=${stop_loss:.{price_precision}f}")
+                # Strategy provided targets → Use LIMIT bracket order (wait for entry price)
+                order_type_used = "limit_bracket"
+                self.log(state, f"📊 Placing LIMIT bracket order: Entry=${entry:.{price_precision}f}, TP=${take_profit:.{price_precision}f}, SL=${stop_loss:.{price_precision}f}")
                 
-                order = broker.place_bracket_order(
+                order = broker.place_limit_bracket_order(
                     symbol=state.symbol,
                     qty=risk.position_size,
                     side=broker_side,
+                    limit_price=entry,
                     take_profit_price=take_profit,
                     stop_loss_price=stop_loss,
                     time_in_force=time_in_force
                 )
                 
-                self.log(state, "✅ Bracket order placed (broker will manage TP/SL)")
+                self.log(state, "✅ Limit bracket order placed (will fill at entry price with TP/SL)")
             else:
                 # No targets from strategy → Use simple market order
                 order_type_used = "market"
@@ -478,14 +502,14 @@ class TradeManagerAgent(BaseAgent):
             
             # Enter monitoring mode
             state.execution_phase = "monitoring"
-            state.monitor_interval_minutes = 1  # Check every 1 minute
+            state.monitor_interval_minutes = 0.25  # Check every 15 seconds
             
             # Determine price precision for display
             is_forex = "_" in state.symbol
             price_precision = 5 if is_forex else 2
             
             # Log execution details
-            self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} shares @ ${entry:.{price_precision}f}")
+            self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} units @ ${entry:.{price_precision}f}")
             self.log(state, f"  Order ID: {order.order_id}")
             self.log(state, f"  Order Type: {order_type_used.upper()}")
             
@@ -505,7 +529,7 @@ class TradeManagerAgent(BaseAgent):
             self.record_report(
                 state,
                 title="Trade executed",
-                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.{price_precision}f}",
+                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.{price_precision}f} (LIMIT ORDER)",
                 status="completed",
                 data={
                     "action": strategy.action,

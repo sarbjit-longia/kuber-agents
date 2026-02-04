@@ -325,6 +325,49 @@ class TradierBrokerService(BrokerService):
         
         return main_order
     
+    def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
+        """Get all open orders"""
+        account = account_id or self.account_id
+        if not account:
+            return []
+        
+        try:
+            result = self._make_request('GET', f'/v1/accounts/{account}/orders')
+            
+            if "error" in result or "orders" not in result:
+                return []
+            
+            orders_data = result["orders"]
+            if orders_data is None or orders_data == "null":
+                return []
+            
+            # Handle single order vs list
+            if isinstance(orders_data, dict) and "order" in orders_data:
+                order_list = orders_data["order"]
+                if not isinstance(order_list, list):
+                    order_list = [order_list]
+            else:
+                return []
+            
+            # Filter only open/pending orders
+            orders = []
+            for order_data in order_list:
+                status = order_data.get("status", "").lower()
+                if status in ["open", "pending", "partially_filled"]:
+                    try:
+                        converted = self._convert_order(order_data)
+                        if converted:
+                            orders.append(converted)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to convert Tradier order: {e}")
+                        continue
+            
+            return orders
+            
+        except Exception as e:
+            self.logger.error("Failed to get Tradier orders", error=str(e))
+            return []
+    
     def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel an order"""
         account = account_id or self.account_id

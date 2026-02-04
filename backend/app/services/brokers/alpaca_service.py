@@ -260,6 +260,21 @@ class AlpacaBrokerService(BrokerService):
             self.logger.error("Failed to place Alpaca bracket order", error=str(e))
             raise
     
+    def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
+        """Get all open orders"""
+        try:
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+            
+            request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            alpaca_orders = self.client.get_orders(filter=request)
+            
+            return [self._convert_order(order) for order in alpaca_orders]
+            
+        except Exception as e:
+            self.logger.error("Failed to get Alpaca orders", error=str(e))
+            return []
+    
     def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel an order"""
         try:

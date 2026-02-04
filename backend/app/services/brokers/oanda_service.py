@@ -321,7 +321,7 @@ class OandaBrokerService(BrokerService):
         time_in_force: TimeInForce = TimeInForce.GTC,
         account_id: Optional[str] = None
     ) -> Order:
-        """Place a bracket order (entry + TP + SL)"""
+        """Place a bracket order (market entry + TP + SL)"""
         target_account = account_id or self.account_id
         if not target_account:
             raise ValueError("No account ID provided")
@@ -366,6 +366,131 @@ class OandaBrokerService(BrokerService):
         except Exception as e:
             self.logger.error("Failed to place Oanda bracket order", error=str(e))
             raise
+    
+    def place_limit_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: OrderSide,
+        limit_price: float,
+        take_profit_price: float,
+        stop_loss_price: float,
+        time_in_force: TimeInForce = TimeInForce.GTC,
+        account_id: Optional[str] = None
+    ) -> Order:
+        """Place a limit bracket order (limit entry + TP + SL)"""
+        target_account = account_id or self.account_id
+        if not target_account:
+            raise ValueError("No account ID provided")
+        
+        instrument = symbol.replace("/", "_") if "/" in symbol else symbol
+        units = int(qty if side == OrderSide.BUY else -qty)
+        
+        # Oanda supports TP/SL on fill for limit orders
+        order_data = {
+            "order": {
+                "type": "LIMIT",
+                "instrument": instrument,
+                "units": str(units),
+                "price": str(limit_price),
+                "timeInForce": "GTC",  # Good till cancelled for limit orders
+                "takeProfitOnFill": {
+                    "price": str(take_profit_price)
+                },
+                "stopLossOnFill": {
+                    "price": str(stop_loss_price)
+                }
+            }
+        }
+        
+        try:
+            result = self._make_request("POST", f"/accounts/{target_account}/orders", data=order_data)
+            
+            if "error" in result:
+                raise Exception(result["error"])
+            
+            oanda_order = result.get("orderCreateTransaction", {})
+            
+            self.logger.info(
+                "Oanda limit bracket order placed",
+                order_id=oanda_order.get("id"),
+                instrument=instrument,
+                entry=limit_price,
+                tp=take_profit_price,
+                sl=stop_loss_price
+            )
+            
+            return self._convert_order(oanda_order, instrument, qty, side, OrderType.LIMIT, time_in_force)
+            
+        except Exception as e:
+            self.logger.error("Failed to place Oanda limit bracket order", error=str(e))
+            raise
+    
+    def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
+        """Get all pending/open orders"""
+        target_account = account_id or self.account_id
+        if not target_account:
+            return []
+        
+        try:
+            result = self._make_request("GET", f"/accounts/{target_account}/pendingOrders")
+            if "error" in result or "orders" not in result:
+                return []
+            
+            orders = []
+            for oanda_order in result["orders"]:
+                try:
+                    # Determine order type
+                    order_type_str = oanda_order.get("type", "MARKET")
+                    order_type = OrderType.MARKET
+                    if "LIMIT" in order_type_str:
+                        order_type = OrderType.LIMIT
+                    elif "STOP" in order_type_str:
+                        order_type = OrderType.STOP
+                    
+                    # Determine side from units
+                    units = float(oanda_order.get("units", 0))
+                    side = OrderSide.BUY if units > 0 else OrderSide.SELL
+                    qty = abs(units)
+                    
+                    instrument = oanda_order.get("instrument", "")
+                    symbol = instrument.replace("_", "/")
+                    
+                    # Get prices
+                    limit_price = None
+                    stop_price = None
+                    if "price" in oanda_order:
+                        limit_price = float(oanda_order["price"])
+                    if "priceBound" in oanda_order:
+                        stop_price = float(oanda_order["priceBound"])
+                    
+                    time_in_force = TimeInForce.GTC
+                    if oanda_order.get("timeInForce") == "FOK":
+                        time_in_force = TimeInForce.DAY
+                    
+                    order = Order(
+                        order_id=oanda_order.get("id"),
+                        symbol=symbol,
+                        qty=qty,
+                        side=side,
+                        type=order_type,
+                        status=OrderStatus.OPEN,
+                        limit_price=limit_price,
+                        stop_price=stop_price,
+                        time_in_force=time_in_force,
+                        created_at=datetime.fromisoformat(oanda_order.get("createTime", "").replace("Z", "+00:00")) if oanda_order.get("createTime") else None,
+                        broker_data=oanda_order
+                    )
+                    orders.append(order)
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert Oanda order: {e}")
+                    continue
+            
+            return orders
+            
+        except Exception as e:
+            self.logger.error("Failed to get Oanda orders", error=str(e))
+            return []
     
     def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel an order"""
