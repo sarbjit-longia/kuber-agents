@@ -30,6 +30,7 @@ export interface Execution {
 export type ExecutionStatus = 
   | 'pending'
   | 'running'
+  | 'monitoring'
   | 'completed'
   | 'failed'
   | 'cancelled'

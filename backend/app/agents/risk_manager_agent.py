@@ -368,9 +368,14 @@ REASONING: <brief explanation of your calculation>
     
     def _get_broker_tool(self):
         """Get any attached broker tool from config."""
-        # In the new architecture, tools are accessed via the tool registry
-        # Risk Manager doesn't use attached tools anymore - it queries broker via API
-        # This is kept for backward compatibility but returns None
+        # Check for broker tools in config
+        tools = self.config.get("tools", [])
+        broker_types = ["alpaca_broker", "oanda_broker", "tradier_broker"]
+        
+        for tool in tools:
+            if tool.get("tool_type") in broker_types:
+                return tool
+        
         return None
     
     def _prepare_risk_context(self, state: PipelineState, broker_info: Dict[str, Any]) -> str:

@@ -4,7 +4,7 @@
  * Main monitoring dashboard showing list of executions
  */
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -16,6 +16,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { MatTableDataSource } from '@angular/material/table';
 
 import { MonitoringService } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
@@ -36,16 +38,26 @@ import { ExecutionReportModalComponent } from './execution-report-modal/executio
     MatTooltipModule,
     MatSnackBarModule,
     MatDialogModule,
+    MatPaginatorModule,
     NavbarComponent
   ],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.scss']
 })
 export class MonitoringComponent implements OnInit, OnDestroy {
-  executions: ExecutionSummary[] = [];
+  // Split executions into active monitoring and historical
+  activeExecutions: ExecutionSummary[] = [];
+  historicalDataSource = new MatTableDataSource<ExecutionSummary>([]);
+  
   stats: ExecutionStats | null = null;
   loading = true;
-  displayedColumns: string[] = ['pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'pnl', 'status', 'actions'];
+  
+  // Separate columns for active monitoring (more compact)
+  activeColumns: string[] = ['symbol', 'pipeline', 'mode', 'started', 'result', 'pnl', 'actions'];
+  // Full columns for historical executions
+  displayedColumns: string[] = ['symbol', 'pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'pnl', 'status', 'actions'];
+  
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
 
   private refreshInterval: any;
 
@@ -68,10 +80,23 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     }
   }
 
+  ngAfterViewInit(): void {
+    this.historicalDataSource.paginator = this.paginator;
+  }
+
   loadData(): void {
     this.monitoringService.loadExecutions().subscribe({
       next: (executions) => {
-        this.executions = executions;
+        // Split executions: MONITORING/RUNNING vs others (status comes as uppercase from backend)
+        this.activeExecutions = executions.filter(
+          e => e.status.toUpperCase() === 'MONITORING' || e.status.toUpperCase() === 'RUNNING'
+        );
+        
+        const historical = executions.filter(
+          e => e.status.toUpperCase() !== 'MONITORING' && e.status.toUpperCase() !== 'RUNNING'
+        );
+        
+        this.historicalDataSource.data = historical;
         this.loading = false;
       },
       error: (error) => {

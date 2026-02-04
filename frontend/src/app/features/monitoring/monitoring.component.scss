@@ -1,6 +1,6 @@
 .monitoring-container {
   padding: 2rem;
-  max-width: 1600px;
+  max-width: 1800px;
   margin: 0 auto;
 }
 
@@ -22,6 +22,22 @@
       font-size: 2rem;
       width: 2rem;
       height: 2rem;
+    }
+  }
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+
+  mat-icon {
+    color: #667eea;
+
+    &.pulse {
+      animation: pulse-icon 2s ease-in-out infinite;
     }
   }
 }
@@ -59,7 +75,7 @@
     }
 
     &.running {
-      background: linear-gradient(135deg, #4caf50 0%, #81c784 100%);
+      background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
     }
 
     &.success {
@@ -88,6 +104,199 @@
   }
 }
 
+// Active Monitoring Section
+.active-monitoring-card {
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, #fff9e6 0%, #fff3d9 100%);
+  border: 2px solid #fbbf24;
+
+  mat-card-header {
+    padding: 1.5rem 1.5rem 1rem;
+  }
+
+  mat-card-content {
+    padding: 1rem 1.5rem 1.5rem !important;
+  }
+}
+
+.active-monitoring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 1.5rem;
+}
+
+.active-execution-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid #fbbf24;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(251, 191, 36, 0.2);
+  }
+
+  .active-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+
+    .symbol-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 1.125rem;
+      letter-spacing: 0.5px;
+    }
+
+    .status-chip-monitoring {
+      background-color: #fef3c7 !important;
+      color: #92400e !important;
+      font-weight: 600;
+      height: 32px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      animation: pulse-monitoring 2s ease-in-out infinite;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+    }
+  }
+
+  .active-pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+
+    mat-icon {
+      color: #667eea;
+    }
+
+    span {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+  }
+
+  .active-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.875rem;
+
+      &.pnl-highlight {
+        padding: 0.75rem;
+        background: #f9fafb;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+      }
+
+      .detail-label {
+        color: #6b7280;
+        font-weight: 500;
+      }
+
+      .detail-value {
+        color: #111827;
+        font-weight: 600;
+      }
+
+      .mode-chip-small {
+        font-size: 0.75rem;
+        height: 24px;
+        padding: 0 8px;
+      }
+    }
+  }
+
+  .active-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+
+    button {
+      flex: 1;
+    }
+  }
+}
+
+.result-cell-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  width: fit-content;
+  font-weight: 600;
+  font-size: 0.8125rem;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  &.result-buy {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  &.result-sell {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  &.result-hold {
+    background: #fef3c7;
+    color: #92400e;
+  }
+}
+
+.pnl-cell-large {
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+
+  &.pnl-positive {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  &.pnl-negative {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+}
+
+// Symbol Cell
+.symbol-cell {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #667eea;
+  letter-spacing: 0.5px;
+}
+
 // Table Card
 .table-card {
   mat-card-header {
@@ -97,6 +306,10 @@
   mat-card-content {
     padding: 1.5rem !important;
   }
+}
+
+.table-container {
+  overflow-x: auto;
 }
 
 .loading-container {
@@ -148,6 +361,7 @@
   th {
     font-weight: 600;
     color: #333;
+    background: #f9fafb;
   }
 
   td, th {
@@ -303,7 +517,6 @@
       height: 16px;
     }
 
-    // Subtle status colors
     &.status-completed {
       background-color: #e8f5e9 !important;
       color: #2e7d32 !important;
@@ -359,14 +572,19 @@
     }
     
     &.status-monitoring {
-      background-color: #fff9c4 !important;
-      color: #f57f17 !important;
-      animation: pulse-monitoring 2s ease-in-out infinite;
+      background-color: #fef3c7 !important;
+      color: #92400e !important;
       
       mat-icon {
-        color: #f57f17 !important;
+        color: #f59e0b !important;
       }
     }
+  }
+
+  .mode-chip {
+    font-size: 0.75rem;
+    font-weight: 600;
+    height: 24px;
   }
 
   .execution-row {
@@ -377,6 +595,12 @@
       background-color: #f5f5f5;
     }
   }
+}
+
+// Paginator
+mat-paginator {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 1rem;
 }
 
 // Responsive
@@ -399,13 +623,17 @@
     grid-template-columns: 1fr;
   }
 
+  .active-monitoring-grid {
+    grid-template-columns: 1fr;
+  }
+
   .executions-table {
     display: block;
     overflow-x: auto;
   }
 }
 
-// Monitoring status pulse animation
+// Animations
 @keyframes pulse-monitoring {
   0%, 100% {
     opacity: 1;
@@ -415,3 +643,11 @@
   }
 }
 
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}

@@ -187,7 +187,7 @@ class BrokerService(ABC):
         account_id: Optional[str] = None
     ) -> Order:
         """
-        Place a bracket order (entry + take profit + stop loss).
+        Place a bracket order (market entry + take profit + stop loss).
         
         Args:
             symbol: Trading symbol
@@ -200,6 +200,61 @@ class BrokerService(ABC):
             
         Returns:
             Order object for the main order
+        """
+        pass
+    
+    def place_limit_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: OrderSide,
+        limit_price: float,
+        take_profit_price: float,
+        stop_loss_price: float,
+        time_in_force: TimeInForce = TimeInForce.GTC,
+        account_id: Optional[str] = None
+    ) -> Order:
+        """
+        Place a limit bracket order (limit entry + take profit + stop loss).
+        
+        This is a convenience method that calls place_order with limit price
+        and OrderType.LIMIT. Brokers that support native limit brackets can override.
+        
+        Args:
+            symbol: Trading symbol
+            qty: Quantity
+            side: Buy or sell
+            limit_price: Entry limit price
+            take_profit_price: Take profit price
+            stop_loss_price: Stop loss price
+            time_in_force: How long order remains active
+            account_id: Account ID (optional)
+            
+        Returns:
+            Order object for the main order
+        """
+        # Default implementation: place simple limit order
+        # Brokers with native bracket support should override this
+        return self.place_order(
+            symbol=symbol,
+            qty=qty,
+            side=side,
+            order_type=OrderType.LIMIT,
+            limit_price=limit_price,
+            time_in_force=time_in_force,
+            account_id=account_id
+        )
+    
+    @abstractmethod
+    def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
+        """
+        Get all open/pending orders.
+        
+        Args:
+            account_id: Account ID (optional)
+            
+        Returns:
+            List of Order objects
         """
         pass
     
