@@ -21,6 +21,7 @@ class ExecutionStatus(str, PyEnum):
     CANCELLED = "CANCELLED"
     PAUSED = "PAUSED"
     SKIPPED = "SKIPPED"  # When trigger not met or budget exceeded
+    COMMUNICATION_ERROR = "COMMUNICATION_ERROR"  # Cannot reach broker API during monitoring
 
 
 class Execution(Base):

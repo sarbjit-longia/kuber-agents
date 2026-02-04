@@ -391,13 +391,12 @@ class PipelineExecutor:
         data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
         
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Fetch quote
-            quote_response = await client.get(f"{data_plane_url}/api/v1/data/quote/{symbol}")
-            quote_response.raise_for_status()
-            quote_data = quote_response.json()
-            
             # Fetch candles for each timeframe
             timeframe_data = {}
+            current_price = 0
+            bid = None
+            ask = None
+            
             for tf in timeframes:
                 candle_response = await client.get(
                     f"{data_plane_url}/api/v1/data/candles/{symbol}",
@@ -411,12 +410,20 @@ class PipelineExecutor:
                     TimeframeData(**candle) for candle in candle_data.get("candles", [])
                 ]
                 timeframe_data[tf] = candles
+                
+                # Use the latest candle from the first timeframe for current price
+                if candles and current_price == 0:
+                    latest_candle = candles[-1]
+                    current_price = latest_candle.close
+                    # For forex, bid/ask can be approximated from close (or use close for both)
+                    bid = latest_candle.close
+                    ask = latest_candle.close
             
             market_data = MarketData(
                 symbol=symbol,
-                current_price=quote_data.get("c", 0),
-                bid=quote_data.get("b"),
-                ask=quote_data.get("a"),
+                current_price=current_price,
+                bid=bid,
+                ask=ask,
                 spread=quote_data.get("a", 0) - quote_data.get("b", 0) if quote_data.get("a") and quote_data.get("b") else None,
                 timeframes=timeframe_data,
                 market_status=quote_data.get("market_status", "unknown"),
@@ -459,16 +466,12 @@ class PipelineExecutor:
         data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
         
         try:
-            # Fetch quote
-            quote_response = requests.get(
-                f"{data_plane_url}/api/v1/data/quote/{state.symbol}",
-                timeout=10.0
-            )
-            quote_response.raise_for_status()
-            quote_data = quote_response.json()
-            
             # Fetch candles for each timeframe
             timeframe_data = {}
+            current_price = 0
+            bid = None
+            ask = None
+            
             for tf in required_timeframes:
                 candle_response = requests.get(
                     f"{data_plane_url}/api/v1/data/candles/{state.symbol}",
@@ -491,15 +494,26 @@ class PipelineExecutor:
                         volume=candle.get("volume", 0)
                     ))
                 timeframe_data[tf] = candles
+                
+                # Use the latest candle from the first timeframe for current price
+                if candles and current_price == 0:
+                    latest_candle = candles[-1]
+                    current_price = latest_candle.close
+                    bid = latest_candle.close
+                    ask = latest_candle.close
+            
+            spread = None
+            if bid and ask:
+                spread = ask - bid
             
             state.market_data = MarketData(
                 symbol=state.symbol,
-                current_price=quote_data.get("c", 0),
-                bid=quote_data.get("b"),
-                ask=quote_data.get("a"),
-                spread=quote_data.get("a", 0) - quote_data.get("b", 0) if quote_data.get("a") and quote_data.get("b") else None,
+                current_price=current_price,
+                bid=bid,
+                ask=ask,
+                spread=spread,
                 timeframes=timeframe_data,
-                market_status=quote_data.get("market_status", "unknown"),
+                market_status="open",  # Assume open if we got data
                 last_updated=datetime.utcnow()
             )
             

@@ -287,6 +287,12 @@
     background: #fee2e2;
     color: #991b1b;
   }
+
+  &.order-pending {
+    background: #fef3c7;
+    color: #92400e;
+    font-style: italic;
+  }
 }
 
 // Symbol Cell
@@ -484,23 +490,29 @@
     }
   }
 
-  .pnl-cell {
-    font-weight: 600;
-    font-size: 0.9rem;
-    padding: 0.25rem 0.75rem;
-    border-radius: 4px;
-    width: fit-content;
+      .pnl-cell {
+        font-weight: 600;
+        font-size: 0.9rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        width: fit-content;
 
-    &.pnl-positive {
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
+        &.pnl-positive {
+          background: #e8f5e9;
+          color: #2e7d32;
+        }
 
-    &.pnl-negative {
-      background: #ffebee;
-      color: #c62828;
-    }
-  }
+        &.pnl-negative {
+          background: #ffebee;
+          color: #c62828;
+        }
+
+        &.order-pending {
+          background: #fff9c4;
+          color: #f57f17;
+          font-style: italic;
+        }
+      }
 
   mat-chip {
     font-size: 0.75rem;
@@ -579,6 +591,16 @@
         color: #f59e0b !important;
       }
     }
+    
+    &.status-communication-error {
+      background-color: #fff4e6 !important;
+      color: #d97706 !important;
+      animation: pulse-error 2s ease-in-out infinite;
+      
+      mat-icon {
+        color: #f59e0b !important;
+      }
+    }
   }
 
   .mode-chip {
@@ -640,6 +662,15 @@ mat-paginator {
   }
   50% {
     opacity: 0.7;
+  }
+}
+
+@keyframes pulse-error {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
   }
 }
 

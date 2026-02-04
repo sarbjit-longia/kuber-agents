@@ -308,6 +308,14 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     };
   }
 
+  formatMonitorInterval(minutes: number): string {
+    if (minutes < 1) {
+      const seconds = Math.round(minutes * 60);
+      return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+    }
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+
   getTimeUntilNextCheck(): string {
     if (!this.execution?.next_check_at) {
       return '-';

@@ -106,12 +106,18 @@ class AgentReport(BaseModel):
 class TradeExecution(BaseModel):
     """Trade execution details from Trade Manager Agent."""
     order_id: Optional[str] = None
+    trade_id: Optional[str] = None  # Broker trade ID (may differ from order_id, esp. OANDA)
     status: str  # "pending", "filled", "partially_filled", "rejected", "cancelled"
     filled_price: Optional[float] = None
     filled_quantity: Optional[float] = None
     commission: Optional[float] = None
     execution_time: Optional[datetime] = None
     broker_response: Optional[Dict[str, Any]] = None
+    
+    # Monitoring metadata
+    api_error_count: int = 0  # Count of consecutive API failures during monitoring
+    last_api_error: Optional[str] = None  # Last API error message
+    last_successful_check: Optional[datetime] = None  # Last time we successfully checked broker
 
 
 class Position(BaseModel):
@@ -200,6 +206,10 @@ class PipelineState(BaseModel):
     execution_phase: str = "execute"  # "execute" or "monitoring"
     should_complete: bool = False  # Signal from agent to complete monitoring
     monitor_interval_minutes: int = 5  # Polling frequency for position monitoring
+    
+    # Communication error tracking (for API failures during monitoring)
+    communication_error: bool = False  # Set to True when broker API is unreachable
+    communication_error_message: Optional[str] = None  # Last API error message
     
     # Metadata
     started_at: datetime = Field(default_factory=datetime.utcnow)

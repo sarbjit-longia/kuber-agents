@@ -11,6 +11,15 @@ import re
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, TradeExecution
 from app.config import settings
+from enum import Enum
+from typing import Tuple
+
+
+class PositionCheckResult(Enum):
+    """Result of checking broker for position/order status."""
+    FOUND = "found"  # Position or order exists
+    NOT_FOUND = "not_found"  # Confirmed doesn't exist (closed/cancelled)
+    API_ERROR = "api_error"  # Could not check (network/API failure)
 
 
 class TradeManagerAgent(BaseAgent):
@@ -142,6 +151,8 @@ class TradeManagerAgent(BaseAgent):
                 status="skipped",
                 data={"reason": risk.reasoning},
             )
+            # Mark pipeline as complete - trade was rejected
+            state.should_complete = True
             return state
         
         # Check if HOLD
@@ -163,6 +174,8 @@ class TradeManagerAgent(BaseAgent):
                 status="skipped",
                 data={"strategy_action": strategy.action},
             )
+            # Mark pipeline as complete - no execution needed
+            state.should_complete = True
             return state
         
         # Get attached tools
@@ -189,6 +202,8 @@ class TradeManagerAgent(BaseAgent):
                     status="skipped",
                     data={"symbol": state.symbol},
                 )
+                # Mark pipeline as complete - no need to monitor since we didn't trade
+                state.should_complete = True
                 return state
         
         # Execute based on tool type
@@ -205,11 +220,11 @@ class TradeManagerAgent(BaseAgent):
     
     def _monitor_position(self, state: PipelineState) -> PipelineState:
         """
-        Phase 2: Monitor open position.
+        Phase 2: Monitor open position or pending limit order.
         
-        Checks if position is still open and evaluates emergency exit conditions.
+        Checks if limit order is pending or position is open, and evaluates exit conditions.
         """
-        self.log(state, "Phase 2: Monitoring position")
+        self.log(state, "Phase 2: Monitoring position/order")
         
         broker_tool = self._get_broker_tool()
         
@@ -218,10 +233,262 @@ class TradeManagerAgent(BaseAgent):
             state.should_complete = True
             return state
         
-        # Check if position still exists
-        position = self._get_position(state.symbol, broker_tool)
+        # Create broker instance once (avoid duplicate instantiation)
+        from app.services.brokers.factory import broker_factory
+        try:
+            broker = broker_factory.from_tool_config(broker_tool)
+        except Exception as e:
+            self.log(state, f"❌ Failed to create broker instance: {str(e)}", level="error")
+            self._handle_api_error(state, f"Failed to create broker: {str(e)}")
+            return state
         
-        if not position:
+        # STEP 1: Check for pending limit order first
+        order_id = state.trade_execution.order_id if state.trade_execution else None
+        trade_id = state.trade_execution.trade_id if state.trade_execution else None
+        pending_order = None
+        
+        if order_id and not trade_id:  # Only check if order not yet filled (no trade_id)
+            # Check if the order is still pending (limit not filled yet)
+            try:
+                open_orders = broker.get_orders()
+                for order in open_orders:
+                    if order.order_id == order_id:
+                        pending_order = order
+                        break
+                
+                # Successfully checked - reset error counter
+                if state.trade_execution:
+                    state.trade_execution.api_error_count = 0
+                    state.trade_execution.last_successful_check = datetime.now()
+                    
+            except Exception as e:
+                self.log(state, f"❌ API error checking orders: {str(e)}", level="error")
+                self._handle_api_error(state, f"Failed to check orders: {str(e)}")
+                return state
+        
+        # STEP 2: If order is still pending, check if we should cancel it
+        if pending_order:
+            self.log(state, f"📋 Limit order still pending: {order_id}")
+            
+            # Check if order should be cancelled (setup invalidated)
+            if state.strategy and state.strategy.entry_price:
+                current_price, price_error = self._get_current_price(state.symbol, broker)
+                
+                if price_error:
+                    self.log(state, f"❌ Failed to get current price: {price_error}", level="error")
+                    self._handle_api_error(state, f"Failed to get price: {price_error}")
+                    return state
+                
+                entry = state.strategy.entry_price
+                stop_loss = state.strategy.stop_loss
+                take_profit = state.strategy.take_profit
+                price_precision = self._get_price_precision(state.symbol)
+                
+                should_cancel = False
+                cancel_reason = None
+                
+                # CANCEL CONDITIONS:
+                # 1. Price moved AWAY from entry and breached SL (setup invalidated)
+                # 2. Price hit TP level without hitting entry first (missed entire move)
+                
+                if state.strategy.action == "BUY":
+                    # BUY limit order: We want to buy when price comes DOWN to entry
+                    # Entry < Current, SL < Entry, TP > Entry
+                    # Cancel if:
+                    # - Price went DOWN past SL (setup invalidated - too far down)
+                    # - Price went UP past TP (missed the move - already at target)
+                    
+                    if stop_loss and current_price <= stop_loss:
+                        # Price moved way down past our stop loss level
+                        # Setup is invalidated - price moved against us too much
+                        should_cancel = True
+                        cancel_reason = f"Price ${current_price:.{price_precision}f} breached stop loss ${stop_loss:.{price_precision}f} before filling entry ${entry:.{price_precision}f} - setup invalidated"
+                    
+                    elif take_profit and current_price >= take_profit:
+                        # Price already at take profit level without hitting our entry
+                        # We missed the entire move
+                        should_cancel = True
+                        cancel_reason = f"Price ${current_price:.{price_precision}f} reached take profit ${take_profit:.{price_precision}f} without filling entry ${entry:.{price_precision}f} - missed opportunity"
+                
+                elif state.strategy.action == "SELL":
+                    # SELL limit order: We want to sell when price comes UP to entry
+                    # Entry > Current, SL > Entry, TP < Entry
+                    # Cancel if:
+                    # - Price went UP past SL (setup invalidated - too far up)
+                    # - Price went DOWN past TP (missed the move - already at target)
+                    
+                    if stop_loss and current_price >= stop_loss:
+                        # Price moved way up past our stop loss level
+                        # Setup is invalidated - price moved against us too much
+                        should_cancel = True
+                        cancel_reason = f"Price ${current_price:.{price_precision}f} breached stop loss ${stop_loss:.{price_precision}f} before filling entry ${entry:.{price_precision}f} - setup invalidated"
+                    
+                    elif take_profit and current_price <= take_profit:
+                        # Price already at take profit level without hitting our entry
+                        # We missed the entire move
+                        should_cancel = True
+                        cancel_reason = f"Price ${current_price:.{price_precision}f} reached take profit ${take_profit:.{price_precision}f} without filling entry ${entry:.{price_precision}f} - missed opportunity"
+                
+                # Execute cancellation if needed
+                if should_cancel:
+                    try:
+                        self.log(state, f"🚨 Cancelling limit order: {cancel_reason}")
+                        broker.cancel_order(order_id)
+                        state.should_complete = True
+                        
+                        self.record_report(
+                            state,
+                            title="Limit order cancelled",
+                            summary=f"Setup invalidated - order cancelled",
+                            status="completed",
+                            data={
+                                "symbol": state.symbol,
+                                "reason": cancel_reason,
+                                "order_id": order_id,
+                                "current_price": current_price,
+                                "entry_price": entry,
+                                "stop_loss": stop_loss,
+                                "take_profit": take_profit
+                            },
+                        )
+                        return state
+                    except Exception as e:
+                        self.log(state, f"❌ Failed to cancel order: {str(e)}", level="error")
+                        self._handle_api_error(state, f"Failed to cancel order: {str(e)}")
+                        return state
+            
+            # Order still valid, keep monitoring
+            self.log(state, f"Order still valid - waiting for fill")
+            self.record_report(
+                state,
+                title="Monitoring limit order",
+                summary=f"Waiting for limit order to fill: {state.symbol}",
+                data={
+                    "symbol": state.symbol,
+                    "order_id": order_id,
+                    "order_status": "pending",
+                    "order_type": "limit",
+                    "entry_price": state.strategy.entry_price if state.strategy else None,
+                    "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                    "take_profit": state.strategy.take_profit if state.strategy else None
+                },
+            )
+            return state
+        
+        # STEP 3: Order filled or not found, check for position
+        # If order was pending but now gone, it might have filled - try to get trade_id
+        if order_id and not trade_id and not pending_order:
+            self.log(state, f"🔄 Limit order {order_id} no longer pending - checking if filled...")
+            # TODO: Query broker for trade_id (broker-specific implementation)
+            # For now, we'll discover it in position check
+        
+        # Check position with proper error handling
+        position_result, position_data = self._get_position(state.symbol, broker_tool)
+        
+        if position_result == PositionCheckResult.API_ERROR:
+            # Cannot reach broker - mark as communication error and retry
+            self.log(state, f"❌ API error checking position for {state.symbol}", level="error")
+            self._handle_api_error(state, f"Failed to check position for {state.symbol}")
+            return state
+        
+        elif position_result == PositionCheckResult.FOUND:
+            # Position exists - monitor it
+            position = position_data
+            
+            # Successfully checked - reset error counter
+            if state.trade_execution:
+                state.trade_execution.api_error_count = 0
+                state.trade_execution.last_successful_check = datetime.now()
+            
+            # Extract trade_id if we don't have it yet (order filled)
+            if not trade_id and position and 'trade_id' in position:
+                self.log(state, f"✅ Order filled! Discovered trade_id: {position['trade_id']}")
+                if state.trade_execution:
+                    state.trade_execution.trade_id = position['trade_id']
+            
+            # Log position status
+            pnl_percent = ((position["unrealized_pl"] / position["cost_basis"]) * 100) if position.get("cost_basis") else 0
+            self.log(state, f"Position: {position['qty']} shares @ {pnl_percent:+.2f}% P&L")
+            
+            # Evaluate emergency exit conditions
+            should_close, reason = self._evaluate_exit_conditions(state, position)
+            
+            if should_close:
+                self.log(state, f"🚨 Emergency exit triggered: {reason}")
+                try:
+                    self._close_position(state.symbol, broker_tool, reason)
+                    state.should_complete = True
+                    
+                    unrealized_pl = position.get("unrealized_pl", 0)
+                    
+                    self.record_report(
+                        state,
+                        title="Emergency exit executed",
+                        summary=f"Position closed due to: {reason} | P&L: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
+                        status="completed",
+                        data={
+                            "symbol": state.symbol,
+                            "reason": reason,
+                            "unrealized_pl": unrealized_pl,
+                            "pnl_percent": pnl_percent,
+                            "closed_at": datetime.now().isoformat(),
+                            "order_id": order_id,
+                            "trade_id": trade_id
+                        },
+                    )
+                    return state
+                except Exception as e:
+                    self.log(state, f"❌ Failed to close position: {str(e)}", level="error")
+                    self._handle_api_error(state, f"Failed to close position: {str(e)}")
+                    return state
+            
+            # Continue monitoring
+            unrealized_pl = position.get("unrealized_pl", 0)
+            
+            self.record_report(
+                state,
+                title="Position monitoring",
+                summary=f"Monitoring {state.symbol}: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
+                data={
+                    "symbol": state.symbol,
+                    "qty": position["qty"],
+                    "unrealized_pl": unrealized_pl,
+                    "pnl_percent": pnl_percent,
+                    "current_price": position.get("current_price"),
+                    "cost_basis": position.get("cost_basis"),
+                    "entry_price": state.strategy.entry_price if state.strategy else None,
+                    "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                    "take_profit": state.strategy.take_profit if state.strategy else None,
+                    "order_id": order_id,
+                    "trade_id": trade_id
+                },
+            )
+            
+            return state
+        
+        elif position_result == PositionCheckResult.NOT_FOUND:
+            # Position confirmed closed
+            # ⚠️ CRITICAL: Verify we expected this (don't assume orphaned trade is closed)
+            
+            # If we had a trade_id or order_id, log warning about position not found
+            if (order_id or trade_id) and state.trade_execution:
+                last_check = state.trade_execution.last_successful_check
+                if last_check:
+                    time_since_last_check = (datetime.now() - last_check).total_seconds()
+                    self.log(
+                        state, 
+                        f"⚠️ Position not found for {state.symbol} (order_id={order_id}, trade_id={trade_id}). "
+                        f"Last successful check: {time_since_last_check:.0f}s ago",
+                        level="warning"
+                    )
+                else:
+                    self.log(
+                        state,
+                        f"⚠️ Position not found for {state.symbol} (order_id={order_id}, trade_id={trade_id}). "
+                        "This is the first monitoring check - position may have closed via bracket orders.",
+                        level="warning"
+                    )
+            
             # Position closed (bracket orders worked or manually closed)
             self.log(state, "✓ Position closed - monitoring complete")
             state.should_complete = True
@@ -249,73 +516,62 @@ class TradeManagerAgent(BaseAgent):
                     "reason": "Position closed",
                     "final_pnl": final_pnl,
                     "final_pnl_percent": final_pnl_percent,
-                    "closed_at": datetime.now().isoformat()
+                    "closed_at": datetime.now().isoformat(),
+                    "order_id": order_id,
+                    "trade_id": trade_id
                 },
             )
             return state
-        
-        # Log position status
-        pnl_percent = ((position["unrealized_pl"] / position["cost_basis"]) * 100) if position.get("cost_basis") else 0
-        self.log(state, f"Position: {position['qty']} shares @ {pnl_percent:+.2f}% P&L")
-        
-        # Evaluate emergency exit conditions
-        should_close, reason = self._evaluate_exit_conditions(state, position)
-        
-        if should_close:
-            self.log(state, f"🚨 Emergency exit triggered: {reason}")
-            self._close_position(state.symbol, broker_tool, reason)
-            state.should_complete = True
-            
-            unrealized_pl = position.get("unrealized_pl", 0)
-            
-            self.record_report(
-                state,
-                title="Emergency exit executed",
-                summary=f"Position closed due to: {reason} | P&L: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
-                status="completed",
-                data={
-                    "symbol": state.symbol,
-                    "reason": reason,
-                    "unrealized_pl": unrealized_pl,
-                    "pnl_percent": pnl_percent,
-                    "closed_at": datetime.now().isoformat()
-                },
-            )
-            return state
-        
-        # Continue monitoring
-        unrealized_pl = position.get("unrealized_pl", 0)
-        
-        self.record_report(
-            state,
-            title="Position monitoring",
-            summary=f"Monitoring {state.symbol}: ${unrealized_pl:+.2f} ({pnl_percent:+.2f}%)",
-            data={
-                "symbol": state.symbol,
-                "qty": position["qty"],
-                "unrealized_pl": unrealized_pl,
-                "pnl_percent": pnl_percent,
-                "current_price": position.get("current_price"),
-                "cost_basis": position.get("cost_basis"),
-                "entry_price": state.strategy.entry_price if state.strategy else None,
-                "stop_loss": state.strategy.stop_loss if state.strategy else None,
-                "take_profit": state.strategy.take_profit if state.strategy else None
-            },
-        )
-        
-        return state
     
     def _has_duplicate_position(self, state: PipelineState, broker_tool) -> bool:
-        """Check if position already exists for symbol."""
+        """Check if position or pending order already exists for symbol."""
         try:
-            position = self._get_position(state.symbol, broker_tool)
-            return position is not None
-        except Exception as e:
-            self.log(state, f"Error checking for duplicate: {str(e)}", level="warning")
+            # Check for existing position
+            position_result, position_data = self._get_position(state.symbol, broker_tool)
+            if position_result == PositionCheckResult.FOUND:
+                self.log(state, f"Found existing position for {state.symbol}")
+                return True
+            
+            # If API error, be conservative and assume duplicate to avoid double-entry
+            if position_result == PositionCheckResult.API_ERROR:
+                self.log(state, f"⚠️ API error checking position - conservatively assuming duplicate", level="warning")
+                return True
+            
+            # Check for pending limit orders
+            from app.services.brokers.factory import broker_factory
+            broker = broker_factory.from_tool_config(broker_tool)
+            
+            try:
+                open_orders = broker.get_orders()
+                for order in open_orders:
+                    # Normalize symbol formats for comparison
+                    order_symbol = order.symbol.replace("_", "/")
+                    state_symbol = state.symbol.replace("_", "/")
+                    
+                    if order_symbol == state_symbol or order.symbol == state.symbol:
+                        self.log(state, f"Found pending order {order.order_id} for {state.symbol}")
+                        return True
+            except Exception as e:
+                self.log(state, f"⚠️ API error checking orders - conservatively assuming duplicate: {str(e)}", level="warning")
+                # Be conservative - assume duplicate to avoid double-entry
+                return True
+            
             return False
+        except Exception as e:
+            self.log(state, f"⚠️ Error checking for duplicate - conservatively assuming duplicate: {str(e)}", level="warning")
+            # Be conservative - assume duplicate to avoid double-entry
+            return True
     
-    def _get_position(self, symbol: str, broker_tool) -> Optional[Dict]:
-        """Get position from broker."""
+    def _get_position(self, symbol: str, broker_tool) -> Tuple[PositionCheckResult, Optional[Dict]]:
+        """
+        Get position from broker with proper error handling.
+        
+        Returns:
+            Tuple of (PositionCheckResult, position_data)
+            - FOUND: position exists, data included
+            - NOT_FOUND: confirmed no position (closed)
+            - API_ERROR: could not check (network/API failure)
+        """
         try:
             from app.services.brokers.factory import broker_factory
             
@@ -326,7 +582,7 @@ class TradeManagerAgent(BaseAgent):
             position = broker.get_position(symbol)
             
             if position:
-                return {
+                return (PositionCheckResult.FOUND, {
                     "symbol": position.symbol,
                     "qty": position.qty,
                     "side": position.side,
@@ -336,12 +592,15 @@ class TradeManagerAgent(BaseAgent):
                     "unrealized_pl_percent": position.unrealized_pl_percent,
                     "market_value": position.market_value,
                     "cost_basis": position.cost_basis
-                }
-            return None
+                })
+            else:
+                # No position found - confirmed closed/doesn't exist
+                return (PositionCheckResult.NOT_FOUND, None)
             
         except Exception as e:
-            self.logger.error(f"Failed to get position for {symbol}: {str(e)}")
-            return None
+            # API error - could not check broker
+            self.logger.error(f"API error checking position for {symbol}: {str(e)}")
+            return (PositionCheckResult.API_ERROR, None)
     
     def _close_position(self, symbol: str, broker_tool, reason: str):
         """Close position at market."""
@@ -361,6 +620,110 @@ class TradeManagerAgent(BaseAgent):
                 
         except Exception as e:
             self.logger.error(f"Error closing position for {symbol}: {str(e)}")
+    
+    def _get_current_price(self, symbol: str, broker) -> Tuple[float, Optional[str]]:
+        """
+        Get current market price for a symbol.
+        
+        Returns:
+            Tuple of (price, error_message)
+            - On success: (price, None)
+            - On failure: (0.0, error_message)
+        """
+        try:
+            # Try to get position first (includes current price)
+            position = broker.get_position(symbol)
+            if position and position.current_price:
+                return (position.current_price, None)
+            
+            # No position found - could be valid (closed) or could be error
+            # For limit order monitoring, we need current price even without position
+            # This would require broker API enhancement to get quotes
+            return (0.0, f"No position for {symbol}, cannot determine current price")
+            
+        except Exception as e:
+            error_msg = f"API error getting current price for {symbol}: {str(e)}"
+            self.logger.error(error_msg)
+            return (0.0, error_msg)
+    
+    def _get_price_precision(self, symbol: str) -> int:
+        """
+        Get the price precision (decimal places) for a symbol.
+        
+        Forex pairs typically use 5 decimal places, stocks use 2.
+        """
+        # Forex symbols typically have underscore (e.g., EUR_USD)
+        if "_" in symbol or "/" in symbol:
+            return 5
+        return 2
+    
+    def _handle_api_error(self, state: PipelineState, error_message: str):
+        """
+        Handle API error during monitoring.
+        
+        Tracks consecutive failures and marks execution as COMMUNICATION_ERROR
+        if threshold exceeded, requiring manual intervention.
+        """
+        if not state.trade_execution:
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="monitoring",
+                api_error_count=1,
+                last_api_error=error_message
+            )
+        else:
+            state.trade_execution.api_error_count += 1
+            state.trade_execution.last_api_error = error_message
+        
+        error_count = state.trade_execution.api_error_count
+        
+        self.log(
+            state,
+            f"🔴 API error #{error_count}: {error_message}",
+            level="error"
+        )
+        
+        # After 5 consecutive failures, mark as communication error requiring intervention
+        if error_count >= 5:
+            self.log(
+                state,
+                f"🚨 COMMUNICATION ERROR: {error_count} consecutive API failures. Manual intervention required!",
+                level="error"
+            )
+            
+            # Set execution status to COMMUNICATION_ERROR (handled in tasks.py)
+            state.communication_error = True
+            state.communication_error_message = error_message
+            
+            self.record_report(
+                state,
+                title="Communication Error",
+                summary=f"Cannot reach broker API after {error_count} attempts",
+                status="error",
+                data={
+                    "symbol": state.symbol,
+                    "error_count": error_count,
+                    "last_error": error_message,
+                    "order_id": state.trade_execution.order_id,
+                    "trade_id": state.trade_execution.trade_id,
+                    "last_successful_check": state.trade_execution.last_successful_check.isoformat() if state.trade_execution.last_successful_check else None
+                },
+            )
+        else:
+            # Still retrying
+            self.record_report(
+                state,
+                title="Monitoring (API Error)",
+                summary=f"Temporary API error ({error_count}/5 failures) - retrying...",
+                status="retrying",
+                data={
+                    "symbol": state.symbol,
+                    "error_count": error_count,
+                    "last_error": error_message,
+                    "order_id": state.trade_execution.order_id,
+                    "trade_id": state.trade_execution.trade_id
+                },
+            )
     
     def _send_webhook(self, state, strategy, risk, webhook_tool) -> PipelineState:
         """Send trade signal via webhook (fire-and-forget)."""

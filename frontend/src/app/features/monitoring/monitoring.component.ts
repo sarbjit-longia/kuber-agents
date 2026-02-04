@@ -4,7 +4,7 @@
  * Main monitoring dashboard showing list of executions
  */
 
-import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -44,7 +44,7 @@ import { ExecutionReportModalComponent } from './execution-report-modal/executio
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.scss']
 })
-export class MonitoringComponent implements OnInit, OnDestroy {
+export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   // Split executions into active monitoring and historical
   activeExecutions: ExecutionSummary[] = [];
   historicalDataSource = new MatTableDataSource<ExecutionSummary>([]);
@@ -97,6 +97,12 @@ export class MonitoringComponent implements OnInit, OnDestroy {
         );
         
         this.historicalDataSource.data = historical;
+        
+        // Ensure paginator is connected after data update
+        if (this.paginator) {
+          this.historicalDataSource.paginator = this.paginator;
+        }
+        
         this.loading = false;
       },
       error: (error) => {
@@ -164,7 +170,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       'completed': 'accent',
       'failed': 'warn',
       'cancelled': 'default',
-      'paused': 'default'
+      'paused': 'default',
+      'communication_error': 'warn'
     };
     return colors[status] || 'default';
   }
@@ -177,7 +184,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       'completed': 'check_circle',
       'failed': 'error',
       'cancelled': 'cancel',
-      'paused': 'pause_circle'
+      'paused': 'pause_circle',
+      'communication_error': 'wifi_off'
     };
     return icons[status] || 'help';
   }
@@ -356,6 +364,12 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   formatPnL(execution: any): string {
+    // Check if it's a pending limit order
+    const orderStatus = this.getOrderStatus(execution);
+    if (orderStatus) {
+      return orderStatus;
+    }
+
     const pnl = this.getPnL(execution);
     
     if (pnl.value === null || pnl.value === undefined) {
@@ -372,11 +386,34 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   getPnLClass(execution: any): string {
+    // Check if it's a pending limit order
+    const orderStatus = this.getOrderStatus(execution);
+    if (orderStatus) {
+      return 'order-pending';
+    }
+
     const pnl = this.getPnL(execution);
     if (pnl.value === null || pnl.value === undefined) {
       return '';
     }
     return pnl.value >= 0 ? 'pnl-positive' : 'pnl-negative';
+  }
+
+  getOrderStatus(execution: any): string | null {
+    // Check if we have a trade manager report with order status
+    if (execution.reports) {
+      for (const agentId in execution.reports) {
+        const report = execution.reports[agentId];
+        if (report.agent_type === 'trade_manager_agent' && report.data) {
+          // Check if order_status is "pending" and order_type is "limit"
+          if (report.data.order_status === 'pending' && report.data.order_type === 'limit') {
+            const entryPrice = report.data.entry_price;
+            return entryPrice ? `Limit @ $${entryPrice.toFixed(5)}` : 'Limit Order Pending';
+          }
+        }
+      }
+    }
+    return null;
   }
 }
 

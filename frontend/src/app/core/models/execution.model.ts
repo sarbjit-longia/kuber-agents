@@ -34,7 +34,8 @@ export type ExecutionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
-  | 'paused';
+  | 'paused'
+  | 'communication_error'; // API failure during monitoring
 
 export type ExecutionMode = 
   | 'live'

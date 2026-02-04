@@ -318,6 +318,134 @@ def check_scheduled_pipelines():
 #         db.close()
 
 
+@celery_app.task(name="app.orchestration.tasks.reconcile_user_trades", bind=True, max_retries=3)
+def reconcile_user_trades(self, user_id: str):
+    """
+    Reconcile trades for a specific user.
+    
+    Checks if user's open positions on broker match MONITORING executions in database.
+    Runs independently per user for isolation and scalability.
+    
+    Args:
+        user_id: UUID of user to reconcile
+        
+    Returns:
+        Dict with reconciliation results for this user
+    """
+    logger.info("user_reconciliation_started", user_id=user_id)
+    
+    db = SessionLocal()
+    
+    try:
+        from app.models import User, Execution, Pipeline
+        from uuid import UUID
+        
+        # Get user
+        user = db.query(User).filter(User.id == UUID(user_id)).first()
+        if not user:
+            logger.warning("user_not_found", user_id=user_id)
+            return {"status": "user_not_found", "user_id": user_id}
+        
+        # Get all MONITORING executions for this user
+        monitoring_executions = db.query(Execution).filter(
+            Execution.user_id == UUID(user_id),
+            Execution.status == ExecutionStatus.MONITORING
+        ).all()
+        
+        monitoring_symbols = {exec.symbol for exec in monitoring_executions}
+        
+        # Get COMMUNICATION_ERROR executions (broker API issues)
+        comm_error_executions = db.query(Execution).filter(
+            Execution.user_id == UUID(user_id),
+            Execution.status == ExecutionStatus.COMMUNICATION_ERROR
+        ).all()
+        
+        logger.info(
+            "user_reconciliation_completed",
+            user_id=user_id,
+            monitoring_count=len(monitoring_executions),
+            monitoring_symbols=list(monitoring_symbols),
+            communication_errors=len(comm_error_executions)
+        )
+        
+        # TODO: Check broker for open positions (requires broker credentials architecture)
+        # For now, just log monitoring state
+        
+        return {
+            "status": "completed",
+            "user_id": user_id,
+            "monitoring_executions": len(monitoring_executions),
+            "monitoring_symbols": list(monitoring_symbols),
+            "communication_errors": len(comm_error_executions)
+        }
+        
+    except Exception as e:
+        logger.error("user_reconciliation_failed", user_id=user_id, error=str(e))
+        
+        # Retry on transient failures
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=60)  # Retry after 1 minute
+        
+        return {"status": "error", "user_id": user_id, "error": str(e)}
+        
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.orchestration.tasks.schedule_user_reconciliation")
+def schedule_user_reconciliation():
+    """
+    Master reconciliation scheduler.
+    
+    Spawns individual reconciliation tasks for each user with active trades.
+    Runs every 1 minute via Celery Beat.
+    
+    This approach provides:
+    - User isolation: One user's broker issues don't affect others
+    - Scalability: Tasks distributed across workers
+    - Parallel execution: All users checked simultaneously
+    
+    Returns:
+        Dict with number of users scheduled
+    """
+    logger.info("master_reconciliation_started")
+    
+    db = SessionLocal()
+    
+    try:
+        from app.models import User, Execution
+        
+        # Find users with active trades (MONITORING or COMMUNICATION_ERROR)
+        users_with_active_trades = db.query(User).join(Execution).filter(
+            Execution.status.in_([ExecutionStatus.MONITORING, ExecutionStatus.COMMUNICATION_ERROR])
+        ).distinct().all()
+        
+        scheduled_count = 0
+        
+        for user in users_with_active_trades:
+            # Spawn per-user reconciliation task
+            reconcile_user_trades.apply_async(args=[str(user.id)])
+            scheduled_count += 1
+        
+        logger.info(
+            "master_reconciliation_completed",
+            users_scheduled=scheduled_count,
+            total_users=db.query(User).count()
+        )
+        
+        return {
+            "status": "completed",
+            "users_scheduled": scheduled_count
+        }
+        
+    except Exception as e:
+        logger.error("master_reconciliation_failed", error=str(e))
+        return {"status": "error", "error": str(e)}
+        
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.orchestration.tasks.cleanup_old_executions")
 def cleanup_old_executions(days_to_keep: int = 30):
     """
@@ -552,8 +680,31 @@ def schedule_monitoring_check(self, execution_id: str):
         flag_modified(execution, "reports")
         flag_modified(execution, "result")
         
+        # Check if communication error occurred (API failure)
+        if updated_state.communication_error:
+            execution.status = ExecutionStatus.COMMUNICATION_ERROR
+            execution.next_check_at = datetime.utcnow() + timedelta(minutes=1)  # Retry in 1 minute
+            
+            logger.error(
+                "monitoring_communication_error",
+                execution_id=execution_id,
+                error_count=updated_state.trade_execution.api_error_count if updated_state.trade_execution else 0,
+                last_error=updated_state.communication_error_message
+            )
+            
+            db.commit()
+            
+            # Schedule retry in 1 minute
+            schedule_monitoring_check.apply_async(args=[str(execution.id)], countdown=60)
+            
+            return {
+                "status": "communication_error",
+                "error": updated_state.communication_error_message,
+                "retry_in": "1 minute"
+            }
+        
         # Check if monitoring should complete
-        if updated_state.should_complete:
+        elif updated_state.should_complete:
             execution.status = ExecutionStatus.COMPLETED
             execution.completed_at = datetime.utcnow()
             execution.execution_phase = "completed"

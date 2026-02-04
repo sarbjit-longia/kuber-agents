@@ -63,6 +63,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.orchestration.tasks.check_scheduled_pipelines",
         "schedule": crontab(minute="*"),  # Every minute
     },
+    # Reconcile trades per user (master scheduler spawns per-user tasks)
+    "schedule-user-reconciliation": {
+        "task": "app.orchestration.tasks.schedule_user_reconciliation",
+        "schedule": crontab(minute="*"),  # Every minute
+    },
     # Clean up old executions daily
     "cleanup-old-executions": {
         "task": "app.orchestration.tasks.cleanup_old_executions",
