@@ -719,4 +719,45 @@ class OandaBrokerService(BrokerService):
             submitted_at=submitted_at,
             broker_data=oanda_order
         )
+    
+    def has_active_symbol(self, symbol: str, account_id: Optional[str] = None) -> bool:
+        """
+        Check if there is an active position or open order for a symbol.
+        
+        Oanda-specific implementation that handles underscore/slash normalization.
+        Oanda uses EUR_USD format, while other systems may use EUR/USD.
+        
+        Args:
+            symbol: Trading symbol (in any format: EUR_USD or EUR/USD)
+            account_id: Account ID (optional)
+            
+        Returns:
+            True if symbol has active position or open order, False otherwise
+        """
+        try:
+            # Normalize to Oanda format (EUR_USD)
+            normalized_symbol = symbol.replace("/", "_") if "/" in symbol else symbol
+            
+            # Check for open position
+            position = self.get_position(normalized_symbol, account_id)
+            if position and position.quantity != 0:
+                return True
+            
+            # Check for open orders
+            orders = self.get_orders(account_id)
+            for order in orders:
+                # Normalize order symbol for comparison
+                order_normalized = order.symbol.replace("/", "_") if "/" in order.symbol else order.symbol
+                if order_normalized == normalized_symbol:
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.warning(
+                "has_active_symbol_check_failed",
+                symbol=symbol,
+                error=str(e)
+            )
+            return False
 

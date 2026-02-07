@@ -24,6 +24,41 @@ from billiard.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 logger = structlog.get_logger()
 
 
+def _extract_broker_tool(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Extract broker tool configuration from pipeline config.
+    
+    Searches for broker tool in:
+    1. config.broker_tool (direct)
+    2. config.nodes[].config.tools[] (nested in agent configs)
+    
+    Args:
+        config: Pipeline configuration dict
+        
+    Returns:
+        Broker tool config dict or None
+    """
+    from app.services.brokers.factory import broker_factory
+    
+    if not config:
+        return None
+    
+    # Check direct broker_tool field
+    broker_tool = config.get("broker_tool")
+    if broker_tool:
+        return broker_tool
+    
+    # Search in agent node configs
+    nodes = config.get("nodes", []) or []
+    for node in nodes:
+        cfg = node.get("config") or {}
+        for tool in (cfg.get("tools") or []):
+            if broker_factory.is_broker_tool(tool.get("tool_type")):
+                return tool
+    
+    return None
+
+
 @celery_app.task(name="app.orchestration.tasks.execute_pipeline", bind=True, max_retries=3)
 def execute_pipeline(
     self,
@@ -88,22 +123,7 @@ def execute_pipeline(
             # Preflight: skip execution if broker already has an open order/position for this symbol.
             # This avoids paying LLM costs for strategies that would be ignored anyway.
             from app.models.scanner import Scanner
-            from app.services.brokers.factory import broker_factory
             from app.telemetry import pipeline_executions_counter
-
-            def extract_broker_tool(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-                if not config:
-                    return None
-                broker_tool = config.get("broker_tool")
-                if broker_tool:
-                    return broker_tool
-                nodes = config.get("nodes", []) or []
-                for node in nodes:
-                    cfg = node.get("config") or {}
-                    for tool in (cfg.get("tools") or []):
-                        if tool.get("tool_type") in {"alpaca_broker", "oanda_broker", "tradier_broker"}:
-                            return tool
-                return None
 
             # Determine symbol for preflight check
             execution_symbol = symbol
@@ -112,24 +132,16 @@ def execute_pipeline(
                 if scanner:
                     tickers = scanner.get_tickers()
                     execution_symbol = tickers[0] if tickers else None
-            if not execution_symbol:
-                execution_symbol = pipeline.config.get("symbol")
 
-            broker_tool = extract_broker_tool(pipeline.config or {})
             if broker_tool and execution_symbol:
                 try:
+                    from app.services.brokers.factory import broker_factory
                     broker = broker_factory.from_tool_config(broker_tool)
-                    positions = broker.get_positions()
-                    orders = broker.get_orders()
-                    sym_norm = execution_symbol.replace("_", "/")
-                    has_position = any(
-                        (p.symbol.replace("_", "/") == sym_norm) for p in positions
-                    )
-                    has_order = any(
-                        (o.symbol.replace("_", "/") == sym_norm) for o in orders
-                    )
+                    # Use broker's abstracted method to check for active symbols
+                    # This handles broker-specific symbol normalization internally
+                    has_active = broker.has_active_symbol(execution_symbol)
 
-                    if has_position or has_order:
+                    if has_active:
                         # Create or update execution record as COMPLETED (skipped).
                         execution = db.query(Execution).filter(
                             Execution.id == UUID(execution_id)
@@ -151,8 +163,6 @@ def execute_pipeline(
                                     "skipped": True,
                                     "reason": "Duplicate open order/position exists on broker",
                                     "symbol": execution_symbol,
-                                    "has_position": has_position,
-                                    "has_order": has_order,
                                 },
                                 logs=[{
                                     "timestamp": now.isoformat(),
@@ -171,8 +181,6 @@ def execute_pipeline(
                                 "skipped": True,
                                 "reason": "Duplicate open order/position exists on broker",
                                 "symbol": execution_symbol,
-                                "has_position": has_position,
-                                "has_order": has_order,
                             }
                             execution.logs = [{
                                 "timestamp": now.isoformat(),
@@ -191,8 +199,6 @@ def execute_pipeline(
                             "preflight_skipped_existing_broker_order_or_position",
                             pipeline_id=pipeline_id,
                             symbol=execution_symbol,
-                            has_position=has_position,
-                            has_order=has_order,
                         )
                         return {
                             "status": "skipped",
@@ -224,16 +230,14 @@ def execute_pipeline(
             execution = db.query(Execution).filter(Execution.id == executor.execution_id).first()
             
             # Determine symbol for execution record
-            # Priority: 1. symbol override, 2. scanner tickers, 3. config symbol
+            # Symbol should always come from symbol parameter (passed by trigger-dispatcher)
             execution_symbol = symbol
             if not execution_symbol and executor.scanner_tickers:
+                # Fallback for manual testing
                 execution_symbol = executor.scanner_tickers[0]
-                logger.info("using_scanner_ticker_in_task", 
+                logger.warning("using_scanner_ticker_fallback_in_task", 
                            execution_id=str(executor.execution_id),
-                           symbol=execution_symbol, 
-                           total_tickers=len(executor.scanner_tickers))
-            if not execution_symbol:
-                execution_symbol = pipeline.config.get("symbol")
+                           symbol=execution_symbol)
             
             if not execution:
                 # Create new execution record
@@ -435,9 +439,28 @@ def check_scheduled_pipelines():
                     )
                     continue
                 
+                # ✅ Rate limiting: Check when last execution completed
+                # Default interval: 5 minutes (configurable per pipeline in future)
+                last_completed = db.query(Execution).filter(
+                    Execution.pipeline_id == pipeline.id,
+                    Execution.status.in_([ExecutionStatus.COMPLETED, ExecutionStatus.FAILED])
+                ).order_by(Execution.completed_at.desc()).first()
+                
+                if last_completed and last_completed.completed_at:
+                    # Get interval from pipeline config, default to 5 minutes
+                    interval_minutes = pipeline.config.get("interval_minutes", 5) if pipeline.config else 5
+                    time_since_last = datetime.utcnow() - last_completed.completed_at
+                    
+                    if time_since_last < timedelta(minutes=interval_minutes):
+                        logger.debug(
+                            "periodic_pipeline_skipped_rate_limit",
+                            pipeline_id=str(pipeline.id),
+                            interval_minutes=interval_minutes,
+                            time_since_last_seconds=time_since_last.total_seconds()
+                        )
+                        continue
+                
                 # Trigger pipeline execution
-                # For MVP: Execute all active periodic pipelines every minute
-                # Future: Add interval configuration (e.g., every 5min, 15min, 1h)
                 logger.info(
                     "triggering_periodic_pipeline",
                     pipeline_id=str(pipeline.id),
@@ -472,54 +495,6 @@ def check_scheduled_pipelines():
     finally:
         db.close()
 
-
-# TODO: Remove this function - we use Celery Beat and TimeTriggerAgent for scheduling
-# def _should_run_pipeline(pipeline: Pipeline) -> bool:
-#     """
-#     Determine if a pipeline should run based on its schedule.
-#     
-#     Args:
-#         pipeline: Pipeline to check
-#         
-#     Returns:
-#         True if should run, False otherwise
-#     """
-#     if not pipeline.schedule:
-#         return False
-#     
-#     # Get last execution
-#     db = SessionLocal()
-#     try:
-#         last_execution = db.query(Execution).filter(
-#             Execution.pipeline_id == pipeline.id
-#         ).order_by(Execution.created_at.desc()).first()
-#         
-#         # Parse schedule (simple cron-like format)
-#         interval = pipeline.schedule.get("interval", "1h")
-#         
-#         # Convert interval to timedelta
-#         interval_map = {
-#             "1m": timedelta(minutes=1),
-#             "5m": timedelta(minutes=5),
-#             "15m": timedelta(minutes=15),
-#             "30m": timedelta(minutes=30),
-#             "1h": timedelta(hours=1),
-#             "4h": timedelta(hours=4),
-#             "1d": timedelta(days=1),
-#         }
-#         
-#         interval_delta = interval_map.get(interval, timedelta(hours=1))
-#         
-#         # Check if enough time has passed
-#         if last_execution:
-#             time_since_last = datetime.utcnow() - last_execution.created_at
-#             return time_since_last >= interval_delta
-#         else:
-#             # No previous execution, run now
-#             return True
-#             
-#     finally:
-#         db.close()
 
 
 @celery_app.task(name="app.orchestration.tasks.reconcile_user_trades", bind=True, max_retries=3)
@@ -565,26 +540,7 @@ def reconcile_user_trades(self, user_id: str):
         ).all()
         
         # Check broker for open positions and reconcile stale monitoring executions
-        from app.services.brokers.factory import broker_factory
-
-        BROKER_TOOL_TYPES = {"alpaca_broker", "oanda_broker", "tradier_broker"}
-
-        def extract_broker_tool(pipeline_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-            if not pipeline_config:
-                return None
-            broker_tool = pipeline_config.get("broker_tool")
-            if broker_tool:
-                return broker_tool
-            nodes = pipeline_config.get("nodes", []) or []
-            for node in nodes:
-                cfg = node.get("config") or {}
-                for tool in (cfg.get("tools") or []):
-                    if tool.get("tool_type") in BROKER_TOOL_TYPES:
-                        return tool
-            return None
-
-        broker_positions_cache: Dict[str, List[Any]] = {}
-        broker_orders_cache: Dict[str, List[Any]] = {}
+        broker_positions_cache: Dict[str, Any] = {}  # Cache broker instances by account
         reconciled = 0
 
         # Grace period: don't reconcile executions that just entered monitoring
@@ -604,7 +560,7 @@ def reconcile_user_trades(self, user_id: str):
                 continue
 
             pipeline = db.query(Pipeline).filter(Pipeline.id == execution.pipeline_id).first()
-            broker_tool = extract_broker_tool(pipeline.config if pipeline else {}) if pipeline else None
+            broker_tool = _extract_broker_tool(pipeline.config if pipeline else {}) if pipeline else None
             if not broker_tool:
                 continue
 
@@ -613,23 +569,35 @@ def reconcile_user_trades(self, user_id: str):
 
             if broker_key not in broker_positions_cache:
                 try:
+                    from app.services.brokers.factory import broker_factory
                     broker = broker_factory.from_tool_config(broker_tool)
-                    broker_positions_cache[broker_key] = broker.get_positions()
-                    broker_orders_cache[broker_key] = broker.get_orders()
+                    broker_positions_cache[broker_key] = broker
                 except Exception as e:
                     logger.error("reconciliation_broker_error", user_id=user_id, error=str(e))
                     continue
 
-            positions = broker_positions_cache.get(broker_key, [])
-            orders = broker_orders_cache.get(broker_key, [])
-            position_symbols = {p.symbol.replace("/", "_") for p in positions}
-            order_symbols = {o.symbol.replace("/", "_") for o in orders}
-            symbols = position_symbols | order_symbols
+            broker = broker_positions_cache.get(broker_key)
+            if not broker:
+                continue
 
             if not execution.symbol:
                 continue
 
-            if execution.symbol not in symbols:
+            # Use broker's abstracted method to check if symbol is still active
+            # This handles broker-specific symbol normalization internally
+            try:
+                has_active = broker.has_active_symbol(execution.symbol)
+            except Exception as e:
+                logger.error(
+                    "reconciliation_symbol_check_failed",
+                    execution_id=str(execution.id),
+                    symbol=execution.symbol,
+                    error=str(e)
+                )
+                continue
+
+            if not has_active:
+                # Position/order no longer exists on broker - reconcile execution
                 execution.status = ExecutionStatus.COMPLETED
                 execution.completed_at = datetime.utcnow()
                 execution.execution_phase = "completed"
@@ -878,7 +846,7 @@ def stop_execution(execution_id: str, user_id: str):
         
         # Mark as cancelled
         execution.status = ExecutionStatus.CANCELLED
-        execution.end_time = datetime.utcnow()
+        execution.completed_at = datetime.utcnow()
         db.commit()
         
         logger.info("execution_stopped", execution_id=execution_id)
@@ -894,7 +862,7 @@ def schedule_monitoring_check(self, execution_id: str):
     Periodic monitoring check for open positions (Trade Manager Agent).
     
     This task:
-    1. Uses a fresh DB connection each time (5-min polling)
+    1. Uses a fresh DB connection each time (configurable polling: 15s default, 5m fallback)
     2. Checks if position still exists via broker API
     3. Evaluates emergency exit conditions
     4. Closes position if needed or schedules next check
@@ -1151,7 +1119,8 @@ def schedule_monitoring_check(self, execution_id: str):
         
         else:
             # Schedule next check
-            # Use interval from execution (database) instead of state for flexibility
+            # Interval priority: execution.monitor_interval_minutes (from DB) → state.monitor_interval_minutes → 1 min fallback
+            # Trade Manager sets 0.25 min (15 seconds) for active monitoring
             # Use 'is not None' checks instead of 'or' to avoid treating 0.25 as falsy
             if execution.monitor_interval_minutes is not None and execution.monitor_interval_minutes > 0:
                 interval = execution.monitor_interval_minutes

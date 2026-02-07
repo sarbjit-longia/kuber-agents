@@ -132,58 +132,49 @@ class PipelineExecutor:
     
     def _build_execution_order(self) -> List[Dict[str, Any]]:
         """
-        Build the execution order based on edges using topological sort.
+        Build the execution order using the fixed agent sequence.
+        
+        The platform now uses a FIXED execution order (not graph-based):
+        Market Data → Bias → Strategy → Risk Manager → Trade Manager
+        
+        This method filters the pipeline nodes to match this sequence,
+        ignoring tool nodes and ensuring consistent, predictable execution.
         
         Returns:
-            List of nodes in execution order
-            
-        Raises:
-            ValueError: If pipeline has cycles
+            List of nodes in execution order (fixed sequence)
         """
-        # Build adjacency list and in-degree count
-        node_map = {node["id"]: node for node in self.nodes}
-        adjacency = {node["id"]: [] for node in self.nodes}
-        in_degree = {node["id"]: 0 for node in self.nodes}
+        # Fixed agent execution sequence (canonical order)
+        FIXED_AGENT_ORDER = [
+            "market_data_agent",
+            "bias_agent",
+            "strategy_agent",
+            "risk_manager_agent",
+            "trade_manager_agent"
+        ]
         
-        # Build graph from edges (filter out tool connections)
-        for edge in self.edges:
-            from_id = edge.get("from") or edge.get("source")
-            to_id = edge.get("to") or edge.get("target")
-            
-            # Skip tool connections (tools are not executed)
-            if from_id in node_map and to_id in node_map:
-                from_node = node_map[from_id]
-                to_node = node_map[to_id]
-                
-                # Only add edge if both are agents (not tools)
-                if from_node.get("node_category") != "tool" and to_node.get("node_category") != "tool":
-                    adjacency[from_id].append(to_id)
-                    in_degree[to_id] += 1
+        # Build a map of agent_type -> node for quick lookup
+        node_map = {}
+        for node in self.nodes:
+            agent_type = node.get("agent_type") or node.get("type")
+            # Skip tool nodes (they are attached configs, not execution steps)
+            if agent_type and node.get("node_category") != "tool":
+                node_map[agent_type] = node
         
-        # Topological sort using Kahn's algorithm
-        queue = [node_id for node_id in in_degree if in_degree[node_id] == 0]
+        # Build execution order by filtering nodes to match fixed sequence
         execution_order = []
+        for agent_type in FIXED_AGENT_ORDER:
+            if agent_type in node_map:
+                execution_order.append(node_map[agent_type])
         
-        while queue:
-            # Sort queue to ensure deterministic order
-            queue.sort()
-            current = queue.pop(0)
-            
-            # Only add agents (not tools) to execution order
-            if node_map[current].get("node_category") != "tool":
-                execution_order.append(node_map[current])
-            
-            # Process neighbors
-            for neighbor in adjacency[current]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
+        if not execution_order:
+            self.logger.error("no_agents_found_in_pipeline")
+            raise ValueError("Pipeline has no valid agents to execute")
         
-        # Check for cycles
-        if len(execution_order) != len([n for n in self.nodes if n.get("node_category") != "tool"]):
-            raise ValueError("Pipeline has cycles or disconnected nodes")
-        
-        self.logger.info("execution_order_built", steps=len(execution_order))
+        self.logger.info(
+            "execution_order_built_fixed_sequence",
+            agent_count=len(execution_order),
+            agents=[n.get("agent_type") for n in execution_order]
+        )
         return execution_order
     
     async def _fetch_market_data_for_pipeline(self, state: PipelineState):
@@ -225,7 +216,7 @@ class PipelineExecutor:
             self.logger.info("market_data_fetched_from_data_plane", mode=self.mode)
         except Exception as e:
             self.logger.error("data_plane_fetch_failed", error=str(e), exc_info=True)
-            raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}. Mock data is disabled.")
+            raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}.")
     
     def _get_required_timeframes(self) -> List[str]:
         """
@@ -274,14 +265,6 @@ class PipelineExecutor:
                         agent_type=agent_type,
                         timeframes=metadata.requires_timeframes
                     )
-                
-                # 3. Check explicit config fields (for backward compatibility)
-                if "strategy_timeframe" in config:
-                    timeframes.add(config["strategy_timeframe"])
-                if "primary_timeframe" in config:
-                    timeframes.add(config["primary_timeframe"])
-                if "secondary_timeframes" in config:
-                    timeframes.update(config["secondary_timeframes"])
                     
             except Exception as e:
                 self.logger.warning(
@@ -294,84 +277,6 @@ class PipelineExecutor:
         self.logger.info("pipeline_timeframes_determined", timeframes=sorted_timeframes)
         
         return sorted_timeframes
-    
-    def _generate_mock_market_data(self, symbol: str, timeframes: List[str]):
-        """
-        Generate mock market data for testing.
-        
-        Args:
-            symbol: Trading symbol
-            timeframes: List of timeframes to generate
-            
-        Returns:
-            MarketData object with mock data
-        """
-        import random
-        from app.schemas.pipeline_state import MarketData, TimeframeData
-        
-        # 🐛 FIX: Generate realistic mock price based on asset type
-        # Forex pairs (e.g., EUR_USD, GBP/USD) should be around 1.0-2.0
-        # Stocks should be around 50-500
-        is_forex = "/" in symbol or "_" in symbol and len(symbol.split("_")) == 2 and all(len(part) == 3 for part in symbol.split("_"))
-        
-        if is_forex:
-            base_price = random.uniform(0.5, 2.0)  # Forex range
-            volatility = 0.002  # 0.2% volatility for forex
-        else:
-            base_price = random.uniform(50, 500)  # Stock range
-            volatility = 0.02  # 2% volatility for stocks
-        
-        # Generate mock timeframe data
-        timeframe_data = {}
-        for tf in timeframes:
-            candles = []
-            price = base_price
-            
-            # Generate 100 candles with random walk
-            for i in range(100):
-                change = random.uniform(-volatility * 10, volatility * 10)  # Use asset-specific volatility
-                price = price * (1 + change)
-                
-                high = price * (1 + volatility * 5)
-                low = price * (1 - volatility * 5)
-                open_price = price * (1 + random.uniform(-volatility * 2.5, volatility * 2.5))
-                close_price = price
-                
-                # Use appropriate decimal precision: 5 for forex, 2 for stocks
-                decimal_places = 5 if is_forex else 2
-                
-                candle = TimeframeData(
-                    timeframe=tf,
-                    timestamp=datetime.utcnow() - timedelta(minutes=(100-i) * 5),
-                    open=round(open_price, decimal_places),
-                    high=round(high, decimal_places),
-                    low=round(low, decimal_places),
-                    close=round(close_price, decimal_places),
-                    volume=random.randint(100000, 10000000)
-                )
-                candles.append(candle)
-            
-            timeframe_data[tf] = candles
-        
-        market_data = MarketData(
-            symbol=symbol,
-            current_price=round(price, 5 if is_forex else 2),
-            bid=round(price * 0.999, 5 if is_forex else 2),
-            ask=round(price * 1.001, 5 if is_forex else 2),
-            spread=round(price * 0.002, 5 if is_forex else 2),
-            timeframes=timeframe_data,
-            market_status="open" if self.mode == "live" else "mock",
-            last_updated=datetime.utcnow()
-        )
-        
-        self.logger.debug(
-            "mock_market_data_generated",
-            symbol=symbol,
-            price=price,
-            timeframes=len(timeframes)
-        )
-        
-        return market_data
     
     async def _fetch_from_data_plane(self, symbol: str, timeframes: List[str]):
         """
@@ -419,14 +324,19 @@ class PipelineExecutor:
                     bid = latest_candle.close
                     ask = latest_candle.close
             
+            # Calculate spread from bid/ask
+            spread = None
+            if bid and ask:
+                spread = ask - bid
+            
             market_data = MarketData(
                 symbol=symbol,
                 current_price=current_price,
                 bid=bid,
                 ask=ask,
-                spread=quote_data.get("a", 0) - quote_data.get("b", 0) if quote_data.get("a") and quote_data.get("b") else None,
+                spread=spread,
                 timeframes=timeframe_data,
-                market_status=quote_data.get("market_status", "unknown"),
+                market_status="open",  # Assume open if we got data
                 last_updated=datetime.utcnow()
             )
             
@@ -559,10 +469,22 @@ class PipelineExecutor:
     
     async def execute(self) -> PipelineState:
         """
-        Execute the complete pipeline.
+        Execute the complete pipeline (async version for testing).
+        
+        This is a simplified execution path that runs agents without database tracking.
+        It's primarily used for unit tests where speed and simplicity are more important
+        than real-time progress updates.
+        
+        For PRODUCTION use (Celery tasks), use execute_with_sync_db_tracking() instead,
+        which provides:
+        - Real-time database commits after each agent (for live UI updates)
+        - Monitoring task scheduling for open positions
+        - PDF report generation
+        - Prometheus metrics recording
+        - Optimistic locking for concurrent execution safety
         
         Returns:
-            Final pipeline state after all agents have run
+            Final pipeline state after all agents have run (in-memory object)
             
         Raises:
             AgentError: If an agent fails critically
@@ -579,29 +501,27 @@ class PipelineExecutor:
             signal_data = SignalData(**self.signal_context)
         
         # DEBUG: Log scanner tickers state at beginning of execute
-        self.logger.info("execute_symbol_debug", 
+        self.logger.debug("execute_symbol_debug", 
                         has_symbol_override=bool(self.symbol_override),
                         symbol_override=self.symbol_override,
-                        scanner_tickers_type=type(self.scanner_tickers).__name__,
-                        scanner_tickers_len=len(self.scanner_tickers) if self.scanner_tickers else 0,
-                        scanner_tickers_bool=bool(self.scanner_tickers),
-                        scanner_tickers_value=self.scanner_tickers if self.scanner_tickers else None,
-                        config_symbol=self.config.get("symbol"))
+                        scanner_tickers_len=len(self.scanner_tickers) if self.scanner_tickers else 0)
         
         # Determine the symbol to use for this execution
-        # Priority: 1. symbol_override (from signal), 2. scanner tickers, 3. config symbol, 4. UNKNOWN
-        execution_symbol = "UNKNOWN"
-        if self.symbol_override:
-            execution_symbol = self.symbol_override
-            self.logger.info("using_symbol_override", symbol=execution_symbol)
-        elif self.scanner_tickers:
-            # For scanner-based pipelines, use the first ticker
-            # (Signal-based execution should provide symbol_override)
-            execution_symbol = self.scanner_tickers[0]
-            self.logger.info("using_scanner_ticker", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
-        elif self.config.get("symbol"):
-            execution_symbol = self.config.get("symbol")
-            self.logger.info("using_config_symbol", symbol=execution_symbol)
+        # ALL executions are signal-based (including periodic via signal generator)
+        # Symbol always comes from symbol_override (passed by trigger-dispatcher)
+        execution_symbol = self.symbol_override
+        
+        if not execution_symbol:
+            # Fallback: Use first scanner ticker if symbol_override not provided
+            # This should rarely happen - mainly for manual testing
+            if self.scanner_tickers:
+                execution_symbol = self.scanner_tickers[0]
+                self.logger.warning("using_scanner_fallback", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
+            else:
+                # No symbol available - this is an error state
+                raise ValueError("No symbol available: pipeline must have scanner_id and execution must provide symbol_override")
+        
+        self.logger.info("execution_symbol_determined", symbol=execution_symbol)
         
         state = PipelineState(
             pipeline_id=self.pipeline.id,
@@ -759,9 +679,21 @@ class PipelineExecutor:
         """
         Execute pipeline with real-time database updates (synchronous version for Celery).
         
+        This is the PRODUCTION execution path used by Celery tasks. It differs from the
+        async execute() method in several key ways:
+        
+        1. **Synchronous**: Uses sync DB operations (Celery tasks are sync by default)
+        2. **Real-time DB updates**: Commits agent progress after each step for live UI updates
+        3. **Monitoring**: Schedules monitoring tasks for open positions
+        4. **PDF Reports**: Generates PDF reports on completion
+        5. **Metrics**: Records Prometheus metrics (duration, success/failure)
+        6. **Optimistic locking**: Increments execution.version to prevent race conditions
+        
+        The async execute() method is used only for testing (fast, in-memory, no DB overhead).
+        
         Args:
             db_session: Synchronous SQLAlchemy session
-            execution: Execution database record
+            execution: Execution database record (pre-created, will be updated in real-time)
             
         Returns:
             Updated Execution record
@@ -784,19 +716,21 @@ class PipelineExecutor:
             signal_data = SignalData(**self.signal_context)
         
         # Determine the symbol to use for this execution
-        # Priority: 1. symbol_override (from signal), 2. scanner tickers, 3. config symbol, 4. UNKNOWN
-        execution_symbol = "UNKNOWN"
-        if self.symbol_override:
-            execution_symbol = self.symbol_override
-            self.logger.info("sync_using_symbol_override", symbol=execution_symbol)
-        elif self.scanner_tickers:
-            # For scanner-based pipelines, use the first ticker
-            # (Signal-based execution should provide symbol_override)
-            execution_symbol = self.scanner_tickers[0]
-            self.logger.info("sync_using_scanner_ticker", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
-        elif self.config.get("symbol"):
-            execution_symbol = self.config.get("symbol")
-            self.logger.info("sync_using_config_symbol", symbol=execution_symbol)
+        # ALL executions are signal-based (including periodic via signal generator)
+        # Symbol always comes from symbol_override (passed by trigger-dispatcher)
+        execution_symbol = self.symbol_override
+        
+        if not execution_symbol:
+            # Fallback: Use first scanner ticker if symbol_override not provided
+            # This should rarely happen - mainly for manual testing
+            if self.scanner_tickers:
+                execution_symbol = self.scanner_tickers[0]
+                self.logger.warning("sync_using_scanner_fallback", symbol=execution_symbol, total_tickers=len(self.scanner_tickers))
+            else:
+                # No symbol available - this is an error state
+                raise ValueError("No symbol available: pipeline must have scanner_id and execution must provide symbol_override")
+        
+        self.logger.info("sync_execution_symbol_determined", symbol=execution_symbol)
         
         state = PipelineState(
             pipeline_id=self.pipeline.id,
@@ -871,23 +805,23 @@ class PipelineExecutor:
                 agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
                 agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
                 
-            # Update DB with progress
-            execution.agent_states = agent_states
-            execution.logs = self._serialize_logs(state.execution_log)
-            execution.reports = self._serialize_reports(state.agent_reports)
-            execution.cost = state.total_cost
-            execution.cost_breakdown = state.agent_costs
-            
-            # Mark JSONB columns as modified so SQLAlchemy saves them
-            flag_modified(execution, "agent_states")
-            flag_modified(execution, "logs")
-            flag_modified(execution, "reports")
-            flag_modified(execution, "cost_breakdown")
-            
-            # ⚠️ FIX #1: Increment version for optimistic locking
-            execution.version += 1
-            
-            db_session.commit()
+                # Update DB with progress
+                execution.agent_states = agent_states
+                execution.logs = self._serialize_logs(state.execution_log)
+                execution.reports = self._serialize_reports(state.agent_reports)
+                execution.cost = state.total_cost
+                execution.cost_breakdown = state.agent_costs
+                
+                # Mark JSONB columns as modified so SQLAlchemy saves them
+                flag_modified(execution, "agent_states")
+                flag_modified(execution, "logs")
+                flag_modified(execution, "reports")
+                flag_modified(execution, "cost_breakdown")
+                
+                # ⚠️ FIX #1: Increment version for optimistic locking
+                execution.version += 1
+                
+                db_session.commit()
                 
                 self.logger.info(
                     "agent_completed",
@@ -1062,162 +996,6 @@ class PipelineExecutor:
         
         return execution
     
-    async def execute_with_realtime_updates(self, db_session, execution):
-        """
-        Execute pipeline with real-time database updates for agent progress.
-        
-        Args:
-            db_session: SQLAlchemy async session
-            execution: Execution database record
-            
-        Returns:
-            Updated PipelineState
-        """
-        # Initialize state
-        # Create pipeline state with signal context if available
-        from app.schemas.pipeline_state import SignalData
-        
-        signal_data = None
-        if self.signal_context:
-            signal_data = SignalData(**self.signal_context)
-        
-        state = PipelineState(
-            pipeline_id=self.pipeline.id,
-            execution_id=self.execution_id,
-            user_id=self.user_id,
-            symbol=self.config.get("symbol", "UNKNOWN"),
-            mode=self.mode,
-            signal_data=signal_data
-        )
-        
-        # Get execution order
-        execution_order = self._build_execution_order()
-        
-        # Initialize agent states tracking
-        agent_states = []
-        for node in execution_order:
-            agent_states.append({
-                "agent_id": node["id"],
-                "agent_type": node["agent_type"],
-                "status": "pending",
-                "started_at": None,
-                "completed_at": None,
-                "error": None,
-                "cost": 0.0
-            })
-        
-        # Update execution with initial agent states
-        execution.agent_states = agent_states
-        await db_session.commit()
-        
-        # Execute each agent in sequence
-        for i, node in enumerate(execution_order):
-            agent_type = node["agent_type"]
-            agent_id = node["id"]
-            agent_config = node.get("config", {})
-            
-            # Update agent state to running
-            agent_states[i]["status"] = "running"
-            agent_states[i]["started_at"] = datetime.utcnow().isoformat()
-            
-            # Update DB with current progress
-            execution.agent_states = agent_states
-            execution.logs = self._serialize_logs(state.execution_log)
-            await db_session.commit()
-            
-            self.logger.info(
-                "executing_agent",
-                step=f"{i+1}/{len(execution_order)}",
-                agent_type=agent_type,
-                agent_id=agent_id
-            )
-            
-            try:
-                # Create agent instance
-                agent = self.registry.create_agent(
-                    agent_type=agent_type,
-                    agent_id=agent_id,
-                    config=agent_config
-                )
-                
-                # Execute agent
-                state = agent.process(state)
-                
-                # Update agent state to completed
-                agent_states[i]["status"] = "completed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
-                
-                # Update DB with progress
-                execution.agent_states = agent_states
-                execution.logs = self._serialize_logs(state.execution_log)
-                execution.reports = self._serialize_reports(state.agent_reports)
-                execution.cost = state.total_cost
-                execution.cost_breakdown = state.agent_costs
-                await db_session.commit()
-                
-                self.logger.info(
-                    "agent_completed",
-                    agent_type=agent_type,
-                    cost=state.agent_costs.get(agent_id, 0.0)
-                )
-                
-            except TriggerNotMetException as e:
-                # Trigger not met - not an error, just skip execution
-                self.logger.info("trigger_not_met", reason=str(e))
-                state.trigger_met = False
-                state.trigger_reason = str(e)
-                agent_states[i]["status"] = "skipped"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = "Trigger not met"
-                execution.agent_states = agent_states
-                await db_session.commit()
-                break
-                
-            except AgentError as e:
-                # Agent-specific error
-                self.logger.error("agent_error", agent_type=agent_type, error=str(e))
-                state.errors.append(f"Agent {agent_type} failed: {str(e)}")
-                agent_states[i]["status"] = "failed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = str(e)
-                execution.agent_states = agent_states
-                await db_session.commit()
-                
-                # Decide whether to continue or abort
-                if self._should_abort_on_error(agent_type, str(e)):
-                    raise
-                else:
-                    # Continue to next agent
-                    continue
-                    
-            except Exception as e:
-                # Unexpected error
-                self.logger.exception("unexpected_error", agent_type=agent_type)
-                state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
-                agent_states[i]["status"] = "failed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = str(e)
-                execution.agent_states = agent_states
-                await db_session.commit()
-                raise
-        
-        # Mark completion
-        state.completed_at = datetime.utcnow()
-        
-        # Store agent states in pipeline state for database persistence
-        state.agent_execution_states = agent_states
-        
-        self.logger.info(
-            "pipeline_execution_completed",
-            total_cost=state.total_cost,
-            errors=len(state.errors),
-            warnings=len(state.warnings),
-            trigger_met=state.trigger_met
-        )
-        
-        return state
-    
     def _serialize_logs(self, logs):
         """Convert execution logs to JSON-serializable format."""
         serialized = []
@@ -1247,15 +1025,16 @@ class PipelineExecutor:
             return {k: self._serialize_value(v) for k, v in value.items()}
         return value
     
-    async def _generate_pdf_report_async(self, execution: Any, db_session: Any):
+    def _generate_pdf_report_sync(self, execution: Any, db_session: Any):
         """
-        Generate PDF report for completed execution.
+        Generate PDF report for completed execution (synchronous version).
         
         Runs in background to avoid blocking execution completion.
         """
         try:
             from app.services.pdf_generator import pdf_generator
             from app.services.executive_report_generator import executive_report_generator
+            from sqlalchemy.orm.attributes import flag_modified
             
             self.logger.info("generating_pdf_report", execution_id=str(execution.id))
             
@@ -1276,16 +1055,17 @@ class PipelineExecutor:
             }
             
             # Try to generate AI summary (optional - don't fail if it errors)
+            # NOTE: executive_report_generator methods are synchronous
             executive_summary = None
             try:
-                executive_summary = await executive_report_generator.generate_executive_summary(
+                executive_summary = executive_report_generator.generate_executive_summary_sync(
                     execution_data,
                     langfuse_trace=None
                 )
             except Exception as e:
                 self.logger.warning("executive_summary_generation_failed", error=str(e))
             
-            # Generate PDF
+            # Generate PDF (synchronous)
             pdf_path = pdf_generator.generate_execution_report(
                 execution_id=str(execution.id),
                 execution_data=execution_data,
@@ -1294,115 +1074,7 @@ class PipelineExecutor:
             
             # Update execution record with PDF path
             execution.report_pdf_path = pdf_path
-            await db_session.commit()
-            
-            self.logger.info("pdf_report_generated_successfully", 
-                           execution_id=str(execution.id),
-                           pdf_path=pdf_path)
-            
-        except Exception as e:
-            # Log error but don't fail the execution
-            self.logger.error("pdf_generation_failed", 
-                            execution_id=str(execution.id),
-                            error=str(e))
-    
-    def _generate_pdf_report_sync(self, execution: Any, db_session: Any):
-        """
-        Generate PDF report for completed execution (synchronous version for Celery).
-        
-        Args:
-            execution: Execution database record
-            db_session: Synchronous SQLAlchemy session
-        """
-        try:
-            from app.services.pdf_generator import pdf_generator
-            from app.services.executive_report_generator import executive_report_generator
-            import asyncio
-            
-            self.logger.info("generating_pdf_report", execution_id=str(execution.id))
-            
-            # Prepare execution data
-            execution_data = {
-                "id": str(execution.id),
-                "pipeline_name": self.pipeline.name if hasattr(self.pipeline, 'name') else "Unknown",
-                "symbol": execution.symbol,
-                "mode": execution.mode,
-                "status": execution.status.value,
-                "started_at": execution.started_at.isoformat() if execution.started_at else None,
-                "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
-                "duration_seconds": (execution.completed_at - execution.started_at).total_seconds() if execution.started_at and execution.completed_at else None,
-                "cost": execution.cost,
-                "trigger_source": getattr(self, 'trigger_source', 'N/A'),
-                "reports": execution.reports or {},
-                "result": execution.result or {},
-            }
-            
-            # Try to generate AI summary (optional - don't fail if it errors)
-            executive_summary = None
-            try:
-                # Run async code in sync context
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Create new event loop if one is already running
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    executive_summary = loop.run_until_complete(
-                        executive_report_generator.generate_executive_summary(
-                            execution_data,
-                            langfuse_trace=None
-                        )
-                    )
-                    loop.close()
-                else:
-                    executive_summary = loop.run_until_complete(
-                        executive_report_generator.generate_executive_summary(
-                            execution_data,
-                            langfuse_trace=None
-                        )
-                    )
-            except Exception as e:
-                self.logger.warning("executive_summary_generation_failed", error=str(e))
-            
-            # Build comprehensive executive report (same structure as /executive-report endpoint)
-            executive_report = {
-                "execution_context": {
-                    "id": str(execution.id),
-                    "pipeline_name": execution_data["pipeline_name"],
-                    "symbol": execution.symbol,
-                    "mode": execution.mode,
-                    "started_at": execution_data["started_at"],
-                    "completed_at": execution_data["completed_at"],
-                    "duration_seconds": execution_data["duration_seconds"],
-                    "total_cost": execution.cost,
-                },
-                "agent_reports": execution.reports or {},
-            }
-            
-            # Add AI-generated summary if available
-            if executive_summary:
-                executive_report.update(executive_summary)
-            
-            # Add execution artifacts and results
-            if execution.result and isinstance(execution.result, dict):
-                executive_report["execution_artifacts"] = execution.result.get("execution_artifacts", {})
-                executive_report["strategy"] = execution.result.get("strategy")
-                executive_report["bias"] = execution.result.get("biases")
-                executive_report["risk_assessment"] = execution.result.get("risk_assessment")
-                executive_report["trade_execution"] = execution.result.get("trade_execution")
-            
-            # Save executive report to database
-            execution.executive_report = executive_report
-            
-            # Generate PDF using the full executive report (this is a sync method)
-            pdf_path = pdf_generator.generate_execution_report(
-                execution_id=str(execution.id),
-                execution_data=execution_data,
-                executive_summary=executive_summary,  # Keep for backward compatibility
-                executive_report=executive_report  # Use full report
-            )
-            
-            # Update execution record with PDF path
-            execution.report_pdf_path = pdf_path
+            flag_modified(execution, "report_pdf_path")
             db_session.commit()
             
             self.logger.info("pdf_report_generated_successfully", 
@@ -1413,204 +1085,4 @@ class PipelineExecutor:
             # Log error but don't fail the execution
             self.logger.error("pdf_generation_failed", 
                             execution_id=str(execution.id),
-                            error=str(e),
-                            exc_info=True)
-    
-    async def execute_with_db_tracking(self, db_session) -> Execution:
-        """
-        Execute pipeline and track in database.
-        
-        This is the main entry point for executing pipelines with full tracking.
-        
-        Args:
-            db_session: SQLAlchemy async session
-            
-        Returns:
-            Execution database record with results
-        """
-        # Get or create execution record
-        from sqlalchemy import select
-        result = await db_session.execute(
-            select(Execution).where(Execution.id == self.execution_id)
-        )
-        execution = result.scalar_one_or_none()
-        
-        if not execution:
-            # Create new execution if it doesn't exist
-            execution = Execution(
-                id=self.execution_id,
-                pipeline_id=self.pipeline.id,
-                user_id=self.user_id,
-                status=ExecutionStatus.RUNNING,
-                started_at=datetime.utcnow()
-            )
-            db_session.add(execution)
-        else:
-            # Update existing execution
-            execution.status = ExecutionStatus.RUNNING
-            if not execution.started_at:
-                execution.started_at = datetime.utcnow()
-        
-        await db_session.commit()
-        
-        try:
-            # Execute pipeline and update DB in real-time
-            state = await self.execute_with_realtime_updates(db_session, execution)
-            
-            # Update execution record with final results
-            execution.status = ExecutionStatus.COMPLETED if not state.errors else ExecutionStatus.FAILED
-            execution.completed_at = datetime.utcnow()
-            
-            # Convert Pydantic models to JSON-serializable dicts
-            def serialize_model(model):
-                """Convert Pydantic model to JSON-serializable dict."""
-                if model is None:
-                    return None
-                data = model.dict()
-                # Convert datetime objects to ISO format strings
-                for key, value in data.items():
-                    if isinstance(value, datetime):
-                        data[key] = value.isoformat()
-                return data
-            
-            def serialize_logs(logs):
-                """Convert execution logs to JSON-serializable format."""
-                serialized = []
-                for log_entry in logs:
-                    serialized_entry = {}
-                    for key, value in log_entry.items():
-                        if isinstance(value, datetime):
-                            serialized_entry[key] = value.isoformat()
-                        else:
-                            serialized_entry[key] = value
-                    serialized.append(serialized_entry)
-                return serialized
-            
-            def serialize_artifacts(artifacts):
-                """Recursively serialize artifacts, converting datetime objects to ISO strings."""
-                if isinstance(artifacts, dict):
-                    return {k: serialize_artifacts(v) for k, v in artifacts.items()}
-                elif isinstance(artifacts, list):
-                    return [serialize_artifacts(item) for item in artifacts]
-                elif isinstance(artifacts, datetime):
-                    return artifacts.isoformat()
-                else:
-                    return artifacts
-            
-            execution.result = {
-                "trigger_met": state.trigger_met,
-                "trigger_reason": state.trigger_reason,
-                "strategy": serialize_model(state.strategy),
-                "risk_assessment": serialize_model(state.risk_assessment),
-                "trade_execution": serialize_model(state.trade_execution),
-                "errors": state.errors,
-                "warnings": state.warnings,
-                "agent_reports": self._serialize_reports(state.agent_reports),
-                "execution_artifacts": serialize_artifacts(state.execution_artifacts),
-            }
-            execution.cost = state.total_cost
-            execution.logs = serialize_logs(state.execution_log)
-            execution.agent_states = getattr(state, 'agent_execution_states', [])
-            execution.reports = self._serialize_reports(state.agent_reports)
-            execution.cost_breakdown = state.agent_costs
-            
-            # Generate PDF report if execution completed successfully
-            if execution.status == ExecutionStatus.COMPLETED:
-                await self._generate_pdf_report_async(execution, db_session)
-            
-            await db_session.commit()
-            
-            self.logger.info("execution_saved_to_db", execution_id=str(execution.id))
-            
-            return execution
-            
-        except TriggerNotMetException:
-            # Trigger not met - mark as skipped
-            execution.status = ExecutionStatus.SKIPPED
-            execution.completed_at = datetime.utcnow()
-            execution.result = {"trigger_met": False, "reason": "Trigger conditions not met"}
-            execution.logs = serialize_logs(getattr(locals().get("state", None), "execution_log", []))
-            execution.agent_states = getattr(locals().get("state", None), "agent_execution_states", [])
-            execution.reports = self._serialize_reports(getattr(locals().get("state", None), "agent_reports", {}))
-            await db_session.commit()
-            return execution
-            
-        except Exception as e:
-            # Execution failed
-            execution.status = ExecutionStatus.FAILED
-            execution.completed_at = datetime.utcnow()
-            execution.result = {"error": str(e)}
-            await db_session.commit()
-            raise
-
-
-class ExecutionManager:
-    """
-    Manages pipeline executions across the system.
-    
-    Provides high-level operations like:
-    - Starting executions
-    - Stopping running executions
-    - Querying execution status
-    - Scheduling recurring executions
-    """
-    
-    @staticmethod
-    async def start_execution(
-        pipeline_id: UUID,
-        user_id: UUID,
-        mode: str,
-        db_session
-    ) -> Execution:
-        """
-        Start a new pipeline execution.
-        
-        Args:
-            pipeline_id: Pipeline to execute
-            user_id: User requesting execution
-            mode: Execution mode
-            db_session: Database session
-            
-        Returns:
-            Execution record
-        """
-        from app.models.pipeline import Pipeline
-        
-        # Load pipeline
-        pipeline = await db_session.get(Pipeline, pipeline_id)
-        if not pipeline:
-            raise ValueError(f"Pipeline {pipeline_id} not found")
-        
-        if pipeline.user_id != user_id:
-            raise PermissionError("Pipeline does not belong to user")
-        
-        # Create executor and run
-        executor = PipelineExecutor(pipeline, user_id, mode, db_session=db_session)
-        execution = await executor.execute_with_db_tracking(db_session)
-        
-        return execution
-    
-    @staticmethod
-    async def get_execution_status(
-        execution_id: UUID,
-        user_id: UUID,
-        db_session
-    ) -> Optional[Execution]:
-        """
-        Get status of an execution.
-        
-        Args:
-            execution_id: Execution ID
-            user_id: User ID (for permission check)
-            db_session: Database session
-            
-        Returns:
-            Execution record or None
-        """
-        from app.models.execution import Execution
-        
-        execution = await db_session.get(Execution, execution_id)
-        if execution and execution.user_id == user_id:
-            return execution
-        return None
-
+                            error=str(e))

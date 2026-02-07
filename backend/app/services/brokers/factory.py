@@ -31,6 +31,36 @@ class BrokerFactory:
         "tradier": TradierBrokerService,
     }
     
+    # Tool type to broker type mapping (for UI integration)
+    TOOL_TYPE_MAP = {
+        "alpaca_broker": "alpaca",
+        "oanda_broker": "oanda",
+        "tradier_broker": "tradier",
+    }
+    
+    @classmethod
+    def get_supported_tool_types(cls) -> set:
+        """
+        Get all supported broker tool types.
+        
+        Returns:
+            Set of tool type strings (e.g., {"alpaca_broker", "oanda_broker", "tradier_broker"})
+        """
+        return set(cls.TOOL_TYPE_MAP.keys())
+    
+    @classmethod
+    def is_broker_tool(cls, tool_type: str) -> bool:
+        """
+        Check if a tool_type is a broker tool.
+        
+        Args:
+            tool_type: Tool type string
+            
+        Returns:
+            True if tool_type is a broker, False otherwise
+        """
+        return tool_type in cls.TOOL_TYPE_MAP
+    
     @classmethod
     def create(
         cls,
@@ -96,14 +126,8 @@ class BrokerFactory:
         # Determine broker type from tool_type
         tool_type = tool_config.get("tool_type", "")
         
-        # Map tool types to broker types
-        broker_map = {
-            "alpaca_broker": "alpaca",
-            "oanda_broker": "oanda",
-            "tradier_broker": "tradier",
-        }
-        
-        broker_type = broker_map.get(tool_type)
+        # Use centralized mapping
+        broker_type = cls.TOOL_TYPE_MAP.get(tool_type)
         if not broker_type:
             raise ValueError(f"Unknown broker tool type: {tool_type}")
         
