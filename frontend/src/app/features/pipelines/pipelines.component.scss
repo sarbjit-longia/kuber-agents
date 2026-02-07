@@ -17,6 +17,7 @@
     margin: 0;
     font-size: 2rem;
     font-weight: 500;
+    color: var(--text-primary);
 
     mat-icon {
       font-size: 2rem;
@@ -45,7 +46,7 @@
   gap: 1rem;
 
   p {
-    color: #666;
+    color: var(--text-muted);
     margin: 0;
   }
 }
@@ -62,19 +63,19 @@
     font-size: 72px;
     width: 72px;
     height: 72px;
-    color: #ccc;
+    color: var(--text-disabled);
     margin-bottom: 1rem;
   }
 
   p {
     margin: 0.5rem 0;
     font-size: 1.125rem;
-    color: #666;
+    color: var(--text-secondary);
   }
 
   .empty-hint {
     font-size: 0.875rem;
-    color: #999;
+    color: var(--text-muted);
     margin-bottom: 2rem;
   }
 
@@ -89,11 +90,16 @@
 
   th {
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
   }
 
   td, th {
     padding: 1rem !important;
+  }
+
+  td {
+    color: var(--text-primary);
   }
 
   .pipeline-cell {
@@ -102,7 +108,7 @@
     gap: 1rem;
 
     > mat-icon {
-      color: #667eea;
+      color: var(--accent-primary);
       font-size: 2rem;
       width: 2rem;
       height: 2rem;
@@ -112,18 +118,19 @@
     .pipeline-name {
       font-weight: 600;
       font-size: 1rem;
+      color: var(--text-primary);
       margin-bottom: 0.25rem;
     }
 
     .pipeline-desc {
       font-size: 0.875rem;
-      color: #666;
+      color: var(--text-secondary);
       margin-bottom: 0.25rem;
     }
 
     .pipeline-meta {
       font-size: 0.75rem;
-      color: #999;
+      color: var(--text-muted);
 
       span {
         margin-right: 1rem;
@@ -143,16 +150,16 @@
     transition: background-color 0.2s;
 
     &:hover {
-      background-color: #f5f5f5;
+      background-color: var(--bg-card-hover);
     }
   }
 }
 
 .delete-action {
-  color: #f44336;
+  color: var(--color-error);
 
   mat-icon {
-    color: #f44336;
+    color: var(--color-error);
   }
 }
 
@@ -181,4 +188,3 @@
     overflow-x: auto;
   }
 }
-

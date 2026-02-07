@@ -22,13 +22,13 @@
       .field-description {
         margin: 0.5rem 0 0 0;
         font-size: 0.85rem;
-        color: #666;
+        color: var(--text-secondary);
         line-height: 1.4;
       }
     }
 
     .timezone-hint {
-      color: #1976d2;
+      color: var(--accent-primary);
       font-weight: 500;
       margin-left: 0.25rem;
     }
@@ -42,7 +42,7 @@
   justify-content: center;
   padding: 2rem;
   text-align: center;
-  color: #999;
+  color: var(--text-muted);
 
   mat-icon {
     font-size: 3rem;
@@ -57,4 +57,3 @@
     font-size: 0.95rem;
   }
 }
-

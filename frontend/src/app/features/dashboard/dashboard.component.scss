@@ -26,6 +26,7 @@
       margin: 0;
       font-size: 2rem;
       font-weight: 500;
+      color: var(--text-primary);
 
       mat-icon {
         font-size: 2rem;
@@ -36,7 +37,7 @@
 
     .last-updated {
       font-size: 0.85rem;
-      color: #94a3b8;
+      color: var(--text-muted);
     }
   }
 
@@ -57,7 +58,7 @@
   gap: 1rem;
 
   p {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 1rem;
   }
 }
@@ -69,7 +70,8 @@
   justify-content: center;
   min-height: 300px;
   gap: 1rem;
-  background: #fff1f2;
+  background: var(--color-error-bg);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 12px;
   padding: 2rem;
 
@@ -77,11 +79,11 @@
     font-size: 48px;
     width: 48px;
     height: 48px;
-    color: #ef4444;
+    color: var(--color-error);
   }
 
   p {
-    color: #dc2626;
+    color: var(--color-error);
     font-size: 1.1rem;
   }
 }
@@ -148,26 +150,26 @@
       font-size: 1.75rem;
       font-weight: 700;
       line-height: 1.2;
-      color: #1e293b;
+      color: var(--text-primary);
 
       &.pnl-positive {
-        color: #10b981;
+        color: var(--color-success);
       }
 
       &.pnl-negative {
-        color: #ef4444;
+        color: var(--color-error);
       }
     }
 
     .stat-label {
       font-size: 0.85rem;
-      color: #64748b;
+      color: var(--text-secondary);
       margin-top: 2px;
     }
 
     .stat-sub {
       font-size: 0.75rem;
-      color: #94a3b8;
+      color: var(--text-muted);
       margin-top: 4px;
       display: flex;
       align-items: center;
@@ -177,7 +179,7 @@
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: #10b981;
+        background: var(--color-success);
         display: inline-block;
       }
     }
@@ -199,14 +201,14 @@
     gap: 0.5rem;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-secondary);
     margin-bottom: 0.75rem;
 
     mat-icon {
       font-size: 18px;
       width: 18px;
       height: 18px;
-      color: #667eea;
+      color: var(--accent-primary);
     }
   }
 
@@ -219,20 +221,20 @@
       .today-value {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #1e293b;
+        color: var(--text-primary);
 
         &.pnl-positive {
-          color: #10b981;
+          color: var(--color-success);
         }
 
         &.pnl-negative {
-          color: #ef4444;
+          color: var(--color-error);
         }
       }
 
       .today-label {
         font-size: 0.8rem;
-        color: #94a3b8;
+        color: var(--text-muted);
         margin-top: 2px;
       }
     }
@@ -273,7 +275,7 @@
 
     .section-actions {
       button {
-        color: #667eea;
+        color: var(--accent-primary);
       }
     }
   }
@@ -284,9 +286,10 @@
     gap: 0.5rem;
     font-size: 1.15rem;
     font-weight: 600;
+    color: var(--text-primary);
 
     mat-icon {
-      color: #667eea;
+      color: var(--accent-primary);
 
       &.pulse {
         animation: pulse-icon 2s ease-in-out infinite;
@@ -300,7 +303,7 @@
       min-width: 22px;
       height: 22px;
       border-radius: 11px;
-      background: #667eea;
+      background: var(--accent-primary);
       color: white;
       font-size: 0.75rem;
       font-weight: 600;
@@ -319,13 +322,14 @@
 }
 
 .broker-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 1rem;
+  background: var(--bg-secondary);
   transition: box-shadow 0.2s ease;
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-md);
   }
 
   .broker-header {
@@ -343,13 +347,13 @@
         font-size: 28px;
         width: 28px;
         height: 28px;
-        color: #667eea;
+        color: var(--accent-primary);
       }
 
       .broker-name {
         font-weight: 600;
         font-size: 1rem;
-        color: #1e293b;
+        color: var(--text-primary);
       }
 
       .broker-account {
@@ -357,7 +361,7 @@
         align-items: center;
         gap: 0.5rem;
         font-size: 0.8rem;
-        color: #94a3b8;
+        color: var(--text-muted);
         margin-top: 2px;
       }
     }
@@ -386,7 +390,7 @@
 
       .detail-label {
         font-size: 0.7rem;
-        color: #94a3b8;
+        color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
@@ -394,7 +398,7 @@
       .detail-value {
         font-size: 0.9rem;
         font-weight: 600;
-        color: #1e293b;
+        color: var(--text-primary);
         margin-top: 2px;
       }
     }
@@ -407,13 +411,13 @@
   padding: 0 8px !important;
 
   &.account-paper {
-    background: #dbeafe !important;
-    color: #2563eb !important;
+    background: rgba(37, 99, 235, 0.15) !important;
+    color: #60a5fa !important;
   }
 
   &.account-live {
-    background: #fee2e2 !important;
-    color: #dc2626 !important;
+    background: rgba(220, 38, 38, 0.15) !important;
+    color: #f87171 !important;
   }
 }
 
@@ -427,15 +431,16 @@
 }
 
 .position-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 1rem;
+  background: var(--bg-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
-    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    border-color: var(--accent-primary);
   }
 
   .position-header {
@@ -447,8 +452,8 @@
     .symbol-badge {
       font-size: 1.1rem;
       font-weight: 700;
-      color: #1e293b;
-      background: #f1f5f9;
+      color: var(--text-primary);
+      background: var(--bg-elevated);
       padding: 4px 12px;
       border-radius: 6px;
     }
@@ -459,7 +464,7 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text-secondary);
     margin-bottom: 0.75rem;
 
     mat-icon {
@@ -481,7 +486,7 @@
 
       .detail-label {
         font-size: 0.7rem;
-        color: #94a3b8;
+        color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
@@ -489,7 +494,7 @@
       .detail-value {
         font-size: 0.9rem;
         font-weight: 600;
-        color: #1e293b;
+        color: var(--text-primary);
         margin-top: 2px;
       }
 
@@ -505,7 +510,7 @@
     align-items: center;
     gap: 1rem;
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--text-muted);
 
     .meta-item {
       display: flex;
@@ -522,8 +527,8 @@
 }
 
 .status-chip-monitoring {
-  background: #fef3c7 !important;
-  color: #d97706 !important;
+  background: var(--color-warning-bg) !important;
+  color: var(--color-warning) !important;
   font-size: 0.75rem !important;
 
   mat-icon {
@@ -552,13 +557,13 @@
 
   th {
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 0.85rem;
   }
 
   td {
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--text-primary);
   }
 }
 
@@ -567,7 +572,7 @@
   transition: background 0.15s ease;
 
   &:hover {
-    background: #f8fafc;
+    background: var(--bg-card-hover);
   }
 }
 
@@ -581,21 +586,21 @@
     font-size: 18px;
     width: 18px;
     height: 18px;
-    color: #667eea;
+    color: var(--accent-primary);
   }
 
   .trigger-chip {
     font-size: 0.65rem !important;
     min-height: 18px !important;
     padding: 0 6px !important;
-    background: #f1f5f9 !important;
-    color: #64748b !important;
+    background: var(--bg-elevated) !important;
+    color: var(--text-secondary) !important;
   }
 }
 
 .pipeline-active {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
+  background: var(--color-success-bg) !important;
+  color: var(--color-success) !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -605,8 +610,8 @@
 }
 
 .pipeline-inactive {
-  background: #f1f5f9 !important;
-  color: #94a3b8 !important;
+  background: var(--bg-elevated) !important;
+  color: var(--text-muted) !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -625,7 +630,7 @@
     font-size: 16px;
     width: 16px;
     height: 16px;
-    color: #667eea;
+    color: var(--accent-primary);
   }
 
   .account-type-label {
@@ -634,19 +639,19 @@
     border-radius: 4px;
 
     &.account-paper {
-      background: #dbeafe;
-      color: #2563eb;
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
     }
 
     &.account-live {
-      background: #fee2e2;
-      color: #dc2626;
+      background: rgba(220, 38, 38, 0.15);
+      color: #f87171;
     }
   }
 }
 
 .no-broker {
-  color: #cbd5e1;
+  color: var(--text-disabled);
 }
 
 .exec-stats {
@@ -660,20 +665,20 @@
 
   .exec-breakdown {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--text-muted);
     display: flex;
     gap: 0.4rem;
 
     .exec-active {
-      color: #f59e0b;
+      color: var(--color-warning);
     }
 
     .exec-ok {
-      color: #10b981;
+      color: var(--color-success);
     }
 
     .exec-fail {
-      color: #ef4444;
+      color: var(--color-error);
     }
   }
 }
@@ -681,7 +686,7 @@
 // Recent activity cells
 .symbol-cell {
   font-weight: 700;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 .action-cell {
@@ -697,11 +702,11 @@
   }
 
   &.action-buy {
-    color: #10b981;
+    color: var(--color-success);
   }
 
   &.action-sell {
-    color: #ef4444;
+    color: var(--color-error);
   }
 }
 
@@ -711,18 +716,18 @@
 
   .duration {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 }
 
 // ── P&L Styling ───────────────────────────────────────────────
 
 .pnl-positive {
-  color: #10b981 !important;
+  color: var(--color-success) !important;
 }
 
 .pnl-negative {
-  color: #ef4444 !important;
+  color: var(--color-error) !important;
 }
 
 .pnl-value {
@@ -732,8 +737,8 @@
 // ── Status Chips ──────────────────────────────────────────────
 
 .status-active {
-  background: #fef3c7 !important;
-  color: #d97706 !important;
+  background: var(--color-warning-bg) !important;
+  color: var(--color-warning) !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -743,8 +748,8 @@
 }
 
 .status-completed {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
+  background: var(--color-success-bg) !important;
+  color: var(--color-success) !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -754,8 +759,8 @@
 }
 
 .status-failed {
-  background: #fee2e2 !important;
-  color: #dc2626 !important;
+  background: var(--color-error-bg) !important;
+  color: var(--color-error) !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -772,14 +777,14 @@
   align-items: center;
   justify-content: center;
   padding: 2.5rem 1rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 
   mat-icon {
     font-size: 48px;
     width: 48px;
     height: 48px;
     margin-bottom: 0.75rem;
-    color: #cbd5e1;
+    color: var(--text-disabled);
   }
 
   p {
@@ -789,7 +794,7 @@
 
   .empty-hint {
     font-size: 0.8rem;
-    color: #cbd5e1;
+    color: var(--text-disabled);
   }
 
   button {
@@ -807,18 +812,18 @@
   padding: 1rem;
   margin-top: 1rem;
   font-size: 0.8rem;
-  color: #94a3b8;
-  border-top: 1px solid #e2e8f0;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
 
   .status-healthy {
     font-size: 16px;
     width: 16px;
     height: 16px;
-    color: #10b981;
+    color: var(--color-success);
   }
 
   .separator {
-    color: #cbd5e1;
+    color: var(--text-disabled);
   }
 }
 

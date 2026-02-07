@@ -1,10 +1,11 @@
 .chart-wrapper {
   position: relative;
   width: 100%;
-  background: white;
+  background: var(--bg-card);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
 
 .loading-container,
@@ -18,30 +19,30 @@
   gap: 1rem;
 
   p {
-    color: #666;
+    color: var(--text-secondary);
     margin: 0;
     font-size: 0.875rem;
   }
 }
 
 .error-container {
-  color: #c62828;
+  color: var(--color-error);
 
   mat-icon {
     font-size: 48px;
     width: 48px;
     height: 48px;
-    color: #c62828;
+    color: var(--color-error);
   }
 
   p {
-    color: #c62828;
+    color: var(--color-error);
   }
 }
 
 .chart-container {
   width: 100%;
-  background: white;
+  background: #131722;
 
   &.hidden {
     display: none;
@@ -52,8 +53,8 @@
   display: flex;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  background: #f5f5f5;
-  border-top: 1px solid #e0e0e0;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-color);
   font-size: 0.875rem;
 
   span {
@@ -64,32 +65,32 @@
     font-weight: 500;
 
     &.strategy {
-      background: #e3f2fd;
-      color: #1565c0;
+      background: var(--color-info-bg);
+      color: var(--color-info);
     }
 
     &.action {
       font-weight: 600;
-      
+
       &.action-buy {
-        background: #e8f5e9;
-        color: #2e7d32;
+        background: var(--color-success-bg);
+        color: var(--color-success);
       }
 
       &.action-sell {
-        background: #ffebee;
-        color: #c62828;
+        background: var(--color-error-bg);
+        color: var(--color-error);
       }
 
       &.action-hold {
-        background: #fff3e0;
-        color: #e65100;
+        background: var(--color-warning-bg);
+        color: var(--color-warning);
       }
     }
 
     &.confidence {
-      background: #f3e5f5;
-      color: #6a1b9a;
+      background: rgba(118, 75, 162, 0.15);
+      color: #a78bfa;
     }
   }
 }
@@ -100,4 +101,3 @@
     gap: 0.5rem;
   }
 }
-

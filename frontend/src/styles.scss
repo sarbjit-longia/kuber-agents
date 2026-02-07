@@ -4,12 +4,12 @@
 // Include the common styles for Angular Material
 @include mat.core();
 
-// Define a custom theme
-$custom-primary: mat.define-palette(mat.$indigo-palette);
+// Define a custom DARK theme
+$custom-primary: mat.define-palette(mat.$indigo-palette, 300);
 $custom-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
-$custom-warn: mat.define-palette(mat.$red-palette);
+$custom-warn: mat.define-palette(mat.$red-palette, 300);
 
-$custom-theme: mat.define-light-theme((
+$custom-theme: mat.define-dark-theme((
   color: (
     primary: $custom-primary,
     accent: $custom-accent,
@@ -21,6 +21,52 @@ $custom-theme: mat.define-light-theme((
 
 // Include theme styles for core and each component used in your app
 @include mat.all-component-themes($custom-theme);
+
+// ── Dark Theme CSS Custom Properties ──────────────────────────
+:root {
+  // Backgrounds
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1b26;
+  --bg-card: #1e1f2e;
+  --bg-card-hover: #252638;
+  --bg-elevated: #2a2b3d;
+  --bg-input: #1a1b26;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  // Text
+  --text-primary: #e1e2e8;
+  --text-secondary: #a0a1b2;
+  --text-muted: #6b6c7e;
+  --text-disabled: #4a4b5c;
+
+  // Borders
+  --border-color: #2e2f42;
+  --border-light: #252638;
+  --border-focus: #667eea;
+
+  // Brand / Accent
+  --accent-primary: #667eea;
+  --accent-secondary: #764ba2;
+  --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --accent-bg: rgba(102, 126, 234, 0.15);
+  --accent-bg-hover: rgba(102, 126, 234, 0.25);
+
+  // Status
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.15);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-error: #ef4444;
+  --color-error-bg: rgba(239, 68, 68, 0.15);
+  --color-info: #3b82f6;
+  --color-info-bg: rgba(59, 130, 246, 0.15);
+
+  // Shadows
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 4px 16px rgba(102, 126, 234, 0.3);
+}
 
 // Global styles
 * {
@@ -36,25 +82,173 @@ html, body {
 }
 
 body {
-  background: #f5f5f5;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
-// Fix Material form field alignment issues
+// ── Angular Material Dark Overrides ──────────────────────────
+.mat-mdc-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
+  color: var(--text-primary) !important;
+}
+
+.mat-mdc-card-title {
+  color: var(--text-primary) !important;
+}
+
+.mat-mdc-card-subtitle {
+  color: var(--text-secondary) !important;
+}
+
+.mat-mdc-dialog-container .mdc-dialog__surface {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+}
+
+.mat-mdc-table {
+  background: transparent !important;
+}
+
+.mat-mdc-header-row {
+  background: var(--bg-secondary) !important;
+}
+
+.mat-mdc-row {
+  border-bottom-color: var(--border-color) !important;
+
+  &:hover {
+    background: var(--bg-card-hover) !important;
+  }
+}
+
+.mat-mdc-header-cell {
+  color: var(--text-secondary) !important;
+  border-bottom-color: var(--border-color) !important;
+}
+
+.mat-mdc-cell {
+  color: var(--text-primary) !important;
+  border-bottom-color: var(--border-color) !important;
+}
+
+.mat-mdc-paginator {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+.mat-mdc-menu-panel {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+
+  .mat-mdc-menu-item {
+    color: var(--text-primary) !important;
+
+    &:hover {
+      background: var(--accent-bg) !important;
+    }
+
+    .mat-icon {
+      color: var(--accent-primary) !important;
+    }
+  }
+}
+
+.mat-mdc-select-panel {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.mat-mdc-option {
+  color: var(--text-primary) !important;
+
+  &:hover {
+    background: var(--accent-bg) !important;
+  }
+
+  &.mdc-list-item--selected {
+    background: var(--accent-bg) !important;
+  }
+}
+
+.mat-mdc-snack-bar-container {
+  --mdc-snackbar-container-color: var(--bg-elevated);
+  --mdc-snackbar-supporting-text-color: var(--text-primary);
+}
+
+.mat-mdc-tab-group {
+  .mat-mdc-tab {
+    color: var(--text-secondary) !important;
+
+    &.mdc-tab--active {
+      color: var(--accent-primary) !important;
+    }
+  }
+}
+
+.mat-mdc-slide-toggle {
+  --mdc-switch-selected-track-color: var(--accent-primary);
+}
+
+.mat-mdc-chip {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+.mat-divider {
+  border-top-color: var(--border-color) !important;
+}
+
+.mat-mdc-progress-spinner circle {
+  stroke: var(--accent-primary) !important;
+}
+
+// ── Form Field Overrides ──────────────────────────────────────
+
 .mat-mdc-form-field {
   width: 100%;
-  
+
   .mat-mdc-text-field-wrapper {
     padding-bottom: 0;
+    background: var(--bg-input) !important;
   }
-  
+
   .mat-mdc-form-field-subscript-wrapper {
     display: block;
     height: auto;
     margin-top: 0.5rem;
   }
-  
+
   .mat-mdc-form-field-error-wrapper {
     padding: 0;
+  }
+
+  .mdc-text-field--outlined .mdc-notched-outline {
+    .mdc-notched-outline__leading,
+    .mdc-notched-outline__notch,
+    .mdc-notched-outline__trailing {
+      border-color: var(--border-color) !important;
+    }
+  }
+
+  &.mat-focused .mdc-text-field--outlined .mdc-notched-outline {
+    .mdc-notched-outline__leading,
+    .mdc-notched-outline__notch,
+    .mdc-notched-outline__trailing {
+      border-color: var(--accent-primary) !important;
+    }
+  }
+
+  .mat-mdc-input-element {
+    color: var(--text-primary) !important;
+  }
+
+  .mat-mdc-floating-label {
+    color: var(--text-secondary) !important;
   }
 }
 
@@ -69,7 +263,7 @@ body {
     margin: 0;
     padding: 0;
   }
-  
+
   .mdc-notched-outline {
     .mdc-notched-outline__leading,
     .mdc-notched-outline__notch,
@@ -84,31 +278,50 @@ mat-spinner {
   display: inline-block;
 }
 
-// CDK Drag & Drop Preview Styles (Global to avoid encapsulation issues)
+// ── Scrollbar Styling ─────────────────────────────────────────
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--text-muted);
+  }
+}
+
+// ── CDK Drag & Drop Preview Styles (Global to avoid encapsulation issues) ──
 .cdk-drag-preview {
   opacity: 1 !important;
   z-index: 10000 !important;
-  
+
   &.drag-preview-container {
     display: flex !important;
     align-items: center !important;
     gap: 1rem !important;
     padding: 1rem 1.5rem !important;
-    background: #ffffff !important;
-    border: 3px solid #667eea !important;
+    background: var(--bg-card) !important;
+    border: 3px solid var(--accent-primary) !important;
     border-radius: 12px !important;
     box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6) !important;
     min-width: 260px !important;
     max-width: 300px !important;
     cursor: grabbing !important;
-    
+
     .preview-icon {
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
       width: 52px !important;
       height: 52px !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      background: var(--accent-gradient) !important;
       border-radius: 12px !important;
       flex-shrink: 0 !important;
 
@@ -134,7 +347,7 @@ mat-spinner {
         margin: 0 !important;
         font-size: 1rem !important;
         font-weight: 600 !important;
-        color: #1a1a1a !important;
+        color: var(--text-primary) !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
@@ -143,7 +356,7 @@ mat-spinner {
 
       .preview-category {
         font-size: 0.75rem !important;
-        color: #667eea !important;
+        color: var(--accent-primary) !important;
         text-transform: uppercase !important;
         font-weight: 600 !important;
         letter-spacing: 0.5px !important;
@@ -152,17 +365,17 @@ mat-spinner {
 
       .preview-price {
         font-size: 0.85rem !important;
-        color: #764ba2 !important;
+        color: var(--accent-secondary) !important;
         font-weight: 700 !important;
         margin-top: 0.15rem !important;
         font-family: Roboto, "Helvetica Neue", sans-serif !important;
 
         &.free {
-          color: #10b981 !important;
+          color: var(--color-success) !important;
         }
       }
     }
-    
+
     * {
       pointer-events: none !important;
     }
@@ -206,15 +419,14 @@ body.cdk-drop-list-dragging * {
   box-sizing: border-box !important;
   overflow: visible !important;
   contain: none !important;
-  
+
   // Canvas node specific styles
   &.canvas-node {
-    // Ensure the node card is fully visible and styled - n8n-style compact
     .node-card {
-      width: 160px !important; // Updated to accommodate longer names
-      min-height: 90px !important; // Updated for better proportions
-      background: white !important;
-      border: 3px solid #667eea !important;
+      width: 160px !important;
+      min-height: 90px !important;
+      background: var(--bg-card) !important;
+      border: 3px solid var(--accent-primary) !important;
       border-radius: 12px !important;
       box-shadow: 0 20px 60px rgba(102, 126, 234, 0.5) !important;
       overflow: visible !important;
@@ -224,14 +436,12 @@ body.cdk-drop-list-dragging * {
       justify-content: center !important;
       padding: 0.5rem !important;
     }
-    
-    // Hide connection ports, pegs, body, and remove button during drag
+
     .connection-port, .tool-pegs, .tool-peg, .node-body, .node-remove {
       display: none !important;
       visibility: hidden !important;
     }
-    
-    // Node header styling - vertical centered layout
+
     .node-header {
       display: flex !important;
       flex-direction: column !important;
@@ -245,18 +455,18 @@ body.cdk-drop-list-dragging * {
       opacity: 1 !important;
       width: 100% !important;
     }
-    
+
     .node-icon {
       width: 36px !important;
       height: 36px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      background: var(--accent-gradient) !important;
       border-radius: 8px !important;
       visibility: visible !important;
       opacity: 1 !important;
-      
+
       mat-icon {
         color: white !important;
         font-size: 1.5rem !important;
@@ -264,52 +474,49 @@ body.cdk-drop-list-dragging * {
         height: 1.5rem !important;
       }
     }
-    
+
     .node-info {
       text-align: center !important;
       width: 100% !important;
       visibility: visible !important;
       opacity: 1 !important;
-      overflow: hidden !important; // Prevent text overflow
-      
+      overflow: hidden !important;
+
       h4 {
         margin: 0 !important;
         font-size: 0.75rem !important;
         font-weight: 600 !important;
-        color: #1a1a1a !important;
+        color: var(--text-primary) !important;
         line-height: 1.2 !important;
         visibility: visible !important;
         opacity: 1 !important;
-        // Truncate long names with ellipsis
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         max-width: 100% !important;
         padding: 0 4px !important;
       }
-      
+
       .node-category {
         font-size: 0.65rem !important;
-        color: #999 !important;
+        color: var(--text-muted) !important;
         margin-top: 2px !important;
         text-transform: capitalize !important;
         visibility: visible !important;
         opacity: 1 !important;
-        // Also truncate category if needed
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         max-width: 100% !important;
       }
     }
-    
-    // Node body styling
+
     .node-body {
       padding: 1rem !important;
       visibility: visible !important;
       opacity: 1 !important;
     }
-    
+
     .node-badge {
       display: inline-flex !important;
       align-items: center !important;
@@ -320,56 +527,55 @@ body.cdk-drop-list-dragging * {
       font-weight: 600 !important;
       visibility: visible !important;
       opacity: 1 !important;
-      
+
       &.free-badge {
-        background: #e8f5e9 !important;
-        color: #388e3c !important;
+        background: var(--color-success-bg) !important;
+        color: var(--color-success) !important;
       }
-      
+
       &:not(.free-badge) {
-        background: #e8eaf6 !important;
-        color: #667eea !important;
+        background: var(--accent-bg) !important;
+        color: var(--accent-primary) !important;
       }
-      
+
       mat-icon {
         font-size: 1rem !important;
         width: 1rem !important;
         height: 1rem !important;
       }
     }
-    
+
     .node-timeframes {
       margin-top: 0.75rem !important;
       display: flex !important;
       align-items: center !important;
       gap: 0.5rem !important;
       padding: 0.5rem !important;
-      background: #f5f5f5 !important;
+      background: var(--bg-elevated) !important;
       border-radius: 8px !important;
       visibility: visible !important;
       opacity: 1 !important;
-      
+
       mat-icon {
         font-size: 1rem !important;
         width: 1rem !important;
         height: 1rem !important;
-        color: #667eea !important;
+        color: var(--accent-primary) !important;
       }
-      
+
       span {
         font-size: 0.85rem !important;
-        color: #666 !important;
+        color: var(--text-secondary) !important;
         visibility: visible !important;
         opacity: 1 !important;
       }
     }
-    
-    // Hide the remove button during drag
+
     .node-remove {
       display: none !important;
     }
   }
-  
+
   // Ensure Material Icons render properly everywhere
   mat-icon,
   .mat-icon {
@@ -378,7 +584,7 @@ body.cdk-drop-list-dragging * {
     align-items: center !important;
     justify-content: center !important;
   }
-  
+
   // Ensure all text is visible
   span,
   h4,
@@ -386,12 +592,12 @@ body.cdk-drop-list-dragging * {
     visibility: visible !important;
     opacity: 1 !important;
   }
-  
+
   // Prevent any interaction during drag
   * {
     pointer-events: none !important;
   }
-  
+
   // Ensure box-sizing is consistent
   *,
   *::before,
