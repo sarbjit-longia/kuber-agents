@@ -1,48 +1,507 @@
-<div class="dashboard-container">
-  <header class="dashboard-header">
-    <h1>Trading Platform Dashboard</h1>
-    <p class="subtitle">AI Agent-Based Trading Pipeline Platform</p>
-  </header>
+<div class="dashboard-page">
+  <app-navbar></app-navbar>
 
-  <div class="dashboard-content">
-    <div class="welcome-card">
-      <h2>🚀 Welcome to Trading Platform</h2>
-      <p>Your development environment is ready!</p>
-      
-      <div class="status-section" *ngIf="!loading">
-        <h3>Backend Status</h3>
-        <div class="status-item" *ngIf="healthStatus">
-          <span class="status-label">Status:</span>
-          <span class="status-value success">{{ healthStatus.status }}</span>
-        </div>
-        <div class="status-item" *ngIf="healthStatus">
-          <span class="status-label">Environment:</span>
-          <span class="status-value">{{ healthStatus.environment }}</span>
-        </div>
-        <div class="status-item" *ngIf="healthStatus">
-          <span class="status-label">Version:</span>
-          <span class="status-value">{{ healthStatus.version }}</span>
-        </div>
-        <div class="status-item" *ngIf="healthStatus">
-          <span class="status-label">Timestamp:</span>
-          <span class="status-value">{{ healthStatus.timestamp | date:'medium' }}</span>
-        </div>
+  <div class="dashboard-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h1>
+          <mat-icon>dashboard</mat-icon>
+          Dashboard
+        </h1>
+        <span class="last-updated" *ngIf="lastUpdated">
+          Updated {{ lastUpdated | date:'shortTime' }}
+        </span>
+      </div>
+      <div class="header-actions">
+        <button mat-raised-button (click)="goToPipelineBuilder()">
+          <mat-icon>add</mat-icon>
+          New Pipeline
+        </button>
+        <button mat-raised-button color="primary" (click)="refresh()">
+          <mat-icon>refresh</mat-icon>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-container" *ngIf="loading">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Loading dashboard...</p>
+    </div>
+
+    <!-- Error -->
+    <div class="error-card" *ngIf="error && !loading">
+      <mat-icon>error_outline</mat-icon>
+      <p>{{ error }}</p>
+      <button mat-raised-button color="primary" (click)="refresh()">Retry</button>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div class="dashboard-content" *ngIf="data && !loading">
+
+      <!-- ─── Top Stats Row ──────────────────────────────── -->
+      <div class="stats-row">
+        <mat-card class="stat-card">
+          <mat-card-content>
+            <div class="stat-icon pipelines-icon">
+              <mat-icon>account_tree</mat-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ data.pipelines.total }}</div>
+              <div class="stat-label">Total Pipelines</div>
+              <div class="stat-sub">
+                <span class="active-dot"></span>
+                {{ data.pipelines.active }} active
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="stat-card">
+          <mat-card-content>
+            <div class="stat-icon executions-icon">
+              <mat-icon>play_circle</mat-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ data.executions.monitoring + data.executions.running }}</div>
+              <div class="stat-label">Active Now</div>
+              <div class="stat-sub">
+                {{ data.executions.monitoring }} monitoring · {{ data.executions.running }} running
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="stat-card">
+          <mat-card-content>
+            <div class="stat-icon" [ngClass]="getPnLClass(data.pnl.total)">
+              <mat-icon>{{ data.pnl.total >= 0 ? 'trending_up' : 'trending_down' }}</mat-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value" [ngClass]="getPnLClass(data.pnl.total)">
+                {{ formatPnL(data.pnl.total) }}
+              </div>
+              <div class="stat-label">Total P&L</div>
+              <div class="stat-sub">
+                Realized: {{ formatPnL(data.pnl.total_realized) }} ·
+                Unrealized: {{ formatPnL(data.pnl.total_unrealized) }}
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="stat-card">
+          <mat-card-content>
+            <div class="stat-icon cost-icon">
+              <mat-icon>attach_money</mat-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ formatCost(data.executions.total_cost) }}</div>
+              <div class="stat-label">Total Cost</div>
+              <div class="stat-sub">
+                {{ formatSuccessRate(data.executions.success_rate) }} success rate
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
       </div>
 
-      <div class="loading-section" *ngIf="loading">
-        <p>Connecting to backend...</p>
+      <!-- ─── Today's Summary ────────────────────────────── -->
+      <mat-card class="today-card">
+        <mat-card-content>
+          <div class="today-header">
+            <mat-icon>today</mat-icon>
+            <span>Today</span>
+          </div>
+          <div class="today-stats">
+            <div class="today-item">
+              <div class="today-value">{{ data.today.executions }}</div>
+              <div class="today-label">Executions</div>
+            </div>
+            <mat-divider vertical></mat-divider>
+            <div class="today-item">
+              <div class="today-value" [ngClass]="getPnLClass(data.today.pnl)">
+                {{ formatPnL(data.today.pnl) }}
+              </div>
+              <div class="today-label">P&L</div>
+            </div>
+            <mat-divider vertical></mat-divider>
+            <div class="today-item">
+              <div class="today-value">{{ formatCost(data.today.cost) }}</div>
+              <div class="today-label">Cost</div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- ─── Main Grid: Broker Accounts + Active Positions ── -->
+      <div class="main-grid">
+
+        <!-- Broker Accounts -->
+        <mat-card class="section-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>account_balance</mat-icon>
+                Broker Accounts
+              </div>
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="broker-list" *ngIf="data.broker_accounts.length > 0; else noBrokers">
+              <div class="broker-card" *ngFor="let broker of data.broker_accounts">
+                <div class="broker-header">
+                  <div class="broker-identity">
+                    <mat-icon [class]="'broker-icon'">{{ getBrokerIcon(broker.broker_name) }}</mat-icon>
+                    <div>
+                      <div class="broker-name">{{ broker.broker_name }}</div>
+                      <div class="broker-account">
+                        {{ getMaskedAccountId(broker.account_id) }}
+                        <mat-chip class="account-type-chip"
+                          [ngClass]="getAccountTypeClass(broker.account_type)">
+                          {{ broker.account_type }}
+                        </mat-chip>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="broker-pnl" [ngClass]="getPnLClass(broker.total_pnl)">
+                    {{ formatPnL(broker.total_pnl) }}
+                  </div>
+                </div>
+                <mat-divider></mat-divider>
+                <div class="broker-details">
+                  <div class="broker-detail">
+                    <span class="detail-label">Realized</span>
+                    <span class="detail-value" [ngClass]="getPnLClass(broker.realized_pnl)">
+                      {{ formatPnL(broker.realized_pnl) }}
+                    </span>
+                  </div>
+                  <div class="broker-detail">
+                    <span class="detail-label">Unrealized</span>
+                    <span class="detail-value" [ngClass]="getPnLClass(broker.unrealized_pnl)">
+                      {{ formatPnL(broker.unrealized_pnl) }}
+                    </span>
+                  </div>
+                  <div class="broker-detail">
+                    <span class="detail-label">Trades</span>
+                    <span class="detail-value">{{ broker.total_trades }}</span>
+                  </div>
+                  <div class="broker-detail">
+                    <span class="detail-label">Active</span>
+                    <span class="detail-value">{{ broker.active_positions }}</span>
+                  </div>
+                  <div class="broker-detail">
+                    <span class="detail-label">Pipelines</span>
+                    <span class="detail-value">{{ broker.pipeline_count }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <ng-template #noBrokers>
+              <div class="empty-section">
+                <mat-icon>link_off</mat-icon>
+                <p>No broker accounts configured</p>
+                <p class="empty-hint">Add a broker when creating a pipeline</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Active Positions -->
+        <mat-card class="section-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon class="pulse">visibility</mat-icon>
+                Active Positions
+                <span class="count-badge" *ngIf="data.active_positions.length > 0">
+                  {{ data.active_positions.length }}
+                </span>
+              </div>
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="positions-list" *ngIf="data.active_positions.length > 0; else noPositions">
+              <div class="position-card" *ngFor="let pos of data.active_positions"
+                   (click)="viewPosition(pos)">
+                <div class="position-header">
+                  <div class="symbol-badge">{{ pos.symbol || 'N/A' }}</div>
+                  <mat-chip class="status-chip-monitoring">
+                    <mat-icon>{{ getStatusIcon(pos.status) }}</mat-icon>
+                    {{ pos.status }}
+                  </mat-chip>
+                </div>
+                <div class="position-pipeline">
+                  <mat-icon>account_tree</mat-icon>
+                  {{ pos.pipeline_name }}
+                </div>
+                <div class="position-details" *ngIf="pos.trade_info">
+                  <div class="position-detail">
+                    <span class="detail-label">Side</span>
+                    <span class="detail-value" [ngClass]="getActionClass(pos.trade_info.side)">
+                      {{ pos.trade_info.side || '-' }}
+                    </span>
+                  </div>
+                  <div class="position-detail">
+                    <span class="detail-label">Entry</span>
+                    <span class="detail-value">
+                      {{ pos.trade_info.entry_price ? ('$' + pos.trade_info.entry_price.toFixed(5)) : '-' }}
+                    </span>
+                  </div>
+                  <div class="position-detail">
+                    <span class="detail-label">Current</span>
+                    <span class="detail-value">
+                      {{ pos.trade_info.current_price ? ('$' + pos.trade_info.current_price.toFixed(5)) : '-' }}
+                    </span>
+                  </div>
+                  <div class="position-detail pnl-detail">
+                    <span class="detail-label">P&L</span>
+                    <span class="detail-value" [ngClass]="getPnLClass(pos.trade_info.unrealized_pl)">
+                      {{ formatPnL(pos.trade_info.unrealized_pl) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="position-details" *ngIf="!pos.trade_info && pos.pnl">
+                  <div class="position-detail pnl-detail">
+                    <span class="detail-label">P&L</span>
+                    <span class="detail-value" [ngClass]="getPnLClass(pos.pnl.value)">
+                      {{ formatPnL(pos.pnl.value) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="position-meta">
+                  <span class="meta-item">
+                    <mat-icon>schedule</mat-icon>
+                    {{ formatDate(pos.started_at) }}
+                  </span>
+                  <span class="meta-item" *ngIf="pos.broker">
+                    <mat-icon>{{ getBrokerIcon(pos.broker.broker_name) }}</mat-icon>
+                    {{ pos.broker.broker_name }}
+                  </span>
+                  <mat-chip class="mode-chip" *ngIf="pos.mode">
+                    {{ pos.mode }}
+                  </mat-chip>
+                </div>
+              </div>
+            </div>
+            <ng-template #noPositions>
+              <div class="empty-section">
+                <mat-icon>hourglass_empty</mat-icon>
+                <p>No active positions</p>
+                <p class="empty-hint">Positions appear here when a pipeline enters monitoring</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
       </div>
 
-      <div class="next-steps">
-        <h3>Next Steps</h3>
-        <ul>
-          <li>✅ Backend API is running</li>
-          <li>✅ Frontend is connected</li>
-          <li>⏳ Ready to implement authentication</li>
-          <li>⏳ Ready to build pipeline builder</li>
-        </ul>
+      <!-- ─── Pipelines Table ────────────────────────────── -->
+      <mat-card class="section-card full-width">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>account_tree</mat-icon>
+              Pipelines
+            </div>
+          </mat-card-title>
+          <div class="section-actions">
+            <button mat-button (click)="goToPipelines()">View All</button>
+          </div>
+        </mat-card-header>
+        <mat-card-content>
+          <div *ngIf="data.pipeline_list.length > 0; else noPipelines" class="table-container">
+            <table mat-table [dataSource]="data.pipeline_list" class="pipelines-table">
+              <!-- Name -->
+              <ng-container matColumnDef="name">
+                <th mat-header-cell *matHeaderCellDef>Pipeline</th>
+                <td mat-cell *matCellDef="let p">
+                  <div class="pipeline-name-cell">
+                    <mat-icon>account_tree</mat-icon>
+                    <span>{{ p.name }}</span>
+                    <mat-chip class="trigger-chip" *ngIf="p.trigger_mode">
+                      {{ p.trigger_mode }}
+                    </mat-chip>
+                  </div>
+                </td>
+              </ng-container>
+
+              <!-- Status -->
+              <ng-container matColumnDef="status">
+                <th mat-header-cell *matHeaderCellDef>Status</th>
+                <td mat-cell *matCellDef="let p">
+                  <mat-chip [ngClass]="p.is_active ? 'pipeline-active' : 'pipeline-inactive'">
+                    <mat-icon>{{ p.is_active ? 'check_circle' : 'pause_circle' }}</mat-icon>
+                    {{ p.is_active ? 'Active' : 'Inactive' }}
+                  </mat-chip>
+                </td>
+              </ng-container>
+
+              <!-- Broker -->
+              <ng-container matColumnDef="broker">
+                <th mat-header-cell *matHeaderCellDef>Broker</th>
+                <td mat-cell *matCellDef="let p">
+                  <div class="broker-cell" *ngIf="p.broker">
+                    <mat-icon>{{ getBrokerIcon(p.broker.broker_name) }}</mat-icon>
+                    {{ p.broker.broker_name }}
+                    <span class="account-type-label" [ngClass]="getAccountTypeClass(p.broker.account_type)">
+                      {{ p.broker.account_type }}
+                    </span>
+                  </div>
+                  <span *ngIf="!p.broker" class="no-broker">-</span>
+                </td>
+              </ng-container>
+
+              <!-- Executions -->
+              <ng-container matColumnDef="executions">
+                <th mat-header-cell *matHeaderCellDef>Executions</th>
+                <td mat-cell *matCellDef="let p">
+                  <div class="exec-stats">
+                    <span class="exec-total">{{ p.total_executions }}</span>
+                    <span class="exec-breakdown" *ngIf="p.total_executions > 0">
+                      <span class="exec-active" *ngIf="p.active_executions > 0"
+                            matTooltip="Active">{{ p.active_executions }} active</span>
+                      <span class="exec-ok" *ngIf="p.completed_executions > 0"
+                            matTooltip="Completed">{{ p.completed_executions }} done</span>
+                      <span class="exec-fail" *ngIf="p.failed_executions > 0"
+                            matTooltip="Failed">{{ p.failed_executions }} fail</span>
+                    </span>
+                  </div>
+                </td>
+              </ng-container>
+
+              <!-- P&L -->
+              <ng-container matColumnDef="pnl">
+                <th mat-header-cell *matHeaderCellDef>P&L</th>
+                <td mat-cell *matCellDef="let p">
+                  <span class="pnl-value" [ngClass]="getPnLClass(p.total_pnl)">
+                    {{ formatPnL(p.total_pnl) }}
+                  </span>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="pipelineColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: pipelineColumns;"
+                  (click)="viewPipeline(row)" class="clickable-row"></tr>
+            </table>
+          </div>
+          <ng-template #noPipelines>
+            <div class="empty-section">
+              <mat-icon>add_circle_outline</mat-icon>
+              <p>No pipelines created yet</p>
+              <button mat-raised-button color="primary" (click)="goToPipelineBuilder()">
+                <mat-icon>add</mat-icon>
+                Create Pipeline
+              </button>
+            </div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- ─── Recent Executions ──────────────────────────── -->
+      <mat-card class="section-card full-width">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>history</mat-icon>
+              Recent Activity
+            </div>
+          </mat-card-title>
+          <div class="section-actions">
+            <button mat-button (click)="goToMonitoring()">View All</button>
+          </div>
+        </mat-card-header>
+        <mat-card-content>
+          <div *ngIf="data.recent_executions.length > 0; else noRecent" class="table-container">
+            <table mat-table [dataSource]="data.recent_executions" class="recent-table">
+              <!-- Symbol -->
+              <ng-container matColumnDef="symbol">
+                <th mat-header-cell *matHeaderCellDef>Symbol</th>
+                <td mat-cell *matCellDef="let e">
+                  <div class="symbol-cell">{{ e.symbol || '-' }}</div>
+                </td>
+              </ng-container>
+
+              <!-- Pipeline -->
+              <ng-container matColumnDef="pipeline">
+                <th mat-header-cell *matHeaderCellDef>Pipeline</th>
+                <td mat-cell *matCellDef="let e">{{ e.pipeline_name }}</td>
+              </ng-container>
+
+              <!-- Action -->
+              <ng-container matColumnDef="action">
+                <th mat-header-cell *matHeaderCellDef>Action</th>
+                <td mat-cell *matCellDef="let e">
+                  <div class="action-cell" [ngClass]="getActionClass(e.strategy_action)">
+                    <mat-icon>{{ getActionIcon(e.strategy_action) }}</mat-icon>
+                    {{ e.strategy_action || 'N/A' }}
+                  </div>
+                </td>
+              </ng-container>
+
+              <!-- Status -->
+              <ng-container matColumnDef="status">
+                <th mat-header-cell *matHeaderCellDef>Status</th>
+                <td mat-cell *matCellDef="let e">
+                  <mat-chip [ngClass]="getStatusClass(e.status)">
+                    <mat-icon>{{ getStatusIcon(e.status) }}</mat-icon>
+                    {{ e.status }}
+                  </mat-chip>
+                </td>
+              </ng-container>
+
+              <!-- P&L -->
+              <ng-container matColumnDef="pnl">
+                <th mat-header-cell *matHeaderCellDef>P&L</th>
+                <td mat-cell *matCellDef="let e">
+                  <span *ngIf="e.pnl" class="pnl-value" [ngClass]="getPnLClass(e.pnl.value)">
+                    {{ formatPnL(e.pnl.value) }}
+                  </span>
+                  <span *ngIf="!e.pnl">-</span>
+                </td>
+              </ng-container>
+
+              <!-- Cost -->
+              <ng-container matColumnDef="cost">
+                <th mat-header-cell *matHeaderCellDef>Cost</th>
+                <td mat-cell *matCellDef="let e">{{ formatCost(e.cost) }}</td>
+              </ng-container>
+
+              <!-- Time -->
+              <ng-container matColumnDef="time">
+                <th mat-header-cell *matHeaderCellDef>Time</th>
+                <td mat-cell *matCellDef="let e">
+                  <div class="time-cell">
+                    <span>{{ formatDate(e.started_at) }}</span>
+                    <span class="duration" *ngIf="e.duration_seconds">{{ formatDuration(e.duration_seconds) }}</span>
+                  </div>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="recentColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: recentColumns;"></tr>
+            </table>
+          </div>
+          <ng-template #noRecent>
+            <div class="empty-section">
+              <mat-icon>inbox</mat-icon>
+              <p>No recent executions</p>
+              <p class="empty-hint">Execute a pipeline to see activity here</p>
+            </div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- ─── System Status Footer ───────────────────────── -->
+      <div class="system-status" *ngIf="healthStatus">
+        <mat-icon class="status-healthy">check_circle</mat-icon>
+        <span>Backend: {{ healthStatus.status }}</span>
+        <span class="separator">·</span>
+        <span>{{ healthStatus.environment }}</span>
+        <span class="separator">·</span>
+        <span>v{{ healthStatus.version }}</span>
       </div>
     </div>
   </div>
 </div>
-
