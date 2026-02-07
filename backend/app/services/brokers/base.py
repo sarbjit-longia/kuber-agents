@@ -40,6 +40,7 @@ class OrderStatus(str, Enum):
     """Order status enum"""
     PENDING = "pending"
     ACCEPTED = "accepted"
+    OPEN = "open"  # Order is active/working on the broker (e.g. limit order waiting to fill)
     FILLED = "filled"
     PARTIALLY_FILLED = "partially_filled"
     REJECTED = "rejected"

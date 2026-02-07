@@ -111,7 +111,22 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
 
   onInstructionsInput(value: string): void {
     this.instructions = value;
+
+    // If user edits instructions, any previously detected tools/summary are now stale.
+    // Clear them immediately so we don't accidentally persist outdated tool configs.
+    this.detectedTools = [];
+    this.unsupportedFeatures = [];
+    this.totalCost = 0;
+    this.llmCost = 0;
+    this.summary = '';
+    this.confidence = 0;
+    this.detectionStatus = 'none';
+    this.errorMessage = '';
+
     this.instructionsChanged$.next(value);
+    // Always emit on input so parent builders can persist instructions even when
+    // auto-detect is disabled (guided builder uses manual "Detect tools").
+    this.emitChanges();
   }
 
   async detectTools(): Promise<void> {

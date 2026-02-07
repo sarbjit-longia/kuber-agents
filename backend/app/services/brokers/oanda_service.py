@@ -476,6 +476,20 @@ class OandaBrokerService(BrokerService):
                     if oanda_order.get("timeInForce") == "FOK":
                         time_in_force = TimeInForce.DAY
                     
+                    # Parse createTime — Oanda returns Unix timestamps
+                    # (due to Accept-Datetime-Format: UNIX header)
+                    submitted_at = None
+                    if oanda_order.get("createTime"):
+                        try:
+                            submitted_at = datetime.fromtimestamp(float(oanda_order["createTime"]))
+                        except (ValueError, TypeError):
+                            try:
+                                submitted_at = datetime.fromisoformat(
+                                    oanda_order["createTime"].replace("Z", "+00:00")
+                                )
+                            except Exception:
+                                pass
+
                     order = Order(
                         order_id=oanda_order.get("id"),
                         symbol=symbol,
@@ -486,7 +500,7 @@ class OandaBrokerService(BrokerService):
                         limit_price=limit_price,
                         stop_price=stop_price,
                         time_in_force=time_in_force,
-                        created_at=datetime.fromisoformat(oanda_order.get("createTime", "").replace("Z", "+00:00")) if oanda_order.get("createTime") else None,
+                        submitted_at=submitted_at,
                         broker_data=oanda_order
                     )
                     orders.append(order)

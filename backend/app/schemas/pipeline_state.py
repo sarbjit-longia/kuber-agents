@@ -205,7 +205,7 @@ class PipelineState(BaseModel):
     # Position monitoring (Trade Manager)
     execution_phase: str = "execute"  # "execute" or "monitoring"
     should_complete: bool = False  # Signal from agent to complete monitoring
-    monitor_interval_minutes: int = 5  # Polling frequency for position monitoring
+    monitor_interval_minutes: float = 5.0  # Polling frequency for position monitoring (supports sub-minute like 0.25 = 15s)
     
     # Communication error tracking (for API failures during monitoring)
     communication_error: bool = False  # Set to True when broker API is unreachable

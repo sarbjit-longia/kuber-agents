@@ -535,6 +535,20 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     this.recomputeEstimatedPipelineCost();
   }
 
+  /**
+   * The right pane edits are staged in `editingConfig` until Apply is clicked.
+   * Users often hit Save directly; in that case we must flush the staged edits into `agentNodes`
+   * so the payload reflects the current UI.
+   */
+  private flushRightPaneEditsToSelectedNode(): void {
+    if (!this.isAgentSelected()) return;
+    const agentType = this.getSelectedAgentType();
+    if (!agentType) return;
+    const node = this.agentNodes[agentType];
+    if (!node) return;
+    node.config = { ...(this.editingConfig || {}) };
+  }
+
   agentNeedsInstructions(agentType: string): boolean {
     return agentType === 'bias_agent' || agentType === 'strategy_agent' || agentType === 'risk_manager_agent';
   }
@@ -618,6 +632,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       return;
     }
 
+    // Ensure staged right-pane edits are included in payload even if user didn't click "Apply"
+    this.flushRightPaneEditsToSelectedNode();
+
     // Enforce broker consistency on every save
     this.pipelineBrokerTool = this.buildPipelineBrokerTool();
     this.enforceBrokerOnAgents();
@@ -630,8 +647,11 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       trigger_mode: this.triggerMode,
       // Scanner can be used for both periodic and signal pipelines; for SIGNAL it is required.
       scanner_id: this.scannerId,
-      is_active: false
     };
+    // Only set is_active when creating a new pipeline; don't accidentally deactivate existing pipelines on every save
+    if (!this.currentPipelineId) {
+      pipelineData.is_active = false;
+    }
 
     // Important: don't clear existing signal subscriptions when trigger mode isn't SIGNAL.
     // If the user switches to PERIODIC temporarily, we keep filters in DB unless explicitly cleared.
@@ -672,6 +692,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       this.showNotification('Saved. Click Run again to execute.', 'info');
       return;
     }
+
+    // Ensure staged right-pane edits are included even if user didn't click "Apply"
+    this.flushRightPaneEditsToSelectedNode();
 
     // Enforce broker consistency on every run
     this.pipelineBrokerTool = this.buildPipelineBrokerTool();

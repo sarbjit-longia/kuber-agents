@@ -426,6 +426,8 @@ class TriggerDispatcher:
                 pipeline_uuids = [PyUUID(pid) for pid in pipeline_ids]
                 
                 # Query for running executions (per ticker)
+                # Include MONITORING to prevent duplicate orders when a limit order is
+                # already active on the broker for the same ticker.
                 query = select(
                     executions_table.c.id,
                     executions_table.c.pipeline_id,
@@ -436,14 +438,19 @@ class TriggerDispatcher:
                 ).where(
                     and_(
                         executions_table.c.pipeline_id.in_(pipeline_uuids),
-                        cast(executions_table.c.status, String).in_(['PENDING', 'RUNNING'])
+                        cast(executions_table.c.status, String).in_(
+                            ['PENDING', 'RUNNING', 'MONITORING']
+                        )
                     )
                 )
                 
                 result = await session.execute(query)
                 rows = result.fetchall()
                 
-                # Best-effort: treat very old "in-flight" executions as stale and do NOT let them block triggering
+                # Best-effort: treat very old "in-flight" PENDING/RUNNING executions as
+                # stale and do NOT let them block triggering.
+                # MONITORING executions are NOT stale — they legitimately run for hours
+                # while a limit order waits to be filled.
                 stale_cutoff = datetime.utcnow() - timedelta(minutes=12)
 
                 running_map: Dict[str, Set[str]] = {}
@@ -452,6 +459,14 @@ class TriggerDispatcher:
                 for row in rows:
                     pid = str(row.pipeline_id)
                     sym = row.symbol or "*"
+
+                    # MONITORING is a legitimate long-running state (pending limit
+                    # orders).  Always treat it as "running" — never mark stale.
+                    if row.status == "MONITORING":
+                        if pid not in running_map:
+                            running_map[pid] = set()
+                        running_map[pid].add(sym)
+                        continue
 
                     started = row.started_at or row.created_at
                     if started and started < stale_cutoff:
@@ -462,7 +477,7 @@ class TriggerDispatcher:
                         running_map[pid] = set()
                     running_map[pid].add(sym)
 
-                # Mark stale executions as FAILED so they stop blocking the pipeline (best-effort)
+                # Mark stale PENDING/RUNNING executions as FAILED (best-effort)
                 if stale_ids:
                     try:
                         msg = "Stale in-flight execution auto-failed by trigger-dispatcher (age > 12m)."

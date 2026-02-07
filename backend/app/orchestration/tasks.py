@@ -7,7 +7,7 @@ Defines asynchronous tasks for:
 - Background maintenance
 """
 import structlog
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -84,6 +84,129 @@ def execute_pipeline(
                 if exceeded:
                     logger.warning("budget_exceeded", user_id=user_id, reason=reason)
                     return {"status": "skipped", "reason": reason}
+
+            # Preflight: skip execution if broker already has an open order/position for this symbol.
+            # This avoids paying LLM costs for strategies that would be ignored anyway.
+            from app.models.scanner import Scanner
+            from app.services.brokers.factory import broker_factory
+            from app.telemetry import pipeline_executions_counter
+
+            def extract_broker_tool(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                if not config:
+                    return None
+                broker_tool = config.get("broker_tool")
+                if broker_tool:
+                    return broker_tool
+                nodes = config.get("nodes", []) or []
+                for node in nodes:
+                    cfg = node.get("config") or {}
+                    for tool in (cfg.get("tools") or []):
+                        if tool.get("tool_type") in {"alpaca_broker", "oanda_broker", "tradier_broker"}:
+                            return tool
+                return None
+
+            # Determine symbol for preflight check
+            execution_symbol = symbol
+            if not execution_symbol and pipeline.scanner_id:
+                scanner = db.query(Scanner).filter(Scanner.id == pipeline.scanner_id).first()
+                if scanner:
+                    tickers = scanner.get_tickers()
+                    execution_symbol = tickers[0] if tickers else None
+            if not execution_symbol:
+                execution_symbol = pipeline.config.get("symbol")
+
+            broker_tool = extract_broker_tool(pipeline.config or {})
+            if broker_tool and execution_symbol:
+                try:
+                    broker = broker_factory.from_tool_config(broker_tool)
+                    positions = broker.get_positions()
+                    orders = broker.get_orders()
+                    sym_norm = execution_symbol.replace("_", "/")
+                    has_position = any(
+                        (p.symbol.replace("_", "/") == sym_norm) for p in positions
+                    )
+                    has_order = any(
+                        (o.symbol.replace("_", "/") == sym_norm) for o in orders
+                    )
+
+                    if has_position or has_order:
+                        # Create or update execution record as COMPLETED (skipped).
+                        execution = db.query(Execution).filter(
+                            Execution.id == UUID(execution_id)
+                        ).first() if execution_id else None
+
+                        now = datetime.utcnow()
+                        if not execution:
+                            execution = Execution(
+                                id=UUID(execution_id) if execution_id else uuid4(),
+                                pipeline_id=pipeline.id,
+                                user_id=UUID(user_id),
+                                status=ExecutionStatus.COMPLETED,
+                                mode=mode,
+                                symbol=execution_symbol,
+                                started_at=now,
+                                completed_at=now,
+                                execution_phase="completed",
+                                result={
+                                    "skipped": True,
+                                    "reason": "Duplicate open order/position exists on broker",
+                                    "symbol": execution_symbol,
+                                    "has_position": has_position,
+                                    "has_order": has_order,
+                                },
+                                logs=[{
+                                    "timestamp": now.isoformat(),
+                                    "agent_id": "preflight",
+                                    "level": "info",
+                                    "message": f"Preflight skip: existing broker order/position for {execution_symbol}",
+                                }],
+                                agent_states=[],
+                            )
+                            db.add(execution)
+                        else:
+                            execution.status = ExecutionStatus.COMPLETED
+                            execution.completed_at = now
+                            execution.execution_phase = "completed"
+                            execution.result = {
+                                "skipped": True,
+                                "reason": "Duplicate open order/position exists on broker",
+                                "symbol": execution_symbol,
+                                "has_position": has_position,
+                                "has_order": has_order,
+                            }
+                            execution.logs = [{
+                                "timestamp": now.isoformat(),
+                                "agent_id": "preflight",
+                                "level": "info",
+                                "message": f"Preflight skip: existing broker order/position for {execution_symbol}",
+                            }]
+                            execution.agent_states = []
+
+                        db.commit()
+                        pipeline_executions_counter.labels(
+                            status="skipped",
+                            pipeline_id=str(pipeline.id)
+                        ).inc()
+                        logger.info(
+                            "preflight_skipped_existing_broker_order_or_position",
+                            pipeline_id=pipeline_id,
+                            symbol=execution_symbol,
+                            has_position=has_position,
+                            has_order=has_order,
+                        )
+                        return {
+                            "status": "skipped",
+                            "execution_id": str(execution.id),
+                            "reason": "Duplicate open order/position exists on broker",
+                        }
+                except Exception as e:
+                    # If broker check fails, continue with normal execution (do not block pipeline).
+                    logger.error(
+                        "preflight_broker_check_failed",
+                        pipeline_id=pipeline_id,
+                        symbol=execution_symbol,
+                        error=str(e),
+                    )
             
             # Create executor with signal context and database session
             executor = PipelineExecutor(
@@ -292,10 +415,16 @@ def check_scheduled_pipelines():
         
         for pipeline in pipelines:
             try:
-                # Check if pipeline has any running executions
+                # Check if pipeline has any running or actively monitoring executions.
+                # Include MONITORING so we don't launch a new execution while a limit
+                # order is still pending on the broker from a previous run.
                 running_exec = db.query(Execution).filter(
                     Execution.pipeline_id == pipeline.id,
-                    Execution.status.in_([ExecutionStatus.PENDING, ExecutionStatus.RUNNING])
+                    Execution.status.in_([
+                        ExecutionStatus.PENDING,
+                        ExecutionStatus.RUNNING,
+                        ExecutionStatus.MONITORING,
+                    ])
                 ).first()
                 
                 if running_exec:
@@ -435,23 +564,107 @@ def reconcile_user_trades(self, user_id: str):
             Execution.status == ExecutionStatus.COMMUNICATION_ERROR
         ).all()
         
+        # Check broker for open positions and reconcile stale monitoring executions
+        from app.services.brokers.factory import broker_factory
+
+        BROKER_TOOL_TYPES = {"alpaca_broker", "oanda_broker", "tradier_broker"}
+
+        def extract_broker_tool(pipeline_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            if not pipeline_config:
+                return None
+            broker_tool = pipeline_config.get("broker_tool")
+            if broker_tool:
+                return broker_tool
+            nodes = pipeline_config.get("nodes", []) or []
+            for node in nodes:
+                cfg = node.get("config") or {}
+                for tool in (cfg.get("tools") or []):
+                    if tool.get("tool_type") in BROKER_TOOL_TYPES:
+                        return tool
+            return None
+
+        broker_positions_cache: Dict[str, List[Any]] = {}
+        broker_orders_cache: Dict[str, List[Any]] = {}
+        reconciled = 0
+
+        # Grace period: don't reconcile executions that just entered monitoring
+        # — the broker API may not yet reflect the newly placed order.
+        grace_cutoff = datetime.utcnow() - timedelta(minutes=3)
+
+        for execution in monitoring_executions:
+            # Skip executions that entered monitoring very recently
+            monitoring_start = execution.started_at or execution.created_at
+            if monitoring_start and monitoring_start > grace_cutoff:
+                logger.debug(
+                    "reconciliation_skipped_grace_period",
+                    execution_id=str(execution.id),
+                    symbol=execution.symbol,
+                    age_seconds=(datetime.utcnow() - monitoring_start).total_seconds(),
+                )
+                continue
+
+            pipeline = db.query(Pipeline).filter(Pipeline.id == execution.pipeline_id).first()
+            broker_tool = extract_broker_tool(pipeline.config if pipeline else {}) if pipeline else None
+            if not broker_tool:
+                continue
+
+            config = broker_tool.get("config", {}) or {}
+            broker_key = f"{broker_tool.get('tool_type')}:{config.get('account_id')}:{config.get('account_type')}"
+
+            if broker_key not in broker_positions_cache:
+                try:
+                    broker = broker_factory.from_tool_config(broker_tool)
+                    broker_positions_cache[broker_key] = broker.get_positions()
+                    broker_orders_cache[broker_key] = broker.get_orders()
+                except Exception as e:
+                    logger.error("reconciliation_broker_error", user_id=user_id, error=str(e))
+                    continue
+
+            positions = broker_positions_cache.get(broker_key, [])
+            orders = broker_orders_cache.get(broker_key, [])
+            position_symbols = {p.symbol.replace("/", "_") for p in positions}
+            order_symbols = {o.symbol.replace("/", "_") for o in orders}
+            symbols = position_symbols | order_symbols
+
+            if not execution.symbol:
+                continue
+
+            if execution.symbol not in symbols:
+                execution.status = ExecutionStatus.COMPLETED
+                execution.completed_at = datetime.utcnow()
+                execution.execution_phase = "completed"
+                execution.next_check_at = None
+                execution.result = (execution.result or {}) | {
+                    "reconciled": True,
+                    "reconcile_reason": "No open broker position/order found for symbol",
+                }
+                execution.error_message = None
+                reconciled += 1
+
+        if reconciled:
+            db.commit()
+            logger.warning(
+                "monitoring_reconciled_no_position",
+                user_id=user_id,
+                reconciled=reconciled,
+            )
+
         logger.info(
             "user_reconciliation_completed",
             user_id=user_id,
             monitoring_count=len(monitoring_executions),
             monitoring_symbols=list(monitoring_symbols),
-            communication_errors=len(comm_error_executions)
+            communication_errors=len(comm_error_executions),
+            reconciled=reconciled,
         )
-        
-        # TODO: Check broker for open positions (requires broker credentials architecture)
-        # For now, just log monitoring state
         
         return {
             "status": "completed",
             "user_id": user_id,
             "monitoring_executions": len(monitoring_executions),
             "monitoring_symbols": list(monitoring_symbols),
-            "communication_errors": len(comm_error_executions)
+            "communication_errors": len(comm_error_executions),
+            "reconciled": reconciled,
         }
         
     except Exception as e:
@@ -542,7 +755,7 @@ def cleanup_old_executions(days_to_keep: int = 30):
         # Delete old executions
         deleted = db.query(Execution).filter(
             Execution.created_at < cutoff_date,
-            Execution.status.in_([ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.SKIPPED])
+            Execution.status.in_([ExecutionStatus.COMPLETED, ExecutionStatus.FAILED])
         ).delete()
         
         db.commit()
@@ -841,7 +1054,13 @@ def schedule_monitoring_check(self, execution_id: str):
         else:
             # Schedule next check
             # Use interval from execution (database) instead of state for flexibility
-            interval = execution.monitor_interval_minutes or updated_state.monitor_interval_minutes or 1
+            # Use 'is not None' checks instead of 'or' to avoid treating 0.25 as falsy
+            if execution.monitor_interval_minutes is not None and execution.monitor_interval_minutes > 0:
+                interval = execution.monitor_interval_minutes
+            elif updated_state.monitor_interval_minutes is not None and updated_state.monitor_interval_minutes > 0:
+                interval = updated_state.monitor_interval_minutes
+            else:
+                interval = 1  # Default fallback: 1 minute
             execution.next_check_at = datetime.utcnow() + timedelta(minutes=interval)
             
             db.commit()

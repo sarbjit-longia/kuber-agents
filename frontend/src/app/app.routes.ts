@@ -39,16 +39,6 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
-    path: 'pipeline-builder-legacy',
-    loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
-    canActivate: [authGuard]
-  },
-  {
-    path: 'pipeline-builder-legacy/:id',
-    loadComponent: () => import('./features/pipeline-builder/pipeline-builder.component').then(m => m.PipelineBuilderComponent),
-    canActivate: [authGuard]
-  },
-  {
     path: 'monitoring',
     loadComponent: () => import('./features/monitoring/monitoring.component').then(m => m.MonitoringComponent),
     canActivate: [authGuard]

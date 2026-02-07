@@ -62,7 +62,7 @@ class Execution(Base):
     # Position monitoring fields (Trade Manager)
     execution_phase = Column(String(20), default="execute", nullable=False)  # "execute" or "monitoring"
     next_check_at = Column(DateTime, nullable=True)  # When to check position next
-    monitor_interval_minutes = Column(Integer, default=5, nullable=False)  # Polling frequency
+    monitor_interval_minutes = Column(Float, default=5.0, nullable=False)  # Polling frequency (supports sub-minute like 0.25 = 15s)
     
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)

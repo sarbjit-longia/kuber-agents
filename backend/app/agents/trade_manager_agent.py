@@ -379,8 +379,36 @@ class TradeManagerAgent(BaseAgent):
         # If order was pending but now gone, it might have filled - try to get trade_id
         if order_id and not trade_id and not pending_order:
             self.log(state, f"🔄 Limit order {order_id} no longer pending - checking if filled...")
-            # TODO: Query broker for trade_id (broker-specific implementation)
-            # For now, we'll discover it in position check
+
+            # Grace period: broker order books can be eventually consistent right after placement.
+            # Avoid immediately treating the order as closed/cancelled on the first check.
+            grace_seconds = 60
+            execution_time = state.trade_execution.execution_time if state.trade_execution else None
+            if execution_time:
+                age_seconds = (datetime.utcnow() - execution_time).total_seconds()
+                if age_seconds < grace_seconds:
+                    self.log(
+                        state,
+                        f"⏳ Order {order_id} not visible yet (age {age_seconds:.0f}s). "
+                        f"Waiting up to {grace_seconds}s before assuming cancellation."
+                    )
+                    self.record_report(
+                        state,
+                        title="Monitoring limit order",
+                        summary=f"Order {order_id} not yet visible; waiting for broker sync",
+                        status="pending",
+                        data={
+                            "symbol": state.symbol,
+                            "order_id": order_id,
+                            "order_status": "pending_sync",
+                            "order_type": "limit",
+                            "entry_price": state.strategy.entry_price if state.strategy else None,
+                            "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                            "take_profit": state.strategy.take_profit if state.strategy else None,
+                            "age_seconds": round(age_seconds, 1),
+                        },
+                    )
+                    return state
         
         # Check position with proper error handling
         position_result, position_data = self._get_position(state.symbol, broker_tool)
@@ -489,6 +517,32 @@ class TradeManagerAgent(BaseAgent):
                         level="warning"
                     )
             
+            # If we only had an order_id (no trade_id), treat this as an unfilled/cancelled order,
+            # not a closed position.
+            if order_id and not trade_id:
+                self.log(state, "⚠️ Limit order not found and no position opened - treating as cancelled/unfilled")
+                if state.trade_execution:
+                    state.trade_execution.status = "cancelled"
+                state.should_complete = True
+
+                self.record_report(
+                    state,
+                    title="Limit order cancelled / unfilled",
+                    summary=f"{state.symbol} limit order did not fill and is no longer pending",
+                    status="completed",
+                    data={
+                        "symbol": state.symbol,
+                        "reason": "Order not found in pending list and no position opened",
+                        "order_id": order_id,
+                        "trade_id": trade_id,
+                        "entry_price": state.strategy.entry_price if state.strategy else None,
+                        "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                        "take_profit": state.strategy.take_profit if state.strategy else None,
+                        "checked_at": datetime.utcnow().isoformat(),
+                    },
+                )
+                return state
+
             # Position closed (bracket orders worked or manually closed)
             self.log(state, "✓ Position closed - monitoring complete")
             state.should_complete = True
@@ -765,6 +819,7 @@ class TradeManagerAgent(BaseAgent):
     
     def _execute_broker_trade(self, state, strategy, risk, broker_tool) -> PipelineState:
         """Execute trade via broker and enter monitoring mode."""
+        order = None  # Track whether broker accepted the order
         
         try:
             from app.services.brokers.factory import broker_factory
@@ -775,9 +830,9 @@ class TradeManagerAgent(BaseAgent):
             
             # Check for duplicate open orders first
             existing_orders = broker.get_orders()
-            for order in existing_orders:
-                if order.symbol == state.symbol or order.symbol.replace("_", "/") == state.symbol.replace("_", "/"):
-                    self.log(state, f"⚠️ Duplicate order detected: {order.order_id} for {state.symbol}")
+            for existing_order in existing_orders:
+                if existing_order.symbol == state.symbol or existing_order.symbol.replace("_", "/") == state.symbol.replace("_", "/"):
+                    self.log(state, f"⚠️ Duplicate order detected: {existing_order.order_id} for {state.symbol}")
                     state.trade_execution = TradeExecution(
                         order_id=None,
                         status="skipped",
@@ -785,14 +840,14 @@ class TradeManagerAgent(BaseAgent):
                         filled_quantity=None,
                         commission=None,
                         execution_time=datetime.utcnow(),
-                        broker_response={"reason": f"Duplicate order exists: {order.order_id}"}
+                        broker_response={"reason": f"Duplicate order exists: {existing_order.order_id}"}
                     )
                     self.record_report(
                         state,
                         title="Trade skipped - duplicate order",
                         summary=f"Skipped {strategy.action} for {state.symbol} - open order already exists",
                         status="skipped",
-                        data={"reason": "Duplicate open order detected", "existing_order_id": order.order_id},
+                        data={"reason": "Duplicate open order detected", "existing_order_id": existing_order.order_id},
                     )
                     return state
             
@@ -844,6 +899,14 @@ class TradeManagerAgent(BaseAgent):
                 
                 self.log(state, "✅ Market order placed (manual monitoring needed)")
             
+            # ── CRITICAL: Enter monitoring mode IMMEDIATELY after order placement ──
+            # This MUST happen before TradeExecution creation or any logging so that
+            # if anything below raises, the pipeline still enters monitoring mode
+            # instead of being marked COMPLETED (which would leave an orphan order
+            # on the broker).
+            state.execution_phase = "monitoring"
+            state.monitor_interval_minutes = 0.25  # Check every 15 seconds
+            
             # Store execution result
             state.trade_execution = TradeExecution(
                 order_id=order.order_id,
@@ -862,14 +925,6 @@ class TradeManagerAgent(BaseAgent):
                     "order_data": order.broker_data
                 }
             )
-            
-            # Enter monitoring mode
-            state.execution_phase = "monitoring"
-            state.monitor_interval_minutes = 0.25  # Check every 15 seconds
-            
-            # Determine price precision for display
-            is_forex = "_" in state.symbol
-            price_precision = 5 if is_forex else 2
             
             # Log execution details
             self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} units @ ${entry:.{price_precision}f}")
@@ -892,7 +947,7 @@ class TradeManagerAgent(BaseAgent):
             self.record_report(
                 state,
                 title="Trade executed",
-                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.{price_precision}f} (LIMIT ORDER)",
+                summary=f"{strategy.action} {risk.position_size:.0f} {state.symbol} @ ${entry:.{price_precision}f} ({order_type_used.upper()})",
                 status="completed",
                 data={
                     "action": strategy.action,
@@ -912,7 +967,31 @@ class TradeManagerAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Broker trade execution failed: {str(e)}", exc_info=True)
             
-            # Store failure
+            # If we already entered monitoring (order was placed on broker), preserve
+            # that state so the executor transitions to MONITORING and doesn't orphan
+            # the order.  Only mark as rejected if no order was placed yet.
+            if state.execution_phase == "monitoring":
+                self.log(state, f"⚠️ Post-order error but order is on broker — staying in MONITORING mode: {str(e)}", level="warning")
+                if not state.trade_execution:
+                    state.trade_execution = TradeExecution(
+                        order_id=getattr(order, "order_id", None) if order else None,
+                        status="accepted",
+                        filled_price=None,
+                        filled_quantity=None,
+                        commission=None,
+                        execution_time=datetime.utcnow(),
+                        broker_response={"warning": f"Order placed but post-processing failed: {str(e)}"}
+                    )
+                self.record_report(
+                    state,
+                    title="Trade executed (with warnings)",
+                    summary=f"Order placed for {state.symbol} but post-processing had errors",
+                    status="completed",
+                    data={"warning": str(e)},
+                )
+                return state
+            
+            # Order was NOT placed — safe to mark as rejected
             state.trade_execution = TradeExecution(
                 order_id=None,
                 status="rejected",

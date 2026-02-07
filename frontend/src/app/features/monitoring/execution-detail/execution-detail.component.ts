@@ -304,7 +304,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
       unrealizedPl: positionData?.unrealized_pl,
       pnlPercent: positionData?.pnl_percent,
       nextCheckAt: this.execution.next_check_at,
-      monitorInterval: this.execution.monitor_interval_minutes || 1
+      monitorInterval: this.execution.monitor_interval_minutes > 0 ? this.execution.monitor_interval_minutes : 1
     };
   }
 
