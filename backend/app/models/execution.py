@@ -64,6 +64,9 @@ class Execution(Base):
     next_check_at = Column(DateTime, nullable=True)  # When to check position next
     monitor_interval_minutes = Column(Float, default=5.0, nullable=False)  # Polling frequency (supports sub-minute like 0.25 = 15s)
     
+    # Optimistic locking to prevent concurrent update conflicts
+    version = Column(Integer, default=1, nullable=False)  # Incremented on each update
+    
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

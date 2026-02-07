@@ -819,7 +819,6 @@ class TradeManagerAgent(BaseAgent):
     
     def _execute_broker_trade(self, state, strategy, risk, broker_tool) -> PipelineState:
         """Execute trade via broker and enter monitoring mode."""
-        order = None  # Track whether broker accepted the order
         
         try:
             from app.services.brokers.factory import broker_factory
@@ -868,6 +867,13 @@ class TradeManagerAgent(BaseAgent):
             is_forex = "_" in state.symbol
             price_precision = 5 if is_forex else 2
             
+            # ⚠️ FIX #2: Enter monitoring mode BEFORE placing order to prevent orphaned orders
+            # This ensures that even if worker crashes after broker API call, the execution
+            # will be in MONITORING status and can be reconciled later
+            state.execution_phase = "monitoring"
+            state.monitor_interval_minutes = 0.25  # Check every 15 seconds
+            
+            # Now place the order with broker
             if has_targets:
                 # Strategy provided targets → Use LIMIT bracket order (wait for entry price)
                 order_type_used = "limit_bracket"
@@ -898,14 +904,6 @@ class TradeManagerAgent(BaseAgent):
                 )
                 
                 self.log(state, "✅ Market order placed (manual monitoring needed)")
-            
-            # ── CRITICAL: Enter monitoring mode IMMEDIATELY after order placement ──
-            # This MUST happen before TradeExecution creation or any logging so that
-            # if anything below raises, the pipeline still enters monitoring mode
-            # instead of being marked COMPLETED (which would leave an orphan order
-            # on the broker).
-            state.execution_phase = "monitoring"
-            state.monitor_interval_minutes = 0.25  # Check every 15 seconds
             
             # Store execution result
             state.trade_execution = TradeExecution(
@@ -967,31 +965,37 @@ class TradeManagerAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Broker trade execution failed: {str(e)}", exc_info=True)
             
-            # If we already entered monitoring (order was placed on broker), preserve
-            # that state so the executor transitions to MONITORING and doesn't orphan
-            # the order.  Only mark as rejected if no order was placed yet.
+            # ⚠️ FIX #2: If we already entered monitoring (before or after order placement),
+            # preserve that state so the executor transitions to MONITORING and doesn't orphan
+            # the order. The monitoring task will detect and handle the issue.
             if state.execution_phase == "monitoring":
-                self.log(state, f"⚠️ Post-order error but order is on broker — staying in MONITORING mode: {str(e)}", level="warning")
+                self.log(state, f"⚠️ Post-order error but already in MONITORING mode — keeping monitoring state: {str(e)}", level="warning")
+                
+                # Ensure trade_execution is created so monitoring knows there was an attempt
                 if not state.trade_execution:
                     state.trade_execution = TradeExecution(
-                        order_id=getattr(order, "order_id", None) if order else None,
-                        status="accepted",
+                        order_id=None,  # Unknown if order was placed
+                        status="unknown",
                         filled_price=None,
                         filled_quantity=None,
                         commission=None,
                         execution_time=datetime.utcnow(),
-                        broker_response={"warning": f"Order placed but post-processing failed: {str(e)}"}
+                        broker_response={
+                            "warning": f"Error during/after order placement: {str(e)}",
+                            "monitoring_will_reconcile": True
+                        }
                     )
+                
                 self.record_report(
                     state,
-                    title="Trade executed (with warnings)",
-                    summary=f"Order placed for {state.symbol} but post-processing had errors",
-                    status="completed",
-                    data={"warning": str(e)},
+                    title="Trade executed (with errors - monitoring active)",
+                    summary=f"Error occurred during order placement for {state.symbol}, monitoring will reconcile",
+                    status="monitoring",
+                    data={"warning": str(e), "monitoring_active": True},
                 )
                 return state
             
-            # Order was NOT placed — safe to mark as rejected
+            # Order was NOT placed (error before setting monitoring phase) — safe to mark as rejected
             state.trade_execution = TradeExecution(
                 order_id=None,
                 status="rejected",

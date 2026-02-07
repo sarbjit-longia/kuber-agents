@@ -898,6 +898,7 @@ def schedule_monitoring_check(self, execution_id: str):
     2. Checks if position still exists via broker API
     3. Evaluates emergency exit conditions
     4. Closes position if needed or schedules next check
+    5. Uses optimistic locking to prevent concurrent update conflicts
     
     Args:
         execution_id: UUID of execution in MONITORING status
@@ -911,12 +912,31 @@ def schedule_monitoring_check(self, execution_id: str):
     db = SessionLocal()
     
     try:
-        # Load execution
+        # Load execution with version for optimistic locking
         execution = db.query(Execution).filter(Execution.id == UUID(execution_id)).first()
         
         if not execution:
             logger.warning("execution_not_found", execution_id=execution_id)
             return {"status": "not_found"}
+        
+        # ⚠️ FIX #3: Add max monitoring duration (24 hours) to prevent infinite loops
+        MAX_MONITORING_HOURS = 24
+        if execution.started_at:
+            monitoring_duration = (datetime.utcnow() - execution.started_at).total_seconds() / 3600
+            if monitoring_duration > MAX_MONITORING_HOURS:
+                logger.error(
+                    "monitoring_timeout_exceeded",
+                    execution_id=execution_id,
+                    duration_hours=monitoring_duration
+                )
+                execution.status = ExecutionStatus.FAILED
+                execution.completed_at = datetime.utcnow()
+                execution.execution_phase = "completed"
+                execution.next_check_at = None
+                execution.error_message = f"Monitoring timeout: exceeded {MAX_MONITORING_HOURS}h maximum duration"
+                execution.version += 1
+                db.commit()
+                return {"status": "timeout", "duration_hours": monitoring_duration}
         
         if execution.status != ExecutionStatus.MONITORING:
             logger.info("execution_no_longer_monitoring", execution_id=execution_id, status=execution.status.value)
@@ -999,6 +1019,9 @@ def schedule_monitoring_check(self, execution_id: str):
                     data[key] = value.isoformat()
             return data
         
+        # ⚠️ FIX #1: Use optimistic locking to prevent concurrent update conflicts
+        original_version = execution.version
+        
         execution.result = {
             **(execution.result or {}),
             "strategy": serialize_model(updated_state.strategy),
@@ -1016,19 +1039,72 @@ def schedule_monitoring_check(self, execution_id: str):
         flag_modified(execution, "reports")
         flag_modified(execution, "result")
         
+        # Increment version for optimistic locking
+        execution.version += 1
+        
         # Check if communication error occurred (API failure)
         if updated_state.communication_error:
+            # ⚠️ FIX #3: Limit max communication error retries (60 attempts = 1 hour at 1min intervals)
+            MAX_COMM_ERROR_RETRIES = 60
+            error_count = updated_state.trade_execution.api_error_count if updated_state.trade_execution else 0
+            
+            if error_count >= MAX_COMM_ERROR_RETRIES:
+                # Max retries exceeded - mark as FAILED and require manual intervention
+                execution.status = ExecutionStatus.FAILED
+                execution.completed_at = datetime.utcnow()
+                execution.execution_phase = "completed"
+                execution.next_check_at = None
+                execution.error_message = f"Communication error: exceeded {MAX_COMM_ERROR_RETRIES} retry attempts. Manual intervention required."
+                execution.version += 1
+                
+                logger.error(
+                    "monitoring_max_retries_exceeded",
+                    execution_id=execution_id,
+                    error_count=error_count,
+                    last_error=updated_state.communication_error_message
+                )
+                
+                try:
+                    db.commit()
+                except Exception as commit_error:
+                    logger.error("failed_to_commit_max_retries", error=str(commit_error), exc_info=True)
+                    db.rollback()
+                
+                return {
+                    "status": "failed",
+                    "reason": "max_retries_exceeded",
+                    "error_count": error_count
+                }
+            
+            # Still under retry limit - mark as COMMUNICATION_ERROR and schedule retry
             execution.status = ExecutionStatus.COMMUNICATION_ERROR
             execution.next_check_at = datetime.utcnow() + timedelta(minutes=1)  # Retry in 1 minute
             
             logger.error(
                 "monitoring_communication_error",
                 execution_id=execution_id,
-                error_count=updated_state.trade_execution.api_error_count if updated_state.trade_execution else 0,
-                last_error=updated_state.communication_error_message
+                error_count=error_count,
+                last_error=updated_state.communication_error_message,
+                retries_remaining=MAX_COMM_ERROR_RETRIES - error_count
             )
             
-            db.commit()
+            try:
+                db.commit()
+            except Exception as commit_error:
+                logger.error("commit_failed_on_comm_error", error=str(commit_error), exc_info=True)
+                db.rollback()
+                # Try recovery with new session
+                db.close()
+                db2 = SessionLocal()
+                try:
+                    ex2 = db2.query(Execution).filter(Execution.id == UUID(execution_id)).first()
+                    if ex2 and ex2.version == original_version:
+                        ex2.status = ExecutionStatus.COMMUNICATION_ERROR
+                        ex2.next_check_at = datetime.utcnow() + timedelta(minutes=1)
+                        ex2.version += 1
+                        db2.commit()
+                finally:
+                    db2.close()
             
             # Schedule retry in 1 minute
             schedule_monitoring_check.apply_async(args=[str(execution.id)], countdown=60)
@@ -1036,7 +1112,9 @@ def schedule_monitoring_check(self, execution_id: str):
             return {
                 "status": "communication_error",
                 "error": updated_state.communication_error_message,
-                "retry_in": "1 minute"
+                "retry_in": "1 minute",
+                "error_count": error_count,
+                "retries_remaining": MAX_COMM_ERROR_RETRIES - error_count
             }
         
         # Check if monitoring should complete
@@ -1045,10 +1123,30 @@ def schedule_monitoring_check(self, execution_id: str):
             execution.completed_at = datetime.utcnow()
             execution.execution_phase = "completed"
             execution.next_check_at = None
+            execution.version += 1
             
             logger.info("monitoring_completed", execution_id=execution_id)
             
-            db.commit()
+            try:
+                db.commit()
+            except Exception as commit_error:
+                logger.error("commit_failed_on_complete", error=str(commit_error), exc_info=True)
+                db.rollback()
+                # Try recovery with new session
+                db.close()
+                db2 = SessionLocal()
+                try:
+                    ex2 = db2.query(Execution).filter(Execution.id == UUID(execution_id)).first()
+                    if ex2 and ex2.version == original_version:
+                        ex2.status = ExecutionStatus.COMPLETED
+                        ex2.completed_at = datetime.utcnow()
+                        ex2.execution_phase = "completed"
+                        ex2.next_check_at = None
+                        ex2.version += 1
+                        db2.commit()
+                finally:
+                    db2.close()
+            
             return {"status": "completed"}
         
         else:
@@ -1062,8 +1160,24 @@ def schedule_monitoring_check(self, execution_id: str):
             else:
                 interval = 1  # Default fallback: 1 minute
             execution.next_check_at = datetime.utcnow() + timedelta(minutes=interval)
+            execution.version += 1
             
-            db.commit()
+            try:
+                db.commit()
+            except Exception as commit_error:
+                logger.error("commit_failed_on_continue", error=str(commit_error), exc_info=True)
+                db.rollback()
+                # Try recovery with new session
+                db.close()
+                db2 = SessionLocal()
+                try:
+                    ex2 = db2.query(Execution).filter(Execution.id == UUID(execution_id)).first()
+                    if ex2 and ex2.version == original_version:
+                        ex2.next_check_at = datetime.utcnow() + timedelta(minutes=interval)
+                        ex2.version += 1
+                        db2.commit()
+                finally:
+                    db2.close()
             
             # Schedule next task
             schedule_monitoring_check.apply_async(

@@ -457,71 +457,105 @@ class PipelineExecutor:
             mode=self.mode
         )
         
-        # 🚫 RULE: NEVER USE MOCK DATA - Always fetch real data from Data Plane
-        # Use synchronous HTTP library (requests) for Celery tasks
+        # ⚠️ FIX #4: Add retry logic with exponential backoff for Data Plane failures
         import requests
         from app.config import settings
         from app.schemas.pipeline_state import MarketData, TimeframeData
+        import time
         
         data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
         
-        try:
-            # Fetch candles for each timeframe
-            timeframe_data = {}
-            current_price = 0
-            bid = None
-            ask = None
-            
-            for tf in required_timeframes:
-                candle_response = requests.get(
-                    f"{data_plane_url}/api/v1/data/candles/{state.symbol}",
-                    params={"timeframe": tf, "limit": 100},
-                    timeout=10.0
+        max_retries = 3
+        base_delay = 1  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # Fetch candles for each timeframe
+                timeframe_data = {}
+                current_price = 0
+                bid = None
+                ask = None
+                
+                for tf in required_timeframes:
+                    candle_response = requests.get(
+                        f"{data_plane_url}/api/v1/data/candles/{state.symbol}",
+                        params={"timeframe": tf, "limit": 100},
+                        timeout=10.0
+                    )
+                    candle_response.raise_for_status()
+                    candle_data = candle_response.json()
+                    
+                    # Convert to TimeframeData objects
+                    candles = []
+                    for candle in candle_data.get("candles", []):
+                        candles.append(TimeframeData(
+                            timeframe=tf,
+                            timestamp=candle.get("time") or candle.get("timestamp"),
+                            open=candle["open"],
+                            high=candle["high"],
+                            low=candle["low"],
+                            close=candle["close"],
+                            volume=candle.get("volume", 0)
+                        ))
+                    timeframe_data[tf] = candles
+                    
+                    # Use the latest candle from the first timeframe for current price
+                    if candles and current_price == 0:
+                        latest_candle = candles[-1]
+                        current_price = latest_candle.close
+                        bid = latest_candle.close
+                        ask = latest_candle.close
+                
+                spread = None
+                if bid and ask:
+                    spread = ask - bid
+                
+                state.market_data = MarketData(
+                    symbol=state.symbol,
+                    current_price=current_price,
+                    bid=bid,
+                    ask=ask,
+                    spread=spread,
+                    timeframes=timeframe_data,
+                    market_status="open",  # Assume open if we got data
+                    last_updated=datetime.utcnow()
                 )
-                candle_response.raise_for_status()
-                candle_data = candle_response.json()
                 
-                # Convert to TimeframeData objects
-                candles = []
-                for candle in candle_data.get("candles", []):
-                    candles.append(TimeframeData(
-                        timeframe=tf,
-                        timestamp=candle.get("time") or candle.get("timestamp"),
-                        open=candle["open"],
-                        high=candle["high"],
-                        low=candle["low"],
-                        close=candle["close"],
-                        volume=candle.get("volume", 0)
-                    ))
-                timeframe_data[tf] = candles
+                self.logger.info("market_data_fetched_from_data_plane_sync", mode=self.mode, attempt=attempt + 1)
+                return  # Success!
                 
-                # Use the latest candle from the first timeframe for current price
-                if candles and current_price == 0:
-                    latest_candle = candles[-1]
-                    current_price = latest_candle.close
-                    bid = latest_candle.close
-                    ask = latest_candle.close
+            except requests.exceptions.RequestException as e:
+                is_last_attempt = (attempt == max_retries - 1)
+                
+                if is_last_attempt:
+                    # All retries exhausted
+                    self.logger.error(
+                        "data_plane_fetch_sync_failed_all_retries",
+                        error=str(e),
+                        attempts=max_retries,
+                        exc_info=True
+                    )
+                    raise RuntimeError(
+                        f"Failed to fetch market data from Data Plane after {max_retries} attempts: {str(e)}. "
+                        f"Please check Data Plane service health."
+                    )
+                else:
+                    # Retry with exponential backoff
+                    delay = base_delay * (2 ** attempt)  # 1s, 2s, 4s
+                    self.logger.warning(
+                        "data_plane_fetch_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        retry_delay_seconds=delay
+                    )
+                    time.sleep(delay)
+                    continue  # Retry
             
-            spread = None
-            if bid and ask:
-                spread = ask - bid
-            
-            state.market_data = MarketData(
-                symbol=state.symbol,
-                current_price=current_price,
-                bid=bid,
-                ask=ask,
-                spread=spread,
-                timeframes=timeframe_data,
-                market_status="open",  # Assume open if we got data
-                last_updated=datetime.utcnow()
-            )
-            
-            self.logger.info("market_data_fetched_from_data_plane_sync", mode=self.mode)
-            
-        except Exception as e:
-            self.logger.error("data_plane_fetch_sync_failed", error=str(e), exc_info=True)
-            raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}. Mock data is disabled.")
+            except Exception as e:
+                # Unexpected error (e.g., data parsing)
+                self.logger.error("data_plane_fetch_sync_failed", error=str(e), exc_info=True)
+                raise RuntimeError(f"Failed to fetch market data from Data Plane: {str(e)}")
     
     async def execute(self) -> PipelineState:
         """
@@ -837,20 +871,23 @@ class PipelineExecutor:
                 agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
                 agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
                 
-                # Update DB with progress
-                execution.agent_states = agent_states
-                execution.logs = self._serialize_logs(state.execution_log)
-                execution.reports = self._serialize_reports(state.agent_reports)
-                execution.cost = state.total_cost
-                execution.cost_breakdown = state.agent_costs
-                
-                # Mark JSONB columns as modified so SQLAlchemy saves them
-                flag_modified(execution, "agent_states")
-                flag_modified(execution, "logs")
-                flag_modified(execution, "reports")
-                flag_modified(execution, "cost_breakdown")
-                
-                db_session.commit()
+            # Update DB with progress
+            execution.agent_states = agent_states
+            execution.logs = self._serialize_logs(state.execution_log)
+            execution.reports = self._serialize_reports(state.agent_reports)
+            execution.cost = state.total_cost
+            execution.cost_breakdown = state.agent_costs
+            
+            # Mark JSONB columns as modified so SQLAlchemy saves them
+            flag_modified(execution, "agent_states")
+            flag_modified(execution, "logs")
+            flag_modified(execution, "reports")
+            flag_modified(execution, "cost_breakdown")
+            
+            # ⚠️ FIX #1: Increment version for optimistic locking
+            execution.version += 1
+            
+            db_session.commit()
                 
                 self.logger.info(
                     "agent_completed",
@@ -988,6 +1025,9 @@ class PipelineExecutor:
         flag_modified(execution, "logs")
         flag_modified(execution, "reports")
         flag_modified(execution, "cost_breakdown")
+        
+        # ⚠️ FIX #1: Increment version for optimistic locking
+        execution.version += 1
         
         db_session.commit()
         
