@@ -5,7 +5,6 @@ Monitors for MACD crossover signals.
 """
 from typing import Dict, Any, List
 import structlog
-import pandas as pd
 
 from app.generators.base import BaseSignalGenerator, GeneratorError
 from app.schemas.signal import Signal, TickerSignal, SignalType, BiasType

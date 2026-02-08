@@ -13,11 +13,10 @@ import asyncio
 import json
 import time
 from typing import List, Dict, Set, Any
-from datetime import datetime, timezone
+from datetime import datetime
 
 import structlog
 from kafka import KafkaConsumer
-from kafka.errors import KafkaError
 from sqlalchemy import select, and_, cast, String
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -592,20 +591,21 @@ class TriggerDispatcher:
                                         )
                                         continue  # This ticker not routed to this pipeline
                             
-                        tickers_to_execute.add(ticker)
-                        
-                        # Store signal context for this ticker
-                        # Transform to match SignalData schema expectations
-                        if ticker not in signal_data_by_ticker:
-                            signal_data_by_ticker[ticker] = {
-                                'signal_id': str(signal.signal_id),
-                                'signal_type': signal.signal_type,
-                                'source': signal.source,
-                                'timestamp': signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else signal.timestamp,
-                                'tickers': [ticker],  # SignalData expects a list of ticker symbols
-                                'confidence': ticker_signal.get('confidence', 50.0),  # Extract confidence from ticker_signal
-                                'metadata': signal.metadata
-                            }
+                            # ✅ FIX: Moved inside the ticker loop
+                            tickers_to_execute.add(ticker)
+                            
+                            # Store signal context for this ticker
+                            # Transform to match SignalData schema expectations
+                            if ticker not in signal_data_by_ticker:
+                                signal_data_by_ticker[ticker] = {
+                                    'signal_id': str(signal.signal_id),
+                                    'signal_type': signal.signal_type,
+                                    'source': signal.source,
+                                    'timestamp': signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else signal.timestamp,
+                                    'tickers': [ticker],  # SignalData expects a list of ticker symbols
+                                    'confidence': ticker_signal.get('confidence', 50.0),  # Extract confidence from ticker_signal
+                                    'metadata': signal.metadata
+                                }
                         break
             
             logger.debug(

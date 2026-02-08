@@ -4,7 +4,6 @@ Scanner Universe Manager
 Queries the backend database to discover tickers from active pipelines' scanners.
 Only includes tickers from scanners that are attached to active pipelines.
 """
-import asyncio
 from typing import List, Set, Dict
 from datetime import datetime
 import structlog
@@ -48,6 +47,30 @@ class ScannerUniverseManager:
             logger.error("scanner_universe_manager_connection_failed", error=str(e))
             raise
     
+    def _parse_scanner_config(self, scanner_config):
+        """
+        Parse scanner config from PostgreSQL JSONB.
+        
+        Args:
+            scanner_config: JSONB value (could be dict or string)
+            
+        Returns:
+            Parsed dict or None
+        """
+        # PostgreSQL JSONB might return as dict or string
+        if isinstance(scanner_config, str):
+            import json
+            try:
+                return json.loads(scanner_config)
+            except json.JSONDecodeError:
+                logger.warning("invalid_scanner_config_json", config=scanner_config)
+                return None
+        elif isinstance(scanner_config, dict):
+            return scanner_config
+        else:
+            logger.warning("unexpected_scanner_config_type", type=type(scanner_config).__name__)
+            return None
+    
     def get_active_scanner_tickers(self) -> List[str]:
         """
         Get all tickers from scanners attached to active pipelines.
@@ -77,25 +100,20 @@ class ScannerUniverseManager:
             tickers = set()
             scanner_count = 0
             
-            row_count = 0
-            for row in result:
-                row_count += 1
+            for row_number, row in enumerate(result, 1):
                 scanner_config = row[0]  # JSONB config
                 
                 logger.debug(
                     "scanner_row_fetched",
-                    row_number=row_count,
+                    row_number=row_number,
                     config_type=type(scanner_config).__name__,
                     config_value=str(scanner_config)[:200]  # Truncate for logging
                 )
                 
-                # PostgreSQL JSONB might return as dict or string
-                if isinstance(scanner_config, str):
-                    import json
-                    scanner_config = json.loads(scanner_config)
-                
-                if isinstance(scanner_config, dict):
-                    scanner_tickers = scanner_config.get('tickers', [])
+                # Parse scanner config
+                parsed_config = self._parse_scanner_config(scanner_config)
+                if parsed_config:
+                    scanner_tickers = parsed_config.get('tickers', [])
                     if scanner_tickers:
                         tickers.update(scanner_tickers)
                         scanner_count += 1
@@ -108,7 +126,7 @@ class ScannerUniverseManager:
             
             logger.info(
                 "scanner_query_completed",
-                rows_fetched=row_count,
+                rows_fetched=row_number if 'row_number' in locals() else 0,
                 scanners_processed=scanner_count
             )
             
@@ -173,9 +191,9 @@ class ScannerUniverseManager:
                 scanner_name = row[3]
                 scanner_config = row[4]
                 
-                tickers = []
-                if isinstance(scanner_config, dict):
-                    tickers = scanner_config.get('tickers', [])
+                # Parse scanner config
+                parsed_config = self._parse_scanner_config(scanner_config)
+                tickers = parsed_config.get('tickers', []) if parsed_config else []
                 
                 mapping[pipeline_id] = {
                     "pipeline_name": pipeline_name,
