@@ -233,6 +233,18 @@ class Settings(BaseSettings):
         description="How often to refresh the ticker universe from active scanners"
     )
     
+    # Market Hours Configuration
+    # Auto-detects asset type from tickers (stocks/forex/crypto)
+    ENABLE_MARKET_HOURS_CHECK: bool = Field(
+        default=True,
+        description="Enable market hours checking (skip generation when all markets closed)"
+    )
+    
+    MARKET_HOURS_CHECK_INTERVAL_SECONDS: int = Field(
+        default=60,
+        description="How often to check if any market opened (when all previously closed)"
+    )
+    
     # Kafka configuration
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_SIGNAL_TOPIC: str = "trading-signals"

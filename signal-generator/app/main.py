@@ -683,6 +683,9 @@ class SignalGeneratorService:
         """
         Run a single generator in a loop.
         
+        Automatically detects asset types from tickers and checks market hours.
+        Skips generation only if ALL asset types in the watchlist are closed.
+        
         Args:
             generator_info: Dict with generator, interval, and name
         """
@@ -690,14 +693,44 @@ class SignalGeneratorService:
         interval = generator_info["interval"]
         name = generator_info["name"]
         
+        # Import market hours checker
+        from app.utils.market_hours import MarketHoursChecker
+        
+        # Get tickers from generator config
+        tickers = generator.config.get("tickers", [])
+        
         logger.info(
             "generator_started",
             generator=name,
-            interval_seconds=interval
+            interval_seconds=interval,
+            ticker_count=len(tickers),
+            market_hours_check_enabled=settings.ENABLE_MARKET_HOURS_CHECK
         )
+        
+        # Log initial market status for all asset types
+        if settings.ENABLE_MARKET_HOURS_CHECK and tickers:
+            # Detect asset types present
+            from app.utils.market_hours import MarketType
+            asset_types = set(MarketHoursChecker.detect_asset_type(t) for t in tickers)
+            
+            for asset_type in asset_types:
+                status_msg = MarketHoursChecker.get_market_status_message(asset_type)
+                logger.info("market_status_on_generator_start", generator=name, status=status_msg)
         
         while self.running:
             try:
+                # ✅ NEW: Check if ANY ticker is tradeable (stocks, forex, or crypto)
+                if settings.ENABLE_MARKET_HOURS_CHECK and tickers:
+                    if not MarketHoursChecker.any_ticker_tradeable(tickers):
+                        logger.debug(
+                            "all_markets_closed_skipping_generation",
+                            generator=name,
+                            ticker_count=len(tickers)
+                        )
+                        # Use shorter interval when all markets are closed
+                        await asyncio.sleep(settings.MARKET_HOURS_CHECK_INTERVAL_SECONDS)
+                        continue
+                
                 # Track scan
                 if self.meter:
                     self.generator_scans_total.add(1, {"generator": name})
@@ -735,8 +768,11 @@ class SignalGeneratorService:
                     exc_info=True
                 )
             
-            # Wait for next interval
-            await asyncio.sleep(interval)
+            # Wait for next interval (use shorter interval if all markets closed)
+            if settings.ENABLE_MARKET_HOURS_CHECK and tickers and not MarketHoursChecker.any_ticker_tradeable(tickers):
+                await asyncio.sleep(settings.MARKET_HOURS_CHECK_INTERVAL_SECONDS)
+            else:
+                await asyncio.sleep(interval)
     
     async def _emit_signals(self, signals: List[Signal], generator_name: str = None):
         """
