@@ -32,6 +32,8 @@ class UserInDB(UserBase):
     subscription_tier: str
     max_active_pipelines: int
     subscription_expires_at: Optional[datetime] = None
+    telegram_enabled: bool = False
+    telegram_chat_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -72,4 +74,25 @@ class TokenData(BaseModel):
     """Schema for JWT token payload."""
     user_id: Optional[UUID] = None
     email: Optional[str] = None
+
+
+class TelegramConfigUpdate(BaseModel):
+    """Schema for updating Telegram configuration."""
+    bot_token: str = Field(..., min_length=10, max_length=200, description="Telegram bot token from @BotFather")
+    chat_id: str = Field(..., min_length=1, max_length=50, description="Telegram chat ID from @userinfobot")
+    enabled: bool = True
+
+
+class TelegramConfigResponse(BaseModel):
+    """Schema for Telegram configuration response."""
+    enabled: bool
+    chat_id: Optional[str] = None
+    is_configured: bool
+
+
+class TelegramTestRequest(BaseModel):
+    """Schema for testing Telegram connection."""
+    bot_token: str
+    chat_id: str
+
 

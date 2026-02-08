@@ -73,6 +73,12 @@ class Pipeline(Base):
     # DEPRECATED: Use scanner_id instead
     scanner_tickers = Column(JSONB, nullable=True, default=list)  # Kept for backward compatibility
     
+    # Notification settings
+    notification_enabled = Column(Boolean, default=False, nullable=False)
+    notification_events = Column(JSONB, nullable=True, default=list)
+    # Example notification_events:
+    # ["trade_executed", "position_closed", "pipeline_failed", "risk_rejected"]
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

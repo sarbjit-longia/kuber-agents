@@ -13,6 +13,9 @@ from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfig
 from app.config import settings
 from enum import Enum
 from typing import Tuple
+import structlog
+
+logger = structlog.get_logger()
 
 
 class PositionCheckResult(Enum):
@@ -960,6 +963,9 @@ class TradeManagerAgent(BaseAgent):
                 },
             )
             
+            # 📱 Send Telegram notification if configured
+            self._send_trade_notification(state, strategy, risk, entry, take_profit, stop_loss)
+            
             return state
             
         except Exception as e:
@@ -1093,3 +1099,86 @@ class TradeManagerAgent(BaseAgent):
                 f"Please attach only ONE broker tool (Alpaca, Oanda, or Tradier). "
                 f"The Trade Manager can only execute on one broker at a time."
             )
+    
+    def _send_trade_notification(
+        self, 
+        state: PipelineState, 
+        strategy, 
+        risk, 
+        entry_price: float,
+        take_profit: Optional[float],
+        stop_loss: Optional[float]
+    ):
+        """
+        Send Telegram notification for trade execution.
+        
+        Only sends if:
+        1. User has Telegram enabled
+        2. Pipeline has notifications enabled
+        3. "trade_executed" is in notification events
+        """
+        try:
+            # Import here to avoid circular dependency
+            from app.services.telegram_notifier import telegram_notifier
+            from sqlalchemy.orm import Session
+            from app.models.user import User as UserModel
+            from app.models.pipeline import Pipeline as PipelineModel
+            from app.database import SessionLocal
+            
+            # We're in an agent, state has user_id and pipeline_id
+            if not state.user_id or not state.pipeline_id:
+                return
+            
+            # Create sync DB session (agents run in sync context)
+            db = SessionLocal()
+            try:
+                # Get user
+                user = db.query(UserModel).filter(UserModel.id == state.user_id).first()
+                if not user or not user.telegram_enabled:
+                    return
+                
+                if not user.telegram_bot_token or not user.telegram_chat_id:
+                    return
+                
+                # Get pipeline
+                pipeline = db.query(PipelineModel).filter(PipelineModel.id == state.pipeline_id).first()
+                if not pipeline or not pipeline.notification_enabled:
+                    return
+                
+                # Check if trade_executed is in notification events
+                notification_events = pipeline.notification_events or []
+                if "trade_executed" not in notification_events:
+                    return
+                
+                # Send notification
+                telegram_notifier.send_trade_alert(
+                    bot_token=user.telegram_bot_token,
+                    chat_id=user.telegram_chat_id,
+                    symbol=state.symbol,
+                    action=strategy.action,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss or 0.0,
+                    take_profit=take_profit or 0.0,
+                    position_size=risk.position_size,
+                    pipeline_name=pipeline.name
+                )
+                
+                logger.info(
+                    "telegram_notification_sent",
+                    user_id=str(state.user_id),
+                    pipeline_id=str(state.pipeline_id),
+                    event="trade_executed"
+                )
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            # Don't fail pipeline execution if notification fails
+            logger.error(
+                "telegram_notification_failed",
+                error=str(e),
+                user_id=str(state.user_id) if state.user_id else None,
+                pipeline_id=str(state.pipeline_id) if state.pipeline_id else None
+            )
+

@@ -64,6 +64,11 @@ class User(Base):
     max_active_pipelines = Column(Integer, default=2, nullable=False)
     subscription_expires_at = Column(DateTime, nullable=True)
     
+    # Telegram notification fields
+    telegram_bot_token = Column(String(200), nullable=True)
+    telegram_chat_id = Column(String(50), nullable=True)
+    telegram_enabled = Column(Boolean, default=False, nullable=False)
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

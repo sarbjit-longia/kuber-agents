@@ -1,0 +1,220 @@
+.user-settings-container {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    font-size: 2rem;
+    font-weight: 500;
+  }
+}
+
+.tab-content {
+  padding: 2rem 0;
+}
+
+mat-card {
+  margin-bottom: 1.5rem;
+
+  mat-card-header {
+    margin-bottom: 1.5rem;
+
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.5rem;
+    }
+  }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.config-status {
+  margin-bottom: 2rem;
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    background: rgba(255, 152, 0, 0.1);
+    color: #ff9800;
+    font-weight: 500;
+
+    &.configured {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+    }
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .chat-id-display {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+  }
+}
+
+.setup-instructions {
+  background: rgba(33, 150, 243, 0.05);
+  border-left: 4px solid #2196f3;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border-radius: 4px;
+
+  h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #2196f3;
+  }
+
+  ol {
+    line-height: 2;
+    padding-left: 1.5rem;
+
+    li {
+      margin-bottom: 0.75rem;
+
+      code {
+        background: rgba(0, 0, 0, 0.1);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+      }
+
+      a {
+        margin-left: 0.5rem;
+        vertical-align: middle;
+      }
+    }
+  }
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+
+  .full-width {
+    width: 100%;
+  }
+
+  .button-group {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+
+    button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      mat-spinner {
+        display: inline-block;
+      }
+    }
+  }
+}
+
+.configured-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+.info-box {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: rgba(76, 175, 80, 0.05);
+  border-left: 4px solid #4caf50;
+  border-radius: 4px;
+  margin-top: 2rem;
+
+  mat-icon {
+    color: #4caf50;
+    flex-shrink: 0;
+  }
+
+  h4 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: #4caf50;
+  }
+
+  p {
+    margin: 0.5rem 0;
+    line-height: 1.6;
+  }
+
+  ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+
+    li {
+      margin-bottom: 0.25rem;
+    }
+  }
+}
+
+// ── Dark Mode Support ────────────────────────────────────────────────
+@media (prefers-color-scheme: dark) {
+  .setup-instructions,
+  .info-box {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .config-status .chat-id-display {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  code {
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+}
+
+// ── Responsive Design ────────────────────────────────────────────────
+@media (max-width: 768px) {
+  .user-settings-container {
+    padding: 1rem;
+
+    h1 {
+      font-size: 1.5rem;
+    }
+  }
+
+  .button-group {
+    flex-direction: column;
+
+    button {
+      width: 100%;
+    }
+  }
+}

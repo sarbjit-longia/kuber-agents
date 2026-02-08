@@ -290,6 +290,40 @@
           </ng-container>
         </div>
 
+        <!-- Notification Settings -->
+        <div class="section" *ngIf="selectedItemKey === 'notification_settings'">
+          <div class="section-title">
+            <mat-icon>notifications</mat-icon>
+            Telegram Notifications
+          </div>
+
+          <div class="hint">
+            <mat-icon>info</mat-icon>
+            Configure Telegram in <a routerLink="/settings">User Settings</a> first
+          </div>
+
+          <div class="notification-toggle">
+            <mat-slide-toggle [(ngModel)]="notificationEnabled">
+              Enable Notifications
+            </mat-slide-toggle>
+          </div>
+
+          <div class="notification-events" *ngIf="notificationEnabled">
+            <div class="col-title">Choose events to notify:</div>
+            <div class="event-checkboxes">
+              <mat-checkbox
+                *ngFor="let event of availableNotificationEvents"
+                [(ngModel)]="event.checked"
+                (change)="toggleNotificationEvent(event.value)"
+                [checked]="notificationEvents.includes(event.value)"
+              >
+                <mat-icon class="event-icon">{{ event.icon }}</mat-icon>
+                {{ event.label }}
+              </mat-checkbox>
+            </div>
+          </div>
+        </div>
+
         <!-- Agent settings -->
         <ng-container *ngIf="getSelectedAgentType() as at">
           <div class="meta">

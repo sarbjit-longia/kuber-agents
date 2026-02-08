@@ -34,6 +34,13 @@ class PipelineBase(BaseModel):
     
     # DEPRECATED: Kept for backward compatibility
     scanner_tickers: Optional[List[str]] = Field(default=None, description="(Deprecated) Use scanner_id instead")
+    
+    # Notification settings
+    notification_enabled: bool = Field(default=False, description="Enable Telegram notifications for this pipeline")
+    notification_events: Optional[List[str]] = Field(
+        default=None,
+        description="Events to notify: trade_executed, position_closed, pipeline_failed, risk_rejected"
+    )
 
 
 class PipelineCreate(PipelineBase):
@@ -51,6 +58,8 @@ class PipelineUpdate(BaseModel):
     scanner_id: Optional[UUID] = None
     signal_subscriptions: Optional[List[SignalSubscription]] = None
     scanner_tickers: Optional[List[str]] = None  # Deprecated
+    notification_enabled: Optional[bool] = None
+    notification_events: Optional[List[str]] = None
 
 
 class PipelineInDB(PipelineBase):
@@ -62,6 +71,8 @@ class PipelineInDB(PipelineBase):
     scanner_id: Optional[UUID]
     signal_subscriptions: Optional[List[SignalSubscription]]
     scanner_tickers: Optional[List[str]]  # Deprecated
+    notification_enabled: bool
+    notification_events: Optional[List[str]]
     created_at: datetime
     updated_at: datetime
 

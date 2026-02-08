@@ -24,6 +24,79 @@ from billiard.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 logger = structlog.get_logger()
 
 
+def _send_position_closed_notification(
+    execution: Execution,
+    pnl: float = 0.0,
+    pnl_percent: float = 0.0,
+    exit_reason: str = "Position closed"
+):
+    """
+    Send Telegram notification for position closure.
+    
+    Args:
+        execution: Execution object
+        pnl: Profit/Loss in dollars
+        pnl_percent: P&L percentage
+        exit_reason: Reason for exit
+    """
+    try:
+        from app.services.telegram_notifier import telegram_notifier
+        from app.models.user import User as UserModel
+        from app.models.pipeline import Pipeline as PipelineModel
+        
+        if not execution.user_id or not execution.pipeline_id:
+            return
+        
+        db = SessionLocal()
+        try:
+            # Get user
+            user = db.query(UserModel).filter(UserModel.id == execution.user_id).first()
+            if not user or not user.telegram_enabled:
+                return
+            
+            if not user.telegram_bot_token or not user.telegram_chat_id:
+                return
+            
+            # Get pipeline
+            pipeline = db.query(PipelineModel).filter(PipelineModel.id == execution.pipeline_id).first()
+            if not pipeline or not pipeline.notification_enabled:
+                return
+            
+            # Check if position_closed is in notification events
+            notification_events = pipeline.notification_events or []
+            if "position_closed" not in notification_events:
+                return
+            
+            # Send notification
+            telegram_notifier.send_position_closed(
+                bot_token=user.telegram_bot_token,
+                chat_id=user.telegram_chat_id,
+                symbol=execution.symbol,
+                pnl=pnl,
+                pnl_percent=pnl_percent,
+                exit_reason=exit_reason,
+                pipeline_name=pipeline.name
+            )
+            
+            logger.info(
+                "telegram_notification_sent",
+                user_id=str(execution.user_id),
+                pipeline_id=str(execution.pipeline_id),
+                event="position_closed"
+            )
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        # Don't fail monitoring if notification fails
+        logger.error(
+            "telegram_notification_failed",
+            error=str(e),
+            execution_id=str(execution.id) if execution else None
+        )
+
+
 def _extract_broker_tool(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Extract broker tool configuration from pipeline config.
@@ -1114,6 +1187,33 @@ def schedule_monitoring_check(self, execution_id: str):
                         db2.commit()
                 finally:
                     db2.close()
+            
+            # 📱 Send position closed notification
+            # Extract P&L info from updated_state if available
+            pnl = 0.0
+            pnl_percent = 0.0
+            exit_reason = "Position closed"
+            
+            try:
+                # Try to extract P&L from state.trade_execution or monitoring data
+                if hasattr(updated_state, 'monitoring_result') and updated_state.monitoring_result:
+                    pnl = updated_state.monitoring_result.get('pnl', 0.0)
+                    pnl_percent = updated_state.monitoring_result.get('pnl_percent', 0.0)
+                    exit_reason = updated_state.monitoring_result.get('exit_reason', 'Position closed')
+                elif updated_state.result:
+                    result_data = updated_state.result if isinstance(updated_state.result, dict) else {}
+                    pnl = result_data.get('pnl', 0.0)
+                    pnl_percent = result_data.get('pnl_percent', 0.0)
+                    exit_reason = result_data.get('exit_reason', 'Position closed')
+            except Exception:
+                pass  # Use defaults
+            
+            _send_position_closed_notification(
+                execution=execution,
+                pnl=pnl,
+                pnl_percent=pnl_percent,
+                exit_reason=exit_reason
+            )
             
             return {"status": "completed"}
         

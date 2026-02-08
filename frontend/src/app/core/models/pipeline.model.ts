@@ -73,6 +73,8 @@ export interface Pipeline {
   scanner_id?: string;
   signal_subscriptions?: SignalSubscription[];
   scanner_tickers?: string[]; // Deprecated - for backward compatibility
+  notification_enabled: boolean;
+  notification_events?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +86,8 @@ export interface PipelineCreate {
   trigger_mode?: TriggerMode;
   scanner_id?: string;
   signal_subscriptions?: SignalSubscription[];
+  notification_enabled?: boolean;
+  notification_events?: string[];
 }
 
 export interface PipelineUpdate {
@@ -95,6 +99,8 @@ export interface PipelineUpdate {
   scanner_id?: string;
   signal_subscriptions?: SignalSubscription[];
   scanner_tickers?: string[]; // Deprecated
+  notification_enabled?: boolean;
+  notification_events?: string[];
 }
 
 export enum ExecutionStatus {

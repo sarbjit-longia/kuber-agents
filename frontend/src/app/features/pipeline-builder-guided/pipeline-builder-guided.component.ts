@@ -19,6 +19,8 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { map, startWith } from 'rxjs/operators';
@@ -62,6 +64,8 @@ interface GuidedAgentSlot {
     MatSnackBarModule,
     MatChipsModule,
     MatAutocompleteModule,
+    MatCheckboxModule,
+    MatSlideToggleModule,
     NavbarComponent,
     AgentInstructionsComponent,
     ToolSelectorComponent,
@@ -83,6 +87,16 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   pipelineName = 'Untitled Pipeline';
   pipelineDescription = '';
   executionMode: ExecutionMode = 'paper';
+  
+  // Notification settings
+  notificationEnabled = false;
+  notificationEvents: string[] = [];
+  availableNotificationEvents = [
+    { value: 'trade_executed', label: 'Trade Executed', icon: 'check_circle' },
+    { value: 'position_closed', label: 'Position Closed', icon: 'close' },
+    { value: 'pipeline_failed', label: 'Pipeline Failed', icon: 'error' },
+    { value: 'risk_rejected', label: 'Risk Rejected', icon: 'block' }
+  ];
 
   triggerMode: TriggerMode = TriggerMode.PERIODIC;
   scannerId: string | null = null;
@@ -165,7 +179,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   ];
 
-  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings'; title: string; subtitle: string; icon: string }> = [
+  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings'; title: string; subtitle: string; icon: string }> = [
     {
       key: 'pipeline_settings',
       title: 'Pipeline settings',
@@ -181,8 +195,14 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     {
       key: 'signal_filters',
       title: 'Signal filters',
-      subtitle: 'Optional filters for SIGNAL trigger',
+      subtitle: 'Choose which signal types to accept',
       icon: 'tune'
+    },
+    {
+      key: 'notification_settings',
+      title: 'Notifications',
+      subtitle: 'Telegram alerts for trades + events',
+      icon: 'notifications'
     }
   ];
 
@@ -287,6 +307,10 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         this.pipelineName = pipeline.name || this.pipelineName;
         this.pipelineDescription = pipeline.description || '';
         this.executionMode = (pipeline.config?.mode as ExecutionMode) || this.executionMode;
+        
+        // Load notification settings
+        this.notificationEnabled = pipeline.notification_enabled || false;
+        this.notificationEvents = pipeline.notification_events || [];
 
         this.triggerMode = pipeline.trigger_mode || TriggerMode.PERIODIC;
         this.scannerId = pipeline.scanner_id || null;
@@ -435,6 +459,17 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     const current = Array.isArray(this.signalSubscriptions) ? [...this.signalSubscriptions] : [];
     current.splice(index, 1);
     this.signalSubscriptions = current.length ? current : null;
+  }
+  
+  toggleNotificationEvent(eventValue: string): void {
+    const index = this.notificationEvents.indexOf(eventValue);
+    if (index >= 0) {
+      // Remove
+      this.notificationEvents = this.notificationEvents.filter(e => e !== eventValue);
+    } else {
+      // Add
+      this.notificationEvents = [...this.notificationEvents, eventValue];
+    }
   }
 
   getSupportedTools(agentType: string): string[] {
@@ -645,6 +680,8 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       description: this.pipelineDescription,
       config: this.buildConfigForSave(),
       trigger_mode: this.triggerMode,
+      notification_enabled: this.notificationEnabled,
+      notification_events: this.notificationEvents,
       // Scanner can be used for both periodic and signal pipelines; for SIGNAL it is required.
       scanner_id: this.scannerId,
     };
