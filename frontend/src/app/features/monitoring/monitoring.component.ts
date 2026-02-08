@@ -307,10 +307,13 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     
     const labels: any = {
       'executed': 'Executed',
+      'accepted': 'Accepted',
       'skipped': 'Skipped',
       'rejected': 'Rejected',
+      'cancelled': 'Cancelled',
       'pending': 'Pending',
       'no_trade': 'No Trade',
+      'no_action': 'No Action',
       'unknown': 'Unknown'
     };
     return labels[outcome] || outcome;
@@ -319,17 +322,20 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   getOutcomeClass(execution: any): string {
     const outcome = execution.trade_outcome;
     if (!outcome) return '';
-    return `outcome-${outcome.toLowerCase().replace('_', '-')}`;
+    return `outcome-${outcome.toLowerCase().replace(/_/g, '-')}`;
   }
 
   getOutcomeIcon(execution: any): string {
     const outcome = execution.trade_outcome;
     const icons: any = {
       'executed': 'check_circle',
-      'skipped': 'block',
+      'accepted': 'thumb_up',
+      'skipped': 'skip_next',
       'rejected': 'cancel',
+      'cancelled': 'close',
       'pending': 'schedule',
       'no_trade': 'remove_circle_outline',
+      'no_action': 'do_not_disturb',
       'unknown': 'help_outline'
     };
     return icons[outcome] || 'help_outline';
