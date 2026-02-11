@@ -124,6 +124,12 @@ export interface ExecutionSummary {
   agent_count: number;
   agents_completed: number;
   error_message?: string;
+  // Additional fields for monitoring display
+  strategy_action?: string;
+  strategy_confidence?: number;
+  trade_outcome?: string;
+  result?: any;
+  reports?: { [agentId: string]: AgentReport };
 }
 
 export interface ExecutionStats {

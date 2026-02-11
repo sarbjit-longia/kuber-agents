@@ -155,7 +155,9 @@ class OandaBrokerService(BrokerService):
         try:
             result = self._make_request("GET", f"/accounts/{target_account}/openPositions")
             if "error" in result or "positions" not in result:
-                return []
+                # API returned error response - raise exception
+                error_msg = result.get("error", "Unknown error")
+                raise Exception(f"Oanda API error: {error_msg}")
             
             positions = []
             for pos in result["positions"]:
@@ -167,7 +169,8 @@ class OandaBrokerService(BrokerService):
             
         except Exception as e:
             self.logger.error("Failed to get Oanda positions", error=str(e))
-            return []
+            # Re-raise so caller can handle API errors (timeouts, auth, etc.)
+            raise
     
     def get_position(self, symbol: str, account_id: Optional[str] = None) -> Optional[Position]:
         """Get position for specific instrument"""
@@ -186,9 +189,12 @@ class OandaBrokerService(BrokerService):
             return self._convert_position(result["position"])
             
         except Exception as e:
-            if "404" not in str(e):
-                self.logger.warning("Failed to get Oanda position", symbol=symbol, error=str(e))
-            return None
+            # 404 means position doesn't exist (closed) - return None
+            if "404" in str(e):
+                return None
+            # Any other error (timeout, 401, 500, etc.) - re-raise so caller can handle
+            self.logger.error("Failed to get Oanda position", symbol=symbol, error=str(e))
+            raise
     
     def _convert_position(self, oanda_pos: Dict) -> Optional[Position]:
         """Convert Oanda position to standard Position model"""
@@ -740,7 +746,7 @@ class OandaBrokerService(BrokerService):
             
             # Check for open position
             position = self.get_position(normalized_symbol, account_id)
-            if position and position.quantity != 0:
+            if position and position.qty != 0:
                 return True
             
             # Check for open orders

@@ -21,17 +21,18 @@ engine = create_async_engine(
     ASYNC_DATABASE_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=20,
+    max_overflow=40,
 )
 
 # Create sync engine (for Celery tasks)
+# Larger pool for Celery to handle bursts of signal-triggered executions
 sync_engine = create_engine(
     SYNC_DATABASE_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=30,
+    max_overflow=70,
 )
 
 # Create async session factory

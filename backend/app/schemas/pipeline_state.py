@@ -155,6 +155,17 @@ class SignalData(BaseModel):
     market_data: Optional[Dict[str, Any]] = None
 
 
+class TradeOutcome(BaseModel):
+    """Final outcome of a trade with P&L information."""
+    status: str  # "completed", "cancelled", "rejected", "error"
+    pnl: Optional[float] = None  # Profit/Loss in dollars
+    pnl_percent: Optional[float] = None  # Profit/Loss percentage
+    exit_reason: Optional[str] = None  # Why the position closed
+    exit_price: Optional[float] = None
+    entry_price: Optional[float] = None
+    closed_at: Optional[datetime] = None
+
+
 class PipelineState(BaseModel):
     """
     The complete state object passed between agents in a pipeline.
@@ -183,6 +194,7 @@ class PipelineState(BaseModel):
     strategy: Optional[StrategyResult] = None
     risk_assessment: Optional[RiskAssessment] = None
     trade_execution: Optional[TradeExecution] = None
+    trade_outcome: Optional[TradeOutcome] = None  # Final P&L when position closes
     
     # Position management
     current_position: Optional[Position] = None

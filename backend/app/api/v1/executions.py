@@ -285,29 +285,40 @@ async def list_executions(
             # Determine trade outcome
             trade_execution = execution.result.get('trade_execution')
             risk_assessment = execution.result.get('risk_assessment')
+            trade_outcome_obj = execution.result.get('trade_outcome')  # From monitoring completion
             
-            if trade_execution:
+            # PRIORITY 1: Check if monitoring completed (has trade_outcome from agent)
+            if trade_outcome_obj and isinstance(trade_outcome_obj, dict):
+                # Use the actual status from the trade_outcome object:
+                # - "accepted" = limit order was accepted but never filled (CANCELLED execution)
+                # - "executed" = trade was filled, position opened and closed (COMPLETED execution)
+                trade_outcome = trade_outcome_obj.get('status', 'executed')
+            elif trade_execution:
                 # Has trade execution data
                 exec_status = trade_execution.get('status', '').lower()
                 if exec_status in ['filled', 'partially_filled']:
                     trade_outcome = 'executed'
+                elif exec_status == 'accepted':
+                    trade_outcome = 'accepted'  # Order accepted but not filled yet
                 elif exec_status == 'rejected':
                     trade_outcome = 'rejected'
                 elif exec_status == 'pending':
                     trade_outcome = 'pending'
+                elif exec_status == 'cancelled':
+                    trade_outcome = 'cancelled'
                 else:
                     trade_outcome = exec_status or 'unknown'
             elif risk_assessment:
                 # Has risk assessment but no execution
                 approval = risk_assessment.get('approved', None)
                 if approval is False:
-                    trade_outcome = 'skipped'
+                    trade_outcome = 'rejected'  # Changed from 'skipped' for clarity
                 elif strategy_action and strategy_action != 'HOLD':
                     trade_outcome = 'pending'  # Strategy says trade but no execution yet
             elif strategy_action:
                 # Has strategy but no risk/execution
                 if strategy_action == 'HOLD':
-                    trade_outcome = 'no_trade'
+                    trade_outcome = 'no_action'  # Changed from 'no_trade' for consistency
                 else:
                     trade_outcome = 'pending'
         

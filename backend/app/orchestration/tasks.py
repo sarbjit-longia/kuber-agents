@@ -198,6 +198,9 @@ def execute_pipeline(
             from app.models.scanner import Scanner
             from app.telemetry import pipeline_executions_counter
 
+            # Extract broker tool from pipeline config
+            broker_tool = _extract_broker_tool(pipeline.config)
+
             # Determine symbol for preflight check
             execution_symbol = symbol
             if not execution_symbol and pipeline.scanner_id:
@@ -953,8 +956,14 @@ def schedule_monitoring_check(self, execution_id: str):
     db = SessionLocal()
     
     try:
+        # Convert execution_id to UUID if it's a string (handle both string and UUID inputs)
+        if isinstance(execution_id, str):
+            exec_uuid = UUID(execution_id)
+        else:
+            exec_uuid = execution_id
+        
         # Load execution with version for optimistic locking
-        execution = db.query(Execution).filter(Execution.id == UUID(execution_id)).first()
+        execution = db.query(Execution).filter(Execution.id == exec_uuid).first()
         
         if not execution:
             logger.warning("execution_not_found", execution_id=execution_id)
@@ -1160,13 +1169,65 @@ def schedule_monitoring_check(self, execution_id: str):
         
         # Check if monitoring should complete
         elif updated_state.should_complete:
-            execution.status = ExecutionStatus.COMPLETED
+            # Determine execution status based on trade_outcome:
+            # - "accepted" = limit order was accepted but never filled → CANCELLED
+            # - "executed" = trade was filled and position closed → COMPLETED
+            outcome_status = updated_state.trade_outcome.status if updated_state.trade_outcome else "executed"
+            
+            if outcome_status == "accepted":
+                # Unfilled limit order - mark as CANCELLED
+                execution.status = ExecutionStatus.CANCELLED
+                execution.execution_phase = "cancelled"
+            else:
+                # Real trade that was executed and position closed - mark as COMPLETED
+                execution.status = ExecutionStatus.COMPLETED
+                execution.execution_phase = "completed"
+            
             execution.completed_at = datetime.utcnow()
-            execution.execution_phase = "completed"
             execution.next_check_at = None
             execution.version += 1
             
-            logger.info("monitoring_completed", execution_id=execution_id)
+            # Extract P&L from trade_outcome if available
+            pnl = 0.0
+            pnl_percent = 0.0
+            exit_reason = "Position closed"
+            exit_price = None
+            entry_price = None
+            
+            if updated_state.trade_outcome:
+                pnl = updated_state.trade_outcome.pnl or 0.0
+                pnl_percent = updated_state.trade_outcome.pnl_percent or 0.0
+                exit_reason = updated_state.trade_outcome.exit_reason or "Position closed"
+                exit_price = updated_state.trade_outcome.exit_price
+                entry_price = updated_state.trade_outcome.entry_price
+            
+            # Store P&L in execution result for UI display
+            if not execution.result:
+                execution.result = {}
+            
+            # Store in nested trade_outcome object (preserve actual status from agent)
+            execution.result['trade_outcome'] = {
+                'status': outcome_status,
+                'pnl': pnl,
+                'pnl_percent': pnl_percent,
+                'exit_reason': exit_reason,
+                'exit_price': exit_price,
+                'entry_price': entry_price,
+                'closed_at': datetime.utcnow().isoformat()
+            }
+            
+            # ALSO store at top level for frontend compatibility
+            execution.result['final_pnl'] = pnl
+            execution.result['final_pnl_percent'] = pnl_percent
+            
+            logger.info(
+                "monitoring_completed",
+                execution_id=execution_id,
+                outcome_status=outcome_status,
+                execution_status=execution.status.value,
+                pnl=pnl,
+                pnl_percent=pnl_percent,
+            )
             
             try:
                 db.commit()
@@ -1179,9 +1240,9 @@ def schedule_monitoring_check(self, execution_id: str):
                 try:
                     ex2 = db2.query(Execution).filter(Execution.id == UUID(execution_id)).first()
                     if ex2 and ex2.version == original_version:
-                        ex2.status = ExecutionStatus.COMPLETED
+                        ex2.status = ExecutionStatus.CANCELLED if outcome_status == "accepted" else ExecutionStatus.COMPLETED
                         ex2.completed_at = datetime.utcnow()
-                        ex2.execution_phase = "completed"
+                        ex2.execution_phase = "cancelled" if outcome_status == "accepted" else "completed"
                         ex2.next_check_at = None
                         ex2.version += 1
                         db2.commit()
@@ -1189,25 +1250,6 @@ def schedule_monitoring_check(self, execution_id: str):
                     db2.close()
             
             # 📱 Send position closed notification
-            # Extract P&L info from updated_state if available
-            pnl = 0.0
-            pnl_percent = 0.0
-            exit_reason = "Position closed"
-            
-            try:
-                # Try to extract P&L from state.trade_execution or monitoring data
-                if hasattr(updated_state, 'monitoring_result') and updated_state.monitoring_result:
-                    pnl = updated_state.monitoring_result.get('pnl', 0.0)
-                    pnl_percent = updated_state.monitoring_result.get('pnl_percent', 0.0)
-                    exit_reason = updated_state.monitoring_result.get('exit_reason', 'Position closed')
-                elif updated_state.result:
-                    result_data = updated_state.result if isinstance(updated_state.result, dict) else {}
-                    pnl = result_data.get('pnl', 0.0)
-                    pnl_percent = result_data.get('pnl_percent', 0.0)
-                    exit_reason = result_data.get('exit_reason', 'Position closed')
-            except Exception:
-                pass  # Use defaults
-            
             _send_position_closed_notification(
                 execution=execution,
                 pnl=pnl,
@@ -1215,7 +1257,7 @@ def schedule_monitoring_check(self, execution_id: str):
                 exit_reason=exit_reason
             )
             
-            return {"status": "completed"}
+            return {"status": "completed", "pnl": pnl, "pnl_percent": pnl_percent}
         
         else:
             # Schedule next check

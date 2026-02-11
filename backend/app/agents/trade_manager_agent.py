@@ -451,6 +451,19 @@ class TradeManagerAgent(BaseAgent):
                     state.should_complete = True
                     
                     unrealized_pl = position.get("unrealized_pl", 0)
+                    current_price = position.get("current_price")
+                    
+                    # Populate trade_outcome for easy access in monitoring task
+                    from app.schemas.pipeline_state import TradeOutcome
+                    state.trade_outcome = TradeOutcome(
+                        status="executed",  # Trade was executed and position was opened
+                        pnl=unrealized_pl,
+                        pnl_percent=pnl_percent,
+                        exit_reason=reason,
+                        exit_price=current_price,
+                        entry_price=state.strategy.entry_price if state.strategy else None,
+                        closed_at=datetime.now()
+                    )
                     
                     self.record_report(
                         state,
@@ -462,6 +475,8 @@ class TradeManagerAgent(BaseAgent):
                             "reason": reason,
                             "unrealized_pl": unrealized_pl,
                             "pnl_percent": pnl_percent,
+                            "exit_price": current_price,
+                            "entry_price": state.strategy.entry_price if state.strategy else None,
                             "closed_at": datetime.now().isoformat(),
                             "order_id": order_id,
                             "trade_id": trade_id
@@ -523,16 +538,28 @@ class TradeManagerAgent(BaseAgent):
             # If we only had an order_id (no trade_id), treat this as an unfilled/cancelled order,
             # not a closed position.
             if order_id and not trade_id:
-                self.log(state, "⚠️ Limit order not found and no position opened - treating as cancelled/unfilled")
+                self.log(state, "⚠️ Limit order not found and no position opened - treating as unfilled")
                 if state.trade_execution:
-                    state.trade_execution.status = "cancelled"
+                    state.trade_execution.status = "accepted"  # Order was accepted but never filled
                 state.should_complete = True
+
+                # Set trade_outcome as "accepted" (order accepted but never executed)
+                from app.schemas.pipeline_state import TradeOutcome
+                state.trade_outcome = TradeOutcome(
+                    status="accepted",  # Order was accepted but never filled
+                    pnl=0.0,
+                    pnl_percent=0.0,
+                    exit_reason="Limit order never filled",
+                    exit_price=None,
+                    entry_price=state.strategy.entry_price if state.strategy else None,
+                    closed_at=datetime.now()
+                )
 
                 self.record_report(
                     state,
-                    title="Limit order cancelled / unfilled",
-                    summary=f"{state.symbol} limit order did not fill and is no longer pending",
-                    status="completed",
+                    title="Limit order not filled",
+                    summary=f"{state.symbol} limit order was accepted but never filled",
+                    status="skipped",  # This execution is being skipped (no actual trade)
                     data={
                         "symbol": state.symbol,
                         "reason": "Order not found in pending list and no position opened",
@@ -553,6 +580,7 @@ class TradeManagerAgent(BaseAgent):
             # Try to get final P&L from trade_execution or last monitoring report
             final_pnl = None
             final_pnl_percent = None
+            exit_price = None
             
             # Check if we have trade execution data with entry price
             if state.trade_execution and state.strategy:
@@ -562,6 +590,19 @@ class TradeManagerAgent(BaseAgent):
                     if isinstance(last_report, dict) and 'data' in last_report:
                         final_pnl = last_report['data'].get('unrealized_pl')
                         final_pnl_percent = last_report['data'].get('pnl_percent')
+                        exit_price = last_report['data'].get('current_price')
+            
+            # Populate trade_outcome for easy access in monitoring task
+            from app.schemas.pipeline_state import TradeOutcome
+            state.trade_outcome = TradeOutcome(
+                status="executed",  # Trade was executed and position was opened
+                pnl=final_pnl,
+                pnl_percent=final_pnl_percent,
+                exit_reason="Position closed",
+                exit_price=exit_price,
+                entry_price=state.strategy.entry_price if state.strategy else None,
+                closed_at=datetime.now()
+            )
             
             self.record_report(
                 state,
@@ -573,6 +614,8 @@ class TradeManagerAgent(BaseAgent):
                     "reason": "Position closed",
                     "final_pnl": final_pnl,
                     "final_pnl_percent": final_pnl_percent,
+                    "exit_price": exit_price,
+                    "entry_price": state.strategy.entry_price if state.strategy else None,
                     "closed_at": datetime.now().isoformat(),
                     "order_id": order_id,
                     "trade_id": trade_id
@@ -693,10 +736,24 @@ class TradeManagerAgent(BaseAgent):
             if position and position.current_price:
                 return (position.current_price, None)
             
-            # No position found - could be valid (closed) or could be error
-            # For limit order monitoring, we need current price even without position
-            # This would require broker API enhancement to get quotes
-            return (0.0, f"No position for {symbol}, cannot determine current price")
+            # No position found - try to get quote for pending limit orders
+            # (we need current price to check if order should be cancelled)
+            self.logger.info(f"No position found for {symbol}, fetching quote instead")
+            quote = broker.get_quote(symbol)
+            
+            if "error" in quote:
+                error_msg = f"Failed to get quote for {symbol}: {quote['error']}"
+                self.logger.error(error_msg)
+                return (0.0, error_msg)
+            
+            # Use mid-price (average of bid/ask) or 'last' price
+            price = quote.get("last") or ((quote.get("bid", 0) + quote.get("ask", 0)) / 2)
+            
+            if price <= 0:
+                return (0.0, f"Invalid quote price for {symbol}: {price}")
+            
+            self.logger.info(f"Got current price for {symbol}: {price}")
+            return (price, None)
             
         except Exception as e:
             error_msg = f"API error getting current price for {symbol}: {str(e)}"

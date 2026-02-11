@@ -25,9 +25,10 @@ export class MonitoringService {
 
   /**
    * Load all executions for current user
+   * Fetch up to 100 to ensure MONITORING executions are included
    */
   loadExecutions(): Observable<ExecutionSummary[]> {
-    return this.apiService.get<ExecutionSummary[]>('/api/v1/executions').pipe(
+    return this.apiService.get<ExecutionSummary[]>('/api/v1/executions?limit=100').pipe(
       tap(executions => this.executionsSubject.next(executions))
     );
   }

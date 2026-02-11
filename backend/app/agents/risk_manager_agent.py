@@ -215,22 +215,30 @@ Calculate position size using:
 1. User's specified risk percentage (e.g., "1% risk" means use 1%, not 2%)
 2. Distance from entry to stop loss (in dollars/pips)
 3. Account balance
-4. ONLY enforce rules the user mentioned (don't add your own)
+4. ONLY enforce risk rules the user mentioned (don't add your own restrictions)
 
 Formula for position size:
 - Risk Amount = Account Balance × Risk Percentage
 - Position Size = Risk Amount ÷ Distance to Stop Loss
+
+CRITICAL RULES:
+- If the user does NOT specify a risk percentage, default to 2% of account balance.
+- If the user says to "approve all trades", "don't worry about risk", or similar,
+  you STILL MUST calculate a valid position size using the 2% default risk rule.
+- POSITION_SIZE must ALWAYS be greater than 0 when APPROVED is Yes.
+- A position size of 0 means the trade cannot be executed — never return 0 if approving.
+- Always round position size to a whole number (no decimals).
 
 ═══════════════════════════════════════════════════════════
 OUTPUT FORMAT (CRITICAL):
 ═══════════════════════════════════════════════════════════
 You MUST provide your response in this EXACT format:
 APPROVED: Yes/No
-POSITION_SIZE: <number of shares/contracts>
+POSITION_SIZE: <number of shares/contracts — MUST be > 0 if APPROVED is Yes>
 RISK_SCORE: <0.0 to 1.0>
 MAX_LOSS: <dollar amount>
 WARNINGS: <list any warnings, or "None">
-REASONING: <brief explanation of your calculation>
+REASONING: <brief explanation of your calculation including the formula used>
                 """,
                 agent=risk_analyst,
                 expected_output="Risk decision with position size calculation following user's exact specifications"
@@ -247,6 +255,23 @@ REASONING: <brief explanation of your calculation>
             
             # Parse LLM response
             risk_decision = self._parse_risk_decision(str(result), strategy)
+            
+            # Safety net: if trade approved but position_size is 0, calculate a fallback.
+            # This happens when user gives loose instructions like "just approve everything".
+            if risk_decision["approved"] and risk_decision["position_size"] <= 0:
+                fallback_size = self._calculate_fallback_position_size(
+                    state, strategy, broker_info
+                )
+                self.log(
+                    state,
+                    f"⚠️ LLM returned position size 0 despite approving. "
+                    f"Using fallback position size: {fallback_size}"
+                )
+                risk_decision["position_size"] = fallback_size
+                risk_decision["warnings"].append(
+                    "Position size was auto-calculated (2% risk default) "
+                    "because instructions did not specify sizing rules."
+                )
             
             # Create risk assessment
             state.risk_assessment = RiskAssessment(
@@ -446,6 +471,39 @@ MARKET CONDITIONS:
                 context += f"- {pos.get('symbol', 'N/A')}: {pos.get('qty', 0)} shares\n"
         
         return context
+    
+    def _calculate_fallback_position_size(
+        self, state: PipelineState, strategy, broker_info: Dict[str, Any]
+    ) -> float:
+        """
+        Calculate a sensible fallback position size when the LLM fails to provide one.
+        
+        Uses 2% risk of account equity ÷ distance-to-stop-loss. If stop loss is missing,
+        falls back to 1% of equity ÷ entry price (i.e. dollar-based sizing).
+        
+        Returns:
+            Position size as a positive integer (min 1).
+        """
+        equity = broker_info.get("equity", broker_info.get("account_balance", 10000))
+        entry = strategy.entry_price or 0
+        stop = strategy.stop_loss
+        risk_pct = 0.02  # 2% default risk
+
+        if entry > 0 and stop is not None and stop != 0:
+            # Standard risk-based sizing
+            risk_per_unit = abs(entry - stop)
+            if risk_per_unit > 0:
+                risk_amount = equity * risk_pct
+                size = risk_amount / risk_per_unit
+                return max(1, int(size))
+
+        # Fallback: allocate 1% of equity by dollar value
+        if entry > 0:
+            size = (equity * 0.01) / entry
+            return max(1, int(size))
+
+        # Last resort
+        return 1
     
     def _parse_risk_decision(self, llm_response: str, strategy) -> Dict[str, Any]:
         """Parse LLM response into structured risk decision."""

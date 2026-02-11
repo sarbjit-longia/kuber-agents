@@ -561,7 +561,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   }
 
   onConfigChange(data: any): void {
-    this.editingConfig = { ...(data || {}) };
+    // Merge additional-schema fields into existing config so that fields managed by
+    // other sub-components (instructions, tools, strategy_document_url, etc.) are preserved.
+    this.editingConfig = { ...this.editingConfig, ...(data || {}) };
     this.recomputeEstimatedPipelineCost();
   }
 

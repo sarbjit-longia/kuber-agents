@@ -7,6 +7,7 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,6 +19,11 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatTableDataSource } from '@angular/material/table';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
+import { MatInputModule } from '@angular/material/input';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 
 import { MonitoringService } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
@@ -29,6 +35,7 @@ import { ExecutionReportModalComponent } from './execution-report-modal/executio
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatCardModule,
     MatButtonModule,
     MatIconModule,
@@ -39,6 +46,11 @@ import { ExecutionReportModalComponent } from './execution-report-modal/executio
     MatSnackBarModule,
     MatDialogModule,
     MatPaginatorModule,
+    MatFormFieldModule,
+    MatSelectModule,
+    MatInputModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     NavbarComponent
   ],
   templateUrl: './monitoring.component.html',
@@ -49,8 +61,52 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   activeExecutions: ExecutionSummary[] = [];
   historicalDataSource = new MatTableDataSource<ExecutionSummary>([]);
   
+  // All executions (unfiltered)
+  allExecutions: ExecutionSummary[] = [];
+  
   stats: ExecutionStats | null = null;
   loading = true;
+  
+  // Filter values
+  filters = {
+    status: 'all',
+    mode: 'all',
+    tradeOutcome: 'all',
+    symbol: '',
+    pipeline: '',
+    startDate: null as Date | null,
+    endDate: null as Date | null
+  };
+  
+  // Filter options
+  statusOptions = [
+    { value: 'all', label: 'All Statuses' },
+    { value: 'MONITORING', label: 'Monitoring' },
+    { value: 'RUNNING', label: 'Running' },
+    { value: 'COMPLETED', label: 'Completed' },
+    { value: 'FAILED', label: 'Failed' },
+    { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'PENDING', label: 'Pending' }
+  ];
+  
+  modeOptions = [
+    { value: 'all', label: 'All Modes' },
+    { value: 'paper', label: 'Paper' },
+    { value: 'live', label: 'Live' },
+    { value: 'simulation', label: 'Simulation' }
+  ];
+  
+  tradeOutcomeOptions = [
+    { value: 'all', label: 'All Outcomes' },
+    { value: 'executed', label: 'Executed' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'skipped', label: 'Skipped' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'cancelled', label: 'Cancelled' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'no_trade', label: 'No Trade' },
+    { value: 'no_action', label: 'No Action' }
+  ];
   
   // Separate columns for active monitoring (more compact)
   activeColumns: string[] = ['symbol', 'pipeline', 'mode', 'started', 'result', 'pnl', 'actions'];
@@ -87,21 +143,11 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   loadData(): void {
     this.monitoringService.loadExecutions().subscribe({
       next: (executions) => {
-        // Split executions: MONITORING/RUNNING vs others (status comes as uppercase from backend)
-        this.activeExecutions = executions.filter(
-          e => e.status.toUpperCase() === 'MONITORING' || e.status.toUpperCase() === 'RUNNING'
-        );
+        // Store all executions
+        this.allExecutions = executions;
         
-        const historical = executions.filter(
-          e => e.status.toUpperCase() !== 'MONITORING' && e.status.toUpperCase() !== 'RUNNING'
-        );
-        
-        this.historicalDataSource.data = historical;
-        
-        // Ensure paginator is connected after data update
-        if (this.paginator) {
-          this.historicalDataSource.paginator = this.paginator;
-        }
+        // Apply filters
+        this.applyFilters();
         
         this.loading = false;
       },
@@ -120,6 +166,88 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
         console.error('Failed to load stats:', error);
       }
     });
+  }
+
+  applyFilters(): void {
+    let filtered = [...this.allExecutions];
+    
+    // Filter by status
+    if (this.filters.status !== 'all') {
+      filtered = filtered.filter(e => e.status.toUpperCase() === this.filters.status);
+    }
+    
+    // Filter by mode
+    if (this.filters.mode !== 'all') {
+      filtered = filtered.filter(e => e.mode.toLowerCase() === this.filters.mode);
+    }
+    
+    // Filter by trade outcome
+    if (this.filters.tradeOutcome !== 'all') {
+      filtered = filtered.filter(e => e.trade_outcome === this.filters.tradeOutcome);
+    }
+    
+    // Filter by symbol (case-insensitive partial match)
+    if (this.filters.symbol) {
+      const symbolLower = this.filters.symbol.toLowerCase();
+      filtered = filtered.filter(e => e.symbol?.toLowerCase().includes(symbolLower) ?? false);
+    }
+    
+    // Filter by pipeline (case-insensitive partial match)
+    if (this.filters.pipeline) {
+      const pipelineLower = this.filters.pipeline.toLowerCase();
+      filtered = filtered.filter(e => e.pipeline_name?.toLowerCase().includes(pipelineLower) ?? false);
+    }
+    
+    // Filter by date range
+    if (this.filters.startDate) {
+      filtered = filtered.filter(e => {
+        const startedAt = new Date(e.started_at);
+        return startedAt >= this.filters.startDate!;
+      });
+    }
+    
+    if (this.filters.endDate) {
+      // Set end date to end of day
+      const endOfDay = new Date(this.filters.endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(e => {
+        const startedAt = new Date(e.started_at);
+        return startedAt <= endOfDay;
+      });
+    }
+    
+    // Split filtered results into active and historical
+    this.activeExecutions = filtered.filter(
+      e => e.status.toUpperCase() === 'MONITORING' || e.status.toUpperCase() === 'RUNNING'
+    );
+    
+    const historical = filtered.filter(
+      e => e.status.toUpperCase() !== 'MONITORING' && e.status.toUpperCase() !== 'RUNNING'
+    );
+    
+    this.historicalDataSource.data = historical;
+    
+    // Ensure paginator is connected after data update
+    if (this.paginator) {
+      this.historicalDataSource.paginator = this.paginator;
+    }
+  }
+
+  clearFilters(): void {
+    this.filters = {
+      status: 'all',
+      mode: 'all',
+      tradeOutcome: 'all',
+      symbol: '',
+      pipeline: '',
+      startDate: null,
+      endDate: null
+    };
+    this.applyFilters();
+  }
+
+  onFilterChange(): void {
+    this.applyFilters();
   }
 
   viewExecution(execution: ExecutionSummary): void {
@@ -342,11 +470,19 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   getPnL(execution: any): { value: number | null, percent: number | null } {
-    // Check if we have final P&L (completed trades)
+    // Check if we have final P&L (completed trades) - NEW FORMAT
     if (execution.result?.final_pnl !== null && execution.result?.final_pnl !== undefined) {
       return {
         value: execution.result.final_pnl,
         percent: execution.result.final_pnl_percent
+      };
+    }
+    
+    // Check if we have P&L in trade_outcome (OLD FORMAT - fallback)
+    if (execution.result?.trade_outcome?.pnl !== null && execution.result?.trade_outcome?.pnl !== undefined) {
+      return {
+        value: execution.result.trade_outcome.pnl,
+        percent: execution.result.trade_outcome.pnl_percent
       };
     }
 

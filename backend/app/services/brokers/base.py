@@ -328,7 +328,7 @@ class BrokerService(ABC):
             # Check for open position using broker's get_position method
             # (which handles broker-specific symbol normalization)
             position = self.get_position(symbol, account_id)
-            if position and position.quantity != 0:
+            if position and position.qty != 0:
                 return True
             
             # Check for open orders

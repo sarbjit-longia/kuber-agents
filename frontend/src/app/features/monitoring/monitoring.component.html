@@ -13,58 +13,7 @@
     </button>
   </div>
 
-  <!-- Stats Cards -->
-  <div class="stats-grid" *ngIf="stats">
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon">
-          <mat-icon>analytics</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Total Executions</div>
-          <div class="stat-value">{{ stats.total_executions }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon running">
-          <mat-icon>play_circle</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Active</div>
-          <div class="stat-value">{{ activeExecutions.length }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon success">
-          <mat-icon>check_circle</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Success Rate</div>
-          <div class="stat-value">{{ (stats.success_rate * 100).toFixed(1) }}%</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon cost">
-          <mat-icon>attach_money</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Total Cost</div>
-          <div class="stat-value">{{ formatCost(stats.total_cost) }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-  </div>
-
-  <!-- Active Monitoring Section (Always Visible, No Paging) -->
+  <!-- Active Monitoring Section (Always Visible, No Paging) - Shown First -->
   <mat-card class="active-monitoring-card" *ngIf="activeExecutions.length > 0">
     <mat-card-header>
       <mat-card-title>
@@ -129,6 +78,138 @@
       </div>
     </mat-card-content>
   </mat-card>
+
+  <!-- Filters Section -->
+  <mat-card class="filters-card">
+    <mat-card-content>
+      <div class="filters-header">
+        <h3><mat-icon>filter_list</mat-icon> Filters</h3>
+        <button mat-button color="accent" (click)="clearFilters()">
+          <mat-icon>clear</mat-icon>
+          Clear Filters
+        </button>
+      </div>
+      
+      <div class="filters-grid">
+        <!-- Status Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Status</mat-label>
+          <mat-select [(ngModel)]="filters.status" (selectionChange)="onFilterChange()">
+            <mat-option *ngFor="let option of statusOptions" [value]="option.value">
+              {{ option.label }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Mode Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Mode</mat-label>
+          <mat-select [(ngModel)]="filters.mode" (selectionChange)="onFilterChange()">
+            <mat-option *ngFor="let option of modeOptions" [value]="option.value">
+              {{ option.label }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Trade Outcome Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Trade Outcome</mat-label>
+          <mat-select [(ngModel)]="filters.tradeOutcome" (selectionChange)="onFilterChange()">
+            <mat-option *ngFor="let option of tradeOutcomeOptions" [value]="option.value">
+              {{ option.label }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Symbol Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Symbol</mat-label>
+          <input matInput [(ngModel)]="filters.symbol" (ngModelChange)="onFilterChange()" placeholder="e.g. AAPL, EUR_USD">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+
+        <!-- Pipeline Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Pipeline</mat-label>
+          <input matInput [(ngModel)]="filters.pipeline" (ngModelChange)="onFilterChange()" placeholder="Search pipeline name">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+
+        <!-- Start Date Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>Start Date</mat-label>
+          <input matInput [matDatepicker]="startPicker" [(ngModel)]="filters.startDate" (dateChange)="onFilterChange()">
+          <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+        </mat-form-field>
+
+        <!-- End Date Filter -->
+        <mat-form-field appearance="outline">
+          <mat-label>End Date</mat-label>
+          <input matInput [matDatepicker]="endPicker" [(ngModel)]="filters.endDate" (dateChange)="onFilterChange()">
+          <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+        </mat-form-field>
+      </div>
+
+      <div class="filter-summary">
+        <span class="filter-info">
+          <strong>{{ activeExecutions.length + historicalDataSource.data.length }}</strong> of <strong>{{ allExecutions.length }}</strong> executions shown
+        </span>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Stats Cards -->
+  <div class="stats-grid" *ngIf="stats">
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon">
+          <mat-icon>analytics</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Total Executions</div>
+          <div class="stat-value">{{ stats.total_executions }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon running">
+          <mat-icon>play_circle</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Active</div>
+          <div class="stat-value">{{ activeExecutions.length }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon success">
+          <mat-icon>check_circle</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value">{{ (stats.success_rate * 100).toFixed(1) }}%</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <div class="stat-icon cost">
+          <mat-icon>attach_money</mat-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">Total Cost</div>
+          <div class="stat-value">{{ formatCost(stats.total_cost) }}</div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
 
   <!-- Historical Executions Table (Paginated) -->
   <mat-card class="table-card">
