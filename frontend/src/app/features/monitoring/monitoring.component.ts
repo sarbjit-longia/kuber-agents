@@ -64,6 +64,14 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   // All executions (unfiltered)
   allExecutions: ExecutionSummary[] = [];
   
+  // Execution bar visualization data (music bar / equalizer style)
+  executionBars: Array<{
+    execution: ExecutionSummary;
+    colorClass: string;
+    height: number;
+    tooltip: string;
+  }> = [];
+  
   stats: ExecutionStats | null = null;
   loading = true;
   
@@ -71,7 +79,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   filters = {
     status: 'all',
     mode: 'all',
-    tradeOutcome: 'all',
+    tradeOutcome: 'executed',
     symbol: '',
     pipeline: '',
     startDate: null as Date | null,
@@ -81,12 +89,12 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   // Filter options
   statusOptions = [
     { value: 'all', label: 'All Statuses' },
-    { value: 'MONITORING', label: 'Monitoring' },
     { value: 'RUNNING', label: 'Running' },
+    { value: 'MONITORING', label: 'Monitoring' },
     { value: 'COMPLETED', label: 'Completed' },
     { value: 'FAILED', label: 'Failed' },
-    { value: 'CANCELLED', label: 'Cancelled' },
-    { value: 'PENDING', label: 'Pending' }
+    { value: 'PENDING', label: 'Pending' },
+    { value: 'COMMUNICATION_ERROR', label: 'Comm. Error' }
   ];
   
   modeOptions = [
@@ -98,20 +106,19 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   
   tradeOutcomeOptions = [
     { value: 'all', label: 'All Outcomes' },
-    { value: 'executed', label: 'Executed' },
-    { value: 'accepted', label: 'Accepted' },
-    { value: 'skipped', label: 'Skipped' },
-    { value: 'rejected', label: 'Rejected' },
+    { value: 'executed', label: 'Executed (P&L)' },
+    { value: 'pending', label: 'Pending (Limit Order)' },
     { value: 'cancelled', label: 'Cancelled' },
-    { value: 'pending', label: 'Pending' },
-    { value: 'no_trade', label: 'No Trade' },
-    { value: 'no_action', label: 'No Action' }
+    { value: 'failed', label: 'Failed' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'no_action', label: 'Hold / No Action' },
+    { value: 'no_trade', label: 'No Trade' }
   ];
   
   // Separate columns for active monitoring (more compact)
   activeColumns: string[] = ['symbol', 'pipeline', 'mode', 'started', 'result', 'pnl', 'actions'];
   // Full columns for historical executions
-  displayedColumns: string[] = ['symbol', 'pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'pnl', 'status', 'actions'];
+  displayedColumns: string[] = ['execution_id', 'symbol', 'pipeline', 'mode', 'source', 'started', 'duration', 'cost', 'result', 'outcome', 'pnl', 'status', 'actions'];
   
   @ViewChild(MatPaginator) paginator!: MatPaginator;
 
@@ -146,6 +153,9 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
         // Store all executions
         this.allExecutions = executions;
         
+        // Build execution timeline bars (always from all executions)
+        this.buildExecutionBars();
+        
         // Apply filters
         this.applyFilters();
         
@@ -171,63 +181,54 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   applyFilters(): void {
     let filtered = [...this.allExecutions];
     
-    // Filter by status
+    // Apply common filters (these affect both active monitoring and historical table)
     if (this.filters.status !== 'all') {
       filtered = filtered.filter(e => e.status.toUpperCase() === this.filters.status);
     }
-    
-    // Filter by mode
     if (this.filters.mode !== 'all') {
       filtered = filtered.filter(e => e.mode.toLowerCase() === this.filters.mode);
     }
-    
-    // Filter by trade outcome
-    if (this.filters.tradeOutcome !== 'all') {
-      filtered = filtered.filter(e => e.trade_outcome === this.filters.tradeOutcome);
-    }
-    
-    // Filter by symbol (case-insensitive partial match)
     if (this.filters.symbol) {
       const symbolLower = this.filters.symbol.toLowerCase();
       filtered = filtered.filter(e => e.symbol?.toLowerCase().includes(symbolLower) ?? false);
     }
-    
-    // Filter by pipeline (case-insensitive partial match)
     if (this.filters.pipeline) {
       const pipelineLower = this.filters.pipeline.toLowerCase();
       filtered = filtered.filter(e => e.pipeline_name?.toLowerCase().includes(pipelineLower) ?? false);
     }
-    
-    // Filter by date range
     if (this.filters.startDate) {
-      filtered = filtered.filter(e => {
-        const startedAt = new Date(e.started_at);
-        return startedAt >= this.filters.startDate!;
-      });
+      filtered = filtered.filter(e => new Date(e.started_at) >= this.filters.startDate!);
     }
-    
     if (this.filters.endDate) {
-      // Set end date to end of day
       const endOfDay = new Date(this.filters.endDate);
       endOfDay.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(e => {
-        const startedAt = new Date(e.started_at);
-        return startedAt <= endOfDay;
-      });
+      filtered = filtered.filter(e => new Date(e.started_at) <= endOfDay);
     }
     
-    // Split filtered results into active and historical
+    // Split into active and historical
+    const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR']);
     this.activeExecutions = filtered.filter(
-      e => e.status.toUpperCase() === 'MONITORING' || e.status.toUpperCase() === 'RUNNING'
+      e => activeStatuses.has(e.status.toUpperCase())
     );
     
-    const historical = filtered.filter(
-      e => e.status.toUpperCase() !== 'MONITORING' && e.status.toUpperCase() !== 'RUNNING'
+    let historical = filtered.filter(
+      e => !activeStatuses.has(e.status.toUpperCase())
     );
+    
+    // Apply trade outcome filter to historical table only (active monitoring always shows all)
+    if (this.filters.tradeOutcome !== 'all') {
+      historical = historical.filter(e => e.trade_outcome === this.filters.tradeOutcome);
+      // For 'executed' filter, also exclude zero P&L entries
+      if (this.filters.tradeOutcome === 'executed') {
+        historical = historical.filter(e => {
+          const pnl = this.getPnL(e);
+          return pnl.value !== null && pnl.value !== undefined && pnl.value !== 0;
+        });
+      }
+    }
     
     this.historicalDataSource.data = historical;
     
-    // Ensure paginator is connected after data update
     if (this.paginator) {
       this.historicalDataSource.paginator = this.paginator;
     }
@@ -237,7 +238,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     this.filters = {
       status: 'all',
       mode: 'all',
-      tradeOutcome: 'all',
+      tradeOutcome: 'executed',
       symbol: '',
       pipeline: '',
       startDate: null,
@@ -290,6 +291,82 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  /**
+   * Build execution bar visualization data from all executions.
+   * Each bar represents one execution, color-coded by outcome,
+   * with height proportional to P&L magnitude for executed trades.
+   */
+  buildExecutionBars(): void {
+    const sorted = [...this.allExecutions].sort(
+      (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+    );
+
+    // Find max absolute P&L for height scaling
+    let maxPnL = 0;
+    sorted.forEach(ex => {
+      const pnl = this.getPnL(ex);
+      if (pnl.value !== null && pnl.value !== undefined) {
+        maxPnL = Math.max(maxPnL, Math.abs(pnl.value));
+      }
+    });
+    if (maxPnL === 0) maxPnL = 1;
+
+    const MIN_H = 12;
+    const MAX_H = 72;
+
+    this.executionBars = sorted.map(ex => {
+      const pnl = this.getPnL(ex);
+      const outcome = ex.trade_outcome;
+      const action = ex.strategy_action;
+      let colorClass = 'bar-no-action';
+      let height = MIN_H;
+
+      if (outcome === 'executed' && pnl.value !== null && pnl.value !== undefined && pnl.value !== 0) {
+        // Real completed trade with P&L
+        colorClass = pnl.value >= 0 ? 'bar-profit' : 'bar-loss';
+        height = MIN_H + (Math.abs(pnl.value) / maxPnL) * (MAX_H - MIN_H);
+      } else if (outcome === 'pending') {
+        // Limit order at broker, waiting to fill
+        colorClass = 'bar-pending';
+        height = MIN_H + 18;
+      } else if (outcome === 'cancelled') {
+        // Order was cancelled (unfilled limit order)
+        colorClass = 'bar-cancelled';
+        height = MIN_H + 8;
+      } else if (outcome === 'failed' || outcome === 'rejected') {
+        // Broker call failed or risk manager rejected
+        colorClass = 'bar-failed';
+        height = MIN_H + 8;
+      } else if (outcome === 'no_action' || action === 'HOLD') {
+        // Strategy said HOLD — no trade intended
+        colorClass = 'bar-hold';
+        height = MIN_H + 8;
+      } else if (outcome === 'no_trade') {
+        // Strategy gave signal but pipeline didn't complete trade execution
+        colorClass = 'bar-no-trade';
+        height = MIN_H + 6;
+      } else {
+        // Unknown / incomplete
+        colorClass = 'bar-no-action';
+        height = MIN_H + 4;
+      }
+
+      const symbol = ex.symbol || 'N/A';
+      const outcomeLabel = this.getTradeOutcome(ex);
+      const pnlStr = (pnl.value !== null && pnl.value !== undefined && pnl.value !== 0)
+        ? ` · P&L: ${pnl.value >= 0 ? '+' : ''}$${pnl.value.toFixed(2)}`
+        : '';
+      const actionStr = action ? ` · ${action}` : '';
+      const tooltip = `${symbol}${actionStr} · ${outcomeLabel}${pnlStr}`;
+
+      return { execution: ex, colorClass, height, tooltip };
+    });
+  }
+
+  onBarClick(execution: ExecutionSummary): void {
+    this.viewExecution(execution);
+  }
+
   getStatusColor(status: string): string {
     const colors: any = {
       'pending': 'default',
@@ -315,7 +392,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       'paused': 'pause_circle',
       'communication_error': 'wifi_off'
     };
-    return icons[status] || 'help';
+    return icons[status?.toLowerCase()] || 'help';
   }
 
   getModeColor(mode: string): string {
@@ -435,13 +512,12 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     
     const labels: any = {
       'executed': 'Executed',
-      'accepted': 'Accepted',
-      'skipped': 'Skipped',
-      'rejected': 'Rejected',
-      'cancelled': 'Cancelled',
       'pending': 'Pending',
+      'cancelled': 'Cancelled',
+      'failed': 'Failed',
+      'rejected': 'Rejected',
+      'no_action': 'Hold',
       'no_trade': 'No Trade',
-      'no_action': 'No Action',
       'unknown': 'Unknown'
     };
     return labels[outcome] || outcome;
@@ -457,13 +533,12 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     const outcome = execution.trade_outcome;
     const icons: any = {
       'executed': 'check_circle',
-      'accepted': 'thumb_up',
-      'skipped': 'skip_next',
-      'rejected': 'cancel',
-      'cancelled': 'close',
-      'pending': 'schedule',
+      'pending': 'hourglass_empty',
+      'cancelled': 'cancel',
+      'failed': 'error',
+      'rejected': 'block',
+      'no_action': 'pause_circle',
       'no_trade': 'remove_circle_outline',
-      'no_action': 'do_not_disturb',
       'unknown': 'help_outline'
     };
     return icons[outcome] || 'help_outline';

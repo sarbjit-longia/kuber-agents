@@ -687,6 +687,67 @@ class OandaBrokerService(BrokerService):
             self.logger.error("Failed to get Oanda quote", symbol=symbol, error=str(e))
             return {"error": str(e)}
     
+    def get_recent_candles(
+        self,
+        symbol: str,
+        count: int = 60,
+        granularity: str = "M1",
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch recent candlestick data from Oanda.
+
+        Uses the /v3/instruments/{instrument}/candles endpoint.
+
+        Args:
+            symbol: Trading symbol (e.g. EUR_USD)
+            count: Number of candles to fetch
+            granularity: Candle granularity (M1, M5, M15, H1, etc.)
+
+        Returns:
+            List of dicts with keys: high, low, open, close, time
+        """
+        instrument = symbol.replace("/", "_") if "/" in symbol else symbol
+
+        try:
+            result = self._make_request(
+                "GET",
+                f"/instruments/{instrument}/candles",
+                params={
+                    "count": count,
+                    "granularity": granularity,
+                    "price": "M",  # mid-price candles
+                },
+            )
+
+            if "error" in result or "candles" not in result:
+                self.logger.warning(
+                    "oanda_candles_fetch_failed",
+                    symbol=symbol,
+                    error=result.get("error", "No candle data"),
+                )
+                return []
+
+            candles = []
+            for c in result["candles"]:
+                mid = c.get("mid", {})
+                candles.append(
+                    {
+                        "high": float(mid.get("h", 0)),
+                        "low": float(mid.get("l", 0)),
+                        "open": float(mid.get("o", 0)),
+                        "close": float(mid.get("c", 0)),
+                        "time": c.get("time"),
+                        "complete": c.get("complete", False),
+                    }
+                )
+            return candles
+
+        except Exception as e:
+            self.logger.error(
+                "oanda_candles_fetch_error", symbol=symbol, error=str(e)
+            )
+            return []
+
     def _convert_order(
         self,
         oanda_order: Dict,
@@ -726,6 +787,223 @@ class OandaBrokerService(BrokerService):
             broker_data=oanda_order
         )
     
+    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get details for a specific trade by ID from Oanda.
+        
+        Uses /accounts/{accountID}/trades/{tradeSpecifier} endpoint.
+        Critical for reconciliation: when a position is closed by bracket orders (SL/TP)
+        between monitoring checks, we fetch the final realized P&L from the broker.
+        
+        Args:
+            trade_id: Oanda trade ID
+            account_id: Account ID (optional, uses default if not provided)
+            
+        Returns:
+            Dict with trade details including realized P&L for closed trades
+        """
+        target_account = account_id or self.account_id
+        if not target_account:
+            return {"found": False, "error": "No account ID provided"}
+        
+        try:
+            result = self._make_request(
+                "GET", f"/accounts/{target_account}/trades/{trade_id}"
+            )
+            
+            if "error" in result or "trade" not in result:
+                # Trade might be closed — try the closed-trade-details endpoint
+                # by checking recent transactions instead
+                self.logger.info(
+                    "trade_not_in_open_trades_checking_history",
+                    trade_id=trade_id,
+                )
+                return self._get_closed_trade_details(trade_id, target_account)
+            
+            trade = result["trade"]
+            state = trade.get("state", "OPEN").upper()
+            unrealized_pl = float(trade.get("unrealizedPL", 0))
+            realized_pl = float(trade.get("realizedPL", 0))
+            
+            # Parse open time
+            open_time = None
+            if trade.get("openTime"):
+                try:
+                    open_time = datetime.fromtimestamp(float(trade["openTime"]))
+                except (ValueError, TypeError):
+                    open_time = None
+            
+            return {
+                "found": True,
+                "state": "open" if state == "OPEN" else "closed",
+                "realized_pl": realized_pl,
+                "unrealized_pl": unrealized_pl,
+                "close_time": None,  # Open trades don't have close time
+                "instrument": trade.get("instrument", ""),
+                "open_price": float(trade.get("price", 0)),
+                "close_price": None,
+                "units": float(trade.get("currentUnits", trade.get("initialUnits", 0))),
+                "initial_units": float(trade.get("initialUnits", 0)),
+                "stop_loss": trade.get("stopLossOrder", {}).get("price"),
+                "take_profit": trade.get("takeProfitOrder", {}).get("price"),
+                "broker_data": trade,
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                "get_trade_details_failed", trade_id=trade_id, error=str(e)
+            )
+            return {"found": False, "error": str(e)}
+    
+    def _get_closed_trade_details(self, trade_id: str, account_id: str) -> Dict[str, Any]:
+        """
+        Get details for a closed trade by searching recent transactions.
+        
+        When a trade is closed (by SL/TP bracket orders), it's no longer in /trades.
+        We search recent ORDER_FILL transactions that reference this trade_id to get
+        the final realized P&L.
+        
+        Args:
+            trade_id: Oanda trade ID
+            account_id: Oanda account ID
+            
+        Returns:
+            Dict with trade details including realized P&L
+        """
+        try:
+            # Fetch recent transactions (last 200) to find the close fill
+            result = self._make_request(
+                "GET",
+                f"/accounts/{account_id}/transactions",
+                params={
+                    "count": 200,
+                    "type": "ORDER_FILL",
+                },
+            )
+            
+            if "error" in result:
+                self.logger.warning(
+                    "transaction_fetch_failed",
+                    trade_id=trade_id,
+                    error=result.get("error"),
+                )
+                return {"found": False, "error": result.get("error")}
+            
+            # Get transaction IDs and fetch details
+            transaction_ids = result.get("pages", [])
+            
+            # Try the simpler approach: fetch transactions in the ID range
+            # Oanda returns a list of transaction pages (URLs)
+            # Let's try fetching by trade ID using the trade endpoint with state filter
+            
+            # Alternative: check /accounts/{id}/trades/{tradeId} — closed trades are
+            # still available if we use the "state" filter
+            # But Oanda doesn't support fetching closed trades by ID directly.
+            
+            # Best approach: fetch recent ORDER_FILL transactions and find the one
+            # that references our trade_id
+            txn_result = self._make_request(
+                "GET",
+                f"/accounts/{account_id}/transactions",
+                params={
+                    "pageSize": 200,
+                }
+            )
+            
+            # Parse transaction pages to find relevant fills
+            # Oanda returns paginated transaction IDs
+            last_txn_id = txn_result.get("lastTransactionID")
+            if not last_txn_id:
+                return {"found": False, "error": "No transactions found"}
+            
+            # Fetch the last batch of transactions by ID range
+            from_id = max(1, int(last_txn_id) - 200)
+            range_result = self._make_request(
+                "GET",
+                f"/accounts/{account_id}/transactions/idrange",
+                params={
+                    "from": str(from_id),
+                    "to": last_txn_id,
+                },
+            )
+            
+            transactions = range_result.get("transactions", [])
+            
+            # Look for ORDER_FILL transactions that reference our trade_id
+            realized_pl = 0.0
+            close_price = None
+            close_time = None
+            instrument = ""
+            units_closed = 0.0
+            found_close = False
+            
+            for txn in transactions:
+                if txn.get("type") != "ORDER_FILL":
+                    continue
+                
+                # Check if this fill closed our trade
+                trades_closed = txn.get("tradesClosed", [])
+                for tc in trades_closed:
+                    if str(tc.get("tradeID")) == str(trade_id):
+                        realized_pl += float(tc.get("realizedPL", 0))
+                        units_closed += abs(float(tc.get("units", 0)))
+                        close_price = float(txn.get("price", 0))
+                        instrument = txn.get("instrument", "")
+                        found_close = True
+                        
+                        # Parse close time
+                        if txn.get("time"):
+                            try:
+                                close_time = datetime.fromtimestamp(
+                                    float(txn["time"])
+                                ).isoformat()
+                            except (ValueError, TypeError):
+                                close_time = txn.get("time")
+                
+                # Also check tradesReduced for partial closes
+                trades_reduced = txn.get("tradesReduced", [])
+                for tr in trades_reduced:
+                    if str(tr.get("tradeID")) == str(trade_id):
+                        realized_pl += float(tr.get("realizedPL", 0))
+                        found_close = True
+            
+            if found_close:
+                self.logger.info(
+                    "found_closed_trade_details",
+                    trade_id=trade_id,
+                    realized_pl=realized_pl,
+                    close_price=close_price,
+                )
+                return {
+                    "found": True,
+                    "state": "closed",
+                    "realized_pl": realized_pl,
+                    "unrealized_pl": 0.0,  # Closed trade has no unrealized P&L
+                    "close_time": close_time,
+                    "instrument": instrument,
+                    "open_price": 0.0,  # Not available from fill transactions
+                    "close_price": close_price,
+                    "units": units_closed,
+                    "initial_units": units_closed,
+                    "broker_data": {"transactions": [t for t in transactions if any(
+                        str(tc.get("tradeID")) == str(trade_id)
+                        for tc in t.get("tradesClosed", []) + t.get("tradesReduced", [])
+                    )]},
+                }
+            
+            return {
+                "found": False,
+                "error": f"Trade {trade_id} not found in recent transactions",
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                "closed_trade_lookup_failed",
+                trade_id=trade_id,
+                error=str(e),
+            )
+            return {"found": False, "error": str(e)}
+
     def has_active_symbol(self, symbol: str, account_id: Optional[str] = None) -> bool:
         """
         Check if there is an active position or open order for a symbol.
@@ -733,37 +1011,35 @@ class OandaBrokerService(BrokerService):
         Oanda-specific implementation that handles underscore/slash normalization.
         Oanda uses EUR_USD format, while other systems may use EUR/USD.
         
+        IMPORTANT: This method re-raises exceptions on API errors so that callers
+        (like reconciliation) can distinguish between "no position" and "API failure".
+        Swallowing errors could cause false reconciliation (marking active trades as closed).
+        
         Args:
             symbol: Trading symbol (in any format: EUR_USD or EUR/USD)
             account_id: Account ID (optional)
             
         Returns:
             True if symbol has active position or open order, False otherwise
+            
+        Raises:
+            Exception: On broker API errors (caller must handle)
         """
-        try:
-            # Normalize to Oanda format (EUR_USD)
-            normalized_symbol = symbol.replace("/", "_") if "/" in symbol else symbol
-            
-            # Check for open position
-            position = self.get_position(normalized_symbol, account_id)
-            if position and position.qty != 0:
+        # Normalize to Oanda format (EUR_USD)
+        normalized_symbol = symbol.replace("/", "_") if "/" in symbol else symbol
+        
+        # Check for open position — let exceptions propagate
+        position = self.get_position(normalized_symbol, account_id)
+        if position and position.qty != 0:
+            return True
+        
+        # Check for open orders — let exceptions propagate
+        orders = self.get_orders(account_id)
+        for order in orders:
+            # Normalize order symbol for comparison
+            order_normalized = order.symbol.replace("/", "_") if "/" in order.symbol else order.symbol
+            if order_normalized == normalized_symbol:
                 return True
-            
-            # Check for open orders
-            orders = self.get_orders(account_id)
-            for order in orders:
-                # Normalize order symbol for comparison
-                order_normalized = order.symbol.replace("/", "_") if "/" in order.symbol else order.symbol
-                if order_normalized == normalized_symbol:
-                    return True
-            
-            return False
-            
-        except Exception as e:
-            self.logger.warning(
-                "has_active_symbol_check_failed",
-                symbol=symbol,
-                error=str(e)
-            )
-            return False
+        
+        return False
 

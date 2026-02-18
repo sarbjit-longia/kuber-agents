@@ -273,8 +273,26 @@ class TradeManagerAgent(BaseAgent):
         if pending_order:
             self.log(state, f"📋 Limit order still pending: {order_id}")
             
-            # Check if order should be cancelled (setup invalidated)
-            if state.strategy and state.strategy.entry_price:
+            should_cancel = False
+            cancel_reason = None
+            current_price = 0.0
+            entry = 0.0
+            stop_loss = None
+            take_profit = None
+            price_precision = self._get_price_precision(state.symbol)
+            
+            # TIME-BASED CANCELLATION: Cancel stale limit orders
+            # Default: 1 hour max wait time for limit order to fill
+            max_pending_hours = float(self.config.get("max_pending_hours", 1))
+            if state.trade_execution and state.trade_execution.execution_time:
+                order_age = (datetime.utcnow() - state.trade_execution.execution_time).total_seconds() / 3600
+                if order_age > max_pending_hours:
+                    should_cancel = True
+                    cancel_reason = f"Limit order pending for {order_age:.1f}h (max: {max_pending_hours}h) - stale order timeout"
+                    self.log(state, f"⏰ Order age: {order_age:.1f}h exceeds max {max_pending_hours}h")
+            
+            # PRICE-BASED CANCELLATION: Check if setup is invalidated
+            if not should_cancel and state.strategy and state.strategy.entry_price:
                 current_price, price_error = self._get_current_price(state.symbol, broker)
                 
                 if price_error:
@@ -285,80 +303,107 @@ class TradeManagerAgent(BaseAgent):
                 entry = state.strategy.entry_price
                 stop_loss = state.strategy.stop_loss
                 take_profit = state.strategy.take_profit
-                price_precision = self._get_price_precision(state.symbol)
                 
-                should_cancel = False
-                cancel_reason = None
+                # Debug logging: show price levels for diagnosis
+                sl_str = f"{stop_loss:.{price_precision}f}" if stop_loss else "N/A"
+                tp_str = f"{take_profit:.{price_precision}f}" if take_profit else "N/A"
+                self.log(state, 
+                    f"📊 Price check: current={current_price:.{price_precision}f}, "
+                    f"entry={entry:.{price_precision}f}, "
+                    f"SL={sl_str}, TP={tp_str}, "
+                    f"action={state.strategy.action}")
                 
                 # CANCEL CONDITIONS:
                 # 1. Price moved AWAY from entry and breached SL (setup invalidated)
                 # 2. Price hit TP level without hitting entry first (missed entire move)
                 
                 if state.strategy.action == "BUY":
-                    # BUY limit order: We want to buy when price comes DOWN to entry
-                    # Entry < Current, SL < Entry, TP > Entry
-                    # Cancel if:
-                    # - Price went DOWN past SL (setup invalidated - too far down)
-                    # - Price went UP past TP (missed the move - already at target)
-                    
                     if stop_loss and current_price <= stop_loss:
-                        # Price moved way down past our stop loss level
-                        # Setup is invalidated - price moved against us too much
                         should_cancel = True
                         cancel_reason = f"Price ${current_price:.{price_precision}f} breached stop loss ${stop_loss:.{price_precision}f} before filling entry ${entry:.{price_precision}f} - setup invalidated"
                     
                     elif take_profit and current_price >= take_profit:
-                        # Price already at take profit level without hitting our entry
-                        # We missed the entire move
                         should_cancel = True
                         cancel_reason = f"Price ${current_price:.{price_precision}f} reached take profit ${take_profit:.{price_precision}f} without filling entry ${entry:.{price_precision}f} - missed opportunity"
                 
                 elif state.strategy.action == "SELL":
-                    # SELL limit order: We want to sell when price comes UP to entry
-                    # Entry > Current, SL > Entry, TP < Entry
-                    # Cancel if:
-                    # - Price went UP past SL (setup invalidated - too far up)
-                    # - Price went DOWN past TP (missed the move - already at target)
-                    
                     if stop_loss and current_price >= stop_loss:
-                        # Price moved way up past our stop loss level
-                        # Setup is invalidated - price moved against us too much
                         should_cancel = True
                         cancel_reason = f"Price ${current_price:.{price_precision}f} breached stop loss ${stop_loss:.{price_precision}f} before filling entry ${entry:.{price_precision}f} - setup invalidated"
                     
                     elif take_profit and current_price <= take_profit:
-                        # Price already at take profit level without hitting our entry
-                        # We missed the entire move
                         should_cancel = True
                         cancel_reason = f"Price ${current_price:.{price_precision}f} reached take profit ${take_profit:.{price_precision}f} without filling entry ${entry:.{price_precision}f} - missed opportunity"
                 
-                # Execute cancellation if needed
-                if should_cancel:
-                    try:
-                        self.log(state, f"🚨 Cancelling limit order: {cancel_reason}")
-                        broker.cancel_order(order_id)
-                        state.should_complete = True
-                        
-                        self.record_report(
-                            state,
-                            title="Limit order cancelled",
-                            summary=f"Setup invalidated - order cancelled",
-                            status="completed",
-                            data={
-                                "symbol": state.symbol,
-                                "reason": cancel_reason,
-                                "order_id": order_id,
-                                "current_price": current_price,
-                                "entry_price": entry,
-                                "stop_loss": stop_loss,
-                                "take_profit": take_profit
-                            },
-                        )
-                        return state
-                    except Exception as e:
-                        self.log(state, f"❌ Failed to cancel order: {str(e)}", level="error")
-                        self._handle_api_error(state, f"Failed to cancel order: {str(e)}")
-                        return state
+                # CANDLE-BASED CANCELLATION: Check recent candle highs/lows
+                # The spot-price check only sees the price at each 15-second interval.
+                # If the SL/TP was breached between checks (or before monitoring started
+                # but after the order was placed), we would miss it.  Fetch recent 1-min
+                # candles and check the extreme values.
+                if not should_cancel and (stop_loss or take_profit):
+                    candle_breach = self._check_candle_breach(
+                        symbol=state.symbol,
+                        broker=broker,
+                        action=state.strategy.action,
+                        entry=entry,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        price_precision=price_precision,
+                        state=state,
+                    )
+                    if candle_breach:
+                        should_cancel = True
+                        cancel_reason = candle_breach
+                
+            elif not should_cancel:
+                self.log(state, f"⚠️ No strategy data available for cancel check (strategy={state.strategy is not None})", level="warning")
+            
+            # Execute cancellation if needed
+            if should_cancel:
+                # Get current price if not already fetched (for time-based cancellation)
+                if current_price == 0.0:
+                    current_price, _ = self._get_current_price(state.symbol, broker)
+                    entry = state.strategy.entry_price if state.strategy else 0.0
+                    stop_loss = state.strategy.stop_loss if state.strategy else None
+                    take_profit = state.strategy.take_profit if state.strategy else None
+                
+                try:
+                    self.log(state, f"🚨 Cancelling limit order: {cancel_reason}")
+                    broker.cancel_order(order_id)
+                    state.should_complete = True
+                    
+                    # Populate trade_outcome for cancelled order (limit never filled)
+                    from app.schemas.pipeline_state import TradeOutcome
+                    state.trade_outcome = TradeOutcome(
+                        status="cancelled",  # Limit order was never filled
+                        pnl=0.0,
+                        pnl_percent=0.0,
+                        exit_reason=cancel_reason,
+                        exit_price=current_price,
+                        entry_price=entry,
+                        closed_at=datetime.now()
+                    )
+                    
+                    self.record_report(
+                        state,
+                        title="Limit order cancelled",
+                        summary=f"Setup invalidated - order cancelled",
+                        status="completed",
+                        data={
+                            "symbol": state.symbol,
+                            "reason": cancel_reason,
+                            "order_id": order_id,
+                            "current_price": current_price,
+                            "entry_price": entry,
+                            "stop_loss": stop_loss,
+                            "take_profit": take_profit
+                        },
+                    )
+                    return state
+                except Exception as e:
+                    self.log(state, f"❌ Failed to cancel order: {str(e)}", level="error")
+                    self._handle_api_error(state, f"Failed to cancel order: {str(e)}")
+                    return state
             
             # Order still valid, keep monitoring
             self.log(state, f"Order still valid - waiting for fill")
@@ -371,6 +416,7 @@ class TradeManagerAgent(BaseAgent):
                     "order_id": order_id,
                     "order_status": "pending",
                     "order_type": "limit",
+                    "current_price": current_price if current_price > 0 else None,
                     "entry_price": state.strategy.entry_price if state.strategy else None,
                     "stop_loss": state.strategy.stop_loss if state.strategy else None,
                     "take_profit": state.strategy.take_profit if state.strategy else None
@@ -431,9 +477,13 @@ class TradeManagerAgent(BaseAgent):
                 state.trade_execution.api_error_count = 0
                 state.trade_execution.last_successful_check = datetime.now()
             
-            # Extract trade_id if we don't have it yet (order filled)
+            # Order was filled — update trade_execution status and trade_id
+            if state.trade_execution and state.trade_execution.status in ('accepted', 'pending'):
+                state.trade_execution.status = 'filled'
+                self.log(state, f"✅ Limit order filled — position found for {state.symbol}")
+            
             if not trade_id and position and 'trade_id' in position:
-                self.log(state, f"✅ Order filled! Discovered trade_id: {position['trade_id']}")
+                self.log(state, f"✅ Discovered trade_id: {position['trade_id']}")
                 if state.trade_execution:
                     state.trade_execution.trade_id = position['trade_id']
             
@@ -540,13 +590,13 @@ class TradeManagerAgent(BaseAgent):
             if order_id and not trade_id:
                 self.log(state, "⚠️ Limit order not found and no position opened - treating as unfilled")
                 if state.trade_execution:
-                    state.trade_execution.status = "accepted"  # Order was accepted but never filled
+                    state.trade_execution.status = "cancelled"  # Limit order was never filled
                 state.should_complete = True
 
-                # Set trade_outcome as "accepted" (order accepted but never executed)
+                # Set trade_outcome as "cancelled" (limit order never filled)
                 from app.schemas.pipeline_state import TradeOutcome
                 state.trade_outcome = TradeOutcome(
-                    status="accepted",  # Order was accepted but never filled
+                    status="cancelled",  # Limit order was never filled
                     pnl=0.0,
                     pnl_percent=0.0,
                     exit_reason="Limit order never filled",
@@ -668,7 +718,7 @@ class TradeManagerAgent(BaseAgent):
         
         Returns:
             Tuple of (PositionCheckResult, position_data)
-            - FOUND: position exists, data included
+            - FOUND: position exists, data included (with trade_id if available)
             - NOT_FOUND: confirmed no position (closed)
             - API_ERROR: could not check (network/API failure)
         """
@@ -682,7 +732,7 @@ class TradeManagerAgent(BaseAgent):
             position = broker.get_position(symbol)
             
             if position:
-                return (PositionCheckResult.FOUND, {
+                position_dict = {
                     "symbol": position.symbol,
                     "qty": position.qty,
                     "side": position.side,
@@ -692,7 +742,28 @@ class TradeManagerAgent(BaseAgent):
                     "unrealized_pl_percent": position.unrealized_pl_percent,
                     "market_value": position.market_value,
                     "cost_basis": position.cost_basis
-                })
+                }
+                
+                # Extract trade_id from broker_data if available
+                # Oanda stores tradeIDs in the long/short position sections
+                broker_data = position.broker_data or {}
+                trade_id = None
+                
+                side_key = "long" if position.side == "long" else "short"
+                side_data = broker_data.get(side_key, {})
+                trade_ids = side_data.get("tradeIDs", [])
+                if trade_ids:
+                    # Use the first trade ID (most common case: single trade per position)
+                    trade_id = str(trade_ids[0])
+                
+                # Fallback: check for trade_id at top level (future brokers)
+                if not trade_id:
+                    trade_id = broker_data.get("trade_id") or broker_data.get("tradeID")
+                
+                if trade_id:
+                    position_dict["trade_id"] = trade_id
+                
+                return (PositionCheckResult.FOUND, position_dict)
             else:
                 # No position found - confirmed closed/doesn't exist
                 return (PositionCheckResult.NOT_FOUND, None)
@@ -771,6 +842,95 @@ class TradeManagerAgent(BaseAgent):
             return 5
         return 2
     
+    def _check_candle_breach(
+        self,
+        symbol: str,
+        broker,
+        action: str,
+        entry: float,
+        stop_loss: Optional[float],
+        take_profit: Optional[float],
+        price_precision: int,
+        state: PipelineState,
+    ) -> Optional[str]:
+        """
+        Check recent candle highs/lows for SL/TP breaches that the spot-price
+        check might have missed.
+
+        The spot-price check runs every ~15 seconds and only sees the price at
+        that instant.  A spike that breaches SL or TP and then retraces would
+        be invisible.  By fetching the last few 1-minute candles we can detect
+        if the extreme (high or low) crossed the SL/TP threshold.
+
+        Returns:
+            A cancel reason string if a breach is detected, or None.
+        """
+        try:
+            candles = broker.get_recent_candles(symbol, granularity="M1", count=5)
+        except Exception as e:
+            self.logger.warning(
+                "candle_breach_check_failed",
+                symbol=symbol,
+                error=str(e),
+            )
+            return None
+
+        if not candles:
+            self.logger.debug("candle_breach_no_data", symbol=symbol)
+            return None
+
+        for candle in candles:
+            high = candle.get("high", 0)
+            low = candle.get("low", 0)
+            candle_time = candle.get("time", "?")
+
+            if action == "BUY":
+                # BUY limit: SL is below entry. If candle low <= SL → invalidated.
+                if stop_loss and low <= stop_loss:
+                    reason = (
+                        f"Candle low {low:.{price_precision}f} at {candle_time} breached "
+                        f"stop loss {stop_loss:.{price_precision}f} before filling entry "
+                        f"{entry:.{price_precision}f} - setup invalidated (candle check)"
+                    )
+                    self.log(state, f"📉 {reason}", level="warning")
+                    return reason
+                # If candle high >= TP → missed the move.
+                if take_profit and high >= take_profit:
+                    reason = (
+                        f"Candle high {high:.{price_precision}f} at {candle_time} reached "
+                        f"take profit {take_profit:.{price_precision}f} without filling entry "
+                        f"{entry:.{price_precision}f} - missed opportunity (candle check)"
+                    )
+                    self.log(state, f"📈 {reason}", level="warning")
+                    return reason
+
+            elif action == "SELL":
+                # SELL limit: SL is above entry. If candle high >= SL → invalidated.
+                if stop_loss and high >= stop_loss:
+                    reason = (
+                        f"Candle high {high:.{price_precision}f} at {candle_time} breached "
+                        f"stop loss {stop_loss:.{price_precision}f} before filling entry "
+                        f"{entry:.{price_precision}f} - setup invalidated (candle check)"
+                    )
+                    self.log(state, f"📈 {reason}", level="warning")
+                    return reason
+                # If candle low <= TP → missed the move.
+                if take_profit and low <= take_profit:
+                    reason = (
+                        f"Candle low {low:.{price_precision}f} at {candle_time} reached "
+                        f"take profit {take_profit:.{price_precision}f} without filling entry "
+                        f"{entry:.{price_precision}f} - missed opportunity (candle check)"
+                    )
+                    self.log(state, f"📉 {reason}", level="warning")
+                    return reason
+
+        self.log(
+            state,
+            f"✅ Candle check OK: no SL/TP breach in last {len(candles)} candles",
+            level="info",
+        )
+        return None
+
     def _handle_api_error(self, state: PipelineState, error_message: str):
         """
         Handle API error during monitoring.
@@ -965,9 +1125,27 @@ class TradeManagerAgent(BaseAgent):
                 
                 self.log(state, "✅ Market order placed (manual monitoring needed)")
             
+            # Extract trade_id from broker response if available
+            # (Oanda may return tradeOpenedID or tradeID in fill transactions)
+            broker_trade_id = None
+            broker_data = order.broker_data or {}
+            
+            # Check orderFillTransaction for immediate fills (market orders or limit fills)
+            fill_txn = broker_data.get("orderFillTransaction", {})
+            if fill_txn:
+                # Oanda returns tradeOpened with tradeID for new positions
+                trade_opened = fill_txn.get("tradeOpened", {})
+                if trade_opened:
+                    broker_trade_id = str(trade_opened.get("tradeID", ""))
+            
+            # Also check for tradeID in the order create transaction itself
+            if not broker_trade_id:
+                broker_trade_id = broker_data.get("tradeID") or broker_data.get("trade_id")
+            
             # Store execution result
             state.trade_execution = TradeExecution(
                 order_id=order.order_id,
+                trade_id=broker_trade_id or None,  # Set if available (market fills)
                 status=order.status.value,
                 filled_price=order.filled_price or entry,
                 filled_quantity=order.filled_qty or risk.position_size,
@@ -1016,6 +1194,7 @@ class TradeManagerAgent(BaseAgent):
                     "stop_loss": stop_loss,
                     "order_type": order_type_used,  # Auto-detected
                     "order_id": order.order_id,
+                    "trade_id": broker_trade_id,  # May be None for limit orders until filled
                     "broker": broker.__class__.__name__
                 },
             )
@@ -1058,7 +1237,7 @@ class TradeManagerAgent(BaseAgent):
                 )
                 return state
             
-            # Order was NOT placed (error before setting monitoring phase) — safe to mark as rejected
+            # Order was NOT placed (error before setting monitoring phase) — safe to mark as failed
             state.trade_execution = TradeExecution(
                 order_id=None,
                 status="rejected",
@@ -1067,6 +1246,18 @@ class TradeManagerAgent(BaseAgent):
                 commission=None,
                 execution_time=datetime.utcnow(),
                 broker_response={"error": str(e)}
+            )
+            
+            # Set trade_outcome as "failed" (broker call failed)
+            from app.schemas.pipeline_state import TradeOutcome
+            state.trade_outcome = TradeOutcome(
+                status="failed",  # Broker call failed
+                pnl=None,
+                pnl_percent=None,
+                exit_reason=f"Broker execution failed: {str(e)}",
+                exit_price=None,
+                entry_price=state.strategy.entry_price if state.strategy else None,
+                closed_at=datetime.now()
             )
             
             self.record_report(

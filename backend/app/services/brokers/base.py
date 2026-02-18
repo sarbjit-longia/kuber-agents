@@ -306,6 +306,60 @@ class BrokerService(ABC):
         """
         pass
     
+    def get_recent_candles(
+        self,
+        symbol: str,
+        count: int = 60,
+        granularity: str = "M1",
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent candlestick data for a symbol.
+
+        Used by the monitoring loop to check if candle highs/lows breached
+        stop-loss or take-profit levels that the spot-price check may have
+        missed (e.g., price spiked between checks, or before monitoring
+        started).
+
+        Args:
+            symbol: Trading symbol
+            count: Number of candles to fetch (default 60 = last 1 hour of M1)
+            granularity: Candle granularity (M1, M5, H1, etc.)
+
+        Returns:
+            List of dicts, each with at least: high, low, open, close, time.
+            Empty list if not supported by the broker.
+        """
+        # Default implementation — brokers that support candles should override
+        return []
+
+    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get details for a specific trade by ID, including realized P&L for closed trades.
+        
+        This is critical for reconciliation: when a position is closed by bracket orders
+        (SL/TP) between monitoring checks, we need to fetch the final realized P&L from
+        the broker rather than relying solely on the last monitoring snapshot.
+        
+        Args:
+            trade_id: Broker-assigned trade ID
+            account_id: Account ID (optional)
+            
+        Returns:
+            Dict with trade details:
+                - found (bool): Whether the trade was found
+                - state (str): "open" or "closed"
+                - realized_pl (float): Realized P&L (0 if open or not found)
+                - unrealized_pl (float): Unrealized P&L (0 if closed or not found)
+                - close_time (str|None): ISO timestamp when trade was closed
+                - instrument (str): Trading symbol
+                - open_price (float): Entry price
+                - close_price (float|None): Exit price (if closed)
+                - units (float): Position size
+                - broker_data (dict): Raw broker response
+        """
+        # Default implementation — brokers that support trade lookup should override
+        return {"found": False, "error": "Not implemented for this broker"}
+    
     def is_paper_trading(self) -> bool:
         """Check if this is a paper trading account."""
         return self.paper

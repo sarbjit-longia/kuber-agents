@@ -157,7 +157,7 @@ class SignalData(BaseModel):
 
 class TradeOutcome(BaseModel):
     """Final outcome of a trade with P&L information."""
-    status: str  # "completed", "cancelled", "rejected", "error"
+    status: str  # "executed" (filled+closed), "cancelled" (limit never filled), "pending" (limit waiting), "failed" (broker error)
     pnl: Optional[float] = None  # Profit/Loss in dollars
     pnl_percent: Optional[float] = None  # Profit/Loss percentage
     exit_reason: Optional[str] = None  # Why the position closed

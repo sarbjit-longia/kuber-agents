@@ -193,11 +193,37 @@ def execute_pipeline(
                     logger.warning("budget_exceeded", user_id=user_id, reason=reason)
                     return {"status": "skipped", "reason": reason}
 
-            # Preflight: skip execution if broker already has an open order/position for this symbol.
-            # This avoids paying LLM costs for strategies that would be ignored anyway.
+            # Preflight 1: Check DATABASE for existing MONITORING/RUNNING execution for this pipeline.
+            # This prevents duplicate runs regardless of broker availability.
             from app.models.scanner import Scanner
             from app.telemetry import pipeline_executions_counter
 
+            existing_active = db.query(Execution).filter(
+                Execution.pipeline_id == pipeline.id,
+                Execution.status.in_([
+                    ExecutionStatus.PENDING,
+                    ExecutionStatus.RUNNING,
+                    ExecutionStatus.MONITORING,
+                    ExecutionStatus.COMMUNICATION_ERROR,
+                ])
+            ).first()
+
+            if existing_active:
+                logger.info(
+                    "preflight_skipped_active_execution",
+                    pipeline_id=pipeline_id,
+                    existing_execution_id=str(existing_active.id),
+                    existing_status=existing_active.status.value,
+                    symbol=existing_active.symbol,
+                )
+                return {
+                    "status": "skipped",
+                    "reason": f"Pipeline already has active execution ({existing_active.status.value})",
+                    "existing_execution_id": str(existing_active.id),
+                }
+
+            # Preflight 2: Check BROKER for open order/position for this symbol.
+            # This avoids paying LLM costs for strategies that would be ignored anyway.
             # Extract broker tool from pipeline config
             broker_tool = _extract_broker_tool(pipeline.config)
 
@@ -208,6 +234,32 @@ def execute_pipeline(
                 if scanner:
                     tickers = scanner.get_tickers()
                     execution_symbol = tickers[0] if tickers else None
+
+            # Preflight 2a: Cross-pipeline symbol guard — prevent duplicate MONITORING
+            # for the same user+symbol across ALL pipelines (not just this one).
+            if execution_symbol:
+                existing_symbol_monitoring = db.query(Execution).filter(
+                    Execution.user_id == UUID(user_id),
+                    Execution.symbol == execution_symbol,
+                    Execution.status.in_([
+                        ExecutionStatus.MONITORING,
+                        ExecutionStatus.COMMUNICATION_ERROR,
+                    ])
+                ).first()
+
+                if existing_symbol_monitoring:
+                    logger.info(
+                        "preflight_skipped_symbol_already_monitored",
+                        pipeline_id=pipeline_id,
+                        symbol=execution_symbol,
+                        existing_execution_id=str(existing_symbol_monitoring.id),
+                        existing_pipeline_id=str(existing_symbol_monitoring.pipeline_id),
+                    )
+                    return {
+                        "status": "skipped",
+                        "reason": f"Symbol {execution_symbol} already being monitored (execution {existing_symbol_monitoring.id})",
+                        "existing_execution_id": str(existing_symbol_monitoring.id),
+                    }
 
             if broker_tool and execution_symbol:
                 try:
@@ -618,6 +670,7 @@ def reconcile_user_trades(self, user_id: str):
         # Check broker for open positions and reconcile stale monitoring executions
         broker_positions_cache: Dict[str, Any] = {}  # Cache broker instances by account
         reconciled = 0
+        rescheduled = 0
 
         # Grace period: don't reconcile executions that just entered monitoring
         # — the broker API may not yet reflect the newly placed order.
@@ -678,12 +731,194 @@ def reconcile_user_trades(self, user_id: str):
                 execution.completed_at = datetime.utcnow()
                 execution.execution_phase = "completed"
                 execution.next_check_at = None
-                execution.result = (execution.result or {}) | {
+                
+                existing_result = execution.result or {}
+                existing_trade_exec = existing_result.get('trade_execution', {})
+                exec_status = existing_trade_exec.get('status', '').lower() if existing_trade_exec else ''
+                
+                # Default to cancelled (order gone from broker without P&L)
+                reconcile_outcome = 'cancelled'
+                reconcile_pnl = 0.0
+                reconcile_pnl_percent = 0.0
+                exit_reason = 'Reconciled - no open broker position/order'
+                close_time = datetime.utcnow().isoformat()
+                
+                # ------------------------------------------------------------------
+                # LAYER 1: Check trade_execution status from pipeline state
+                # ------------------------------------------------------------------
+                if exec_status in ('filled', 'partially_filled'):
+                    reconcile_outcome = 'executed'
+                
+                # ------------------------------------------------------------------
+                # LAYER 2: Fetch realized P&L directly from broker (most reliable)
+                # If we have a trade_id, ask the broker for the final trade details
+                # including the realized P&L. This handles the case where bracket
+                # orders (SL/TP) closed the position between monitoring checks.
+                # ------------------------------------------------------------------
+                trade_id = existing_trade_exec.get('trade_id') or existing_trade_exec.get('order_id')
+                if trade_id:
+                    try:
+                        trade_details = broker.get_trade_details(str(trade_id))
+                        if trade_details.get('found'):
+                            broker_state = trade_details.get('state', '')
+                            broker_realized_pl = float(trade_details.get('realized_pl', 0))
+                            broker_unrealized_pl = float(trade_details.get('unrealized_pl', 0))
+                            
+                            if broker_state == 'closed' and broker_realized_pl != 0:
+                                reconcile_outcome = 'executed'
+                                reconcile_pnl = broker_realized_pl
+                                # Calculate percent from entry price
+                                entry_price = float(existing_trade_exec.get('filled_price', 0) or 0)
+                                units = float(trade_details.get('units', 0) or 0)
+                                cost_basis = entry_price * units if entry_price and units else 0
+                                reconcile_pnl_percent = (
+                                    (broker_realized_pl / cost_basis * 100)
+                                    if cost_basis > 0 else 0.0
+                                )
+                                exit_reason = f"Position closed by bracket order (realized P&L from broker)"
+                                close_time = trade_details.get('close_time') or close_time
+                                
+                                logger.info(
+                                    "reconciliation_pnl_from_broker",
+                                    execution_id=str(execution.id),
+                                    symbol=execution.symbol,
+                                    trade_id=trade_id,
+                                    realized_pl=broker_realized_pl,
+                                )
+                            elif broker_state == 'open':
+                                # Trade is still open on broker but has_active_symbol
+                                # returned False — this is a data inconsistency.
+                                # Don't reconcile; let the next check handle it.
+                                logger.warning(
+                                    "reconciliation_inconsistency_trade_still_open",
+                                    execution_id=str(execution.id),
+                                    trade_id=trade_id,
+                                )
+                                continue  # Skip this execution
+                    except Exception as e:
+                        logger.warning(
+                            "reconciliation_trade_details_failed",
+                            execution_id=str(execution.id),
+                            trade_id=trade_id,
+                            error=str(e),
+                        )
+                        # Continue with fallback layers below
+                
+                # ------------------------------------------------------------------
+                # LAYER 3: Check trade_manager_agent reports for P&L evidence
+                # The monitoring report may contain unrealized_pl from a position
+                # that was filled and then closed by bracket orders.
+                # ------------------------------------------------------------------
+                if reconcile_outcome == 'cancelled' and execution.reports:
+                    for report_key, report_val in execution.reports.items():
+                        if 'trade_manager' in report_key and isinstance(report_val, dict):
+                            report_data = report_val.get('data', {})
+                            if isinstance(report_data, str):
+                                try:
+                                    import json as _json
+                                    report_data = _json.loads(report_data)
+                                except Exception:
+                                    report_data = {}
+                            if isinstance(report_data, dict):
+                                unrealized_pl = report_data.get('unrealized_pl', 0)
+                                if unrealized_pl and float(unrealized_pl) != 0:
+                                    reconcile_outcome = 'executed'
+                                    reconcile_pnl = float(unrealized_pl)
+                                    reconcile_pnl_percent = float(report_data.get('pnl_percent', 0))
+                                    exit_reason = report_data.get('reason', 'Position closed (P&L from last monitoring report)')
+                                    close_time = report_data.get('closed_at') or close_time
+                                    logger.info(
+                                        "reconciliation_pnl_from_reports",
+                                        execution_id=str(execution.id),
+                                        symbol=execution.symbol,
+                                        unrealized_pl=unrealized_pl,
+                                    )
+                                    break
+                
+                # ------------------------------------------------------------------
+                # LAYER 4: Check final_pnl from existing result (set during monitoring)
+                # ------------------------------------------------------------------
+                if reconcile_outcome == 'cancelled':
+                    final_pnl_val = existing_result.get('final_pnl')
+                    if final_pnl_val and float(final_pnl_val) != 0:
+                        reconcile_outcome = 'executed'
+                        reconcile_pnl = float(final_pnl_val)
+                        exit_reason = 'Position closed (P&L from pipeline result)'
+                
+                # ------------------------------------------------------------------
+                # LAYER 5: Check trade_outcome already set by agent
+                # ------------------------------------------------------------------
+                if reconcile_outcome == 'cancelled':
+                    existing_outcome = existing_result.get('trade_outcome', {})
+                    if existing_outcome and existing_outcome.get('status') == 'executed':
+                        existing_pnl = float(existing_outcome.get('pnl', 0))
+                        if existing_pnl != 0:
+                            reconcile_outcome = 'executed'
+                            reconcile_pnl = existing_pnl
+                            reconcile_pnl_percent = float(existing_outcome.get('pnl_percent', 0))
+                            exit_reason = existing_outcome.get('exit_reason', 'Position closed')
+                            close_time = existing_outcome.get('closed_at') or close_time
+                
+                # ------------------------------------------------------------------
+                # Persist trade_outcome
+                # ------------------------------------------------------------------
+                # Set trade_outcome if not already set, or update if existing one has 0 P&L
+                existing_outcome = existing_result.get('trade_outcome', {})
+                existing_outcome_pnl = float(existing_outcome.get('pnl', 0)) if existing_outcome else 0
+                
+                if not existing_outcome or (existing_outcome_pnl == 0 and reconcile_pnl != 0) or reconcile_outcome != 'cancelled':
+                    existing_result['trade_outcome'] = {
+                        'status': reconcile_outcome,
+                        'pnl': reconcile_pnl,
+                        'pnl_percent': reconcile_pnl_percent,
+                        'exit_reason': exit_reason,
+                        'closed_at': close_time,
+                    }
+                
+                if reconcile_pnl != 0:
+                    existing_result['final_pnl'] = reconcile_pnl
+                
+                execution.result = existing_result | {
                     "reconciled": True,
-                    "reconcile_reason": "No open broker position/order found for symbol",
+                    "reconcile_reason": exit_reason,
                 }
                 execution.error_message = None
                 reconciled += 1
+                
+                logger.info(
+                    "execution_reconciled",
+                    execution_id=str(execution.id),
+                    symbol=execution.symbol,
+                    outcome=reconcile_outcome,
+                    pnl=reconcile_pnl,
+                    trade_id=trade_id,
+                )
+            else:
+                # Broker still has active position/order — check if monitoring chain is broken
+                # If next_check_at is in the past (or None), the Celery monitoring task chain
+                # was lost (e.g., worker restart). Re-schedule it.
+                orphan_threshold = datetime.utcnow() - timedelta(minutes=2)
+                is_orphaned = (
+                    execution.next_check_at is None
+                    or execution.next_check_at < orphan_threshold
+                )
+                if is_orphaned:
+                    logger.warning(
+                        "monitoring_chain_broken_rescheduling",
+                        execution_id=str(execution.id),
+                        symbol=execution.symbol,
+                        next_check_at=str(execution.next_check_at),
+                    )
+                    # Update next_check_at so we don't re-schedule on every reconciliation cycle
+                    execution.next_check_at = datetime.utcnow() + timedelta(seconds=15)
+                    execution.version += 1
+                    db.commit()
+                    # Re-trigger the monitoring chain
+                    schedule_monitoring_check.apply_async(
+                        args=[str(execution.id)],
+                        countdown=10,  # Start in 10 seconds
+                    )
+                    rescheduled += 1
 
         if reconciled:
             db.commit()
@@ -700,6 +935,7 @@ def reconcile_user_trades(self, user_id: str):
             monitoring_symbols=list(monitoring_symbols),
             communication_errors=len(comm_error_executions),
             reconciled=reconciled,
+            rescheduled=rescheduled,
         )
         
         return {
@@ -709,6 +945,7 @@ def reconcile_user_trades(self, user_id: str):
             "monitoring_symbols": list(monitoring_symbols),
             "communication_errors": len(comm_error_executions),
             "reconciled": reconciled,
+            "rescheduled": rescheduled,
         }
         
     except Exception as e:
@@ -1169,19 +1406,13 @@ def schedule_monitoring_check(self, execution_id: str):
         
         # Check if monitoring should complete
         elif updated_state.should_complete:
-            # Determine execution status based on trade_outcome:
-            # - "accepted" = limit order was accepted but never filled → CANCELLED
-            # - "executed" = trade was filled and position closed → COMPLETED
+            # Execution status reflects pipeline lifecycle: always COMPLETED when monitoring ends normally.
+            # Trade-specific outcome (executed, accepted, cancelled, failed, etc.) is stored separately
+            # in execution.result['trade_outcome'] and displayed as "Trade Outcome" on the UI.
             outcome_status = updated_state.trade_outcome.status if updated_state.trade_outcome else "executed"
             
-            if outcome_status == "accepted":
-                # Unfilled limit order - mark as CANCELLED
-                execution.status = ExecutionStatus.CANCELLED
-                execution.execution_phase = "cancelled"
-            else:
-                # Real trade that was executed and position closed - mark as COMPLETED
-                execution.status = ExecutionStatus.COMPLETED
-                execution.execution_phase = "completed"
+            execution.status = ExecutionStatus.COMPLETED
+            execution.execution_phase = "completed"
             
             execution.completed_at = datetime.utcnow()
             execution.next_check_at = None
@@ -1201,11 +1432,15 @@ def schedule_monitoring_check(self, execution_id: str):
                 exit_price = updated_state.trade_outcome.exit_price
                 entry_price = updated_state.trade_outcome.entry_price
             
+            # If there's actual P&L, the trade was filled — override 'accepted'/'pending' to 'executed'
+            if pnl != 0 and outcome_status in ('accepted', 'pending'):
+                outcome_status = 'executed'
+            
             # Store P&L in execution result for UI display
             if not execution.result:
                 execution.result = {}
             
-            # Store in nested trade_outcome object (preserve actual status from agent)
+            # Store in nested trade_outcome object (with corrected status)
             execution.result['trade_outcome'] = {
                 'status': outcome_status,
                 'pnl': pnl,
@@ -1240,9 +1475,9 @@ def schedule_monitoring_check(self, execution_id: str):
                 try:
                     ex2 = db2.query(Execution).filter(Execution.id == UUID(execution_id)).first()
                     if ex2 and ex2.version == original_version:
-                        ex2.status = ExecutionStatus.CANCELLED if outcome_status == "accepted" else ExecutionStatus.COMPLETED
+                        ex2.status = ExecutionStatus.COMPLETED
                         ex2.completed_at = datetime.utcnow()
-                        ex2.execution_phase = "cancelled" if outcome_status == "accepted" else "completed"
+                        ex2.execution_phase = "completed"
                         ex2.next_check_at = None
                         ex2.version += 1
                         db2.commit()

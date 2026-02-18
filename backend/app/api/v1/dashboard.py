@@ -303,15 +303,44 @@ async def get_dashboard(
             "broker": pipeline_broker_map.get(str(execution.pipeline_id)),
         })
     
-    # ── 5. Recent completed executions ─────────────────────────
+    # ── 5. Recent completed executions (only with valid P&L) ─────────────────────────
     recent_executions = []
-    for execution, pipeline_name in executions_with_names[:20]:  # Already ordered by created_at desc
+    for execution, pipeline_name in executions_with_names[:50]:  # Check more to find 10 with P&L
         if execution.status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
             continue
         if len(recent_executions) >= 10:
             break
         
         pnl = _extract_pnl(execution)
+        
+        # Only include executions with valid P&L (not None, not 0, or explicitly 0 from a closed trade)
+        # This filters out executions that never resulted in a trade (rejected, skipped, etc.)
+        if pnl is None:
+            continue
+        
+        # Allow 0 P&L only if it's from a completed trade (has trade_outcome)
+        pnl_value = pnl.get("value")
+        if pnl_value is None:
+            continue
+        
+        # Check if this is a real trade attempt (has trade_outcome with a relevant status)
+        result = execution.result or {}
+        trade_outcome = result.get("trade_outcome")
+        if trade_outcome and isinstance(trade_outcome, dict):
+            outcome_status = trade_outcome.get("status")
+            # Include:
+            # - "executed" = trade was filled, position opened and closed (has real P&L)
+            # - "cancelled" = limit order was cancelled before fill (shows trade was attempted)
+            # Skip:
+            # - "accepted" = limit order never filled (no real P&L)
+            # - "rejected", "failed", "no_action", "pending" = no real trade
+            if outcome_status in ("executed", "cancelled"):
+                pass  # Include it
+            else:
+                continue  # Skip non-trade outcomes
+        elif pnl_value == 0:
+            # No trade_outcome but P&L is 0 - likely not a real trade, skip
+            continue
         
         # Extract strategy action
         strategy_action = None

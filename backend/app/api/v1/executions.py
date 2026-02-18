@@ -287,40 +287,91 @@ async def list_executions(
             risk_assessment = execution.result.get('risk_assessment')
             trade_outcome_obj = execution.result.get('trade_outcome')  # From monitoring completion
             
-            # PRIORITY 1: Check if monitoring completed (has trade_outcome from agent)
+            # Step 1: Check if monitoring completed (has final trade_outcome from agent)
             if trade_outcome_obj and isinstance(trade_outcome_obj, dict):
-                # Use the actual status from the trade_outcome object:
-                # - "accepted" = limit order was accepted but never filled (CANCELLED execution)
-                # - "executed" = trade was filled, position opened and closed (COMPLETED execution)
-                trade_outcome = trade_outcome_obj.get('status', 'executed')
-            elif trade_execution:
-                # Has trade execution data
+                raw_status = trade_outcome_obj.get('status', 'unknown')
+                # Normalize: merge 'accepted' into 'pending' (both = order at broker, not filled)
+                trade_outcome = 'pending' if raw_status == 'accepted' else raw_status
+            
+            # Step 2: Check trade_execution status from broker
+            if not trade_outcome and trade_execution:
                 exec_status = trade_execution.get('status', '').lower()
                 if exec_status in ['filled', 'partially_filled']:
                     trade_outcome = 'executed'
-                elif exec_status == 'accepted':
-                    trade_outcome = 'accepted'  # Order accepted but not filled yet
+                elif exec_status in ['accepted', 'pending']:
+                    trade_outcome = 'pending'  # Order at broker, waiting to fill
                 elif exec_status == 'rejected':
                     trade_outcome = 'rejected'
-                elif exec_status == 'pending':
-                    trade_outcome = 'pending'
                 elif exec_status == 'cancelled':
                     trade_outcome = 'cancelled'
                 else:
                     trade_outcome = exec_status or 'unknown'
-            elif risk_assessment:
-                # Has risk assessment but no execution
-                approval = risk_assessment.get('approved', None)
-                if approval is False:
-                    trade_outcome = 'rejected'  # Changed from 'skipped' for clarity
-                elif strategy_action and strategy_action != 'HOLD':
-                    trade_outcome = 'pending'  # Strategy says trade but no execution yet
-            elif strategy_action:
-                # Has strategy but no risk/execution
-                if strategy_action == 'HOLD':
-                    trade_outcome = 'no_action'  # Changed from 'no_trade' for consistency
-                else:
-                    trade_outcome = 'pending'
+            
+            # Step 3: Fallback based on what pipeline produced
+            if not trade_outcome:
+                if risk_assessment:
+                    approval = risk_assessment.get('approved', None)
+                    if approval is False:
+                        trade_outcome = 'rejected'
+                    elif strategy_action and strategy_action != 'HOLD':
+                        trade_outcome = 'no_trade'
+                    else:
+                        trade_outcome = 'no_action'
+                elif strategy_action:
+                    if strategy_action == 'HOLD':
+                        trade_outcome = 'no_action'
+                    else:
+                        trade_outcome = 'no_trade'
+            
+            # FINAL OVERRIDE 1: For actively monitored executions, if reports show
+            # unrealized P&L from trade_manager_agent, the trade IS executed —
+            # override whatever earlier logic determined (e.g. 'no_trade', 'accepted')
+            if execution.status in (
+                ExecutionStatus.MONITORING, ExecutionStatus.RUNNING,
+                ExecutionStatus.COMMUNICATION_ERROR
+            ):
+                if execution.reports and isinstance(execution.reports, dict):
+                    for agent_id, report in execution.reports.items():
+                        if isinstance(report, dict) and report.get('agent_type') == 'trade_manager_agent':
+                            data = report.get('data', {})
+                            if data.get('unrealized_pl') is not None or data.get('position_size'):
+                                trade_outcome = 'executed'
+                                break
+            
+            # FINAL OVERRIDE 2: For completed executions with real P&L, the trade
+            # was actually filled — override 'pending'/'accepted' to 'executed'.
+            # This handles limit orders that were filled and closed but whose
+            # trade_execution.status was never updated from 'accepted'.
+            if execution.status == ExecutionStatus.COMPLETED and trade_outcome in ('pending', 'accepted'):
+                has_real_pnl = False
+                result = execution.result or {}
+                
+                # Check final_pnl (top-level)
+                final_pnl = result.get('final_pnl')
+                if final_pnl is not None and final_pnl != 0:
+                    has_real_pnl = True
+                
+                # Check trade_outcome.pnl
+                if not has_real_pnl and trade_outcome_obj and isinstance(trade_outcome_obj, dict):
+                    try:
+                        pnl_val = float(trade_outcome_obj.get('pnl', 0))
+                        if pnl_val != 0:
+                            has_real_pnl = True
+                    except (TypeError, ValueError):
+                        pass
+                
+                # Check reports for unrealized_pl (reconciled trades captured P&L here)
+                if not has_real_pnl and execution.reports and isinstance(execution.reports, dict):
+                    for agent_id, report in execution.reports.items():
+                        if isinstance(report, dict) and report.get('agent_type') == 'trade_manager_agent':
+                            data = report.get('data', {})
+                            upl = data.get('unrealized_pl')
+                            if upl is not None and upl != 0:
+                                has_real_pnl = True
+                                break
+                
+                if has_real_pnl:
+                    trade_outcome = 'executed'
         
         summaries.append(ExecutionSummary(
             id=execution.id,

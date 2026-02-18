@@ -104,6 +104,142 @@
   }
 }
 
+// Execution Timeline Bar (Music Bar / Equalizer)
+.timeline-card {
+  margin-bottom: 2rem;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+
+  mat-card-header {
+    padding: 1.5rem 1.5rem 0.5rem;
+  }
+
+  mat-card-content {
+    padding: 0.5rem 1.5rem 1.5rem !important;
+  }
+}
+
+.timeline-count {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 0.25rem;
+}
+
+.execution-timeline {
+  .timeline-bars-scroll {
+    overflow-x: auto;
+    padding: 0.5rem 0;
+
+    &::-webkit-scrollbar {
+      height: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 2px;
+    }
+  }
+
+  .timeline-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    min-height: 80px;
+    height: 80px;
+    padding: 4px 0;
+  }
+
+  .timeline-bar {
+    flex: 1 1 0;
+    min-width: 3px;
+    max-width: 14px;
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    opacity: 0.85;
+
+    &:hover {
+      opacity: 1;
+      transform: scaleY(1.15);
+      transform-origin: bottom;
+      filter: brightness(1.2);
+    }
+
+    // Profit (green)
+    &.bar-profit {
+      background: linear-gradient(to top, #059669, #34d399);
+    }
+    // Loss (red)
+    &.bar-loss {
+      background: linear-gradient(to top, #dc2626, #f87171);
+    }
+    // Hold (orange)
+    &.bar-hold {
+      background: linear-gradient(to top, #d97706, #fbbf24);
+    }
+    // Cancelled (gray)
+    &.bar-cancelled {
+      background: linear-gradient(to top, #4b5563, #9ca3af);
+    }
+    // Pending (blue)
+    &.bar-pending {
+      background: linear-gradient(to top, #2563eb, #60a5fa);
+    }
+    // Failed (dark red)
+    &.bar-failed {
+      background: linear-gradient(to top, #b91c1c, #fca5a5);
+    }
+    // No trade placed despite signal (muted purple)
+    &.bar-no-trade {
+      background: linear-gradient(to top, #6366f1, #a5b4fc);
+      opacity: 0.5;
+    }
+    // No action / unknown (slate)
+    &.bar-no-action {
+      background: linear-gradient(to top, #475569, #94a3b8);
+      opacity: 0.5;
+    }
+    // Signal given but no trade (faded green)
+    &.bar-signal {
+      background: linear-gradient(to top, #059669, #6ee7b7);
+      opacity: 0.45;
+    }
+  }
+}
+
+.timeline-legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+
+    &.bar-profit { background: #34d399; }
+    &.bar-loss { background: #f87171; }
+    &.bar-hold { background: #fbbf24; }
+    &.bar-no-trade { background: #a5b4fc; }
+    &.bar-cancelled { background: #9ca3af; }
+    &.bar-pending { background: #60a5fa; }
+    &.bar-failed { background: #fca5a5; }
+  }
+}
+
 // Stats Grid
 .stats-grid {
   display: grid;
@@ -206,54 +342,167 @@
   .active-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
 
-    .symbol-badge {
-      background: var(--accent-gradient);
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 1.125rem;
-      letter-spacing: 0.5px;
+    .active-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+
+      .symbol-badge {
+        background: var(--accent-gradient);
+        color: white;
+        padding: 0.375rem 0.875rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+
+      .pipeline-label {
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .active-header-right {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+      align-items: flex-end;
+      flex-shrink: 0;
     }
 
     .status-chip-monitoring {
       background-color: var(--color-warning-bg) !important;
       color: var(--color-warning) !important;
       font-weight: 600;
-      height: 32px;
-      padding: 0 12px;
+      height: 28px;
+      padding: 0 10px;
+      font-size: 0.75rem;
       display: inline-flex;
       align-items: center;
       gap: 4px;
       animation: pulse-monitoring 2s ease-in-out infinite;
 
       mat-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    .outcome-chip-small {
+      font-weight: 600;
+      height: 24px;
+      padding: 0 8px;
+      font-size: 0.7rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+      }
+
+      &.outcome-chip-executed {
+        background-color: var(--color-success-bg) !important;
+        color: var(--color-success) !important;
+      }
+      &.outcome-chip-pending {
+        background-color: var(--color-warning-bg) !important;
+        color: var(--color-warning) !important;
+      }
+      &.outcome-chip-cancelled {
+        background-color: var(--bg-elevated) !important;
+        color: var(--text-secondary) !important;
+      }
+      &.outcome-chip-failed,
+      &.outcome-chip-rejected {
+        background-color: var(--color-error-bg) !important;
+        color: var(--color-error) !important;
+      }
+      &.outcome-chip-no_trade,
+      &.outcome-chip-no_action {
+        background-color: var(--bg-elevated) !important;
+        color: var(--text-secondary) !important;
       }
     }
   }
 
-  .active-pipeline {
+  .active-info-row {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    gap: 1.5rem;
     margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
 
-    mat-icon {
-      color: var(--accent-primary);
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+
+      .info-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 500;
+      }
+
+      .info-value {
+        font-size: 0.875rem;
+        color: var(--text-primary);
+        font-weight: 500;
+      }
     }
+  }
 
-    span {
-      font-weight: 600;
-      font-size: 1rem;
-      color: var(--text-primary);
+  .active-pnl-row {
+    margin-bottom: 1rem;
+
+    .pnl-cell-large {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      background: var(--bg-elevated);
+
+      .pnl-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 500;
+      }
+
+      .pnl-value {
+        font-size: 1.125rem;
+        font-weight: 700;
+      }
+
+      &.pnl-positive {
+        background: rgba(5, 150, 105, 0.1);
+        .pnl-value { color: #34d399; }
+      }
+      &.pnl-negative {
+        background: rgba(220, 38, 38, 0.1);
+        .pnl-value { color: #f87171; }
+      }
+      &.pnl-zero {
+        .pnl-value { color: var(--text-secondary); }
+      }
     }
   }
 
@@ -531,12 +780,12 @@
       }
     }
 
-    &.outcome-skipped {
-      background: rgba(139, 92, 246, 0.15);
-      color: #a78bfa;
+    &.outcome-failed {
+      background: var(--color-error-bg);
+      color: var(--color-error);
 
       mat-icon {
-        color: #a78bfa;
+        color: var(--color-error);
       }
     }
 

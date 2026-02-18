@@ -26,45 +26,52 @@
     <mat-card-content>
       <div class="active-monitoring-grid">
         <div *ngFor="let execution of activeExecutions" class="active-execution-card" (click)="viewExecution(execution)">
+          <!-- Header Row: Symbol + Status -->
           <div class="active-header">
-            <div class="symbol-badge">{{ execution.symbol || 'N/A' }}</div>
-            <mat-chip class="status-chip-monitoring">
-              <mat-icon>visibility</mat-icon>
-              {{ execution.status }}
-            </mat-chip>
+            <div class="active-header-left">
+              <div class="symbol-badge">{{ execution.symbol || 'N/A' }}</div>
+              <span class="pipeline-label">{{ execution.pipeline_name }}</span>
+            </div>
+            <div class="active-header-right">
+              <mat-chip class="status-chip-monitoring">
+                <mat-icon>{{ getStatusIcon(execution.status) }}</mat-icon>
+                {{ execution.status }}
+              </mat-chip>
+              <mat-chip *ngIf="execution.trade_outcome" 
+                        [ngClass]="'outcome-chip-' + execution.trade_outcome"
+                        class="outcome-chip-small">
+                <mat-icon>{{ getOutcomeIcon(execution) }}</mat-icon>
+                {{ getTradeOutcome(execution) }}
+              </mat-chip>
+            </div>
           </div>
           
-          <div class="active-pipeline">
-            <mat-icon>account_tree</mat-icon>
-            <span>{{ execution.pipeline_name }}</span>
-          </div>
-          
-          <div class="active-details">
-            <div class="detail-item">
-              <span class="detail-label">Mode:</span>
+          <!-- Key Info Row -->
+          <div class="active-info-row">
+            <div class="info-item">
+              <span class="info-label">Mode</span>
               <mat-chip [color]="getModeColor(execution.mode)" selected class="mode-chip-small">
                 {{ execution.mode }}
               </mat-chip>
             </div>
-            
-            <div class="detail-item">
-              <span class="detail-label">Started:</span>
-              <span class="detail-value">{{ formatDate(execution.started_at) }}</span>
-            </div>
-            
-            <div class="detail-item">
-              <span class="detail-label">Result:</span>
+            <div class="info-item">
+              <span class="info-label">Signal</span>
               <div class="result-cell-compact" [ngClass]="getResultClass(execution)">
                 <mat-icon>{{ getResultIcon(execution) }}</mat-icon>
                 <span>{{ getStrategyResult(execution) }}</span>
               </div>
             </div>
-            
-            <div class="detail-item pnl-highlight">
-              <span class="detail-label">P&L:</span>
-              <div class="pnl-cell-large" [ngClass]="getPnLClass(execution)">
-                <span>{{ formatPnL(execution) }}</span>
-              </div>
+            <div class="info-item">
+              <span class="info-label">Started</span>
+              <span class="info-value">{{ formatDate(execution.started_at) }}</span>
+            </div>
+          </div>
+
+          <!-- P&L Highlight -->
+          <div class="active-pnl-row">
+            <div class="pnl-cell-large" [ngClass]="getPnLClass(execution)">
+              <span class="pnl-label">P&L</span>
+              <span class="pnl-value">{{ formatPnL(execution) }}</span>
             </div>
           </div>
           
@@ -75,6 +82,44 @@
             </button>
           </div>
         </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Execution Timeline (Music Bar Visualization) -->
+  <mat-card class="timeline-card" *ngIf="executionBars.length > 0">
+    <mat-card-header>
+      <mat-card-title>
+        <div class="section-title">
+          <mat-icon>equalizer</mat-icon>
+          Execution Timeline
+          <span class="timeline-count">({{ executionBars.length }})</span>
+        </div>
+      </mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="execution-timeline">
+        <div class="timeline-bars-scroll">
+          <div class="timeline-bars">
+            <div *ngFor="let bar of executionBars"
+                 class="timeline-bar"
+                 [ngClass]="bar.colorClass"
+                 [style.height.px]="bar.height"
+                 [matTooltip]="bar.tooltip"
+                 matTooltipPosition="above"
+                 (click)="onBarClick(bar.execution)">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="timeline-legend">
+        <span class="legend-item"><span class="legend-dot bar-profit"></span> Profit</span>
+        <span class="legend-item"><span class="legend-dot bar-loss"></span> Loss</span>
+        <span class="legend-item"><span class="legend-dot bar-hold"></span> Hold</span>
+        <span class="legend-item"><span class="legend-dot bar-no-trade"></span> No Trade</span>
+        <span class="legend-item"><span class="legend-dot bar-cancelled"></span> Cancelled</span>
+        <span class="legend-item"><span class="legend-dot bar-pending"></span> Limit Pending</span>
+        <span class="legend-item"><span class="legend-dot bar-failed"></span> Failed</span>
       </div>
     </mat-card-content>
   </mat-card>
@@ -154,7 +199,9 @@
 
       <div class="filter-summary">
         <span class="filter-info">
-          <strong>{{ activeExecutions.length + historicalDataSource.data.length }}</strong> of <strong>{{ allExecutions.length }}</strong> executions shown
+          <strong>{{ historicalDataSource.data.length }}</strong> trades in table · 
+          <strong>{{ activeExecutions.length }}</strong> active · 
+          <strong>{{ allExecutions.length }}</strong> total executions
         </span>
       </div>
     </mat-card-content>
@@ -235,6 +282,17 @@
 
       <div *ngIf="!loading && historicalDataSource.data.length > 0" class="table-container">
         <table mat-table [dataSource]="historicalDataSource" class="executions-table">
+          <!-- Execution ID Column -->
+          <ng-container matColumnDef="execution_id">
+            <th mat-header-cell *matHeaderCellDef>Execution ID</th>
+            <td mat-cell *matCellDef="let execution">
+              <div class="execution-id-cell">
+                <mat-icon>fingerprint</mat-icon>
+                <span class="execution-id-text">{{ execution.id?.substring(0, 8) || '-' }}</span>
+              </div>
+            </td>
+          </ng-container>
+
           <!-- Symbol Column -->
           <ng-container matColumnDef="symbol">
             <th mat-header-cell *matHeaderCellDef>Symbol</th>
