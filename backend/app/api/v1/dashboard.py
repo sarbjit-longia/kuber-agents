@@ -410,6 +410,78 @@ async def get_dashboard(
         if pnl:
             today_pnl += pnl["value"] or 0
     
+    # ── 8. Cost & P&L history (last 30 days) ──────────────────
+    history_days = 30
+    history_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=history_days - 1)
+    
+    # Initialize daily buckets
+    cost_history: Dict[str, float] = {}
+    pnl_history: Dict[str, float] = {}
+    for i in range(history_days):
+        day = (history_start + timedelta(days=i)).strftime("%Y-%m-%d")
+        cost_history[day] = 0.0
+        pnl_history[day] = 0.0
+    
+    for e in all_executions:
+        if not e.created_at or e.created_at < history_start:
+            continue
+        day_key = e.created_at.strftime("%Y-%m-%d")
+        if day_key in cost_history:
+            cost_history[day_key] += e.cost or 0
+        
+        pnl = _extract_pnl(e)
+        if pnl and day_key in pnl_history:
+            pnl_history[day_key] += pnl["value"] or 0
+    
+    cost_history_list = [
+        {"date": d, "cost": round(v, 4)} for d, v in sorted(cost_history.items())
+    ]
+    pnl_history_list = [
+        {"date": d, "pnl": round(v, 2)} for d, v in sorted(pnl_history.items())
+    ]
+    
+    # ── 9. Trade stats (win/loss analysis) ────────────────────
+    winning_trades: List[float] = []
+    losing_trades: List[float] = []
+    
+    for e in all_executions:
+        if e.status != ExecutionStatus.COMPLETED:
+            continue
+        pnl = _extract_pnl(e)
+        if pnl is None:
+            continue
+        pnl_val = pnl["value"]
+        if pnl_val is None:
+            continue
+        # Only count real trades (same filter as recent executions)
+        result_data = e.result or {}
+        trade_outcome = result_data.get("trade_outcome")
+        if trade_outcome and isinstance(trade_outcome, dict):
+            if trade_outcome.get("status") not in ("executed", "cancelled"):
+                continue
+        elif pnl_val == 0:
+            continue
+        
+        if pnl_val > 0:
+            winning_trades.append(pnl_val)
+        elif pnl_val < 0:
+            losing_trades.append(pnl_val)
+    
+    total_trades_counted = len(winning_trades) + len(losing_trades)
+    trade_stats = {
+        "total_trades": total_trades_counted,
+        "winning_trades": len(winning_trades),
+        "losing_trades": len(losing_trades),
+        "win_rate": round(len(winning_trades) / total_trades_counted, 4) if total_trades_counted > 0 else 0.0,
+        "avg_win": round(sum(winning_trades) / len(winning_trades), 2) if winning_trades else 0.0,
+        "avg_loss": round(sum(losing_trades) / len(losing_trades), 2) if losing_trades else 0.0,
+        "best_trade": round(max(winning_trades), 2) if winning_trades else 0.0,
+        "worst_trade": round(min(losing_trades), 2) if losing_trades else 0.0,
+        "profit_factor": round(
+            abs(sum(winning_trades) / sum(losing_trades)), 2
+        ) if losing_trades and sum(losing_trades) != 0 else 0.0,
+    }
+    
     return {
         "pipelines": {
             "total": total_pipelines,
@@ -441,4 +513,7 @@ async def get_dashboard(
         "active_positions": active_positions,
         "recent_executions": recent_executions,
         "pipeline_list": pipeline_list,
+        "cost_history": cost_history_list,
+        "pnl_history": pnl_history_list,
+        "trade_stats": trade_stats,
     }

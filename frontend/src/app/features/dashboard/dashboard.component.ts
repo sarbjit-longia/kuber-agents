@@ -28,6 +28,9 @@ import {
   ActivePosition,
   RecentExecution,
   DashboardPipeline,
+  CostHistoryEntry,
+  PnLHistoryEntry,
+  TradeStats,
 } from '../../core/services/dashboard.service';
 
 @Component({
@@ -60,8 +63,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   error: string | null = null;
   lastUpdated: Date | null = null;
 
-  recentColumns = ['symbol', 'pipeline', 'action', 'status', 'pnl', 'cost', 'time'];
-  pipelineColumns = ['name', 'status', 'broker', 'executions', 'pnl'];
+  recentColumns = ['symbol', 'pipeline', 'action', 'pnl', 'cost', 'time'];
+  pipelineColumns = ['name', 'status', 'broker', 'executions', 'completed', 'failed', 'pnl'];
+
+  // Chart display settings
+  costChartDays = 14;
+  pnlChartDays = 14;
 
   constructor(
     private dashboardService: DashboardService,
@@ -185,6 +192,93 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   formatSuccessRate(rate: number): string {
     return `${(rate * 100).toFixed(1)}%`;
+  }
+
+  // ── Chart helpers ─────────────────────────────────────────
+
+  getCostChartData(): CostHistoryEntry[] {
+    if (!this.data?.cost_history) return [];
+    return this.data.cost_history.slice(-this.costChartDays);
+  }
+
+  getPnLChartData(): PnLHistoryEntry[] {
+    if (!this.data?.pnl_history) return [];
+    return this.data.pnl_history.slice(-this.pnlChartDays);
+  }
+
+  getBarHeight(value: number, entries: { cost?: number; pnl?: number }[], key: 'cost' | 'pnl'): number {
+    const values = entries.map(e => Math.abs((e as any)[key] || 0));
+    const maxVal = Math.max(...values, 0.001);
+    return Math.max((Math.abs(value) / maxVal) * 100, 2);
+  }
+
+  getCostChartMax(): number {
+    const data = this.getCostChartData();
+    if (!data.length) return 0;
+    return Math.max(...data.map(d => d.cost));
+  }
+
+  getPnLChartMax(): number {
+    const data = this.getPnLChartData();
+    if (!data.length) return 0;
+    return Math.max(...data.map(d => Math.abs(d.pnl)), 0.01);
+  }
+
+  formatChartDate(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  formatShortDate(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { day: 'numeric' });
+  }
+
+  getTotalCostForPeriod(): number {
+    return this.getCostChartData().reduce((sum, d) => sum + d.cost, 0);
+  }
+
+  getTotalPnLForPeriod(): number {
+    return this.getPnLChartData().reduce((sum, d) => sum + d.pnl, 0);
+  }
+
+  /** Returns 0–100 representing how tall the bar should be within its half */
+  getPnLBarPercent(pnl: number): number {
+    const maxAbs = this.getPnLChartMax();
+    if (maxAbs === 0) return 0;
+    return Math.max((Math.abs(pnl) / maxAbs) * 100, 4);
+  }
+
+  getFilteredRecentExecutions(): RecentExecution[] {
+    if (!this.data?.recent_executions) return [];
+    return this.data.recent_executions.filter(e => {
+      if (!e.pnl) return false;
+      return e.pnl.value !== null && e.pnl.value !== undefined && e.pnl.value !== 0;
+    });
+  }
+
+  // ── Pipeline P&L chart helpers ────────────────────────────
+
+  getPipelinePnLData(): DashboardPipeline[] {
+    if (!this.data?.pipeline_list) return [];
+    return this.data.pipeline_list.filter(p => p.total_pnl !== 0);
+  }
+
+  getPipelinePnLMax(): number {
+    const data = this.getPipelinePnLData();
+    if (!data.length) return 1;
+    return Math.max(...data.map(p => Math.abs(p.total_pnl)), 0.01);
+  }
+
+  getPipelineBarHeight(pnl: number): number {
+    const maxVal = this.getPipelinePnLMax();
+    // Returns 0-50 (half the chart height since baseline is at 50%)
+    return Math.max((Math.abs(pnl) / maxVal) * 50, 3);
+  }
+
+  getPipelineBarLabel(name: string): string {
+    if (!name) return '';
+    return name.length > 12 ? name.substring(0, 10) + '…' : name;
   }
 
   // ── Style helpers ──────────────────────────────────────────

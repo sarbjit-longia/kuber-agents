@@ -119,6 +119,28 @@ export interface DashboardPipeline {
   created_at: string;
 }
 
+export interface CostHistoryEntry {
+  date: string;
+  cost: number;
+}
+
+export interface PnLHistoryEntry {
+  date: string;
+  pnl: number;
+}
+
+export interface TradeStats {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+  best_trade: number;
+  worst_trade: number;
+  profit_factor: number;
+}
+
 export interface DashboardData {
   pipelines: DashboardPipelineStats;
   executions: DashboardExecutionStats;
@@ -128,6 +150,9 @@ export interface DashboardData {
   active_positions: ActivePosition[];
   recent_executions: RecentExecution[];
   pipeline_list: DashboardPipeline[];
+  cost_history: CostHistoryEntry[];
+  pnl_history: PnLHistoryEntry[];
+  trade_stats: TradeStats;
 }
 
 @Injectable({

@@ -136,6 +136,222 @@
         </mat-card-content>
       </mat-card>
 
+      <!-- ─── Charts Row: Cost + P&L History ──────────────── -->
+      <div class="charts-row">
+        <!-- Cost History Chart -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>attach_money</mat-icon>
+                Cost History
+              </div>
+            </mat-card-title>
+            <div class="section-actions">
+              <span class="chart-period-total">
+                {{ costChartDays }}d total: {{ formatCost(getTotalCostForPeriod()) }}
+              </span>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="bar-chart" *ngIf="getCostChartData().length > 0; else noCostData">
+              <div class="bar-chart-bars">
+                <div class="bar-wrapper" *ngFor="let entry of getCostChartData()"
+                     [matTooltip]="formatChartDate(entry.date) + ': ' + formatCost(entry.cost)">
+                  <div class="bar cost-bar"
+                       [style.height.%]="getBarHeight(entry.cost, getCostChartData(), 'cost')">
+                  </div>
+                  <span class="bar-label">{{ formatShortDate(entry.date) }}</span>
+                </div>
+              </div>
+            </div>
+            <ng-template #noCostData>
+              <div class="empty-section compact">
+                <mat-icon>bar_chart</mat-icon>
+                <p>No cost data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- P&L History Chart -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>show_chart</mat-icon>
+                P&L History
+              </div>
+            </mat-card-title>
+            <div class="section-actions">
+              <span class="chart-period-total" [ngClass]="getPnLClass(getTotalPnLForPeriod())">
+                {{ pnlChartDays }}d total: {{ formatPnL(getTotalPnLForPeriod()) }}
+              </span>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="pnl-baseline-chart" *ngIf="getPnLChartData().length > 0; else noPnlData">
+              <!-- Upper half: profit bars grow upward from baseline -->
+              <div class="pnl-half pnl-half-upper">
+                <div class="pnl-col" *ngFor="let entry of getPnLChartData()"
+                     [matTooltip]="formatChartDate(entry.date) + ': ' + formatPnL(entry.pnl)">
+                  <div class="pnl-bar-up"
+                       *ngIf="entry.pnl > 0"
+                       [style.height.%]="getPnLBarPercent(entry.pnl)">
+                  </div>
+                </div>
+              </div>
+              <!-- Baseline -->
+              <div class="pnl-zero-line">
+                <span class="pnl-zero-label">$0</span>
+              </div>
+              <!-- Lower half: loss bars grow downward from baseline -->
+              <div class="pnl-half pnl-half-lower">
+                <div class="pnl-col" *ngFor="let entry of getPnLChartData()"
+                     [matTooltip]="formatChartDate(entry.date) + ': ' + formatPnL(entry.pnl)">
+                  <div class="pnl-bar-down"
+                       *ngIf="entry.pnl < 0"
+                       [style.height.%]="getPnLBarPercent(entry.pnl)">
+                  </div>
+                </div>
+              </div>
+              <!-- Date labels -->
+              <div class="pnl-date-labels">
+                <span class="pnl-date-label" *ngFor="let entry of getPnLChartData()">
+                  {{ formatShortDate(entry.date) }}
+                </span>
+              </div>
+            </div>
+            <ng-template #noPnlData>
+              <div class="empty-section compact">
+                <mat-icon>bar_chart</mat-icon>
+                <p>No P&L data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- ─── Trade Stats ──────────────────────────────────── -->
+      <mat-card class="section-card full-width trade-stats-card" *ngIf="data.trade_stats && data.trade_stats.total_trades > 0">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>analytics</mat-icon>
+              Trade Performance
+            </div>
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="trade-stats-grid">
+            <div class="trade-stat-item">
+              <div class="trade-stat-value">{{ data.trade_stats.total_trades }}</div>
+              <div class="trade-stat-label">Total Trades</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value win-rate-value">
+                {{ formatPercent(data.trade_stats.win_rate * 100) }}
+              </div>
+              <div class="trade-stat-label">Win Rate</div>
+              <div class="win-loss-bar">
+                <div class="win-portion" [style.width.%]="data.trade_stats.win_rate * 100"></div>
+              </div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-positive">{{ data.trade_stats.winning_trades }}</div>
+              <div class="trade-stat-label">Wins</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-negative">{{ data.trade_stats.losing_trades }}</div>
+              <div class="trade-stat-label">Losses</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.avg_win) }}</div>
+              <div class="trade-stat-label">Avg Win</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.avg_loss) }}</div>
+              <div class="trade-stat-label">Avg Loss</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.best_trade) }}</div>
+              <div class="trade-stat-label">Best Trade</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.worst_trade) }}</div>
+              <div class="trade-stat-label">Worst Trade</div>
+            </div>
+            <div class="trade-stat-item">
+              <div class="trade-stat-value">{{ data.trade_stats.profit_factor || '-' }}</div>
+              <div class="trade-stat-label">Profit Factor</div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- ─── Pipeline P&L Chart ──────────────────────────── -->
+      <mat-card class="section-card full-width" *ngIf="data.pipeline_list.length > 0">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>leaderboard</mat-icon>
+              P&L by Pipeline
+            </div>
+          </mat-card-title>
+          <div class="section-actions">
+            <span class="chart-period-total" [ngClass]="getPnLClass(data.pnl.total_realized)">
+              Total: {{ formatPnL(data.pnl.total_realized) }}
+            </span>
+          </div>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="pipeline-pnl-chart" *ngIf="getPipelinePnLData().length > 0; else noPipelinePnl">
+            <!-- Zero baseline label -->
+            <div class="baseline-label">$0</div>
+            <div class="pipeline-bars-container">
+              <!-- Upper half: profit bars grow upward -->
+              <div class="pipeline-bars-upper">
+                <div class="pipeline-bar-col" *ngFor="let p of getPipelinePnLData()"
+                     [matTooltip]="p.name + ': ' + formatPnL(p.total_pnl)"
+                     (click)="viewPipeline(p)">
+                  <div class="pipeline-bar pipeline-bar-profit"
+                       *ngIf="p.total_pnl > 0"
+                       [style.height.%]="getPipelineBarHeight(p.total_pnl)">
+                    <span class="pipeline-bar-value">{{ formatPnL(p.total_pnl) }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Baseline -->
+              <div class="pipeline-baseline"></div>
+              <!-- Lower half: loss bars grow downward -->
+              <div class="pipeline-bars-lower">
+                <div class="pipeline-bar-col" *ngFor="let p of getPipelinePnLData()"
+                     [matTooltip]="p.name + ': ' + formatPnL(p.total_pnl)"
+                     (click)="viewPipeline(p)">
+                  <div class="pipeline-bar pipeline-bar-loss"
+                       *ngIf="p.total_pnl < 0"
+                       [style.height.%]="getPipelineBarHeight(p.total_pnl)">
+                    <span class="pipeline-bar-value">{{ formatPnL(p.total_pnl) }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Labels -->
+              <div class="pipeline-bar-labels">
+                <div class="pipeline-bar-label-col" *ngFor="let p of getPipelinePnLData()">
+                  <span class="pipeline-bar-name">{{ getPipelineBarLabel(p.name) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ng-template #noPipelinePnl>
+            <div class="empty-section compact">
+              <mat-icon>bar_chart</mat-icon>
+              <p>No pipeline P&L data yet</p>
+            </div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+
       <!-- ─── Main Grid: Broker Accounts + Active Positions ── -->
       <div class="main-grid">
 
@@ -353,21 +569,33 @@
                 </td>
               </ng-container>
 
-              <!-- Executions -->
+              <!-- Executions (total) -->
               <ng-container matColumnDef="executions">
-                <th mat-header-cell *matHeaderCellDef>Executions</th>
+                <th mat-header-cell *matHeaderCellDef>Total</th>
                 <td mat-cell *matCellDef="let p">
-                  <div class="exec-stats">
-                    <span class="exec-total">{{ p.total_executions }}</span>
-                    <span class="exec-breakdown" *ngIf="p.total_executions > 0">
-                      <span class="exec-active" *ngIf="p.active_executions > 0"
-                            matTooltip="Active">{{ p.active_executions }} active</span>
-                      <span class="exec-ok" *ngIf="p.completed_executions > 0"
-                            matTooltip="Completed">{{ p.completed_executions }} done</span>
-                      <span class="exec-fail" *ngIf="p.failed_executions > 0"
-                            matTooltip="Failed">{{ p.failed_executions }} fail</span>
-                    </span>
-                  </div>
+                  <span class="exec-total">{{ p.total_executions }}</span>
+                  <span class="exec-active-badge" *ngIf="p.active_executions > 0"
+                        matTooltip="Currently active">
+                    {{ p.active_executions }} active
+                  </span>
+                </td>
+              </ng-container>
+
+              <!-- Completed -->
+              <ng-container matColumnDef="completed">
+                <th mat-header-cell *matHeaderCellDef>Completed</th>
+                <td mat-cell *matCellDef="let p">
+                  <span class="exec-completed-val">{{ p.completed_executions }}</span>
+                </td>
+              </ng-container>
+
+              <!-- Failed -->
+              <ng-container matColumnDef="failed">
+                <th mat-header-cell *matHeaderCellDef>Failed</th>
+                <td mat-cell *matCellDef="let p">
+                  <span class="exec-failed-val" [class.has-failures]="p.failed_executions > 0">
+                    {{ p.failed_executions }}
+                  </span>
                 </td>
               </ng-container>
 
@@ -413,8 +641,8 @@
           </div>
         </mat-card-header>
         <mat-card-content>
-          <div *ngIf="data.recent_executions.length > 0; else noRecent" class="table-container">
-            <table mat-table [dataSource]="data.recent_executions" class="recent-table">
+          <div *ngIf="getFilteredRecentExecutions().length > 0; else noRecent" class="table-container">
+            <table mat-table [dataSource]="getFilteredRecentExecutions()" class="recent-table">
               <!-- Symbol -->
               <ng-container matColumnDef="symbol">
                 <th mat-header-cell *matHeaderCellDef>Symbol</th>
@@ -437,17 +665,6 @@
                     <mat-icon>{{ getActionIcon(e.strategy_action) }}</mat-icon>
                     {{ e.strategy_action || 'N/A' }}
                   </div>
-                </td>
-              </ng-container>
-
-              <!-- Status -->
-              <ng-container matColumnDef="status">
-                <th mat-header-cell *matHeaderCellDef>Status</th>
-                <td mat-cell *matCellDef="let e">
-                  <mat-chip [ngClass]="getStatusClass(e.status)">
-                    <mat-icon>{{ getStatusIcon(e.status) }}</mat-icon>
-                    {{ e.status }}
-                  </mat-chip>
                 </td>
               </ng-container>
 

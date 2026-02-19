@@ -654,32 +654,32 @@
   color: var(--text-disabled);
 }
 
-.exec-stats {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.exec-total {
+  font-weight: 600;
+}
 
-  .exec-total {
-    font-weight: 600;
-  }
+.exec-active-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
 
-  .exec-breakdown {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    display: flex;
-    gap: 0.4rem;
+.exec-completed-val {
+  font-weight: 600;
+  color: var(--color-success);
+}
 
-    .exec-active {
-      color: var(--color-warning);
-    }
+.exec-failed-val {
+  font-weight: 600;
+  color: var(--text-muted);
 
-    .exec-ok {
-      color: var(--color-success);
-    }
-
-    .exec-fail {
-      color: var(--color-error);
-    }
+  &.has-failures {
+    color: var(--color-error);
   }
 }
 
@@ -824,6 +824,391 @@
 
   .separator {
     color: var(--text-disabled);
+  }
+}
+
+// ── Charts Row ───────────────────────────────────────────────
+
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-card {
+  .chart-period-total {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+  }
+}
+
+.bar-chart {
+  padding: 0.5rem 0;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.bar-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding: 0 4px;
+}
+
+.bar-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  cursor: pointer;
+  min-width: 0;
+
+  &:hover .bar {
+    opacity: 0.85;
+    transform: scaleY(1.02);
+  }
+}
+
+.bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  transition: all 0.2s ease;
+  min-height: 2px;
+  transform-origin: bottom;
+}
+
+.cost-bar {
+  background: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
+}
+
+// ── P&L Baseline Chart (above/below zero) ───────────────────
+
+.pnl-baseline-chart {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 4px;
+}
+
+.pnl-half {
+  display: flex;
+  gap: 3px;
+  height: 65px;   // fixed height so % bars work
+}
+
+// Upper half: bars anchored to bottom, grow upward
+.pnl-half-upper {
+  align-items: flex-end;
+}
+
+// Lower half: bars anchored to top, grow downward
+.pnl-half-lower {
+  align-items: flex-start;
+}
+
+.pnl-col {
+  flex: 1;
+  display: flex;
+  align-items: inherit;
+  justify-content: center;
+  height: 100%;        // CRITICAL: fill the half so % height on children works
+  min-width: 0;
+  cursor: pointer;
+
+  &:hover .pnl-bar-up,
+  &:hover .pnl-bar-down {
+    opacity: 0.85;
+    filter: brightness(1.15);
+  }
+}
+
+.pnl-bar-up,
+.pnl-bar-down {
+  width: 100%;
+  min-height: 3px;
+  transition: all 0.25s ease;
+}
+
+.pnl-bar-up {
+  background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
+  border-radius: 3px 3px 0 0;
+  align-self: flex-end;  // stick to the baseline edge
+}
+
+.pnl-bar-down {
+  background: linear-gradient(180deg, #ef4444 0%, #f87171 100%);
+  border-radius: 0 0 3px 3px;
+  align-self: flex-start; // stick to the baseline edge
+}
+
+.pnl-zero-line {
+  position: relative;
+  width: 100%;
+  height: 1px;
+  background: var(--text-disabled);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.pnl-zero-label {
+  position: absolute;
+  right: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.pnl-date-labels {
+  display: flex;
+  gap: 3px;
+  padding: 4px 0 0;
+}
+
+.pnl-date-label {
+  flex: 1;
+  text-align: center;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.bar-label {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
+// ── Trade Stats ──────────────────────────────────────────────
+
+.trade-stats-card {
+  mat-card-content {
+    padding: 0.5rem 1.5rem 1.5rem !important;
+  }
+}
+
+.trade-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.trade-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-sm);
+  }
+
+  .trade-stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+
+    &.win-rate-value {
+      color: var(--accent-primary);
+    }
+  }
+
+  .trade-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+  }
+}
+
+.win-loss-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(239, 68, 68, 0.3);
+  margin-top: 8px;
+  overflow: hidden;
+
+  .win-portion {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+    transition: width 0.5s ease;
+  }
+}
+
+// ── Pipeline P&L Chart ───────────────────────────────────────
+
+.pipeline-pnl-chart {
+  position: relative;
+  padding: 0.5rem 0 0 40px;
+}
+
+.baseline-label {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-top: 12px;
+}
+
+.pipeline-bars-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+
+.pipeline-bars-upper,
+.pipeline-bars-lower {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 90px;
+  padding: 0 4px;
+}
+
+.pipeline-bars-lower {
+  align-items: flex-start;
+}
+
+.pipeline-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 100%;
+  cursor: pointer;
+
+  &:hover .pipeline-bar {
+    opacity: 0.85;
+    transform: scaleY(1.03);
+  }
+}
+
+.pipeline-bars-lower .pipeline-bar-col {
+  justify-content: flex-start;
+}
+
+.pipeline-bar {
+  width: 100%;
+  max-width: 80px;
+  min-height: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  transform-origin: bottom center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  position: relative;
+}
+
+.pipeline-bar-profit {
+  background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
+  border-radius: 4px 4px 0 0;
+  align-items: flex-start;
+}
+
+.pipeline-bar-loss {
+  background: linear-gradient(180deg, #ef4444 0%, #f87171 100%);
+  border-radius: 0 0 4px 4px;
+  transform-origin: top center;
+  align-items: flex-end;
+}
+
+.pipeline-bar-value {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: white;
+  white-space: nowrap;
+  padding: 2px 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pipeline-baseline {
+  width: 100%;
+  height: 2px;
+  background: var(--text-disabled);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.pipeline-bar-labels {
+  display: flex;
+  gap: 8px;
+  padding: 6px 4px 0;
+}
+
+.pipeline-bar-label-col {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.pipeline-bar-name {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+// ── Empty Section Compact ────────────────────────────────────
+
+.empty-section.compact {
+  padding: 1.5rem 1rem;
+
+  mat-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 0.5rem;
+  }
+
+  p {
+    font-size: 0.85rem;
   }
 }
 
