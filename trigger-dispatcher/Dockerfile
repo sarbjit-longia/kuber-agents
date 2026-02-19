@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
+# Explicitly ensure utils directory is copied (in case of caching issues)
+COPY app/utils/ ./app/utils/
 
 # Set Python path
 ENV PYTHONUNBUFFERED=1

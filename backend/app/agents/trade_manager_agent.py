@@ -135,6 +135,33 @@ class TradeManagerAgent(BaseAgent):
         risk = state.risk_assessment
         strategy = state.strategy
         
+        # ⚠️ MARKET HOURS CHECK: Don't execute trades outside market hours
+        try:
+            from app.utils.market_hours import MarketHoursChecker
+            if not MarketHoursChecker.is_ticker_tradeable(state.symbol):
+                state.trade_execution = TradeExecution(
+                    order_id=None,
+                    status="skipped",
+                    filled_price=None,
+                    filled_quantity=None,
+                    commission=None,
+                    execution_time=datetime.utcnow(),
+                    broker_response={"reason": f"Market is closed for {state.symbol}"},
+                )
+                self.log(state, f"⚠️ Market is closed for {state.symbol} - skipping trade execution")
+                self.record_report(
+                    state,
+                    title="Trade execution skipped - market closed",
+                    summary=f"Market is closed for {state.symbol}",
+                    status="skipped",
+                    data={"symbol": state.symbol, "reason": "Market hours check failed"},
+                )
+                state.should_complete = True
+                return state
+        except Exception as e:
+            self.logger.warning(f"Market hours check failed: {str(e)} - proceeding with execution")
+            # If market hours check fails, proceed (fail-safe)
+        
         # Check if trade approved
         if not risk.approved or not strategy:
             state.trade_execution = TradeExecution(
@@ -585,9 +612,48 @@ class TradeManagerAgent(BaseAgent):
                         level="warning"
                     )
             
-            # If we only had an order_id (no trade_id), treat this as an unfilled/cancelled order,
-            # not a closed position.
+            # ⚠️ FIX #3: Add "previously monitored" guard before marking as cancelled
+            # Only mark as cancelled if we're confident the order was never filled.
+            # If we previously found the position (even without trade_id), don't mark as cancelled
+            # on a single NOT_FOUND result - it could be a transient API error.
             if order_id and not trade_id:
+                # Check if this position was previously found (indicates it was active before)
+                was_previously_found = False
+                if state.trade_execution:
+                    # If we have a last_successful_check, it means we successfully found the position before
+                    # (even if we didn't extract trade_id, the position existed)
+                    if state.trade_execution.last_successful_check:
+                        was_previously_found = True
+                    
+                    # Also check if status was already "filled" (order was filled, position should exist)
+                    if state.trade_execution.status == "filled":
+                        was_previously_found = True
+                    
+                    # Check if we have filled_price or filled_quantity (indicates order was filled)
+                    if (state.trade_execution.filled_price and state.trade_execution.filled_price > 0) or \
+                       (state.trade_execution.filled_quantity and state.trade_execution.filled_quantity > 0):
+                        was_previously_found = True
+                
+                if was_previously_found:
+                    # Position was previously found but now missing - this is suspicious
+                    # Could be a transient API error. Don't mark as cancelled yet.
+                    self.log(
+                        state,
+                        f"⚠️ Position previously found but now missing for {state.symbol} "
+                        f"(order_id={order_id}). This might be a transient API error. "
+                        f"Will retry on next check.",
+                        level="warning"
+                    )
+                    # Don't mark as cancelled - let the next monitoring check confirm
+                    # The API error handling will track consecutive failures
+                    # If it's a real API error, we'll hit the 5-failure threshold
+                    # If the position was actually closed, we'll confirm on next successful check
+                    return state
+                
+                # Position was never found - this is a legitimate "order never filled" scenario
+                # Only mark as cancelled if we're confident:
+                # 1. Order was placed (we have order_id)
+                # 2. Order was never filled (no trade_id, no filled_price, no previous successful check)
                 self.log(state, "⚠️ Limit order not found and no position opened - treating as unfilled")
                 if state.trade_execution:
                     state.trade_execution.status = "cancelled"  # Limit order was never filled
@@ -745,20 +811,45 @@ class TradeManagerAgent(BaseAgent):
                 }
                 
                 # Extract trade_id from broker_data if available
-                # Oanda stores tradeIDs in the long/short position sections
                 broker_data = position.broker_data or {}
                 trade_id = None
                 
-                side_key = "long" if position.side == "long" else "short"
-                side_data = broker_data.get(side_key, {})
-                trade_ids = side_data.get("tradeIDs", [])
-                if trade_ids:
-                    # Use the first trade ID (most common case: single trade per position)
-                    trade_id = str(trade_ids[0])
+                # ⚠️ FIX #2: Extract trade_id based on broker type
+                # OANDA stores tradeIDs in the long/short position sections
+                if hasattr(broker, '__class__') and 'Oanda' in broker.__class__.__name__:
+                    side_key = "long" if position.side == "long" else "short"
+                    side_data = broker_data.get(side_key, {})
+                    trade_ids = side_data.get("tradeIDs", [])
+                    if trade_ids:
+                        # Use the first trade ID (most common case: single trade per position)
+                        trade_id = str(trade_ids[0])
                 
-                # Fallback: check for trade_id at top level (future brokers)
+                # Tradier: Positions don't have individual trade IDs, but we can use
+                # the position ID or create a synthetic ID from position data
+                # Check for any ID-like fields in Tradier position data
                 if not trade_id:
-                    trade_id = broker_data.get("trade_id") or broker_data.get("tradeID")
+                    # Try common ID fields
+                    trade_id = (
+                        broker_data.get("id") or
+                        broker_data.get("position_id") or
+                        broker_data.get("trade_id") or
+                        broker_data.get("tradeID")
+                    )
+                    if trade_id:
+                        trade_id = str(trade_id)
+                
+                # Fallback: For Tradier, create a synthetic trade_id from position data
+                # This allows us to track the position even if Tradier doesn't provide a trade ID
+                if not trade_id and hasattr(broker, '__class__') and 'Tradier' in broker.__class__.__name__:
+                    # Use symbol + quantity + cost_basis as a unique identifier
+                    # This is stable as long as the position exists
+                    synthetic_id = f"{position.symbol}_{position.qty}_{position.cost_basis:.2f}"
+                    trade_id = synthetic_id
+                    self.logger.debug(
+                        "created_synthetic_trade_id_for_tradier",
+                        symbol=position.symbol,
+                        trade_id=trade_id
+                    )
                 
                 if trade_id:
                     position_dict["trade_id"] = trade_id

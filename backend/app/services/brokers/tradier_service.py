@@ -101,15 +101,38 @@ class TradierBrokerService(BrokerService):
                 return result
             
             account_data = result.get("account", {})
+            balance_data = account_data.get("balance", {})
+            
+            # Tradier balance fields:
+            #   total_equity    – total account value
+            #   cash_available  – settled cash
+            #   stock_buying_power – buying power for stock purchases
+            #   option_buying_power – buying power for option purchases (often different)
+            total_equity = float(balance_data.get("total_equity", 0))
+            cash_available = float(balance_data.get("cash_available", 0))
+            # Use stock_buying_power for stocks; fall back to option_buying_power, then total_equity
+            stock_bp = balance_data.get("stock_buying_power")
+            option_bp = balance_data.get("option_buying_power")
+            buying_power = float(stock_bp or option_bp or total_equity or 0)
+            
+            self.logger.info(
+                "tradier_account_info",
+                total_equity=total_equity,
+                cash_available=cash_available,
+                buying_power=buying_power,
+                raw_stock_bp=stock_bp,
+                raw_option_bp=option_bp,
+            )
             
             return {
                 "account_id": account_data.get("account_number"),
                 "status": account_data.get("status"),
                 "type": account_data.get("type"),
-                "balance": float(account_data.get("balance", {}).get("total_equity", 0)),
-                "cash": float(account_data.get("balance", {}).get("cash_available", 0)),
-                "buying_power": float(account_data.get("balance", {}).get("option_buying_power", 0)),
-                "portfolio_value": float(account_data.get("balance", {}).get("total_equity", 0)),
+                "balance": total_equity,
+                "equity": total_equity,
+                "cash": cash_available,
+                "buying_power": buying_power,
+                "portfolio_value": total_equity,
                 "paper_trading": self.paper
             }
         except Exception as e:
@@ -117,39 +140,52 @@ class TradierBrokerService(BrokerService):
             return {"error": str(e)}
     
     def get_positions(self, account_id: Optional[str] = None) -> List[Position]:
-        """Get all open positions"""
+        """
+        Get all open positions.
+        
+        ⚠️ FIX #1: Raises exceptions on API errors instead of returning empty list.
+        This allows callers to distinguish between "no positions" (empty list) and
+        "API error" (exception), preventing premature trade cancellation.
+        """
         account = account_id or self.account_id
         if not account:
             return []
         
-        try:
-            result = self._make_request('GET', f'/v1/accounts/{account}/positions')
-            if "error" in result or "positions" not in result:
-                return []
-            
-            positions_data = result["positions"]
-            if positions_data is None or positions_data == "null":
-                return []
-            
-            # Handle single position vs list
-            if isinstance(positions_data, dict) and "position" in positions_data:
-                pos_list = positions_data["position"]
-                if not isinstance(pos_list, list):
-                    pos_list = [pos_list]
-            else:
-                return []
-            
-            positions = []
-            for pos in pos_list:
-                converted = self._convert_position(pos)
-                if converted:
-                    positions.append(converted)
-            
-            return positions
-            
-        except Exception as e:
-            self.logger.error("Failed to get Tradier positions", error=str(e))
+        result = self._make_request('GET', f'/v1/accounts/{account}/positions')
+        
+        # Check for API errors in response
+        if "error" in result:
+            error_msg = result.get("error", "Unknown API error")
+            self.logger.error("Tradier API error getting positions", error=error_msg, account_id=account)
+            raise Exception(f"Tradier API error: {error_msg}")
+        
+        if "positions" not in result:
+            # This is unusual - API returned success but no positions key
+            # Could be a malformed response, treat as API error
+            self.logger.error("Tradier API returned unexpected response format", response_keys=list(result.keys()))
+            raise Exception("Tradier API returned unexpected response format (missing 'positions' key)")
+        
+        positions_data = result["positions"]
+        if positions_data is None or positions_data == "null":
+            # No positions is a valid state (empty account)
             return []
+        
+        # Handle single position vs list
+        if isinstance(positions_data, dict) and "position" in positions_data:
+            pos_list = positions_data["position"]
+            if not isinstance(pos_list, list):
+                pos_list = [pos_list]
+        else:
+            # positions_data is not in expected format
+            return []
+        
+        positions = []
+        for pos in pos_list:
+            converted = self._convert_position(pos)
+            if converted:
+                positions.append(converted)
+        
+        return positions
     
     def get_position(self, symbol: str, account_id: Optional[str] = None) -> Optional[Position]:
         """Get position for specific symbol"""
@@ -197,6 +233,92 @@ class TradierBrokerService(BrokerService):
             
         except Exception as e:
             self.logger.error("Failed to convert Tradier position", error=str(e))
+            return None
+    
+    def _convert_order(self, tradier_order: Dict) -> Optional[Order]:
+        """Convert Tradier order to standard Order model"""
+        try:
+            order_id = str(tradier_order.get("id", ""))
+            if not order_id:
+                return None
+            
+            symbol = tradier_order.get("symbol", "").upper()
+            qty = float(tradier_order.get("quantity", 0))
+            side_str = tradier_order.get("side", "").lower()
+            side = OrderSide.BUY if side_str == "buy" else OrderSide.SELL
+            
+            # Map Tradier order type
+            tradier_type = tradier_order.get("type", "").lower()
+            if tradier_type == "market":
+                order_type = OrderType.MARKET
+            elif tradier_type == "limit":
+                order_type = OrderType.LIMIT
+            elif tradier_type == "stop":
+                order_type = OrderType.STOP
+            elif tradier_type == "stop_limit":
+                order_type = OrderType.STOP_LIMIT
+            else:
+                order_type = OrderType.MARKET
+            
+            # Map Tradier status
+            tradier_status = tradier_order.get("status", "").lower()
+            if tradier_status in ["filled", "executed"]:
+                status = OrderStatus.FILLED
+            elif tradier_status in ["open", "pending"]:
+                status = OrderStatus.OPEN
+            elif tradier_status == "partially_filled":
+                status = OrderStatus.PARTIALLY_FILLED
+            elif tradier_status == "cancelled":
+                status = OrderStatus.CANCELLED
+            elif tradier_status == "rejected":
+                status = OrderStatus.REJECTED
+            else:
+                status = OrderStatus.ACCEPTED
+            
+            # Map time in force
+            tradier_tif = tradier_order.get("duration", "").lower()
+            if tradier_tif == "gtc":
+                time_in_force = TimeInForce.GTC
+            elif tradier_tif == "day":
+                time_in_force = TimeInForce.DAY
+            elif tradier_tif == "ioc":
+                time_in_force = TimeInForce.IOC
+            elif tradier_tif == "fok":
+                time_in_force = TimeInForce.FOK
+            else:
+                time_in_force = TimeInForce.DAY
+            
+            filled_qty = float(tradier_order.get("executed_quantity", 0))
+            limit_price = float(tradier_order.get("price", 0)) if tradier_order.get("price") else None
+            stop_price = float(tradier_order.get("stop", 0)) if tradier_order.get("stop") else None
+            
+            # Parse submitted_at timestamp if available
+            submitted_at = None
+            if tradier_order.get("created_at"):
+                try:
+                    from dateutil import parser
+                    submitted_at = parser.parse(tradier_order["created_at"])
+                except:
+                    pass
+            
+            return Order(
+                order_id=order_id,
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                type=order_type,
+                status=status,
+                filled_qty=filled_qty,
+                filled_price=limit_price if status == OrderStatus.FILLED else None,
+                limit_price=limit_price,
+                stop_price=stop_price,
+                time_in_force=time_in_force,
+                submitted_at=submitted_at or datetime.utcnow(),
+                broker_data=tradier_order
+            )
+            
+        except Exception as e:
+            self.logger.error("Failed to convert Tradier order", error=str(e))
             return None
     
     def place_order(
@@ -301,10 +423,12 @@ class TradierBrokerService(BrokerService):
         account_id: Optional[str] = None
     ) -> Order:
         """
-        Place a bracket order.
+        Place a bracket order (market entry + TP + SL).
         
-        Note: Tradier supports OCO (One-Cancels-Other) orders.
-        We'll place the main order and attach TP/SL as separate orders.
+        ⚠️ FIX #4: Implements actual TP/SL orders for Tradier.
+        Note: Tradier doesn't support native bracket orders like Alpaca.
+        We place the main market order, then immediately place TP/SL as separate limit/stop orders.
+        These are NOT linked (not true OCO), but they provide exit protection.
         """
         account = account_id or self.account_id
         if not account:
@@ -315,13 +439,72 @@ class TradierBrokerService(BrokerService):
             symbol, qty, side, OrderType.MARKET, time_in_force=time_in_force, account_id=account
         )
         
-        # Note: In production, you'd want to place TP/SL orders here
-        # using Tradier's OCO order functionality
-        # For now, we return the main order
+        # ⚠️ FIX #4: Place TP/SL orders after main order
+        # Determine opposite side for exit orders
+        exit_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
+        
+        tp_order_id = None
+        sl_order_id = None
+        
+        try:
+            # Place take profit order (limit order at TP price)
+            tp_order = self.place_order(
+                symbol=symbol,
+                qty=qty,
+                side=exit_side,
+                order_type=OrderType.LIMIT,
+                limit_price=take_profit_price,
+                time_in_force=time_in_force,
+                account_id=account
+            )
+            tp_order_id = tp_order.order_id
+            self.logger.info(
+                "Tradier TP order placed",
+                tp_order_id=tp_order_id,
+                symbol=symbol,
+                tp_price=take_profit_price
+            )
+        except Exception as e:
+            self.logger.error(
+                "Failed to place Tradier TP order",
+                error=str(e),
+                symbol=symbol,
+                tp_price=take_profit_price
+            )
+            # Don't fail the entire bracket order if TP fails - main order is already placed
+        
+        try:
+            # Place stop loss order (stop order at SL price)
+            sl_order = self.place_order(
+                symbol=symbol,
+                qty=qty,
+                side=exit_side,
+                order_type=OrderType.STOP,
+                stop_price=stop_loss_price,
+                time_in_force=time_in_force,
+                account_id=account
+            )
+            sl_order_id = sl_order.order_id
+            self.logger.info(
+                "Tradier SL order placed",
+                sl_order_id=sl_order_id,
+                symbol=symbol,
+                sl_price=stop_loss_price
+            )
+        except Exception as e:
+            self.logger.error(
+                "Failed to place Tradier SL order",
+                error=str(e),
+                symbol=symbol,
+                sl_price=stop_loss_price
+            )
+            # Don't fail the entire bracket order if SL fails - main order is already placed
         
         self.logger.info(
             "Tradier bracket order placed",
-            order_id=main_order.order_id,
+            main_order_id=main_order.order_id,
+            tp_order_id=tp_order_id,
+            sl_order_id=sl_order_id,
             symbol=symbol,
             tp=take_profit_price,
             sl=stop_loss_price
@@ -330,7 +513,77 @@ class TradierBrokerService(BrokerService):
         # Update order type to indicate it's a bracket
         main_order.type = OrderType.BRACKET
         
+        # Store TP/SL order IDs in broker_data for reference
+        if main_order.broker_data:
+            main_order.broker_data["tp_order_id"] = tp_order_id
+            main_order.broker_data["sl_order_id"] = sl_order_id
+        else:
+            main_order.broker_data = {
+                "tp_order_id": tp_order_id,
+                "sl_order_id": sl_order_id
+            }
+        
         return main_order
+    
+    def place_limit_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: OrderSide,
+        limit_price: float,
+        take_profit_price: float,
+        stop_loss_price: float,
+        time_in_force: TimeInForce = TimeInForce.GTC,
+        account_id: Optional[str] = None
+    ) -> Order:
+        """
+        Place a limit bracket order (limit entry + TP + SL).
+        
+        ⚠️ FIX #4: For limit orders, we place the entry limit order first.
+        TP/SL orders will be placed by monitoring once the limit order fills.
+        This is because Tradier doesn't support conditional orders that activate on fill.
+        """
+        account = account_id or self.account_id
+        if not account:
+            raise ValueError("No account ID provided")
+        
+        # Place limit entry order
+        limit_order = self.place_order(
+            symbol=symbol,
+            qty=qty,
+            side=side,
+            order_type=OrderType.LIMIT,
+            limit_price=limit_price,
+            time_in_force=time_in_force,
+            account_id=account
+        )
+        
+        # Store TP/SL prices in broker_data so monitoring can place exit orders once limit fills
+        if limit_order.broker_data:
+            limit_order.broker_data["take_profit_price"] = take_profit_price
+            limit_order.broker_data["stop_loss_price"] = stop_loss_price
+            limit_order.broker_data["bracket_order"] = True
+        else:
+            limit_order.broker_data = {
+                "take_profit_price": take_profit_price,
+                "stop_loss_price": stop_loss_price,
+                "bracket_order": True
+            }
+        
+        self.logger.info(
+            "Tradier limit bracket order placed",
+            order_id=limit_order.order_id,
+            symbol=symbol,
+            entry_price=limit_price,
+            tp=take_profit_price,
+            sl=stop_loss_price,
+            note="TP/SL orders will be placed by monitoring once limit order fills"
+        )
+        
+        # Update order type to indicate it's a bracket
+        limit_order.type = OrderType.BRACKET
+        
+        return limit_order
     
     def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
         """Get all open orders"""

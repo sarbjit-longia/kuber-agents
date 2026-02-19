@@ -81,6 +81,9 @@ class SignalGeneratorService:
         self.kafka_producer: Optional[KafkaProducer] = None
         self.scanner_universe = None
         
+        # Track current dynamic watchlist for proper change detection
+        self.current_watchlist: List[str] = []
+        
         # Recent signals buffer (keep last 50 signals)
         self.recent_signals = deque(maxlen=50)
         
@@ -109,6 +112,9 @@ class SignalGeneratorService:
         
         # Initialize Kafka producer
         self._initialize_kafka()
+        
+        # Initialize generators (independent of telemetry)
+        self._initialize_generators()
     
     def _setup_metrics(self):
         """Setup custom metrics."""
@@ -163,9 +169,6 @@ class SignalGeneratorService:
             "finnhub_api_errors_total",
             description="Total Finnhub API errors by error type"
         )
-        
-        # Initialize generators based on configuration
-        self._initialize_generators()
 
     def _merge_timeframes(self, primary: str) -> List[str]:
         """Combine primary timeframe with additional timeframes (dedup, preserve order)."""
@@ -207,7 +210,14 @@ class SignalGeneratorService:
             logger.warning("signals_will_only_log", message="Kafka unavailable, falling back to logs only")
     
     def _initialize_generators(self):
-        """Initialize all configured generators."""
+        """Initialize all configured generators.
+        
+        Clears existing generators before creating new ones to avoid duplicates.
+        Updates self.current_watchlist to track the active dynamic tickers.
+        """
+        # Clear existing generators to avoid duplicates on re-initialization
+        self.generators = []
+        
         # Get watchlist from Scanner Universe Manager or fallback to static config
         if self.scanner_universe:
             try:
@@ -221,6 +231,9 @@ class SignalGeneratorService:
                 watchlist = settings.get_watchlist()
         else:
             watchlist = settings.get_watchlist()
+        
+        # Track the current watchlist for change detection in universe refresh
+        self.current_watchlist = list(watchlist)
         
         logger.info("initializing_generators_with_watchlist", ticker_count=len(watchlist), tickers=watchlist)
         
@@ -686,6 +699,9 @@ class SignalGeneratorService:
         Automatically detects asset types from tickers and checks market hours.
         Skips generation only if ALL asset types in the watchlist are closed.
         
+        Re-reads tickers from generator config each iteration so that 
+        universe changes (from _universe_refresh_loop) take effect immediately.
+        
         Args:
             generator_info: Dict with generator, interval, and name
         """
@@ -696,30 +712,20 @@ class SignalGeneratorService:
         # Import market hours checker
         from app.utils.market_hours import MarketHoursChecker
         
-        # Get tickers from generator config
-        tickers = generator.config.get("tickers", [])
-        
         logger.info(
             "generator_started",
             generator=name,
             interval_seconds=interval,
-            ticker_count=len(tickers),
+            ticker_count=len(generator.config.get("tickers", [])),
             market_hours_check_enabled=settings.ENABLE_MARKET_HOURS_CHECK
         )
         
-        # Log initial market status for all asset types
-        if settings.ENABLE_MARKET_HOURS_CHECK and tickers:
-            # Detect asset types present
-            from app.utils.market_hours import MarketType
-            asset_types = set(MarketHoursChecker.detect_asset_type(t) for t in tickers)
-            
-            for asset_type in asset_types:
-                status_msg = MarketHoursChecker.get_market_status_message(asset_type)
-                logger.info("market_status_on_generator_start", generator=name, status=status_msg)
-        
         while self.running:
             try:
-                # ✅ NEW: Check if ANY ticker is tradeable (stocks, forex, or crypto)
+                # Re-read tickers each iteration to pick up universe changes
+                tickers = generator.config.get("tickers", [])
+                
+                # Check if ANY ticker is tradeable (stocks, forex, or crypto)
                 if settings.ENABLE_MARKET_HOURS_CHECK and tickers:
                     if not MarketHoursChecker.any_ticker_tradeable(tickers):
                         logger.debug(
@@ -972,7 +978,13 @@ class SignalGeneratorService:
             raise
     
     async def _universe_refresh_loop(self):
-        """Periodically refresh the ticker universe from active scanners."""
+        """Periodically refresh the ticker universe from active scanners.
+        
+        Instead of re-creating generators (which would leave new ones without
+        running asyncio tasks), this updates existing generators' ticker configs
+        in-place. The run_generator loop re-reads tickers each iteration, so
+        changes take effect on the next scan cycle.
+        """
         while self.running:
             try:
                 await asyncio.sleep(settings.UNIVERSE_REFRESH_INTERVAL_SECONDS)
@@ -980,21 +992,41 @@ class SignalGeneratorService:
                 if not self.scanner_universe:
                     break
                 
-                # Refresh universe
+                # Refresh universe from active scanners
                 new_tickers = self.scanner_universe.get_active_scanner_tickers()
-                old_tickers = set(settings.get_watchlist())
                 
-                if set(new_tickers) != old_tickers:
+                if not new_tickers:
+                    logger.debug("universe_refresh_no_tickers_found")
+                    continue
+                
+                # Compare against current dynamic watchlist (NOT static settings)
+                if set(new_tickers) != set(self.current_watchlist):
                     logger.info(
-                        "universe_changed_reinitializing_generators",
-                        old_count=len(old_tickers),
+                        "universe_changed_updating_generators",
+                        old_count=len(self.current_watchlist),
                         new_count=len(new_tickers),
-                        added=list(set(new_tickers) - old_tickers),
-                        removed=list(old_tickers - set(new_tickers))
+                        old_tickers=self.current_watchlist,
+                        new_tickers=new_tickers,
+                        added=list(set(new_tickers) - set(self.current_watchlist)),
+                        removed=list(set(self.current_watchlist) - set(new_tickers))
                     )
                     
-                    # Re-initialize generators with new watchlist
-                    self._initialize_generators()
+                    # Update all existing generators' tickers in-place
+                    # (run_generator re-reads tickers each iteration)
+                    updated_count = 0
+                    for gen_info in self.generators:
+                        gen_info["generator"].config["tickers"] = list(new_tickers)
+                        updated_count += 1
+                    
+                    # Update tracked watchlist
+                    self.current_watchlist = list(new_tickers)
+                    
+                    logger.info(
+                        "generators_tickers_updated_in_place",
+                        generators_updated=updated_count,
+                        ticker_count=len(new_tickers),
+                        tickers=new_tickers
+                    )
                 else:
                     logger.debug("universe_unchanged", ticker_count=len(new_tickers))
                 

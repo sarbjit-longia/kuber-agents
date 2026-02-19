@@ -645,6 +645,27 @@ class TriggerDispatcher:
                     # Get signal context for this ticker
                     signal_context = signal_data_by_ticker.get(ticker)
                     
+                    # ⚠️ MARKET HOURS CHECK: Don't enqueue executions outside market hours
+                    try:
+                        from app.utils.market_hours import MarketHoursChecker
+                        if not MarketHoursChecker.is_ticker_tradeable(ticker):
+                            logger.info(
+                                "market_closed_skipping_execution",
+                                pipeline_id=pipeline_id,
+                                ticker=ticker,
+                                reason="Market is closed for this ticker"
+                            )
+                            skipped_count += 1
+                            continue
+                    except Exception as e:
+                        logger.warning(
+                            "market_hours_check_failed",
+                            error=str(e),
+                            ticker=ticker,
+                            action="proceeding_with_execution"
+                        )
+                        # If market hours check fails, proceed (fail-safe)
+                    
                     # Enqueue Celery task with ticker-specific signal context
                     celery_app.send_task(
                         'app.orchestration.tasks.execute_pipeline',

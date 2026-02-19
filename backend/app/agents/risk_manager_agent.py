@@ -229,6 +229,14 @@ CRITICAL RULES:
 - A position size of 0 means the trade cannot be executed — never return 0 if approving.
 - Always round position size to a whole number (no decimals).
 
+BUYING POWER CONSTRAINT (MANDATORY — NEVER VIOLATE):
+- Total position value = Position Size × Entry Price
+- Total position value MUST NOT exceed Buying Power
+- Maximum affordable shares = Buying Power ÷ Entry Price (rounded down)
+- If the risk-based position size exceeds this, cap it at the maximum affordable shares
+- Example: If risk-based size = 882 but Buying Power = $10,000 and Entry = $683.75,
+  max affordable = floor(10000 / 683.75) = 14 shares. Use 14, NOT 882.
+
 ═══════════════════════════════════════════════════════════
 OUTPUT FORMAT (CRITICAL):
 ═══════════════════════════════════════════════════════════
@@ -273,6 +281,33 @@ REASONING: <brief explanation of your calculation including the formula used>
                     "because instructions did not specify sizing rules."
                 )
             
+            # HARD SAFETY CAP: position value must not exceed buying power
+            # This prevents LLM hallucinations from causing absurd orders
+            if (risk_decision["approved"]
+                    and risk_decision["position_size"] > 0
+                    and strategy.entry_price
+                    and strategy.entry_price > 0):
+                buying_power = broker_info.get("buying_power", broker_info.get("equity", 10000))
+                total_position_value = risk_decision["position_size"] * strategy.entry_price
+                max_affordable = int(buying_power / strategy.entry_price)
+                
+                if total_position_value > buying_power:
+                    original_size = risk_decision["position_size"]
+                    risk_decision["position_size"] = max(1, max_affordable)
+                    risk_decision["warnings"].append(
+                        f"Position size capped from {int(original_size)} to {int(risk_decision['position_size'])} shares "
+                        f"(total value ${total_position_value:,.2f} exceeded buying power ${buying_power:,.2f})"
+                    )
+                    # Recalculate max loss with capped position size
+                    if strategy.stop_loss is not None:
+                        risk_per_share = abs(strategy.entry_price - strategy.stop_loss)
+                        risk_decision["max_loss"] = risk_decision["position_size"] * risk_per_share
+                    self.log(
+                        state,
+                        f"⚠️ Position size capped: {int(original_size)} → {int(risk_decision['position_size'])} shares "
+                        f"(${total_position_value:,.2f} > buying power ${buying_power:,.2f})"
+                    )
+            
             # Create risk assessment
             state.risk_assessment = RiskAssessment(
                 approved=risk_decision["approved"],
@@ -316,7 +351,12 @@ REASONING: <brief explanation of your calculation including the formula used>
                 report_data["Warnings"] = warnings_text
             
             if broker_info:
-                report_data["Account Info"] = f"Balance: ${broker_info.get('balance', 0):.2f} | Buying Power: ${broker_info.get('buying_power', 0):.2f}"
+                report_data["Account Info"] = (
+                    f"Equity: ${broker_info.get('equity', 0):,.2f} | "
+                    f"Buying Power: ${broker_info.get('buying_power', 0):,.2f} | "
+                    f"Cash: ${broker_info.get('cash', 0):,.2f} | "
+                    f"Source: {broker_info.get('source', 'unknown')}"
+                )
             
             report_data["Risk Analysis"] = risk_decision["reasoning"] or "Position sizing calculated based on account balance and risk parameters."
             
@@ -369,13 +409,44 @@ REASONING: <brief explanation of your calculation including the formula used>
             broker = broker_factory.from_tool_config(broker_tool)
             account_info = broker.get_account_info()
             
-            self.log(state, f"📊 Broker account balance: ${account_info.get('equity', 0):.2f}")
+            if "error" in account_info:
+                self.log(state, f"⚠️ Broker returned error: {account_info['error']}")
+                return {
+                    "account_balance": 10000,
+                    "buying_power": 10000,
+                    "cash": 10000,
+                    "equity": 10000,
+                    "positions": [],
+                    "source": "fallback"
+                }
+            
+            # Normalize keys: different brokers return different key names
+            # Alpaca uses "equity", Tradier uses "balance", Oanda uses "balance"/"nav"
+            equity = (
+                account_info.get("equity")
+                or account_info.get("balance")
+                or account_info.get("portfolio_value")
+                or account_info.get("nav")
+                or 10000
+            )
+            buying_power = (
+                account_info.get("buying_power")
+                or account_info.get("margin_available")
+                or equity
+            )
+            cash = (
+                account_info.get("cash")
+                or account_info.get("cash_available")
+                or equity
+            )
+            
+            self.log(state, f"📊 Broker account — equity: ${equity:.2f}, buying power: ${buying_power:.2f}, cash: ${cash:.2f}")
             
             return {
-                "account_balance": account_info.get("equity", 10000),
-                "buying_power": account_info.get("buying_power", account_info.get("equity", 10000)),
-                "cash": account_info.get("cash", account_info.get("equity", 10000)),
-                "equity": account_info.get("equity", 10000),
+                "account_balance": equity,
+                "buying_power": buying_power,
+                "cash": cash,
+                "equity": equity,
                 "positions": account_info.get("positions", []),
                 "source": "broker"
             }
@@ -481,13 +552,19 @@ MARKET CONDITIONS:
         Uses 2% risk of account equity ÷ distance-to-stop-loss. If stop loss is missing,
         falls back to 1% of equity ÷ entry price (i.e. dollar-based sizing).
         
+        Always caps the result so that total position value does not exceed buying power.
+        
         Returns:
             Position size as a positive integer (min 1).
         """
         equity = broker_info.get("equity", broker_info.get("account_balance", 10000))
+        buying_power = broker_info.get("buying_power", equity)
         entry = strategy.entry_price or 0
         stop = strategy.stop_loss
         risk_pct = 0.02  # 2% default risk
+
+        # Calculate max affordable shares based on buying power
+        max_affordable = int(buying_power / entry) if entry > 0 else float('inf')
 
         if entry > 0 and stop is not None and stop != 0:
             # Standard risk-based sizing
@@ -495,12 +572,14 @@ MARKET CONDITIONS:
             if risk_per_unit > 0:
                 risk_amount = equity * risk_pct
                 size = risk_amount / risk_per_unit
-                return max(1, int(size))
+                # Cap by buying power
+                return max(1, min(int(size), max_affordable))
 
         # Fallback: allocate 1% of equity by dollar value
         if entry > 0:
             size = (equity * 0.01) / entry
-            return max(1, int(size))
+            # Cap by buying power
+            return max(1, min(int(size), max_affordable))
 
         # Last resort
         return 1

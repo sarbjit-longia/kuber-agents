@@ -1782,23 +1782,33 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
-          "max": 160,
-          "min": 0,
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "green",
+                  "text": "0"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "green",
                 "value": null
               },
               {
                 "color": "orange",
-                "value": 40
+                "value": 1
               },
               {
-                "color": "green",
-                "value": 100
+                "color": "red",
+                "value": 5
               }
             ]
           },
@@ -1814,12 +1824,28 @@
       },
       "id": 422,
       "options": {
-        "content": "### ✅ No Rate Limits\n\n**OANDA** (current provider) has **no rate limits** for API calls.\n\nThis panel would show Finnhub rate limits if stock trading was enabled.",
-        "mode": "markdown"
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "pluginVersion": "10.2.0",
-      "title": "\u23f1\ufe0f Rate Limit Status",
-      "type": "text"
+      "targets": [
+        {
+          "expr": "sum(increase(api_calls_total{status=\"error\"}[5m]))",
+          "instant": true,
+          "legendFormat": "Errors (5m)",
+          "refId": "A"
+        }
+      ],
+      "title": "⚠️ API Errors (5m)",
+      "type": "stat"
     },
     {
       "datasource": "Prometheus",
@@ -1828,23 +1854,35 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "green",
+                  "text": "100%"
+                }
+              },
+              "type": "special"
+            }
+          ],
           "max": 100,
           "min": 0,
+          "noValue": "100",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "yellow",
-                "value": 60
+                "color": "orange",
+                "value": 90
               },
               {
-                "color": "red",
-                "value": 80
+                "color": "green",
+                "value": 99
               }
             ]
           },
@@ -1860,12 +1898,28 @@
       },
       "id": 423,
       "options": {
-        "content": "### ♾️ Unlimited\n\n**OANDA API** has no rate limiting, allowing unlimited market data requests.\n\nPerfect for high-frequency forex trading strategies!",
-        "mode": "markdown"
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "pluginVersion": "10.2.0",
-      "title": "\ud83d\udcca Rate Limit Usage",
-      "type": "text"
+      "targets": [
+        {
+          "expr": "sum(rate(api_calls_total{status=\"success\"}[5m])) / sum(rate(api_calls_total[5m])) * 100",
+          "instant": true,
+          "legendFormat": "Success Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "✅ API Success Rate",
+      "type": "stat"
     },
     {
       "datasource": "Prometheus",
@@ -2104,11 +2158,31 @@
       },
       "id": 426,
       "options": {
-        "content": "### 🚀 No Rate Limiting with OANDA\n\nThe current market data provider (**OANDA**) does not impose rate limits on API requests.\n\n**Benefits:**\n- ✅ Unlimited market data fetches\n- ✅ Real-time price updates without throttling\n- ✅ Ideal for high-frequency trading strategies\n- ✅ No need to manage rate limit budgets\n\n---\n\n**Note:** If you switch to **Finnhub** for stock trading in the future, rate limit tracking will be displayed here.",
-        "mode": "markdown"
+        "legend": {
+          "calcs": ["sum", "last"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
-      "title": "\ud83d\udea6 Rate Limit Status",
-      "type": "text"
+      "targets": [
+        {
+          "expr": "increase(api_calls_total{status=\"error\"}[$__rate_interval])",
+          "legendFormat": "{{provider}}/{{endpoint}} errors",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(api_calls_total{status=\"success\"}[$__rate_interval])",
+          "legendFormat": "{{provider}}/{{endpoint}} success",
+          "refId": "B"
+        }
+      ],
+      "title": "🚦 API Calls by Status (success vs error)",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
