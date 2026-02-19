@@ -214,6 +214,7 @@
     display: flex;
     align-items: center;
     gap: 2rem;
+    flex-wrap: wrap;
 
     .today-item {
       .today-value {
@@ -228,12 +229,32 @@
         &.pnl-negative {
           color: var(--color-error);
         }
+
+        &.win-rate-value {
+          color: var(--accent-primary);
+        }
       }
 
       .today-label {
         font-size: 0.8rem;
         color: var(--text-muted);
         margin-top: 2px;
+      }
+
+      .win-loss-bar.compact {
+        width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(239, 68, 68, 0.3);
+        margin-top: 6px;
+        min-width: 60px;
+
+        .win-portion {
+          height: 100%;
+          border-radius: 2px;
+          background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+          transition: width 0.5s ease;
+        }
       }
     }
 

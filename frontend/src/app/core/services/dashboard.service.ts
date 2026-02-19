@@ -38,6 +38,14 @@ export interface DashboardToday {
   executions: number;
   cost: number;
   pnl: number;
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+  best_trade: number;
+  worst_trade: number;
 }
 
 export interface BrokerAccount {

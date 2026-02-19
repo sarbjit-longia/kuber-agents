@@ -405,10 +405,36 @@ async def get_dashboard(
     today_count = len(today_execs)
     today_cost = sum(e.cost or 0 for e in today_execs)
     today_pnl = 0.0
+    today_wins: List[float] = []
+    today_losses: List[float] = []
     for e in today_execs:
         pnl = _extract_pnl(e)
-        if pnl:
-            today_pnl += pnl["value"] or 0
+        if pnl and pnl["value"] is not None:
+            pnl_val = pnl["value"]
+            today_pnl += pnl_val
+            # Count trades with non-zero P&L for win/loss stats
+            if e.status == ExecutionStatus.COMPLETED:
+                result_data = e.result or {}
+                trade_outcome = result_data.get("trade_outcome")
+                is_real_trade = False
+                if trade_outcome and isinstance(trade_outcome, dict):
+                    if trade_outcome.get("status") in ("executed", "cancelled"):
+                        is_real_trade = True
+                elif pnl_val != 0:
+                    is_real_trade = True
+                
+                if is_real_trade:
+                    if pnl_val > 0:
+                        today_wins.append(pnl_val)
+                    elif pnl_val < 0:
+                        today_losses.append(pnl_val)
+    
+    today_total_trades = len(today_wins) + len(today_losses)
+    today_win_rate = round(len(today_wins) / today_total_trades, 4) if today_total_trades > 0 else 0.0
+    today_avg_win = round(sum(today_wins) / len(today_wins), 2) if today_wins else 0.0
+    today_avg_loss = round(sum(today_losses) / len(today_losses), 2) if today_losses else 0.0
+    today_best = round(max(today_wins), 2) if today_wins else 0.0
+    today_worst = round(min(today_losses), 2) if today_losses else 0.0
     
     # ── 8. Cost & P&L history (last 30 days) ──────────────────
     history_days = 30
@@ -508,6 +534,14 @@ async def get_dashboard(
             "executions": today_count,
             "cost": round(today_cost, 4),
             "pnl": round(today_pnl, 2),
+            "total_trades": today_total_trades,
+            "wins": len(today_wins),
+            "losses": len(today_losses),
+            "win_rate": today_win_rate,
+            "avg_win": today_avg_win,
+            "avg_loss": today_avg_loss,
+            "best_trade": today_best,
+            "worst_trade": today_worst,
         },
         "broker_accounts": broker_accounts,
         "active_positions": active_positions,

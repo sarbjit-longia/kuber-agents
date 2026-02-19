@@ -132,6 +132,43 @@
               <div class="today-value">{{ formatCost(data.today.cost) }}</div>
               <div class="today-label">Cost</div>
             </div>
+            <ng-container *ngIf="data.today.total_trades > 0">
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value">{{ data.today.total_trades }}</div>
+                <div class="today-label">Trades</div>
+              </div>
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value pnl-positive">{{ data.today.wins }}</div>
+                <div class="today-label">Wins</div>
+              </div>
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value pnl-negative">{{ data.today.losses }}</div>
+                <div class="today-label">Losses</div>
+              </div>
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value win-rate-value">
+                  {{ formatPercent(data.today.win_rate * 100) }}
+                </div>
+                <div class="today-label">Win Rate</div>
+                <div class="win-loss-bar compact">
+                  <div class="win-portion" [style.width.%]="data.today.win_rate * 100"></div>
+                </div>
+              </div>
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value pnl-positive">{{ formatPnL(data.today.avg_win) }}</div>
+                <div class="today-label">Avg Win</div>
+              </div>
+              <mat-divider vertical></mat-divider>
+              <div class="today-item">
+                <div class="today-value pnl-negative">{{ formatPnL(data.today.avg_loss) }}</div>
+                <div class="today-label">Avg Loss</div>
+              </div>
+            </ng-container>
           </div>
         </mat-card-content>
       </mat-card>
@@ -238,7 +275,7 @@
           <mat-card-title>
             <div class="section-title">
               <mat-icon>analytics</mat-icon>
-              Trade Performance
+              Overall Trade Performance
             </div>
           </mat-card-title>
         </mat-card-header>
