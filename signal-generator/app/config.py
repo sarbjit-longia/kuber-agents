@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     
     # Market Data
     FINNHUB_API_KEY: Optional[str] = None
-    MARKET_DATA_PROVIDER: str = "data_plane"  # Options: data_plane, finnhub, alpha_vantage, yahoo_finance, polygon
+    TIINGO_API_KEY: Optional[str] = None
+    MARKET_DATA_PROVIDER: str = "data_plane"  # Options: data_plane, finnhub, tiingo, alpha_vantage, yahoo_finance, polygon
     DATA_PLANE_URL: str = "http://data-plane:8000"  # Data Plane API URL
     
     # Generator Settings

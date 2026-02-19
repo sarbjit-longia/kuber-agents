@@ -10,8 +10,15 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "data-plane"
     LOG_LEVEL: str = "INFO"
     
-    # Finnhub (for stocks)
-    FINNHUB_API_KEY: str
+    # Stock data provider selection: "finnhub" or "tiingo"
+    # Controls which provider the data-plane uses for stock quotes/candles
+    STOCK_PROVIDER: str = "finnhub"
+    
+    # Finnhub (for stocks — legacy/default)
+    FINNHUB_API_KEY: Optional[str] = None
+    
+    # Tiingo (for stocks — recommended, better rate limits)
+    TIINGO_API_KEY: Optional[str] = None
     
     # OANDA (for forex)
     OANDA_API_KEY: Optional[str] = None

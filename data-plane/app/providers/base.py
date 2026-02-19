@@ -17,6 +17,7 @@ class ProviderType(str, Enum):
     """Supported provider types."""
     FINNHUB = "finnhub"
     OANDA = "oanda"
+    TIINGO = "tiingo"
     ALPHA_VANTAGE = "alpha_vantage"
     TWELVE_DATA = "twelve_data"
 

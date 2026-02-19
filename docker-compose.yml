@@ -242,6 +242,7 @@ services:
       - "8007:8007"  # Recent signals monitoring API
     environment:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - TIINGO_API_KEY=${TIINGO_API_KEY}
       - MARKET_DATA_PROVIDER=data_plane
       - DATA_PLANE_URL=http://data-plane:8000
       - ADDITIONAL_TIMEFRAMES=5,15,60
@@ -305,7 +306,9 @@ services:
     environment:
       - SERVICE_NAME=data-plane
       - LOG_LEVEL=INFO
+      - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - TIINGO_API_KEY=${TIINGO_API_KEY}
       - OANDA_API_KEY=${OANDA_API_KEY}
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
@@ -342,7 +345,9 @@ services:
     container_name: trading-data-plane-worker
     command: celery -A app.tasks.celery_tasks worker --loglevel=INFO -n data-plane-worker
     environment:
+      - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - TIINGO_API_KEY=${TIINGO_API_KEY}
       - OANDA_API_KEY=${OANDA_API_KEY}
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
@@ -368,7 +373,9 @@ services:
     container_name: trading-data-plane-beat
     command: celery -A app.tasks.celery_tasks beat --loglevel=INFO
     environment:
+      - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - TIINGO_API_KEY=${TIINGO_API_KEY}
       - OANDA_API_KEY=${OANDA_API_KEY}
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}

@@ -9,18 +9,61 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/data", tags=["data"])
 
 
+def _get_stock_provider():
+    """
+    Get the configured stock data provider (Tiingo or Finnhub).
+    
+    Uses STOCK_PROVIDER setting to determine which provider to use:
+    - "tiingo": Uses Tiingo API (better rate limits, recommended)
+    - "finnhub": Uses Finnhub API (legacy default)
+    
+    Falls back to whichever API key is available if the configured provider
+    is not available.
+    """
+    from app.providers.tiingo import TiingoProvider
+    from app.providers.finnhub import FinnhubProvider
+    from app.config import settings
+    
+    stock_provider = getattr(settings, "STOCK_PROVIDER", "finnhub").lower()
+    
+    if stock_provider == "tiingo":
+        if settings.TIINGO_API_KEY:
+            logger.debug("using_tiingo_provider")
+            return TiingoProvider(api_key=settings.TIINGO_API_KEY)
+        elif settings.FINNHUB_API_KEY:
+            logger.warning("tiingo_configured_but_no_key_falling_back_to_finnhub")
+            return FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="No stock data provider API key configured (TIINGO_API_KEY or FINNHUB_API_KEY)"
+            )
+    else:
+        # Default: Finnhub
+        if settings.FINNHUB_API_KEY:
+            logger.debug("using_finnhub_provider")
+            return FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+        elif settings.TIINGO_API_KEY:
+            logger.warning("finnhub_configured_but_no_key_falling_back_to_tiingo")
+            return TiingoProvider(api_key=settings.TIINGO_API_KEY)
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="No stock data provider API key configured (FINNHUB_API_KEY or TIINGO_API_KEY)"
+            )
+
+
 @router.get("/quote/{ticker}")
 async def get_quote(ticker: str):
     """
     Get latest quote for a ticker (cached).
     
-    Supports both stocks (via Finnhub) and forex (via OANDA).
+    Supports both stocks (via Tiingo/Finnhub) and forex (via OANDA).
     Returns quote from Redis cache if available (< 60s for hot, < 5min for warm).
     """
     from app.database import get_redis
     from app.services.data_fetcher import DataFetcher
     from app.providers.oanda import OANDAProvider
-    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.telemetry import get_meter
     
@@ -45,10 +88,8 @@ async def get_quote(ticker: str):
             account_type=settings.OANDA_ACCOUNT_TYPE
         )
     else:
-        # Stock ticker
-        if not settings.FINNHUB_API_KEY:
-            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
-        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+        # Stock ticker - uses configured stock provider (Tiingo or Finnhub)
+        provider = _get_stock_provider()
     
     meter = get_meter()
     fetcher = DataFetcher(provider, redis, meter)
@@ -71,12 +112,11 @@ async def get_candles(
     """
     Get OHLCV candles for a ticker.
     
-    Supports both stocks (via Finnhub) and forex (via OANDA).
+    Supports both stocks (via Tiingo/Finnhub) and forex (via OANDA).
     Automatically routes based on ticker format (underscore = forex).
     """
     from app.services.data_fetcher import DataFetcher
     from app.providers.oanda import OANDAProvider
-    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.database import get_redis
     from app.telemetry import get_meter
@@ -94,11 +134,8 @@ async def get_candles(
         )
         logger.debug("using_oanda_provider", ticker=ticker)
     else:
-        # Stock ticker
-        if not settings.FINNHUB_API_KEY:
-            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
-        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
-        logger.debug("using_finnhub_provider", ticker=ticker)
+        # Stock ticker - uses configured stock provider (Tiingo or Finnhub)
+        provider = _get_stock_provider()
     
     redis = await get_redis()
     meter = get_meter()
@@ -127,7 +164,7 @@ async def get_indicators(
     """
     Get technical indicators for a ticker (calculated locally from candle data).
     
-    Supports both stocks (via Finnhub) and forex (via OANDA).
+    Supports both stocks (via Tiingo/Finnhub) and forex (via OANDA).
     Indicators are calculated locally using TA-Lib (300x faster than API calls).
     
     Supported indicators:
@@ -146,7 +183,6 @@ async def get_indicators(
     """
     from app.services.data_fetcher import DataFetcher
     from app.providers.oanda import OANDAProvider
-    from app.providers.finnhub import FinnhubProvider
     from app.config import settings
     from app.database import get_redis
     from app.telemetry import get_meter
@@ -171,11 +207,8 @@ async def get_indicators(
         )
         logger.debug("using_oanda_provider", ticker=ticker)
     else:
-        # Stock ticker
-        if not settings.FINNHUB_API_KEY:
-            raise HTTPException(status_code=500, detail="Finnhub API key not configured")
-        provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
-        logger.debug("using_finnhub_provider", ticker=ticker)
+        # Stock ticker - uses configured stock provider (Tiingo or Finnhub)
+        provider = _get_stock_provider()
     
     redis = await get_redis()
     meter = get_meter()

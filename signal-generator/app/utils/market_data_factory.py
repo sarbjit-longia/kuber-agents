@@ -17,6 +17,7 @@ from app.config import settings
 from app.utils.market_data_provider import MarketDataProvider, ProviderType
 from app.utils.providers.finnhub_provider import FinnhubProvider
 from app.utils.providers.dataplane_provider import DataPlaneProvider
+from app.utils.providers.tiingo_provider import TiingoProvider
 from app.telemetry import get_meter
 
 logger = structlog.get_logger()
@@ -90,6 +91,14 @@ def get_market_data_provider(
                 "Set FINNHUB_API_KEY environment variable."
             )
         provider = FinnhubProvider(api_key=settings.FINNHUB_API_KEY)
+    
+    elif provider_type == ProviderType.TIINGO:
+        if not settings.TIINGO_API_KEY:
+            raise RuntimeError(
+                "Tiingo API key not configured. "
+                "Set TIINGO_API_KEY environment variable."
+            )
+        provider = TiingoProvider(api_key=settings.TIINGO_API_KEY)
     
     elif provider_type == ProviderType.ALPHA_VANTAGE:
         # TODO: Implement Alpha Vantage provider
