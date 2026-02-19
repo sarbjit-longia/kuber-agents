@@ -108,7 +108,7 @@ export class StrategyChartComponent implements OnInit, AfterViewInit, OnDestroy 
           description: chartData.meta.symbol,
           type: isForex ? 'forex' : 'stock',
           session: '24x7',
-          timezone: 'Etc/UTC',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone as any,
           ticker: chartData.meta.symbol,
           exchange: '',
           minmov: 1,

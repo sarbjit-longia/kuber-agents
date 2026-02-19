@@ -153,7 +153,19 @@ export class PipelinesComponent implements OnInit {
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString();
+    if (!dateString) return '-';
+    // Ensure UTC dates from backend are treated as UTC before converting to local
+    let isoString = dateString;
+    if (!dateString.endsWith('Z') && !dateString.match(/[+-]\d{2}:\d{2}$/)) {
+      isoString = dateString + 'Z';
+    }
+    return new Date(isoString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   getAgentCount(pipeline: any): number {

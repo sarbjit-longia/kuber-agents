@@ -20,6 +20,7 @@ import { Subject, interval, takeUntil, switchMap } from 'rxjs';
 
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { ApiService } from '../../core/services/api.service';
+import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 import {
   DashboardService,
   DashboardData,
@@ -45,6 +46,7 @@ import {
     MatDividerModule,
     MatBadgeModule,
     NavbarComponent,
+    LocalDatePipe,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
@@ -160,7 +162,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   formatDate(dateStr: string | null): string {
     if (!dateStr) return '-';
-    const d = new Date(dateStr);
+    // Ensure UTC dates from backend are treated as UTC before converting to local
+    let isoString = dateStr;
+    if (!dateStr.endsWith('Z') && !dateStr.match(/[+-]\d{2}:\d{2}$/)) {
+      isoString = dateStr + 'Z';
+    }
+    const d = new Date(isoString);
     return d.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',

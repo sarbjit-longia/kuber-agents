@@ -261,7 +261,12 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     if (!date) return 'N/A';
     
     try {
-      const dateObj = new Date(date);
+      // Ensure UTC dates from backend are treated as UTC before converting to local
+      let isoString = date;
+      if (!date.endsWith('Z') && !date.match(/[+-]\d{2}:\d{2}$/)) {
+        isoString = date + 'Z';
+      }
+      const dateObj = new Date(isoString);
       return dateObj.toLocaleString('en-US', {
         year: 'numeric',
         month: 'short',

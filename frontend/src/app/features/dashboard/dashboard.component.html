@@ -10,7 +10,7 @@
           Dashboard
         </h1>
         <span class="last-updated" *ngIf="lastUpdated">
-          Updated {{ lastUpdated | date:'shortTime' }}
+          Updated {{ lastUpdated | localDate:'timeOnly' }}
         </span>
       </div>
       <div class="header-actions">

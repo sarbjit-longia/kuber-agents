@@ -194,7 +194,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           description: '',
           type: 'stock',
           session: '24x7',
-          timezone: 'Etc/UTC',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone as any,
           ticker: symbolName,
           exchange: '',
           minmov: 1,

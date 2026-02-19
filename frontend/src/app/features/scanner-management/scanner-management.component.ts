@@ -18,6 +18,7 @@ import { Scanner, ScannerCreate } from '../../core/models/scanner.model';
 import { ScannerService } from '../../core/services/scanner.service';
 import { CreateScannerDialogComponent } from './create-scanner-dialog/create-scanner-dialog.component';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 
 @Component({
   selector: 'app-scanner-management',
@@ -34,7 +35,8 @@ import { NavbarComponent } from '../../core/components/navbar/navbar.component';
     MatProgressSpinnerModule,
     MatButtonToggleModule,
     NavbarComponent,
-    CreateScannerDialogComponent
+    CreateScannerDialogComponent,
+    LocalDatePipe
   ],
   templateUrl: './scanner-management.component.html',
   styleUrls: ['./scanner-management.component.scss']
