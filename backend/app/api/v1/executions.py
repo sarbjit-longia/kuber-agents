@@ -915,12 +915,14 @@ async def reconcile_execution_endpoint(
     closed_at_str = reconciliation_data.get("closed_at")
     force_auto = reconciliation_data.get("auto_reconcile", False)
 
-    # Parse closed_at
+    # Parse closed_at — always store as naive UTC (DB column is TIMESTAMP WITHOUT TIME ZONE)
     closed_at = None
     if closed_at_str:
         try:
             if isinstance(closed_at_str, str):
-                closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
+                # Strip tzinfo so it's naive UTC (DB column is TIMESTAMP WITHOUT TIME ZONE)
+                closed_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
             else:
                 closed_at = datetime.utcnow()
         except Exception:
@@ -973,9 +975,10 @@ async def reconcile_execution_endpoint(
 
                         if broker_close_time:
                             try:
-                                closed_at = datetime.fromisoformat(
+                                dt = datetime.fromisoformat(
                                     str(broker_close_time).replace("Z", "+00:00")
                                 )
+                                closed_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
                             except Exception:
                                 pass
 
@@ -1246,21 +1249,48 @@ async def resume_monitoring_endpoint(
     
     # Update execution status back to MONITORING
     execution.status = ExecutionStatus.MONITORING
+    execution.execution_phase = "monitoring"
     execution.error_message = None
     
-    # Set next_check_at to trigger immediate monitoring check
+    # Set next_check_at to trigger monitoring check in 15 seconds
     from datetime import timedelta
-    execution.next_check_at = datetime.utcnow() + timedelta(minutes=1)
+    execution.next_check_at = datetime.utcnow() + timedelta(seconds=15)
     
     # Clear any reconciliation flags in result
     if execution.result:
         execution.result.pop('reconciled_manually', None)
         execution.result.pop('reconciled_at', None)
         execution.result.pop('reconciled_by', None)
+        # Clear stale trade_outcome from the NEEDS_RECONCILIATION phase
+        execution.result.pop('trade_outcome', None)
+        execution.result.pop('final_pnl', None)
+        execution.result.pop('final_pnl_percent', None)
     
     from sqlalchemy.orm.attributes import flag_modified
     if execution.result:
         flag_modified(execution, 'result')
+    
+    # ── CRITICAL: Reset stale flags in pipeline_state ──────────────────
+    # When the execution was NEEDS_RECONCILIATION, the pipeline_state had
+    # should_complete=True and trade_outcome with status="needs_reconciliation".
+    # If we don't clear these, the next monitoring check will immediately
+    # re-mark the execution as NEEDS_RECONCILIATION because the agent's
+    # FOUND path doesn't touch should_complete.
+    from app.orchestration.tasks._helpers import load_pipeline_state, save_pipeline_state
+    try:
+        pipeline_state = load_pipeline_state(execution)
+        if pipeline_state:
+            pipeline_state.should_complete = False
+            pipeline_state.trade_outcome = None
+            pipeline_state.communication_error = False
+            save_pipeline_state(execution, pipeline_state)
+            flag_modified(execution, 'pipeline_state')
+    except Exception as e:
+        logger.warning(
+            "failed_to_reset_pipeline_state_on_resume",
+            execution_id=str(execution_id),
+            error=str(e)
+        )
     
     await db.commit()
     
@@ -1269,7 +1299,7 @@ async def resume_monitoring_endpoint(
         from app.orchestration.tasks.monitoring import schedule_monitoring_check
         schedule_monitoring_check.apply_async(
             args=[str(execution.id)],
-            countdown=60  # 1 minute
+            countdown=15  # 15 seconds
         )
     except Exception as e:
         logger.error(

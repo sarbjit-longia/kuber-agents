@@ -256,6 +256,15 @@ class TradeManagerAgent(BaseAgent):
         """
         self.log(state, "Phase 2: Monitoring position/order")
         
+        # ── Reset stale flags from previous monitoring cycles ──────────
+        # When resuming from NEEDS_RECONCILIATION the pipeline_state may
+        # still carry should_complete=True and a stale trade_outcome.
+        # Clear them so this cycle starts fresh; they will only be set
+        # again if this check actually determines the position is closed.
+        state.should_complete = False
+        state.communication_error = False
+        state.trade_outcome = None
+        
         broker_tool = self._get_broker_tool()
         
         if not broker_tool:
