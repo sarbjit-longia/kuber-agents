@@ -92,6 +92,7 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
+  width: 100%;
 
   mat-icon {
     color: var(--accent-primary);
@@ -122,6 +123,41 @@
   font-weight: 400;
   color: var(--text-secondary);
   margin-left: 0.25rem;
+}
+
+.timeline-presets {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+
+  .preset-btn {
+    font-size: 0.75rem;
+    height: 30px;
+    line-height: 30px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      margin-right: 4px;
+    }
+
+    &.active {
+      background: var(--accent-primary);
+      color: white;
+      border-color: var(--accent-primary);
+    }
+
+    &:hover:not(.active) {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+  }
 }
 
 .execution-timeline {
@@ -221,12 +257,50 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 500;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    user-select: none;
+    border: 1px solid transparent;
+
+    .legend-check {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      color: var(--text-secondary);
+      opacity: 0.6;
+    }
+
+    .legend-count {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    &:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-color);
+    }
+
+    &.legend-inactive {
+      opacity: 0.4;
+
+      .legend-dot {
+        opacity: 0.3;
+      }
+
+      .legend-check {
+        opacity: 0.4;
+      }
+    }
   }
 
   .legend-dot {
     width: 10px;
     height: 10px;
     border-radius: 2px;
+    transition: opacity 0.2s ease;
 
     &.bar-profit { background: #34d399; }
     &.bar-loss { background: #f87171; }

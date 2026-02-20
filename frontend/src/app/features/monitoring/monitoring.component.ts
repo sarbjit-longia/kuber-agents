@@ -25,7 +25,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 
-import { MonitoringService } from '../../core/services/monitoring.service';
+import { MonitoringService, ExecutionListResponse } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { ExecutionReportModalComponent } from './execution-report-modal/execution-report-modal.component';
@@ -71,10 +71,38 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     colorClass: string;
     height: number;
     tooltip: string;
+    category: string;
   }> = [];
+
+  // Timeline filter toggles — which categories are visible
+  timelineFilters: Record<string, boolean> = {
+    profit: true,
+    loss: true,
+    hold: true,
+    'no-trade': true,
+    cancelled: true,
+    pending: true,
+    failed: true,
+  };
+
+  // Timeline legend items (interactive) — count is computed after buildExecutionBars
+  timelineLegend: Array<{ key: string; label: string; colorClass: string; count: number }> = [
+    { key: 'profit', label: 'Profit', colorClass: 'bar-profit', count: 0 },
+    { key: 'loss', label: 'Loss', colorClass: 'bar-loss', count: 0 },
+    { key: 'hold', label: 'Hold', colorClass: 'bar-hold', count: 0 },
+    { key: 'no-trade', label: 'No Trade', colorClass: 'bar-no-trade', count: 0 },
+    { key: 'cancelled', label: 'Cancelled', colorClass: 'bar-cancelled', count: 0 },
+    { key: 'pending', label: 'Limit Pending', colorClass: 'bar-pending', count: 0 },
+    { key: 'failed', label: 'Failed', colorClass: 'bar-failed', count: 0 },
+  ];
   
   stats: ExecutionStats | null = null;
   loading = true;
+
+  // Server-side pagination for historical executions
+  pageSize = 50;
+  pageIndex = 0;
+  historicalTotal = 0;
   
   // Filter values
   filters = {
@@ -146,21 +174,24 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngAfterViewInit(): void {
-    this.historicalDataSource.paginator = this.paginator;
+    // No client-side paginator binding — pagination is server-side
   }
 
   loadData(): void {
-    this.monitoringService.loadExecutions().subscribe({
-      next: (executions) => {
-        // Store all executions
-        this.allExecutions = executions;
-        
-        // Build execution timeline bars (always from all executions)
+    const offset = this.pageIndex * this.pageSize;
+
+    this.monitoringService.loadExecutions(this.pageSize, offset).subscribe({
+      next: (resp: ExecutionListResponse) => {
+        // Store all executions returned (active + current page of historical)
+        this.allExecutions = resp.executions;
+        this.historicalTotal = resp.historical_total;
+
+        // Build execution timeline bars (from all returned executions)
         this.buildExecutionBars();
-        
-        // Apply filters
+
+        // Apply client-side filters for display
         this.applyFilters();
-        
+
         this.loading = false;
       },
       error: (error) => {
@@ -180,10 +211,17 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
+  /** Called when the user changes page in the historical table */
+  onPageChange(event: any): void {
+    this.pageIndex = event.pageIndex;
+    this.pageSize = event.pageSize;
+    this.loadData();
+  }
+
   applyFilters(): void {
     let filtered = [...this.allExecutions];
-    
-    // Apply common filters (these affect both active monitoring and historical table)
+
+    // Apply client-side filters (symbol search, mode, etc.)
     if (this.filters.status !== 'all') {
       filtered = filtered.filter(e => e.status.toUpperCase() === this.filters.status);
     }
@@ -206,21 +244,20 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       endOfDay.setHours(23, 59, 59, 999);
       filtered = filtered.filter(e => new Date(e.started_at) <= endOfDay);
     }
-    
+
     // Split into active and historical
     const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR', 'NEEDS_RECONCILIATION']);
     this.activeExecutions = filtered.filter(
       e => activeStatuses.has(e.status.toUpperCase())
     );
-    
+
     let historical = filtered.filter(
       e => !activeStatuses.has(e.status.toUpperCase())
     );
-    
-    // Apply trade outcome filter to historical table only (active monitoring always shows all)
+
+    // Apply trade outcome filter to historical table only
     if (this.filters.tradeOutcome !== 'all') {
       historical = historical.filter(e => e.trade_outcome === this.filters.tradeOutcome);
-      // For 'executed' filter, also exclude zero P&L entries
       if (this.filters.tradeOutcome === 'executed') {
         historical = historical.filter(e => {
           const pnl = this.getPnL(e);
@@ -228,7 +265,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
         });
       }
     }
-    
+
     this.historicalDataSource.data = historical;
     
     if (this.paginator) {
@@ -322,35 +359,36 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       const action = ex.strategy_action;
       let colorClass = 'bar-no-action';
       let height = MIN_H;
+      let category = 'hold'; // default category
 
       if (outcome === 'executed' && pnl.value !== null && pnl.value !== undefined && pnl.value !== 0) {
-        // Real completed trade with P&L
         colorClass = pnl.value >= 0 ? 'bar-profit' : 'bar-loss';
         height = MIN_H + (Math.abs(pnl.value) / maxPnL) * (MAX_H - MIN_H);
+        category = pnl.value >= 0 ? 'profit' : 'loss';
       } else if (outcome === 'pending') {
-        // Limit order at broker, waiting to fill
         colorClass = 'bar-pending';
         height = MIN_H + 18;
+        category = 'pending';
       } else if (outcome === 'cancelled') {
-        // Order was cancelled (unfilled limit order)
         colorClass = 'bar-cancelled';
         height = MIN_H + 8;
+        category = 'cancelled';
       } else if (outcome === 'failed' || outcome === 'rejected') {
-        // Broker call failed or risk manager rejected
         colorClass = 'bar-failed';
         height = MIN_H + 8;
+        category = 'failed';
       } else if (outcome === 'no_action' || action === 'HOLD') {
-        // Strategy said HOLD — no trade intended
         colorClass = 'bar-hold';
         height = MIN_H + 8;
+        category = 'hold';
       } else if (outcome === 'no_trade') {
-        // Strategy gave signal but pipeline didn't complete trade execution
         colorClass = 'bar-no-trade';
         height = MIN_H + 6;
+        category = 'no-trade';
       } else {
-        // Unknown / incomplete
         colorClass = 'bar-no-action';
         height = MIN_H + 4;
+        category = 'hold';
       }
 
       const symbol = ex.symbol || 'N/A';
@@ -361,8 +399,46 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       const actionStr = action ? ` · ${action}` : '';
       const tooltip = `${symbol}${actionStr} · ${outcomeLabel}${pnlStr}`;
 
-      return { execution: ex, colorClass, height, tooltip };
+      return { execution: ex, colorClass, height, tooltip, category };
     });
+
+    // Update legend counts
+    const counts: Record<string, number> = {};
+    this.executionBars.forEach(bar => {
+      counts[bar.category] = (counts[bar.category] || 0) + 1;
+    });
+    this.timelineLegend.forEach(item => {
+      item.count = counts[item.key] || 0;
+    });
+  }
+
+  /** Get only the bars that pass the current timeline filters */
+  get filteredBars() {
+    return this.executionBars.filter(bar => this.timelineFilters[bar.category]);
+  }
+
+  /** Toggle a timeline category on/off */
+  toggleTimelineFilter(key: string): void {
+    this.timelineFilters[key] = !this.timelineFilters[key];
+  }
+
+  /** Quick preset: show only real trades (profit + loss + pending) */
+  showOnlyTrades(): void {
+    Object.keys(this.timelineFilters).forEach(k => {
+      this.timelineFilters[k] = ['profit', 'loss', 'pending'].includes(k);
+    });
+  }
+
+  /** Quick preset: show all categories */
+  showAllCategories(): void {
+    Object.keys(this.timelineFilters).forEach(k => {
+      this.timelineFilters[k] = true;
+    });
+  }
+
+  /** Check if we're currently showing all categories */
+  get allCategoriesVisible(): boolean {
+    return Object.values(this.timelineFilters).every(v => v);
   }
 
   onBarClick(execution: ExecutionSummary): void {

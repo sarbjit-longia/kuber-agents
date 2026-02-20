@@ -11,7 +11,7 @@ Provides endpoints for:
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func, case, not_
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -138,6 +138,66 @@ async def start_execution(
     return execution
 
 
+@router.get("/stats", response_model=ExecutionStats)
+async def get_execution_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> ExecutionStats:
+    """
+    Get execution statistics for the current user.
+    
+    Args:
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Execution statistics
+    """
+    from sqlalchemy import func
+    
+    # Get all executions for the user
+    result = await db.execute(
+        select(Execution).where(Execution.user_id == current_user.id)
+    )
+    executions = result.scalars().all()
+    
+    total_executions = len(executions)
+    running_executions = len([e for e in executions if e.status == ExecutionStatus.RUNNING])
+    completed_executions = len([e for e in executions if e.status == ExecutionStatus.COMPLETED])
+    failed_executions = len([e for e in executions if e.status == ExecutionStatus.FAILED])
+    
+    total_cost = sum(e.cost for e in executions)
+    
+    # Calculate average duration for completed executions
+    completed_with_duration = [
+        e for e in executions 
+        if e.status == ExecutionStatus.COMPLETED and e.started_at and e.completed_at
+    ]
+    
+    if completed_with_duration:
+        durations = [
+            (e.completed_at - e.started_at).total_seconds() 
+            for e in completed_with_duration
+        ]
+        avg_duration_seconds = sum(durations) / len(durations)
+    else:
+        avg_duration_seconds = 0.0
+    
+    # Calculate success rate
+    finished_executions = completed_executions + failed_executions
+    success_rate = completed_executions / finished_executions if finished_executions > 0 else 0.0
+    
+    return ExecutionStats(
+        total_executions=total_executions,
+        running_executions=running_executions,
+        completed_executions=completed_executions,
+        failed_executions=failed_executions,
+        total_cost=total_cost,
+        avg_duration_seconds=avg_duration_seconds,
+        success_rate=success_rate
+    )
+
+
 @router.get("/{execution_id}", response_model=dict)
 async def get_execution(
     execution_id: UUID,
@@ -214,55 +274,107 @@ async def get_execution(
     return execution_dict
 
 
-@router.get("/", response_model=List[ExecutionSummary])
+@router.get("/", response_model=dict)
 async def list_executions(
     pipeline_id: Optional[UUID] = Query(None, description="Filter by pipeline ID"),
     status_filter: Optional[ExecutionStatus] = Query(None, alias="status", description="Filter by status"),
-    limit: int = Query(50, ge=1, le=100, description="Number of executions to return"),
+    limit: int = Query(50, ge=1, le=500, description="Number of executions to return"),
     offset: int = Query(0, ge=0, description="Number of executions to skip"),
+    include_active: bool = Query(True, description="Always include all active executions"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-) -> List[ExecutionSummary]:
+) -> dict:
     """
     List executions for the current user with summary information.
+    
+    Active executions (MONITORING, RUNNING, PENDING, COMMUNICATION_ERROR,
+    NEEDS_RECONCILIATION) are always returned in full — they are never
+    affected by limit/offset pagination.  Historical executions are paginated
+    normally.  The response includes a ``total`` count so the frontend can
+    build proper pagination controls.
     
     Args:
         pipeline_id: Optional pipeline ID filter
         status_filter: Optional status filter
-        limit: Maximum number of results
-        offset: Number of results to skip
+        limit: Maximum number of *historical* results per page
+        offset: Number of historical results to skip
+        include_active: When True (default) all active executions are prepended
         current_user: Authenticated user
         db: Database session
         
     Returns:
-        List of execution summaries
+        Dict with ``executions`` list, ``total`` count, and ``active_count``
     """
     from app.models.scanner import Scanner
     
-    query = select(
-        Execution, 
-        Pipeline.name, 
-        Pipeline.trigger_mode,
-        Scanner.name.label('scanner_name')
-    ).join(
-        Pipeline, Execution.pipeline_id == Pipeline.id
-    ).outerjoin(
-        Scanner, Pipeline.scanner_id == Scanner.id
-    ).where(Execution.user_id == current_user.id)
+    active_statuses = [
+        ExecutionStatus.MONITORING,
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.PENDING,
+        ExecutionStatus.COMMUNICATION_ERROR,
+        ExecutionStatus.NEEDS_RECONCILIATION,
+    ]
     
+    base_filters = [Execution.user_id == current_user.id]
     if pipeline_id:
-        query = query.where(Execution.pipeline_id == pipeline_id)
+        base_filters.append(Execution.pipeline_id == pipeline_id)
     
+    base_join = (
+        select(
+            Execution,
+            Pipeline.name,
+            Pipeline.trigger_mode,
+            Scanner.name.label('scanner_name'),
+        )
+        .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .outerjoin(Scanner, Pipeline.scanner_id == Scanner.id)
+        .where(*base_filters)
+    )
+    
+    # ── 1. Always fetch ALL active executions ──────────────────────────
+    active_rows = []
+    active_ids: set = set()
+    if include_active and not status_filter:
+        active_query = (
+            base_join
+            .where(Execution.status.in_(active_statuses))
+            .order_by(desc(Execution.created_at))
+        )
+        active_result = await db.execute(active_query)
+        active_rows = active_result.all()
+        active_ids = {row[0].id for row in active_rows}
+    
+    # ── 2. Fetch paginated historical executions ──────────────────────
+    hist_query = base_join
     if status_filter:
-        query = query.where(Execution.status == status_filter)
+        hist_query = hist_query.where(Execution.status == status_filter)
+    elif include_active:
+        # Exclude active ones (already fetched above)
+        hist_query = hist_query.where(not_(Execution.status.in_(active_statuses)))
     
-    query = query.order_by(desc(Execution.created_at)).limit(limit).offset(offset)
+    # Get total count for pagination
+    count_query = (
+        select(func.count())
+        .select_from(Execution)
+        .where(*base_filters)
+    )
+    if status_filter:
+        count_query = count_query.where(Execution.status == status_filter)
+    elif include_active:
+        count_query = count_query.where(not_(Execution.status.in_(active_statuses)))
     
-    result = await db.execute(query)
-    rows = result.all()
+    total_result = await db.execute(count_query)
+    total_historical = total_result.scalar() or 0
+    
+    hist_query = hist_query.order_by(desc(Execution.created_at)).limit(limit).offset(offset)
+    hist_result = await db.execute(hist_query)
+    hist_rows = hist_result.all()
+    
+    # ── 3. Merge: active first, then historical ───────────────────────
+    all_rows = list(active_rows) + [r for r in hist_rows if r[0].id not in active_ids]
     
     summaries = []
-    for execution, pipeline_name, trigger_mode, scanner_name in rows:
+    for execution, pipeline_name, trigger_mode, scanner_name in all_rows:
         duration_seconds = None
         if execution.started_at and execution.completed_at:
             duration_seconds = (execution.completed_at - execution.started_at).total_seconds()
@@ -396,7 +508,14 @@ async def list_executions(
             reports=execution.reports  # Include reports for monitoring P&L
         ))
     
-    return summaries
+    return {
+        "executions": summaries,
+        "total": total_historical + len(active_rows),
+        "active_count": len(active_rows),
+        "historical_total": total_historical,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/{execution_id}/stop", response_model=dict)
@@ -974,66 +1093,6 @@ async def get_execution_logs(
     
     logs = execution.logs or []
     return logs[-limit:] if len(logs) > limit else logs
-
-
-@router.get("/stats", response_model=ExecutionStats)
-async def get_execution_stats(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> ExecutionStats:
-    """
-    Get execution statistics for the current user.
-    
-    Args:
-        current_user: Authenticated user
-        db: Database session
-        
-    Returns:
-        Execution statistics
-    """
-    from sqlalchemy import func
-    
-    # Get all executions for the user
-    result = await db.execute(
-        select(Execution).where(Execution.user_id == current_user.id)
-    )
-    executions = result.scalars().all()
-    
-    total_executions = len(executions)
-    running_executions = len([e for e in executions if e.status == ExecutionStatus.RUNNING])
-    completed_executions = len([e for e in executions if e.status == ExecutionStatus.COMPLETED])
-    failed_executions = len([e for e in executions if e.status == ExecutionStatus.FAILED])
-    
-    total_cost = sum(e.cost for e in executions)
-    
-    # Calculate average duration for completed executions
-    completed_with_duration = [
-        e for e in executions 
-        if e.status == ExecutionStatus.COMPLETED and e.started_at and e.completed_at
-    ]
-    
-    if completed_with_duration:
-        durations = [
-            (e.completed_at - e.started_at).total_seconds() 
-            for e in completed_with_duration
-        ]
-        avg_duration_seconds = sum(durations) / len(durations)
-    else:
-        avg_duration_seconds = 0.0
-    
-    # Calculate success rate
-    finished_executions = completed_executions + failed_executions
-    success_rate = completed_executions / finished_executions if finished_executions > 0 else 0.0
-    
-    return ExecutionStats(
-        total_executions=total_executions,
-        running_executions=running_executions,
-        completed_executions=completed_executions,
-        failed_executions=failed_executions,
-        total_cost=total_cost,
-        avg_duration_seconds=avg_duration_seconds,
-        success_rate=success_rate
-    )
 
 
 @router.post("/{execution_id}/pause", response_model=ExecutionInDB)

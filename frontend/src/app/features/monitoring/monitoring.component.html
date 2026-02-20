@@ -102,7 +102,23 @@
         <div class="section-title">
           <mat-icon>equalizer</mat-icon>
           Execution Timeline
-          <span class="timeline-count">({{ executionBars.length }})</span>
+          <span class="timeline-count">({{ filteredBars.length }} / {{ executionBars.length }})</span>
+          <div class="timeline-presets">
+            <button mat-stroked-button class="preset-btn" 
+                    [class.active]="!allCategoriesVisible"
+                    (click)="showOnlyTrades()"
+                    matTooltip="Show only executed trades (profit, loss, pending)">
+              <mat-icon>filter_alt</mat-icon>
+              Trades Only
+            </button>
+            <button mat-stroked-button class="preset-btn"
+                    [class.active]="allCategoriesVisible"
+                    (click)="showAllCategories()"
+                    matTooltip="Show all execution categories">
+              <mat-icon>visibility</mat-icon>
+              Show All
+            </button>
+          </div>
         </div>
       </mat-card-title>
     </mat-card-header>
@@ -110,7 +126,7 @@
       <div class="execution-timeline">
         <div class="timeline-bars-scroll">
           <div class="timeline-bars">
-            <div *ngFor="let bar of executionBars"
+            <div *ngFor="let bar of filteredBars"
                  class="timeline-bar"
                  [ngClass]="bar.colorClass"
                  [style.height.px]="bar.height"
@@ -122,13 +138,16 @@
         </div>
       </div>
       <div class="timeline-legend">
-        <span class="legend-item"><span class="legend-dot bar-profit"></span> Profit</span>
-        <span class="legend-item"><span class="legend-dot bar-loss"></span> Loss</span>
-        <span class="legend-item"><span class="legend-dot bar-hold"></span> Hold</span>
-        <span class="legend-item"><span class="legend-dot bar-no-trade"></span> No Trade</span>
-        <span class="legend-item"><span class="legend-dot bar-cancelled"></span> Cancelled</span>
-        <span class="legend-item"><span class="legend-dot bar-pending"></span> Limit Pending</span>
-        <span class="legend-item"><span class="legend-dot bar-failed"></span> Failed</span>
+        <span *ngFor="let item of timelineLegend"
+              class="legend-item"
+              [class.legend-inactive]="!timelineFilters[item.key]"
+              (click)="toggleTimelineFilter(item.key)"
+              [matTooltip]="timelineFilters[item.key] ? 'Click to hide ' + item.label : 'Click to show ' + item.label">
+          <mat-icon class="legend-check">{{ timelineFilters[item.key] ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+          <span class="legend-dot" [ngClass]="item.colorClass"></span>
+          {{ item.label }}
+          <span class="legend-count">({{ item.count }})</span>
+        </span>
       </div>
     </mat-card-content>
   </mat-card>
@@ -428,8 +447,11 @@
           <tr mat-row *matRowDef="let row; columns: displayedColumns;" (click)="viewExecution(row)" class="execution-row"></tr>
         </table>
 
-        <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" 
-                       [pageSize]="25"
+        <mat-paginator [length]="historicalTotal"
+                       [pageSizeOptions]="[25, 50, 100, 200]"
+                       [pageSize]="pageSize"
+                       [pageIndex]="pageIndex"
+                       (page)="onPageChange($event)"
                        showFirstLastButtons>
         </mat-paginator>
       </div>

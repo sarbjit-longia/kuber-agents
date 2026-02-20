@@ -5,9 +5,19 @@
  */
 
 import { Injectable } from '@angular/core';
-import { Observable, BehaviorSubject, interval, switchMap, tap } from 'rxjs';
+import { Observable, BehaviorSubject, interval, switchMap, tap, map } from 'rxjs';
 import { ApiService } from './api.service';
 import { Execution, ExecutionSummary, ExecutionStats, ExecutionLog } from '../models/execution.model';
+
+/** Paginated response from the executions list endpoint */
+export interface ExecutionListResponse {
+  executions: ExecutionSummary[];
+  total: number;
+  active_count: number;
+  historical_total: number;
+  limit: number;
+  offset: number;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -24,13 +34,16 @@ export class MonitoringService {
   constructor(private apiService: ApiService) {}
 
   /**
-   * Load all executions for current user
-   * Fetch up to 100 to ensure MONITORING executions are included
+   * Load executions with server-side pagination.
+   * Active executions (MONITORING, RUNNING, etc.) are always included
+   * regardless of limit/offset — they are prepended by the backend.
    */
-  loadExecutions(): Observable<ExecutionSummary[]> {
-    return this.apiService.get<ExecutionSummary[]>('/api/v1/executions?limit=100').pipe(
-      tap(executions => this.executionsSubject.next(executions))
-    );
+  loadExecutions(limit = 50, offset = 0): Observable<ExecutionListResponse> {
+    return this.apiService
+      .get<ExecutionListResponse>(`/api/v1/executions?limit=${limit}&offset=${offset}&include_active=true`)
+      .pipe(
+        tap(resp => this.executionsSubject.next(resp.executions))
+      );
   }
 
   /**
