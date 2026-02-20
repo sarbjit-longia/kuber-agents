@@ -410,3 +410,101 @@ class AlpacaBrokerService(BrokerService):
         }
         return mapping.get(status_str.lower(), OrderStatus.PENDING)
 
+    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get details for a specific trade/order by ID from Alpaca.
+
+        Uses the alpaca-py ``get_order_by_id`` method. Alpaca tracks executions
+        as orders so ``trade_id`` is actually the Alpaca order UUID.
+
+        Args:
+            trade_id: Alpaca order UUID
+            account_id: Unused (Alpaca derives account from the client)
+
+        Returns:
+            Standardised trade-details dict (see ``BrokerService.get_trade_details``).
+        """
+        try:
+            alpaca_order = self.client.get_order_by_id(trade_id)
+
+            status_str = str(alpaca_order.status).lower()
+            if status_str == "filled":
+                state = "closed"
+            elif status_str in ("new", "accepted", "partially_filled",
+                                "pending_new", "pending_cancel",
+                                "pending_replace"):
+                state = "open"
+            elif status_str in ("canceled", "cancelled", "rejected",
+                                "expired", "suspended"):
+                state = "cancelled"
+            else:
+                state = status_str
+
+            filled_price = (
+                float(alpaca_order.filled_avg_price)
+                if alpaca_order.filled_avg_price else None
+            )
+            filled_qty = (
+                float(alpaca_order.filled_qty)
+                if alpaca_order.filled_qty else 0.0
+            )
+
+            # Alpaca bracket orders contain legs; realised P&L can be
+            # derived from the entry + closing leg fills.
+            realized_pl = 0.0
+            close_price = None
+            close_time = None
+
+            if hasattr(alpaca_order, "legs") and alpaca_order.legs:
+                for leg in alpaca_order.legs:
+                    leg_status = str(leg.status).lower()
+                    if leg_status == "filled" and leg.filled_avg_price:
+                        close_price = float(leg.filled_avg_price)
+                        close_time = (
+                            leg.filled_at.isoformat()
+                            if leg.filled_at else None
+                        )
+                        # Determine direction
+                        entry_side = str(alpaca_order.side).lower()
+                        if entry_side == "buy":
+                            realized_pl = (close_price - (filled_price or 0)) * filled_qty
+                        else:
+                            realized_pl = ((filled_price or 0) - close_price) * filled_qty
+                        break  # first filled closing leg
+
+            return {
+                "found": True,
+                "state": state,
+                "realized_pl": realized_pl,
+                "unrealized_pl": 0.0,
+                "close_time": (
+                    close_time
+                    or (alpaca_order.filled_at.isoformat()
+                        if alpaca_order.filled_at else None)
+                ),
+                "instrument": alpaca_order.symbol,
+                "open_price": filled_price or 0.0,
+                "close_price": close_price,
+                "units": filled_qty,
+                "initial_units": (
+                    float(alpaca_order.qty)
+                    if alpaca_order.qty else 0.0
+                ),
+                "broker_data": {
+                    "order_id": str(alpaca_order.id),
+                    "client_order_id": alpaca_order.client_order_id,
+                    "order_class": (
+                        str(alpaca_order.order_class)
+                        if alpaca_order.order_class else None
+                    ),
+                    "status": status_str,
+                },
+            }
+
+        except Exception as e:
+            self.logger.error(
+                "get_trade_details_failed",
+                trade_id=trade_id,
+                error=str(e),
+            )
+            return {"found": False, "error": str(e)}

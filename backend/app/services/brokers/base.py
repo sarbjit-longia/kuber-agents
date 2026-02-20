@@ -332,6 +332,7 @@ class BrokerService(ABC):
         # Default implementation — brokers that support candles should override
         return []
 
+    @abstractmethod
     def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Get details for a specific trade by ID, including realized P&L for closed trades.
@@ -340,8 +341,11 @@ class BrokerService(ABC):
         (SL/TP) between monitoring checks, we need to fetch the final realized P&L from
         the broker rather than relying solely on the last monitoring snapshot.
         
+        Every broker MUST implement this method. Without it, trades that close between
+        monitoring checks cannot be reconciled and P&L will be lost.
+        
         Args:
-            trade_id: Broker-assigned trade ID
+            trade_id: Broker-assigned trade ID (order ID for Tradier, trade ID for Oanda)
             account_id: Account ID (optional)
             
         Returns:
@@ -356,9 +360,11 @@ class BrokerService(ABC):
                 - close_price (float|None): Exit price (if closed)
                 - units (float): Position size
                 - broker_data (dict): Raw broker response
+                
+        Raises:
+            NotImplementedError: If broker subclass has not implemented this method
         """
-        # Default implementation — brokers that support trade lookup should override
-        return {"found": False, "error": "Not implemented for this broker"}
+        pass
     
     def is_paper_trading(self) -> bool:
         """Check if this is a paper trading account."""

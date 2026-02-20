@@ -134,6 +134,16 @@ mat-icon,
   border-radius: 16px !important;
 }
 
+// Remove default padding for reconciliation dialog so inner component controls layout
+.reconciliation-dialog-panel .mat-mdc-dialog-container .mdc-dialog__surface {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.reconciliation-dialog-panel .mat-mdc-dialog-container {
+  padding: 0 !important;
+}
+
 .mat-mdc-table {
   background: transparent !important;
 }

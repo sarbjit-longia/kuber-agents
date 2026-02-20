@@ -719,8 +719,9 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     
     const dialogRef = this.dialog.open(ReconciliationDialogComponent, {
-      width: '700px',
-      maxWidth: '90vw',
+      width: '640px',
+      maxWidth: '95vw',
+      panelClass: 'reconciliation-dialog-panel',
       data: { execution }
     });
     

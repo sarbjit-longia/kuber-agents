@@ -646,14 +646,22 @@ class TradierBrokerService(BrokerService):
         self,
         symbol: str,
         qty: Optional[float] = None,
-        account_id: Optional[str] = None
+        account_id: Optional[str] = None,
+        trade_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Close a position"""
+        """Close a position.
+        
+        Args:
+            symbol: Trading symbol
+            qty: Number of shares/units to close (None = close all)
+            account_id: Override account ID
+            trade_id: Ignored for Tradier (accepted for API compatibility with Oanda)
+        """
         try:
             # Get current position
             pos = self.get_position(symbol, account_id)
             if not pos:
-                return {"success": False, "error": "Position not found"}
+                return {"success": False, "error": f"Position not found for {symbol}"}
             
             # Determine closing qty
             close_qty = qty if qty else pos.qty
@@ -670,7 +678,7 @@ class TradierBrokerService(BrokerService):
             return {"success": True, "order_id": order.order_id, "qty_closed": close_qty}
             
         except Exception as e:
-            self.logger.error("Failed to close Tradier position", error=str(e))
+            self.logger.error("Failed to close Tradier position", symbol=symbol, error=str(e))
             return {"success": False, "error": str(e)}
     
     def get_quote(self, symbol: str) -> Dict[str, Any]:
@@ -701,3 +709,192 @@ class TradierBrokerService(BrokerService):
             self.logger.error("Failed to get Tradier quote", symbol=symbol, error=str(e))
             return {"error": str(e)}
 
+    # ─────────────────────────────────────────────────────────────
+    # Trade details & P&L (required for reconciliation)
+    # ─────────────────────────────────────────────────────────────
+
+    def get_trade_details(
+        self, trade_id: str, account_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get details for a specific trade/order by ID from Tradier.
+
+        Uses ``GET /v1/accounts/{account_id}/orders/{order_id}``.
+        Tradier tracks all executions as *orders*; this method looks up the
+        order, checks its status, and computes realized P&L when possible.
+        """
+        account = account_id or self.account_id
+        if not account:
+            return {"found": False, "error": "No account ID provided"}
+
+        try:
+            result = self._make_request(
+                "GET", f"/v1/accounts/{account}/orders/{trade_id}"
+            )
+
+            if "error" in result:
+                self.logger.warning(
+                    "tradier_order_not_found",
+                    trade_id=trade_id,
+                    error=result.get("error"),
+                )
+                return {
+                    "found": False,
+                    "error": result.get("error", "Order not found"),
+                }
+
+            order_data = result.get("order", {})
+            if not order_data:
+                return {"found": False, "error": "Empty order response"}
+
+            tradier_status = (order_data.get("status", "") or "").lower()
+            symbol = order_data.get("symbol", "").upper()
+            qty = float(order_data.get("quantity", 0))
+            exec_qty = float(order_data.get("exec_quantity", 0))
+            avg_fill_price = (
+                float(order_data["avg_fill_price"])
+                if order_data.get("avg_fill_price")
+                else None
+            )
+            side = (order_data.get("side", "") or "").lower()
+
+            if tradier_status == "filled":
+                state = "closed"
+            elif tradier_status in ("open", "pending", "partially_filled"):
+                state = "open"
+            elif tradier_status in (
+                "canceled", "cancelled", "rejected", "expired",
+            ):
+                state = "cancelled"
+            else:
+                state = tradier_status
+
+            realized_pl = 0.0
+            close_price = None
+            close_time = None
+
+            if tradier_status == "filled" and avg_fill_price:
+                close_price, realized_pl, close_time = self._calculate_order_pnl(
+                    account, symbol, trade_id, side, avg_fill_price, exec_qty or qty
+                )
+
+            created_at = order_data.get("create_date")
+            transaction_date = order_data.get("transaction_date")
+
+            return {
+                "found": True,
+                "state": state,
+                "realized_pl": realized_pl,
+                "unrealized_pl": 0.0,
+                "close_time": close_time or transaction_date,
+                "instrument": symbol,
+                "open_price": avg_fill_price or 0.0,
+                "close_price": close_price,
+                "units": exec_qty or qty,
+                "initial_units": qty,
+                "broker_data": order_data,
+            }
+
+        except Exception as e:
+            self.logger.error(
+                "get_trade_details_failed", trade_id=trade_id, error=str(e)
+            )
+            return {"found": False, "error": str(e)}
+
+    def _calculate_order_pnl(
+        self,
+        account: str,
+        symbol: str,
+        entry_order_id: str,
+        entry_side: str,
+        entry_price: float,
+        qty: float,
+    ) -> tuple:
+        """Calculate realized P&L by finding matching closing orders."""
+        try:
+            result = self._make_request(
+                "GET",
+                f"/v1/accounts/{account}/orders",
+                params={"includeTags": "true"},
+            )
+
+            if "error" in result:
+                self.logger.warning(
+                    "tradier_order_history_fetch_failed",
+                    error=result.get("error"),
+                )
+                return None, 0.0, None
+
+            orders_data = result.get("orders", {})
+            if not orders_data or orders_data == "null":
+                return None, 0.0, None
+
+            orders = orders_data.get("order", [])
+            if isinstance(orders, dict):
+                orders = [orders]
+
+            closing_side = "sell" if entry_side == "buy" else "buy"
+
+            closing_orders = []
+            found_entry = False
+            for order in orders:
+                oid = str(order.get("id", ""))
+                if oid == str(entry_order_id):
+                    found_entry = True
+                    continue
+                if not found_entry:
+                    continue
+
+                o_status = (order.get("status", "") or "").lower()
+                o_side = (order.get("side", "") or "").lower()
+                o_symbol = (order.get("symbol", "") or "").upper()
+
+                if (
+                    o_status == "filled"
+                    and o_side == closing_side
+                    and o_symbol == symbol
+                ):
+                    closing_orders.append(order)
+
+            if not closing_orders:
+                try:
+                    pos = self.get_position(symbol, account)
+                    if pos:
+                        return None, 0.0, None
+                except Exception:
+                    pass
+                return None, 0.0, None
+
+            closing_order = closing_orders[-1]
+            close_price = float(closing_order.get("avg_fill_price", 0))
+            close_time = (
+                closing_order.get("transaction_date")
+                or closing_order.get("create_date")
+            )
+            close_qty = float(
+                closing_order.get("exec_quantity", 0)
+            ) or float(closing_order.get("quantity", 0))
+
+            if entry_side == "buy":
+                realized_pl = (close_price - entry_price) * min(qty, close_qty)
+            else:
+                realized_pl = (entry_price - close_price) * min(qty, close_qty)
+
+            self.logger.info(
+                "tradier_pnl_calculated",
+                symbol=symbol,
+                entry_price=entry_price,
+                close_price=close_price,
+                qty=qty,
+                realized_pl=realized_pl,
+            )
+
+            return close_price, realized_pl, close_time
+
+        except Exception as e:
+            self.logger.warning(
+                "tradier_pnl_calculation_failed",
+                symbol=symbol,
+                entry_order_id=entry_order_id,
+                error=str(e),
+            )
+            return None, 0.0, None

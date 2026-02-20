@@ -685,11 +685,13 @@ async def close_position_endpoint(
         # Use the broker tool config which contains the user's credentials
         broker = broker_factory.from_tool_config(broker_tool_config)
         
-        # Extract trade ID from execution result (for bracket orders)
+        # Extract trade details from execution result
         trade_id = None
+        broker_response = {}
         if execution.result and 'trade_execution' in execution.result:
             trade_exec = execution.result.get('trade_execution', {})
-            trade_id = trade_exec.get('order_id')
+            trade_id = trade_exec.get('trade_id') or trade_exec.get('order_id')
+            broker_response = trade_exec.get('broker_response', {})
         
         # Close the position
         logger.info(
@@ -701,7 +703,6 @@ async def close_position_endpoint(
             trade_id=trade_id
         )
         
-        # Pass trade_id for proper bracket order closure
         close_result = broker.close_position(execution.symbol, trade_id=trade_id)
         
         if not close_result.get("success", False):
@@ -710,18 +711,52 @@ async def close_position_endpoint(
                 detail=f"Failed to close position: {close_result.get('error', 'Unknown error')}"
             )
         
-        # Get final P&L from the last monitoring report
+        # Cancel remaining TP/SL exit orders (OCO cleanup)
+        # If we placed separate TP/SL orders on Tradier, cancel them so they don't
+        # trigger against a future position or cause errors.
+        tp_order_id = broker_response.get("tp_order_id")
+        sl_order_id = broker_response.get("sl_order_id")
+        if tp_order_id or sl_order_id:
+            logger.info(
+                "cancelling_exit_orders_after_manual_close",
+                execution_id=str(execution_id),
+                tp_order_id=tp_order_id,
+                sl_order_id=sl_order_id
+            )
+            for label, oid in [("TP", tp_order_id), ("SL", sl_order_id)]:
+                if not oid:
+                    continue
+                try:
+                    cancel_result = broker.cancel_order(str(oid))
+                    logger.info(f"Cancelled {label} order {oid}: {cancel_result}")
+                except Exception as cancel_err:
+                    # Order may already be filled/cancelled — not critical
+                    logger.warning(f"Could not cancel {label} order {oid}: {cancel_err}")
+        
+        # Fetch final P&L from broker (single source of truth)
         final_pnl = None
         final_pnl_percent = None
         
-        if execution.reports:
-            # Find trade manager report
+        # First try to get realized P&L from broker using trade_id
+        if trade_id:
+            try:
+                trade_details = broker.get_trade_details(str(trade_id))
+                if trade_details and trade_details.get("found"):
+                    final_pnl = float(trade_details.get("realized_pl", 0))
+                    entry_price = trade_details.get("open_price")
+                    exit_price = trade_details.get("close_price")
+                    if entry_price and float(entry_price) > 0 and exit_price:
+                        final_pnl_percent = ((float(exit_price) - float(entry_price)) / float(entry_price)) * 100
+            except Exception as e:
+                logger.warning(f"Could not fetch trade details for P&L: {e}")
+        
+        # Fallback: use unrealized P&L from last monitoring report
+        if final_pnl is None and execution.reports:
             trade_manager_report = None
             for agent_id, report in execution.reports.items():
                 if report.get('agent_type') == 'trade_manager_agent':
                     trade_manager_report = report
                     break
-            
             if trade_manager_report and 'data' in trade_manager_report:
                 final_pnl = trade_manager_report['data'].get('unrealized_pl')
                 final_pnl_percent = trade_manager_report['data'].get('pnl_percent')
@@ -748,6 +783,7 @@ async def close_position_endpoint(
             "position_closed_from_ui",
             execution_id=str(execution_id),
             symbol=execution.symbol,
+            final_pnl=final_pnl,
             close_result=close_result
         )
         
@@ -755,6 +791,8 @@ async def close_position_endpoint(
             "success": True,
             "message": f"Position for {execution.symbol} closed successfully",
             "execution_id": str(execution_id),
+            "final_pnl": final_pnl,
+            "final_pnl_percent": final_pnl_percent,
             "close_result": close_result
         }
         
@@ -781,181 +819,339 @@ async def reconcile_execution_endpoint(
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
-    Manually reconcile a NEEDS_RECONCILIATION execution with user-provided P&L and metadata.
-    
-    This endpoint allows users to manually close a trade that couldn't be automatically
-    reconciled by providing P&L information and other trade metadata.
-    
+    Reconcile a NEEDS_RECONCILIATION execution.
+
+    Resolution strategy (tried in order):
+    1. **Auto-reconcile from broker** – if the execution has a ``trade_id``,
+       call ``broker.get_trade_details()`` to obtain the realized P&L, exit
+       price, and close time directly from the broker (single source of truth).
+    2. **Calculate P&L from prices** – if the user provides ``entry_price``
+       and ``exit_price`` (and quantity is known from the execution), compute
+       the P&L.  The user does NOT need to provide ``pnl`` manually.
+    3. **User-supplied P&L** – if neither of the above is possible the user
+       may provide ``pnl`` directly.
+
     Args:
         execution_id: Execution UUID
-        reconciliation_data: Dict containing:
-            - pnl: float (required) - Profit/Loss in dollars
-            - pnl_percent: Optional[float] - Profit/Loss percentage
-            - exit_reason: Optional[str] - Why the position closed
-            - exit_price: Optional[float] - Exit price
-            - entry_price: Optional[float] - Entry price
-            - closed_at: Optional[str] - ISO datetime string when position closed
+        reconciliation_data: Dict containing (all optional, see strategy above):
+            - pnl: float - Explicit P&L in dollars
+            - pnl_percent: float - Profit/Loss percentage
+            - exit_reason: str - Why the position closed
+            - exit_price: float - Exit price
+            - entry_price: float - Entry price (overrides stored value)
+            - closed_at: str - ISO datetime when position closed
+            - auto_reconcile: bool - If True, force auto-reconcile from broker
         current_user: Authenticated user
         db: Database session
-        
+
     Returns:
         Result of the reconciliation operation
     """
-    # Load execution
+    # Load execution with its pipeline
     result = await db.execute(
-        select(Execution).where(Execution.id == execution_id)
+        select(Execution, Pipeline)
+        .join(Pipeline, Execution.pipeline_id == Pipeline.id)
+        .where(Execution.id == execution_id)
     )
-    execution = result.scalar_one_or_none()
-    
-    if not execution:
+    row = result.first()
+
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Execution not found"
+            detail="Execution not found",
         )
-    
+
+    execution, pipeline = row
+
     # Verify ownership
     if execution.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to reconcile this execution"
+            detail="You don't have permission to reconcile this execution",
         )
-    
+
     # Verify execution is in NEEDS_RECONCILIATION status
     if execution.status != ExecutionStatus.NEEDS_RECONCILIATION:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot reconcile execution with status: {execution.status.value}. Only NEEDS_RECONCILIATION executions can be reconciled."
+            detail=(
+                f"Cannot reconcile execution with status: {execution.status.value}. "
+                "Only NEEDS_RECONCILIATION executions can be reconciled."
+            ),
         )
-    
-    # Validate required fields
-    pnl = reconciliation_data.get("pnl")
-    if pnl is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="pnl is required in reconciliation_data"
-        )
-    
-    try:
-        pnl = float(pnl)
-    except (ValueError, TypeError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="pnl must be a valid number"
-        )
-    
-    # Extract optional fields
-    pnl_percent = reconciliation_data.get("pnl_percent")
-    if pnl_percent is not None:
-        try:
-            pnl_percent = float(pnl_percent)
-        except (ValueError, TypeError):
-            pnl_percent = None
-    
-    exit_reason = reconciliation_data.get("exit_reason", "Manually reconciled by user")
-    exit_price = reconciliation_data.get("exit_price")
-    entry_price = reconciliation_data.get("entry_price")
+
+    # ── Extract trade metadata from execution result ────────────────
+    existing_result = execution.result or {}
+    trade_exec = existing_result.get("trade_execution", {})
+    trade_id = trade_exec.get("trade_id") or trade_exec.get("order_id")
+    broker_response = trade_exec.get("broker_response", {})
+    stored_entry_price = trade_exec.get("filled_price") or trade_exec.get("price")
+    stored_qty = (
+        trade_exec.get("filled_quantity")
+        or trade_exec.get("units")
+        or trade_exec.get("quantity")
+        or 1
+    )
+    # Side may be stored at top level or in broker_response.action
+    stored_side = (
+        trade_exec.get("side")
+        or (broker_response.get("action") or "").lower()
+        or "buy"
+    ).lower()
+
+    # User-supplied overrides
+    user_pnl = reconciliation_data.get("pnl")
+    user_pnl_percent = reconciliation_data.get("pnl_percent")
+    user_exit_price = reconciliation_data.get("exit_price")
+    user_entry_price = reconciliation_data.get("entry_price")
+    user_exit_reason = reconciliation_data.get("exit_reason")
     closed_at_str = reconciliation_data.get("closed_at")
-    
-    # Parse closed_at if provided
+    force_auto = reconciliation_data.get("auto_reconcile", False)
+
+    # Parse closed_at
     closed_at = None
     if closed_at_str:
         try:
-            # Try parsing ISO format datetime string
             if isinstance(closed_at_str, str):
-                closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+                closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
             else:
                 closed_at = datetime.utcnow()
         except Exception:
             closed_at = datetime.utcnow()
     else:
         closed_at = datetime.utcnow()
-    
-    # Update execution status and save reconciliation data
+
+    # ── Strategy 1: Auto-reconcile from broker ──────────────────────
+    pnl = None
+    pnl_percent = None
+    exit_price = user_exit_price
+    entry_price = user_entry_price or stored_entry_price
+    exit_reason = user_exit_reason or "Manually reconciled by user"
+    reconcile_method = "manual"
+
+    if trade_id and (force_auto or user_pnl is None):
+        try:
+            from app.services.brokers.factory import broker_factory
+            from app.orchestration.tasks._helpers import _extract_broker_tool
+
+            broker_tool = _extract_broker_tool(pipeline.config or {})
+            if broker_tool:
+                broker = broker_factory.from_tool_config(broker_tool)
+                trade_details = broker.get_trade_details(str(trade_id))
+
+                if trade_details and trade_details.get("found"):
+                    broker_pnl = float(trade_details.get("realized_pl", 0))
+                    broker_close_price = trade_details.get("close_price")
+                    broker_open_price = trade_details.get("open_price")
+                    broker_close_time = trade_details.get("close_time")
+                    broker_state = trade_details.get("state", "")
+
+                    # Only use broker data if position is actually closed and P&L available
+                    if broker_state == "closed" or broker_pnl != 0 or broker_close_price:
+                        pnl = broker_pnl
+                        exit_price = float(broker_close_price) if broker_close_price else exit_price
+                        entry_price = float(broker_open_price) if broker_open_price else entry_price
+                        exit_reason = "Auto-reconciled from broker data"
+                        reconcile_method = "auto_broker"
+
+                        if entry_price and float(entry_price) > 0:
+                            pnl_percent = (pnl / (float(entry_price) * abs(float(stored_qty)))) * 100
+
+                        if broker_close_time:
+                            try:
+                                closed_at = datetime.fromisoformat(
+                                    str(broker_close_time).replace("Z", "+00:00")
+                                )
+                            except Exception:
+                                pass
+
+                        # Cancel remaining TP/SL exit orders (OCO cleanup)
+                        tp_order_id = broker_response.get("tp_order_id")
+                        sl_order_id = broker_response.get("sl_order_id")
+                        if tp_order_id or sl_order_id:
+                            for label, oid in [("TP", tp_order_id), ("SL", sl_order_id)]:
+                                if not oid:
+                                    continue
+                                try:
+                                    broker.cancel_order(str(oid))
+                                    logger.info(f"Cancelled {label} order {oid} during reconcile")
+                                except Exception as cancel_err:
+                                    logger.warning(
+                                        f"Could not cancel {label} order {oid}: {cancel_err}"
+                                    )
+
+                        logger.info(
+                            "auto_reconciled_from_broker",
+                            execution_id=str(execution_id),
+                            trade_id=trade_id,
+                            pnl=pnl,
+                            exit_price=exit_price,
+                        )
+                    else:
+                        logger.info(
+                            "broker_trade_still_open_or_no_pnl",
+                            execution_id=str(execution_id),
+                            trade_id=trade_id,
+                            broker_state=broker_state,
+                        )
+                else:
+                    logger.warning(
+                        "broker_trade_not_found_during_reconcile",
+                        execution_id=str(execution_id),
+                        trade_id=trade_id,
+                        details=trade_details,
+                    )
+        except Exception as e:
+            logger.warning(
+                "auto_reconcile_from_broker_failed",
+                execution_id=str(execution_id),
+                trade_id=trade_id,
+                error=str(e),
+            )
+
+    # ── Strategy 2: Calculate P&L from entry/exit prices ────────────
+    if pnl is None and user_pnl is None:
+        effective_entry = float(entry_price) if entry_price else None
+        effective_exit = float(exit_price) if exit_price else None
+
+        if effective_entry and effective_exit and effective_entry > 0:
+            qty = abs(float(stored_qty))
+            if stored_side in ("buy", "long"):
+                pnl = (effective_exit - effective_entry) * qty
+            else:
+                pnl = (effective_entry - effective_exit) * qty
+
+            pnl_percent = ((effective_exit - effective_entry) / effective_entry) * 100
+            if stored_side in ("sell", "short"):
+                pnl_percent = -pnl_percent
+
+            reconcile_method = "calculated_from_prices"
+            exit_reason = user_exit_reason or "Manually reconciled (P&L calculated from prices)"
+
+            logger.info(
+                "pnl_calculated_from_prices",
+                execution_id=str(execution_id),
+                entry=effective_entry,
+                exit=effective_exit,
+                qty=qty,
+                side=stored_side,
+                pnl=pnl,
+            )
+
+    # ── Strategy 3: Use user-supplied P&L directly ──────────────────
+    if pnl is None and user_pnl is not None:
+        try:
+            pnl = float(user_pnl)
+            reconcile_method = "user_supplied"
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pnl must be a valid number",
+            )
+
+    if user_pnl_percent is not None and pnl_percent is None:
+        try:
+            pnl_percent = float(user_pnl_percent)
+        except (ValueError, TypeError):
+            pass
+
+    # ── Validation: we must have P&L by now ─────────────────────────
+    if pnl is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Could not determine P&L. Please provide either: "
+                "(1) entry_price and exit_price so P&L can be calculated, or "
+                "(2) pnl directly. "
+                "If a trade_id exists, the system will also try to auto-fetch from the broker."
+            ),
+        )
+
+    # ── Persist reconciliation ──────────────────────────────────────
     execution.status = ExecutionStatus.COMPLETED
     execution.completed_at = closed_at
     execution.execution_phase = "completed"
     execution.next_check_at = None
     execution.error_message = None
-    
-    # Update the result with reconciliation data
+
     if not execution.result:
         execution.result = {}
-    
-    execution.result['final_pnl'] = pnl
-    execution.result['final_pnl_percent'] = pnl_percent
-    execution.result['reconciled_manually'] = True
-    execution.result['reconciled_at'] = datetime.utcnow().isoformat()
-    execution.result['reconciled_by'] = str(current_user.id)
-    
-    # Update trade_outcome if it exists
-    if 'trade_outcome' not in execution.result:
-        execution.result['trade_outcome'] = {}
-    
-    execution.result['trade_outcome'].update({
-        'status': 'executed' if pnl != 0 else 'cancelled',
-        'pnl': pnl,
-        'pnl_percent': pnl_percent,
-        'exit_reason': exit_reason,
-        'exit_price': exit_price,
-        'entry_price': entry_price,
-        'closed_at': closed_at.isoformat()
-    })
-    
+
+    execution.result["final_pnl"] = pnl
+    execution.result["final_pnl_percent"] = pnl_percent
+    execution.result["reconciled_manually"] = reconcile_method != "auto_broker"
+    execution.result["reconcile_method"] = reconcile_method
+    execution.result["reconciled_at"] = datetime.utcnow().isoformat()
+    execution.result["reconciled_by"] = str(current_user.id)
+
+    if "trade_outcome" not in execution.result:
+        execution.result["trade_outcome"] = {}
+
+    execution.result["trade_outcome"].update(
+        {
+            "status": "executed" if pnl != 0 else "cancelled",
+            "pnl": pnl,
+            "pnl_percent": pnl_percent,
+            "exit_reason": exit_reason,
+            "exit_price": exit_price,
+            "entry_price": entry_price,
+            "closed_at": closed_at.isoformat(),
+        }
+    )
+
     # Update pipeline state if it exists
     try:
         from app.orchestration.tasks._helpers import load_pipeline_state, save_pipeline_state
         from app.schemas.pipeline_state import TradeOutcome
-        
+
         pipeline_state = load_pipeline_state(execution)
         if pipeline_state:
+            outcome_data = dict(
+                status="executed" if pnl != 0 else "cancelled",
+                pnl=pnl,
+                pnl_percent=pnl_percent,
+                exit_reason=exit_reason,
+                exit_price=exit_price,
+                entry_price=entry_price,
+                closed_at=closed_at,
+            )
             if not pipeline_state.trade_outcome:
-                from app.schemas.pipeline_state import TradeOutcome
-                pipeline_state.trade_outcome = TradeOutcome(
-                    status='executed' if pnl != 0 else 'cancelled',
-                    pnl=pnl,
-                    pnl_percent=pnl_percent,
-                    exit_reason=exit_reason,
-                    exit_price=exit_price,
-                    entry_price=entry_price,
-                    closed_at=closed_at
-                )
+                pipeline_state.trade_outcome = TradeOutcome(**outcome_data)
             else:
-                pipeline_state.trade_outcome.pnl = pnl
-                pipeline_state.trade_outcome.pnl_percent = pnl_percent
-                pipeline_state.trade_outcome.exit_reason = exit_reason
-                pipeline_state.trade_outcome.exit_price = exit_price
-                pipeline_state.trade_outcome.entry_price = entry_price
-                pipeline_state.trade_outcome.closed_at = closed_at
-                pipeline_state.trade_outcome.status = 'executed' if pnl != 0 else 'cancelled'
-            
+                for k, v in outcome_data.items():
+                    setattr(pipeline_state.trade_outcome, k, v)
+
             pipeline_state.should_complete = True
-            save_pipeline_state(execution, pipeline_state, db=db)
+            save_pipeline_state(execution, pipeline_state)
     except Exception as e:
         logger.warning(
             "failed_to_update_pipeline_state",
             execution_id=str(execution_id),
-            error=str(e)
+            error=str(e),
         )
-    
+
     from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(execution, 'result')
-    
+
+    flag_modified(execution, "result")
+
     await db.commit()
-    
+
     logger.info(
-        "execution_reconciled_manually",
+        "execution_reconciled",
         execution_id=str(execution_id),
         symbol=execution.symbol,
         pnl=pnl,
-        pnl_percent=pnl_percent
+        pnl_percent=pnl_percent,
+        method=reconcile_method,
     )
-    
+
     return {
         "success": True,
         "message": f"Execution for {execution.symbol} reconciled successfully",
         "execution_id": str(execution_id),
         "pnl": pnl,
-        "pnl_percent": pnl_percent
+        "pnl_percent": pnl_percent,
+        "reconcile_method": reconcile_method,
     }
 
 
