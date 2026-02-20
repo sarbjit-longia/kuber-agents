@@ -2,72 +2,134 @@
   <!-- Navigation Bar -->
   <app-navbar></app-navbar>
 
-  <!-- Hero Section -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- HERO SECTION                                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="hero-section">
     <div class="hero-content">
       <div class="hero-text">
+        <div class="hero-badge">
+          <mat-icon>auto_awesome</mat-icon>
+          <span>AI-Powered Algorithmic Trading</span>
+        </div>
         <h1 class="hero-title">
-          Build Trading Strategies <br>
+          Build Trading Strategies<br>
           <span class="gradient-text">with AI Agents</span>
         </h1>
         <p class="hero-subtitle">
-          Visual pipeline builder for algorithmic trading. Connect AI agents to create 
-          sophisticated trading strategies without writing code.
+          Visually connect AI agents to create automated trading pipelines.
+          No coding. No complexity. Just configure and deploy.
         </p>
         <div class="hero-actions">
           <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
             <mat-icon>rocket_launch</mat-icon>
-            Start Building Free
+            Start Building — It's Free
           </button>
           <button mat-stroked-button class="secondary-button" routerLink="/login">
-            <mat-icon>login</mat-icon>
-            Sign In
+            <mat-icon>play_circle</mat-icon>
+            Watch Demo
           </button>
         </div>
-        <div class="hero-stats">
-          <div class="stat">
-            <div class="stat-number">6</div>
-            <div class="stat-label">AI Agents</div>
-          </div>
-          <div class="stat">
-            <div class="stat-number">24/7</div>
-            <div class="stat-label">Automated</div>
-          </div>
-          <div class="stat">
-            <div class="stat-number">$10</div>
-            <div class="stat-label">Free Credits</div>
-          </div>
+        <div class="hero-trust">
+          <mat-icon class="trust-icon">verified</mat-icon>
+          <span>No credit card required</span>
+          <span class="dot">·</span>
+          <span>$10 free AI credits</span>
+          <span class="dot">·</span>
+          <span>Paper trading included</span>
         </div>
       </div>
+
       <div class="hero-visual">
         <div class="pipeline-preview">
+          <div class="preview-label">Your first pipeline in 5 minutes</div>
           <div class="preview-card agent-card">
             <mat-icon>schedule</mat-icon>
             <span>Time Trigger</span>
+            <span class="card-tag free">FREE</span>
           </div>
-          <div class="flow-arrow">→</div>
+          <div class="flow-connector">
+            <div class="connector-line"></div>
+            <mat-icon class="connector-icon">arrow_downward</mat-icon>
+          </div>
           <div class="preview-card agent-card">
-            <mat-icon>show_chart</mat-icon>
+            <mat-icon>candlestick_chart</mat-icon>
             <span>Market Data</span>
+            <span class="card-tag free">FREE</span>
           </div>
-          <div class="flow-arrow">→</div>
+          <div class="flow-connector">
+            <div class="connector-line"></div>
+            <mat-icon class="connector-icon">arrow_downward</mat-icon>
+          </div>
           <div class="preview-card agent-card ai">
             <mat-icon>psychology</mat-icon>
             <span>AI Strategy</span>
+            <span class="card-tag premium">AI</span>
           </div>
-          <div class="flow-arrow">→</div>
+          <div class="flow-connector">
+            <div class="connector-line"></div>
+            <mat-icon class="connector-icon">arrow_downward</mat-icon>
+          </div>
           <div class="preview-card agent-card">
-            <mat-icon>trending_up</mat-icon>
+            <mat-icon>swap_horiz</mat-icon>
             <span>Execute Trade</span>
+            <span class="card-tag free">FREE</span>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Floating Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat">
+        <div class="stat-number">6</div>
+        <div class="stat-label">Pre-built Agents</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="stat-number">3</div>
+        <div class="stat-label">Supported Brokers</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="stat-number">24/7</div>
+        <div class="stat-label">Automated</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="stat-number">$0</div>
+        <div class="stat-label">To Get Started</div>
+      </div>
+    </div>
   </section>
 
-  <!-- Features Section -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- HOW IT WORKS                                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="how-it-works-section">
+    <div class="section-header">
+      <span class="section-tag">Simple & Powerful</span>
+      <h2>How It Works</h2>
+      <p>From idea to automated trading in four easy steps</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card" *ngFor="let step of howItWorksSteps">
+        <div class="step-number">{{ step.step }}</div>
+        <div class="step-icon">
+          <mat-icon>{{ step.icon }}</mat-icon>
+        </div>
+        <h3>{{ step.title }}</h3>
+        <p>{{ step.description }}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FEATURES                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="features-section">
     <div class="section-header">
+      <span class="section-tag">Platform Capabilities</span>
       <h2>Everything You Need to Succeed</h2>
       <p>Powerful features designed for both beginners and experienced traders</p>
     </div>
@@ -82,51 +144,134 @@
     </div>
   </section>
 
-  <!-- Agents Section -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- AGENT SHOWCASE                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="agents-section">
     <div class="section-header">
-      <h2>Pre-Built AI Agents</h2>
-      <p>Drag and drop agents to build your custom trading pipeline</p>
+      <span class="section-tag">Agent Marketplace</span>
+      <h2>Meet Your AI Trading Team</h2>
+      <p>Each agent is a specialist. Chain them together to build unstoppable strategies.</p>
     </div>
     <div class="agents-grid">
-      <div class="agent-item" *ngFor="let agent of agents">
-        <div class="agent-icon">
-          <mat-icon>smart_toy</mat-icon>
+      <div class="agent-card-v2" *ngFor="let agent of agents">
+        <div class="agent-card-header">
+          <div class="agent-icon-v2">
+            <mat-icon>{{ agent.icon }}</mat-icon>
+          </div>
+          <span class="agent-badge-v2" [class.free]="agent.free" [class.premium]="!agent.free">
+            {{ agent.free ? 'FREE' : 'PREMIUM' }}
+          </span>
         </div>
-        <div class="agent-info">
-          <h4>{{ agent.name }}</h4>
-          <span class="agent-type">{{ agent.type }}</span>
-        </div>
-        <span class="agent-badge" [class.free]="agent.free">
-          {{ agent.free ? 'FREE' : 'PREMIUM' }}
-        </span>
+        <h4>{{ agent.name }}</h4>
+        <span class="agent-category">{{ agent.category }}</span>
+        <p>{{ agent.description }}</p>
       </div>
     </div>
   </section>
 
-  <!-- CTA Section -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SUPPORTED BROKERS                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="brokers-section">
+    <div class="section-header">
+      <span class="section-tag">Broker Integrations</span>
+      <h2>Connect Your Broker in Seconds</h2>
+      <p>Trade stocks, forex, and options through your favourite brokerage</p>
+    </div>
+    <div class="brokers-grid">
+      <div class="broker-card" *ngFor="let broker of brokers">
+        <div class="broker-icon">
+          <mat-icon>{{ broker.icon }}</mat-icon>
+        </div>
+        <h3>{{ broker.name }}</h3>
+        <p>{{ broker.description }}</p>
+      </div>
+    </div>
+    <p class="broker-note">
+      <mat-icon>info</mat-icon>
+      All brokers support paper trading so you can test strategies risk-free before going live.
+    </p>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- PRICING                                                    -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="pricing-section">
+    <div class="section-header">
+      <span class="section-tag">Simple Pricing</span>
+      <h2>Start Free. Scale When Ready.</h2>
+      <p>No hidden fees. Cancel anytime.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card" *ngFor="let tier of pricingTiers" [class.highlight]="tier.highlight">
+        <div class="pricing-popular" *ngIf="tier.highlight">Most Popular</div>
+        <h3>{{ tier.name }}</h3>
+        <div class="pricing-price">
+          <span class="price-amount">{{ tier.price }}</span>
+          <span class="price-period" *ngIf="tier.period">{{ tier.period }}</span>
+        </div>
+        <ul class="pricing-features">
+          <li *ngFor="let f of tier.features">
+            <mat-icon>check_circle</mat-icon>
+            {{ f }}
+          </li>
+        </ul>
+        <button mat-raised-button
+                class="pricing-cta"
+                [class.primary]="tier.highlight"
+                routerLink="/register">
+          {{ tier.cta }}
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FINAL CTA                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="cta-section">
     <div class="cta-content">
       <h2>Ready to Automate Your Trading?</h2>
-      <p>Join traders who are already building AI-powered strategies</p>
+      <p>Join traders who are already building AI-powered strategies. Your first pipeline is minutes away.</p>
       <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
         <mat-icon>arrow_forward</mat-icon>
-        Get Started Now
+        Get Started Now — It's Free
       </button>
-      <p class="cta-note">No credit card required • $10 free credits included</p>
+      <p class="cta-note">No credit card required · $10 free AI credits · Cancel anytime</p>
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FOOTER                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <footer class="footer">
     <div class="footer-content">
       <div class="footer-brand">
-        <h3>TradingPipeline</h3>
+        <h3>
+          <mat-icon>auto_awesome</mat-icon>
+          TradingPipeline
+        </h3>
         <p>Agent-based algorithmic trading platform</p>
       </div>
-      <div class="footer-links">
-        <a routerLink="/login">Login</a>
-        <a routerLink="/register">Sign Up</a>
+      <div class="footer-columns">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a routerLink="/register">Pipeline Builder</a>
+          <a routerLink="/register">Agent Marketplace</a>
+          <a routerLink="/register">Pricing</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a routerLink="/register">Documentation</a>
+          <a routerLink="/register">API Reference</a>
+          <a routerLink="/register">Blog</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a routerLink="/login">Sign In</a>
+          <a routerLink="/register">Create Account</a>
+        </div>
       </div>
     </div>
     <div class="footer-bottom">
@@ -134,4 +279,3 @@
     </div>
   </footer>
 </div>
-

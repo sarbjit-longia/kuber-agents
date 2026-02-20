@@ -13,7 +13,10 @@
       <a routerLink="/" class="nav-link" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
         Home
       </a>
-      
+      <a routerLink="/how-it-works" class="nav-link" routerLinkActive="active">
+        How It Works
+      </a>
+
       <ng-container *ngIf="isAuthenticated">
         <a routerLink="/dashboard" class="nav-link" routerLinkActive="active">
           Dashboard
