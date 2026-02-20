@@ -787,21 +787,30 @@ class OandaBrokerService(BrokerService):
             broker_data=oanda_order
         )
     
-    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_trade_details(
+        self,
+        trade_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Get details for a specific trade by ID from Oanda.
-        
-        Uses /accounts/{accountID}/trades/{tradeSpecifier} endpoint.
-        Critical for reconciliation: when a position is closed by bracket orders (SL/TP)
-        between monitoring checks, we fetch the final realized P&L from the broker.
-        
+
+        Oanda uses the ``trade_id`` (trade specifier). ``order_id`` is ignored
+        because Oanda's API revolves around trade objects, not order objects.
+
         Args:
-            trade_id: Oanda trade ID
-            account_id: Account ID (optional, uses default if not provided)
-            
+            trade_id: Oanda trade specifier (required for Oanda).
+            order_id: Ignored — present for interface compatibility.
+            account_id: Account ID (optional, uses default if not provided).
+
         Returns:
-            Dict with trade details including realized P&L for closed trades
+            Dict with trade details including realized P&L for closed trades.
         """
+        # Oanda uses trade_id; fall back to order_id if trade_id is missing
+        trade_id = trade_id or order_id
+        if not trade_id:
+            return {"found": False, "error": "No trade_id or order_id provided"}
         target_account = account_id or self.account_id
         if not target_account:
             return {"found": False, "error": "No account ID provided"}

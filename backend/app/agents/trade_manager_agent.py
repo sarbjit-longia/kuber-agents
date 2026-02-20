@@ -748,10 +748,11 @@ class TradeManagerAgent(BaseAgent):
             # ---------------------------------------------------------------
             from app.schemas.pipeline_state import TradeOutcome
             
-            if trade_id:
+            id_for_display = trade_id or order_id or "N/A"
+            if trade_id or order_id:
                 try:
-                    self.log(state, f"📊 Fetching realized P&L from broker for trade_id={trade_id}")
-                    trade_details = broker.get_trade_details(str(trade_id))
+                    self.log(state, f"📊 Fetching realized P&L from broker (trade_id={trade_id}, order_id={order_id})")
+                    trade_details = broker.get_trade_details(trade_id=trade_id, order_id=order_id)
                     
                     if trade_details and trade_details.get("found"):
                         broker_realized_pl = float(trade_details.get("realized_pl", 0))
@@ -774,7 +775,7 @@ class TradeManagerAgent(BaseAgent):
                         
                         self.log(
                             state,
-                            f"✅ Broker P&L for trade {trade_id}: "
+                            f"✅ Broker P&L for {id_for_display}: "
                             f"${broker_realized_pl:+.2f} | exit_price={exit_price} | state={broker_state}"
                         )
                         
@@ -811,7 +812,7 @@ class TradeManagerAgent(BaseAgent):
                         # Trade not found on broker — mark for reconciliation
                         self.log(
                             state,
-                            f"⚠️ Trade {trade_id} not found on broker — marking as NEEDS_RECONCILIATION",
+                            f"⚠️ {id_for_display} not found on broker — marking as NEEDS_RECONCILIATION",
                             level="warning"
                         )
                         state.should_complete = True
@@ -819,7 +820,7 @@ class TradeManagerAgent(BaseAgent):
                             status="needs_reconciliation",
                             pnl=None,
                             pnl_percent=None,
-                            exit_reason=f"Trade {trade_id} not found on broker — manual review required",
+                            exit_reason=f"{id_for_display} not found on broker — manual review required",
                             exit_price=None,
                             entry_price=state.strategy.entry_price if state.strategy else None,
                             closed_at=datetime.now()
@@ -827,11 +828,11 @@ class TradeManagerAgent(BaseAgent):
                         self.record_report(
                             state,
                             title="Position closed — P&L unknown",
-                            summary=f"{state.symbol} position closed but trade {trade_id} not found on broker",
+                            summary=f"{state.symbol} position closed but {id_for_display} not found on broker",
                             status="needs_reconciliation",
                             data={
                                 "symbol": state.symbol,
-                                "reason": f"Trade {trade_id} not found on broker",
+                                "reason": f"{id_for_display} not found on broker",
                                 "order_id": order_id,
                                 "trade_id": trade_id
                             },
@@ -870,10 +871,10 @@ class TradeManagerAgent(BaseAgent):
                     )
                     return state
             else:
-                # No trade_id at all — mark for reconciliation
+                # No trade_id or order_id at all — mark for reconciliation
                 self.log(
                     state,
-                    "⚠️ No trade_id available — cannot fetch P&L from broker. "
+                    "⚠️ No trade_id or order_id available — cannot fetch P&L from broker. "
                     "Marking as NEEDS_RECONCILIATION",
                     level="warning"
                 )
@@ -882,7 +883,7 @@ class TradeManagerAgent(BaseAgent):
                     status="needs_reconciliation",
                     pnl=None,
                     pnl_percent=None,
-                    exit_reason="Trade ID missing — cannot fetch P&L from broker",
+                    exit_reason="No trade_id or order_id — cannot fetch P&L from broker",
                     exit_price=None,
                     entry_price=state.strategy.entry_price if state.strategy else None,
                     closed_at=datetime.now()
@@ -890,11 +891,11 @@ class TradeManagerAgent(BaseAgent):
                 self.record_report(
                     state,
                     title="Position closed — P&L unknown",
-                    summary=f"{state.symbol} position closed but no trade_id to fetch P&L",
+                    summary=f"{state.symbol} position closed but no trade_id/order_id to fetch P&L",
                     status="needs_reconciliation",
                     data={
                         "symbol": state.symbol,
-                        "reason": "No trade_id — cannot fetch P&L from broker",
+                        "reason": "No trade_id or order_id — cannot fetch P&L from broker",
                         "order_id": order_id,
                         "trade_id": trade_id
                     },

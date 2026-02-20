@@ -62,8 +62,35 @@ class TradierBrokerService(BrokerService):
                 response = self.session.delete(url, params=params, timeout=self._http_timeout)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
-            
-            response.raise_for_status()
+
+            # Try to parse the response body BEFORE raise_for_status so we
+            # capture Tradier's error message (e.g. "Invalid Access Token")
+            # even on 4xx / 5xx responses.
+            if not response.ok:
+                error_detail = f"{response.status_code} {response.reason}"
+                try:
+                    error_body = response.json()
+                    # Tradier wraps errors in a "fault" key
+                    fault = error_body.get("fault", {})
+                    fault_msg = fault.get("faultstring", "")
+                    if fault_msg:
+                        error_detail = f"{response.status_code} - {fault_msg}"
+                    elif "error" in error_body:
+                        error_detail = f"{response.status_code} - {error_body['error']}"
+                    else:
+                        error_detail = f"{response.status_code} - {error_body}"
+                except Exception:
+                    error_detail = f"{response.status_code} - {response.text[:200]}"
+
+                self.logger.error(
+                    "tradier_api_error",
+                    url=url,
+                    method=method,
+                    status_code=response.status_code,
+                    error=error_detail,
+                )
+                return {"error": error_detail}
+
             return response.json()
             
         except requests.exceptions.Timeout as e:
@@ -709,38 +736,54 @@ class TradierBrokerService(BrokerService):
             self.logger.error("Failed to get Tradier quote", symbol=symbol, error=str(e))
             return {"error": str(e)}
 
-    # ─────────────────────────────────────────────────────────────
-    # Trade details & P&L (required for reconciliation)
-    # ─────────────────────────────────────────────────────────────
-
     def get_trade_details(
-        self, trade_id: str, account_id: Optional[str] = None
+        self,
+        trade_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get details for a specific trade/order by ID from Tradier.
-
-        Uses ``GET /v1/accounts/{account_id}/orders/{order_id}``.
-        Tradier tracks all executions as *orders*; this method looks up the
-        order, checks its status, and computes realized P&L when possible.
         """
+        Get details for a specific trade/order by ID from Tradier.
+
+        Uses GET /v1/accounts/{account_id}/orders/{order_id} endpoint.
+        Tradier doesn't have a "trade" concept like Oanda — all executions
+        are tracked as orders. This method therefore **prefers** ``order_id``
+        over ``trade_id`` (which is actually a Tradier position ID and cannot
+        be used with the orders endpoint).
+
+        For filled orders, P&L is calculated from the average fill price
+        and the corresponding closing order's fill price if available.
+
+        Args:
+            trade_id: Tradier position ID — ignored when ``order_id`` is available.
+            order_id: Tradier order ID (preferred).
+            account_id: Account ID (optional, uses default if not provided).
+
+        Returns:
+            Dict with standardized trade details matching the BrokerService interface.
+        """
+        # Tradier needs the order_id; trade_id is only a position ID
+        effective_id = order_id or trade_id
+        if not effective_id:
+            return {"found": False, "error": "No order_id or trade_id provided"}
+
         account = account_id or self.account_id
         if not account:
             return {"found": False, "error": "No account ID provided"}
 
         try:
+            # Try fetching the order directly using the effective ID
             result = self._make_request(
-                "GET", f"/v1/accounts/{account}/orders/{trade_id}"
+                'GET', f'/v1/accounts/{account}/orders/{effective_id}'
             )
 
-            if "error" in result:
+            if 'error' in result:
                 self.logger.warning(
                     "tradier_order_not_found",
-                    trade_id=trade_id,
-                    error=result.get("error"),
+                    order_id=effective_id,
+                    error=result.get('error'),
                 )
-                return {
-                    "found": False,
-                    "error": result.get("error", "Order not found"),
-                }
+                return {"found": False, "error": result.get('error', 'Order not found')}
 
             order_data = result.get("order", {})
             if not order_data:
@@ -750,33 +793,33 @@ class TradierBrokerService(BrokerService):
             symbol = order_data.get("symbol", "").upper()
             qty = float(order_data.get("quantity", 0))
             exec_qty = float(order_data.get("exec_quantity", 0))
-            avg_fill_price = (
-                float(order_data["avg_fill_price"])
-                if order_data.get("avg_fill_price")
-                else None
-            )
-            side = (order_data.get("side", "") or "").lower()
+            avg_fill_price = float(order_data.get("avg_fill_price", 0)) if order_data.get("avg_fill_price") else None
+            side = (order_data.get("side", "") or "").lower()  # "buy" or "sell"
 
+            # Determine state
             if tradier_status == "filled":
                 state = "closed"
             elif tradier_status in ("open", "pending", "partially_filled"):
                 state = "open"
-            elif tradier_status in (
-                "canceled", "cancelled", "rejected", "expired",
-            ):
+            elif tradier_status in ("canceled", "cancelled", "rejected", "expired"):
                 state = "cancelled"
             else:
                 state = tradier_status
 
+            # For Tradier, to get the realized P&L we need to find the
+            # closing order(s). Look at order history for the same symbol.
             realized_pl = 0.0
             close_price = None
             close_time = None
 
             if tradier_status == "filled" and avg_fill_price:
+                # This order is filled. Now check if the position is still open.
+                # If position is closed, we need to find the closing order(s).
                 close_price, realized_pl, close_time = self._calculate_order_pnl(
-                    account, symbol, trade_id, side, avg_fill_price, exec_qty or qty
+                    account, symbol, effective_id, side, avg_fill_price, exec_qty or qty
                 )
 
+            # Extract timestamps
             created_at = order_data.get("create_date")
             transaction_date = order_data.get("transaction_date")
 
@@ -796,7 +839,7 @@ class TradierBrokerService(BrokerService):
 
         except Exception as e:
             self.logger.error(
-                "get_trade_details_failed", trade_id=trade_id, error=str(e)
+                "get_trade_details_failed", order_id=effective_id, error=str(e)
             )
             return {"found": False, "error": str(e)}
 
@@ -809,18 +852,26 @@ class TradierBrokerService(BrokerService):
         entry_price: float,
         qty: float,
     ) -> tuple:
-        """Calculate realized P&L by finding matching closing orders."""
+        """
+        Calculate realized P&L for a Tradier order by finding matching closing orders.
+
+        Looks at the account's order history for filled orders on the opposite side
+        of the same symbol that were placed after the entry order.
+
+        Returns:
+            Tuple of (close_price, realized_pl, close_time)
+        """
         try:
+            # Get recent order history for this account
             result = self._make_request(
-                "GET",
-                f"/v1/accounts/{account}/orders",
-                params={"includeTags": "true"},
+                'GET', f'/v1/accounts/{account}/orders',
+                params={'includeTags': 'true'}
             )
 
-            if "error" in result:
+            if 'error' in result:
                 self.logger.warning(
                     "tradier_order_history_fetch_failed",
-                    error=result.get("error"),
+                    error=result.get('error'),
                 )
                 return None, 0.0, None
 
@@ -832,8 +883,11 @@ class TradierBrokerService(BrokerService):
             if isinstance(orders, dict):
                 orders = [orders]
 
+            # Determine the closing side
             closing_side = "sell" if entry_side == "buy" else "buy"
 
+            # Find filled orders on the closing side for the same symbol
+            # that were created after the entry order
             closing_orders = []
             found_entry = False
             for order in orders:
@@ -841,39 +895,42 @@ class TradierBrokerService(BrokerService):
                 if oid == str(entry_order_id):
                     found_entry = True
                     continue
-                if not found_entry:
-                    continue
 
-                o_status = (order.get("status", "") or "").lower()
-                o_side = (order.get("side", "") or "").lower()
-                o_symbol = (order.get("symbol", "") or "").upper()
+                if not found_entry:
+                    continue  # Skip orders before our entry
+
+                order_status = (order.get("status", "") or "").lower()
+                order_side = (order.get("side", "") or "").lower()
+                order_symbol = (order.get("symbol", "") or "").upper()
 
                 if (
-                    o_status == "filled"
-                    and o_side == closing_side
-                    and o_symbol == symbol
+                    order_status == "filled"
+                    and order_side == closing_side
+                    and order_symbol == symbol
                 ):
                     closing_orders.append(order)
 
             if not closing_orders:
+                # Position may still be open or closed through a different mechanism
+                # Try checking if there's still an open position
                 try:
                     pos = self.get_position(symbol, account)
                     if pos:
+                        # Position still open — no realized P&L yet
                         return None, 0.0, None
                 except Exception:
                     pass
+
+                # No position found and no closing orders — assume closed at market
                 return None, 0.0, None
 
+            # Use the most recent closing order
             closing_order = closing_orders[-1]
             close_price = float(closing_order.get("avg_fill_price", 0))
-            close_time = (
-                closing_order.get("transaction_date")
-                or closing_order.get("create_date")
-            )
-            close_qty = float(
-                closing_order.get("exec_quantity", 0)
-            ) or float(closing_order.get("quantity", 0))
+            close_time = closing_order.get("transaction_date") or closing_order.get("create_date")
+            close_qty = float(closing_order.get("exec_quantity", 0)) or float(closing_order.get("quantity", 0))
 
+            # Calculate P&L
             if entry_side == "buy":
                 realized_pl = (close_price - entry_price) * min(qty, close_qty)
             else:

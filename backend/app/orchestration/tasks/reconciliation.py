@@ -147,7 +147,9 @@ def _recover_pnl_from_broker(
     """
     exec_status = (existing_trade_exec.get("status", "") or "").lower()
     close_time = datetime.utcnow().isoformat()
-    trade_id = existing_trade_exec.get("trade_id") or existing_trade_exec.get("order_id")
+    trade_id = existing_trade_exec.get("trade_id")   # position-level ID
+    order_id = existing_trade_exec.get("order_id")   # order-level ID
+    id_for_display = order_id or trade_id             # best ID for log messages
 
     # If the order was never filled, it's a clean cancellation — no P&L needed.
     if exec_status not in ("filled", "partially_filled"):
@@ -157,11 +159,11 @@ def _recover_pnl_from_broker(
             0.0,
             "Order was never filled — reconciled as cancelled",
             close_time,
-            trade_id,
+            id_for_display,
         )
 
     # Order was filled → we MUST get the realized P&L from the broker.
-    if not trade_id:
+    if not trade_id and not order_id:
         logger.warning(
             "reconciliation_no_trade_id",
             execution_id=str(execution.id),
@@ -171,18 +173,23 @@ def _recover_pnl_from_broker(
             "needs_reconciliation",
             0.0,
             0.0,
-            "Trade was filled but trade_id is missing — cannot fetch P&L from broker",
+            "Trade was filled but both trade_id and order_id are missing — cannot fetch P&L from broker",
             close_time,
             None,
         )
 
     try:
-        trade_details = broker.get_trade_details(str(trade_id))
+        # Pass both IDs — each broker decides which one to use
+        trade_details = broker.get_trade_details(
+            trade_id=str(trade_id) if trade_id else None,
+            order_id=str(order_id) if order_id else None,
+        )
     except Exception as e:
         logger.warning(
             "reconciliation_broker_api_failed",
             execution_id=str(execution.id),
             trade_id=trade_id,
+            order_id=order_id,
             error=str(e),
         )
         return (
@@ -191,7 +198,7 @@ def _recover_pnl_from_broker(
             0.0,
             f"Cannot reach broker to fetch P&L: {e}",
             close_time,
-            trade_id,
+            id_for_display,
         )
 
     if not trade_details or not trade_details.get("found"):
@@ -199,14 +206,15 @@ def _recover_pnl_from_broker(
             "reconciliation_trade_not_found_on_broker",
             execution_id=str(execution.id),
             trade_id=trade_id,
+            order_id=order_id,
         )
         return (
             "needs_reconciliation",
             0.0,
             0.0,
-            f"Trade {trade_id} not found on broker — manual review required",
+            f"Trade {id_for_display} not found on broker — manual review required",
             close_time,
-            trade_id,
+            id_for_display,
         )
 
     broker_state = trade_details.get("state", "")
@@ -220,16 +228,17 @@ def _recover_pnl_from_broker(
             "reconciliation_bug_trade_open_but_has_active_symbol_false",
             execution_id=str(execution.id),
             trade_id=trade_id,
+            order_id=order_id,
             symbol=execution.symbol,
         )
         return (
             "needs_reconciliation",
             0.0,
             0.0,
-            f"BUG: has_active_symbol=False but broker trade {trade_id} is still open. "
+            f"BUG: has_active_symbol=False but broker trade {id_for_display} is still open. "
             f"Manual review required.",
             close_time,
-            trade_id,
+            id_for_display,
         )
 
     # Trade is closed — use broker's realized P&L.
@@ -246,6 +255,7 @@ def _recover_pnl_from_broker(
             execution_id=str(execution.id),
             symbol=execution.symbol,
             trade_id=trade_id,
+            order_id=order_id,
             realized_pl=broker_realized_pl,
         )
 
@@ -255,7 +265,7 @@ def _recover_pnl_from_broker(
             pnl_percent,
             "Position closed — realized P&L from broker",
             trade_details.get("close_time") or close_time,
-            trade_id,
+            id_for_display,
         )
 
     # Unexpected broker state — mark for user review.
@@ -263,6 +273,7 @@ def _recover_pnl_from_broker(
         "reconciliation_unexpected_broker_state",
         execution_id=str(execution.id),
         trade_id=trade_id,
+        order_id=order_id,
         broker_state=broker_state,
     )
     return (
@@ -271,7 +282,7 @@ def _recover_pnl_from_broker(
         0.0,
         f"Unexpected broker trade state: '{broker_state}' — manual review required",
         close_time,
-        trade_id,
+        id_for_display,
     )
 
 

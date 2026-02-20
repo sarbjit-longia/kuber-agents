@@ -333,21 +333,36 @@ class BrokerService(ABC):
         return []
 
     @abstractmethod
-    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_trade_details(
+        self,
+        trade_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Get details for a specific trade by ID, including realized P&L for closed trades.
-        
-        This is critical for reconciliation: when a position is closed by bracket orders
-        (SL/TP) between monitoring checks, we need to fetch the final realized P&L from
-        the broker rather than relying solely on the last monitoring snapshot.
-        
-        Every broker MUST implement this method. Without it, trades that close between
-        monitoring checks cannot be reconciled and P&L will be lost.
-        
+        Get details for a specific trade, including realized P&L for closed trades.
+
+        The caller passes **both** ``trade_id`` (the position/trade identifier)
+        and ``order_id`` (the order identifier) when available.  Each broker
+        implementation decides which identifier is meaningful:
+
+        * **Oanda** — uses ``trade_id`` (Oanda trade specifier).
+        * **Tradier** — uses ``order_id`` (Tradier order ID; ``trade_id`` is a
+          position ID which cannot be queried for P&L).
+        * **Alpaca** — uses ``order_id`` (Alpaca order UUID).
+
+        This is critical for reconciliation: when a position is closed by
+        bracket orders (SL/TP) between monitoring checks, we need to fetch the
+        final realized P&L from the broker rather than relying solely on the
+        last monitoring snapshot.
+
+        Every broker MUST implement this method.
+
         Args:
-            trade_id: Broker-assigned trade ID (order ID for Tradier, trade ID for Oanda)
-            account_id: Account ID (optional)
-            
+            trade_id: Position / trade identifier (meaningful for Oanda).
+            order_id: Order identifier (meaningful for Tradier & Alpaca).
+            account_id: Account ID (optional).
+
         Returns:
             Dict with trade details:
                 - found (bool): Whether the trade was found
@@ -360,7 +375,7 @@ class BrokerService(ABC):
                 - close_price (float|None): Exit price (if closed)
                 - units (float): Position size
                 - broker_data (dict): Raw broker response
-                
+
         Raises:
             NotImplementedError: If broker subclass has not implemented this method
         """

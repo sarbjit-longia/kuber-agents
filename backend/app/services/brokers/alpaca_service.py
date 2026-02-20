@@ -410,22 +410,33 @@ class AlpacaBrokerService(BrokerService):
         }
         return mapping.get(status_str.lower(), OrderStatus.PENDING)
 
-    def get_trade_details(self, trade_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_trade_details(
+        self,
+        trade_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Get details for a specific trade/order by ID from Alpaca.
 
         Uses the alpaca-py ``get_order_by_id`` method. Alpaca tracks executions
-        as orders so ``trade_id`` is actually the Alpaca order UUID.
+        as orders so ``order_id`` is preferred. ``trade_id`` is accepted as a
+        fallback for backward compatibility.
 
         Args:
-            trade_id: Alpaca order UUID
-            account_id: Unused (Alpaca derives account from the client)
+            trade_id: Fallback identifier (position-level).
+            order_id: Alpaca order UUID (preferred).
+            account_id: Unused (Alpaca derives account from the client).
 
         Returns:
             Standardised trade-details dict (see ``BrokerService.get_trade_details``).
         """
+        # Alpaca uses order UUIDs; prefer order_id, fall back to trade_id
+        effective_id = order_id or trade_id
+        if not effective_id:
+            return {"found": False, "error": "No order_id or trade_id provided"}
         try:
-            alpaca_order = self.client.get_order_by_id(trade_id)
+            alpaca_order = self.client.get_order_by_id(effective_id)
 
             status_str = str(alpaca_order.status).lower()
             if status_str == "filled":
@@ -504,7 +515,7 @@ class AlpacaBrokerService(BrokerService):
         except Exception as e:
             self.logger.error(
                 "get_trade_details_failed",
-                trade_id=trade_id,
+                order_id=effective_id,
                 error=str(e),
             )
             return {"found": False, "error": str(e)}

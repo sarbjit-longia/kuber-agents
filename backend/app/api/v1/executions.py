@@ -687,10 +687,12 @@ async def close_position_endpoint(
         
         # Extract trade details from execution result
         trade_id = None
+        order_id = None
         broker_response = {}
         if execution.result and 'trade_execution' in execution.result:
             trade_exec = execution.result.get('trade_execution', {})
-            trade_id = trade_exec.get('trade_id') or trade_exec.get('order_id')
+            trade_id = trade_exec.get('trade_id')   # position-level ID
+            order_id = trade_exec.get('order_id')   # order-level ID
             broker_response = trade_exec.get('broker_response', {})
         
         # Close the position
@@ -700,7 +702,8 @@ async def close_position_endpoint(
             symbol=execution.symbol,
             broker=broker_name,
             mode=execution_mode,
-            trade_id=trade_id
+            trade_id=trade_id,
+            order_id=order_id,
         )
         
         close_result = broker.close_position(execution.symbol, trade_id=trade_id)
@@ -737,10 +740,13 @@ async def close_position_endpoint(
         final_pnl = None
         final_pnl_percent = None
         
-        # First try to get realized P&L from broker using trade_id
-        if trade_id:
+        # First try to get realized P&L from broker
+        if trade_id or order_id:
             try:
-                trade_details = broker.get_trade_details(str(trade_id))
+                trade_details = broker.get_trade_details(
+                    trade_id=str(trade_id) if trade_id else None,
+                    order_id=str(order_id) if order_id else None,
+                )
                 if trade_details and trade_details.get("found"):
                     final_pnl = float(trade_details.get("realized_pl", 0))
                     entry_price = trade_details.get("open_price")
@@ -883,7 +889,8 @@ async def reconcile_execution_endpoint(
     # ── Extract trade metadata from execution result ────────────────
     existing_result = execution.result or {}
     trade_exec = existing_result.get("trade_execution", {})
-    trade_id = trade_exec.get("trade_id") or trade_exec.get("order_id")
+    trade_id = trade_exec.get("trade_id")       # position-level ID (Oanda trade, Tradier position)
+    order_id = trade_exec.get("order_id")       # order-level ID (Tradier/Alpaca order)
     broker_response = trade_exec.get("broker_response", {})
     stored_entry_price = trade_exec.get("filled_price") or trade_exec.get("price")
     stored_qty = (
@@ -929,7 +936,10 @@ async def reconcile_execution_endpoint(
     exit_reason = user_exit_reason or "Manually reconciled by user"
     reconcile_method = "manual"
 
-    if trade_id and (force_auto or user_pnl is None):
+    auto_reconcile_error = None  # Track broker error for user feedback
+
+    has_any_id = trade_id or order_id
+    if has_any_id and (force_auto or user_pnl is None):
         try:
             from app.services.brokers.factory import broker_factory
             from app.orchestration.tasks._helpers import _extract_broker_tool
@@ -937,7 +947,11 @@ async def reconcile_execution_endpoint(
             broker_tool = _extract_broker_tool(pipeline.config or {})
             if broker_tool:
                 broker = broker_factory.from_tool_config(broker_tool)
-                trade_details = broker.get_trade_details(str(trade_id))
+                # Pass both IDs — each broker decides which one to use
+                trade_details = broker.get_trade_details(
+                    trade_id=str(trade_id) if trade_id else None,
+                    order_id=str(order_id) if order_id else None,
+                )
 
                 if trade_details and trade_details.get("found"):
                     broker_pnl = float(trade_details.get("realized_pl", 0))
@@ -984,30 +998,59 @@ async def reconcile_execution_endpoint(
                             "auto_reconciled_from_broker",
                             execution_id=str(execution_id),
                             trade_id=trade_id,
+                            order_id=order_id,
                             pnl=pnl,
                             exit_price=exit_price,
                         )
                     else:
+                        id_label = order_id or trade_id
+                        auto_reconcile_error = (
+                            f"Trade {id_label} is still open on the broker "
+                            f"(state: {broker_state}). Close the position on the "
+                            f"broker first, then try auto-reconcile again."
+                        )
                         logger.info(
                             "broker_trade_still_open_or_no_pnl",
                             execution_id=str(execution_id),
                             trade_id=trade_id,
+                            order_id=order_id,
                             broker_state=broker_state,
                         )
                 else:
+                    broker_error_msg = trade_details.get("error", "Unknown error") if trade_details else "No response"
+                    id_label = order_id or trade_id
+                    auto_reconcile_error = (
+                        f"Broker API error for trade {id_label}: {broker_error_msg}"
+                    )
                     logger.warning(
                         "broker_trade_not_found_during_reconcile",
                         execution_id=str(execution_id),
                         trade_id=trade_id,
+                        order_id=order_id,
                         details=trade_details,
                     )
+            else:
+                auto_reconcile_error = (
+                    "No broker tool found in pipeline configuration. "
+                    "Cannot auto-reconcile without broker connection."
+                )
         except Exception as e:
+            auto_reconcile_error = f"Auto-reconcile failed: {str(e)}"
             logger.warning(
                 "auto_reconcile_from_broker_failed",
                 execution_id=str(execution_id),
                 trade_id=trade_id,
+                order_id=order_id,
                 error=str(e),
             )
+
+    # If user explicitly requested auto_reconcile and it failed, return
+    # the specific error immediately instead of silently falling through
+    if force_auto and reconcile_method != "auto_broker" and auto_reconcile_error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=auto_reconcile_error,
+        )
 
     # ── Strategy 2: Calculate P&L from entry/exit prices ────────────
     if pnl is None and user_pnl is None:
