@@ -977,6 +977,13 @@ class PipelineExecutor:
         if execution.status == ExecutionStatus.COMPLETED:
             self._generate_pdf_report_sync(execution, db_session)
         
+        # Persist full PipelineState snapshot so monitoring/reconciliation
+        # can round-trip state without lossy reconstruction from execution.result.
+        if execution.status == ExecutionStatus.MONITORING:
+            from app.orchestration.tasks._helpers import save_pipeline_state
+            save_pipeline_state(execution, state, db=db_session)
+            db_session.commit()
+
         # Schedule monitoring task if entering monitoring mode
         if execution.status == ExecutionStatus.MONITORING:
             from app.orchestration.tasks import schedule_monitoring_check

@@ -22,6 +22,7 @@ class ExecutionStatus(str, PyEnum):
     PAUSED = "PAUSED"
     SKIPPED = "SKIPPED"  # When trigger not met or budget exceeded
     COMMUNICATION_ERROR = "COMMUNICATION_ERROR"  # Cannot reach broker API during monitoring
+    NEEDS_RECONCILIATION = "NEEDS_RECONCILIATION"  # Position closed but P&L unknown — user must reconcile
 
 
 class Execution(Base):
@@ -50,6 +51,7 @@ class Execution(Base):
     mode = Column(String(20), default="paper", nullable=False)  # live, paper, simulation, validation
     symbol = Column(String(20), nullable=True)
     result = Column(JSONB, nullable=True, default=dict)
+    pipeline_state = Column(JSONB, nullable=True)  # Full PipelineState snapshot for monitoring round-trips
     error_message = Column(Text, nullable=True)
     cost = Column(Float, default=0.0, nullable=False)
     logs = Column(JSONB, nullable=True, default=list)  # List of log entries

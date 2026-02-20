@@ -371,44 +371,36 @@ class BrokerService(ABC):
         This method abstracts broker-specific symbol normalization and checking logic.
         Each broker implementation can override this if they need custom logic.
         
+        IMPORTANT: This method re-raises exceptions on API errors so that callers
+        (like reconciliation) can distinguish between "no position" and "API failure".
+        Swallowing errors could cause false reconciliation (marking active trades as closed).
+        
         Args:
             symbol: Trading symbol (in any format)
             account_id: Account ID (optional)
             
         Returns:
             True if symbol has active position or open order, False otherwise
+            
+        Raises:
+            Exception: On broker API errors (caller must handle)
         """
-        try:
-            # Check for open position using broker's get_position method
-            # (which handles broker-specific symbol normalization)
-            position = self.get_position(symbol, account_id)
-            if position and position.qty != 0:
+        # Check for open position using broker's get_position method
+        # (which handles broker-specific symbol normalization)
+        # Let exceptions propagate — callers must distinguish "no position" from "API failure".
+        position = self.get_position(symbol, account_id)
+        if position and position.qty != 0:
+            return True
+        
+        # Check for open orders
+        orders = self.get_orders(account_id)
+        
+        normalized_symbol = symbol.upper()
+        
+        for order in orders:
+            # Simple string comparison - works for most brokers
+            if order.symbol.upper() == normalized_symbol:
                 return True
-            
-            # Check for open orders
-            # Get all orders and check if any match this symbol
-            orders = self.get_orders(account_id)
-            
-            # Normalize the symbol once using the broker's own normalization
-            # by attempting to get a position (even if it doesn't exist)
-            # This gives us the broker's canonical symbol format
-            normalized_symbol = symbol.upper()
-            
-            for order in orders:
-                # Simple string comparison - works for most brokers
-                if order.symbol.upper() == normalized_symbol:
-                    return True
-            
-            return False
-            
-        except Exception as e:
-            self.logger.warning(
-                "has_active_symbol_check_failed",
-                symbol=symbol,
-                error=str(e)
-            )
-            # Fail safe: return False so execution proceeds
-            # Better to attempt a duplicate trade (which broker will reject)
-            # than to skip a valid trade opportunity
-            return False
+        
+        return False
 
