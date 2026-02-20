@@ -367,19 +367,14 @@ def _handle_monitoring_complete(
     """
     Handle the case where the Trade Manager signals that monitoring should complete.
 
-    Marks the execution as COMPLETED, stores P&L data, and sends a notification.
+    Marks the execution as COMPLETED (or NEEDS_RECONCILIATION if broker P&L
+    could not be fetched), stores P&L data, and sends a notification.
     """
     outcome_status = (
         updated_state.trade_outcome.status
         if updated_state.trade_outcome
         else "executed"
     )
-
-    execution.status = ExecutionStatus.COMPLETED
-    execution.execution_phase = "completed"
-    execution.completed_at = datetime.utcnow()
-    execution.next_check_at = None
-    execution.version += 1
 
     # Extract P&L from trade_outcome
     pnl = 0.0
@@ -398,6 +393,28 @@ def _handle_monitoring_complete(
     # If there's actual P&L, the trade was filled — override 'accepted'/'pending'
     if pnl != 0 and outcome_status in ("accepted", "pending"):
         outcome_status = "executed"
+
+    # ---------------------------------------------------------------
+    # Determine execution status based on trade outcome.
+    # If the agent couldn't get P&L from the broker, mark as
+    # NEEDS_RECONCILIATION so the user can resolve it manually.
+    # ---------------------------------------------------------------
+    if outcome_status == "needs_reconciliation":
+        execution.status = ExecutionStatus.NEEDS_RECONCILIATION
+        execution.execution_phase = "needs_reconciliation"
+        execution.completed_at = None  # Not truly completed
+        execution.next_check_at = None
+        execution.error_message = (
+            f"Position closed but P&L could not be verified from broker. "
+            f"Reason: {exit_reason}"
+        )
+        execution.version += 1
+    else:
+        execution.status = ExecutionStatus.COMPLETED
+        execution.execution_phase = "completed"
+        execution.completed_at = datetime.utcnow()
+        execution.next_check_at = None
+        execution.version += 1
 
     # Store trade outcome in execution result for UI display
     if not execution.result:
@@ -426,27 +443,35 @@ def _handle_monitoring_complete(
         pnl_percent=pnl_percent,
     )
 
+    if outcome_status == "needs_reconciliation":
+        target_status = ExecutionStatus.NEEDS_RECONCILIATION
+        target_phase = "needs_reconciliation"
+    else:
+        target_status = ExecutionStatus.COMPLETED
+        target_phase = "completed"
+
     if not _safe_commit(db, execution_id, "complete"):
         _recovery_commit(
             execution_id=execution_id,
             original_version=original_version,
             updates={
-                "status": ExecutionStatus.COMPLETED,
-                "completed_at": datetime.utcnow(),
-                "execution_phase": "completed",
+                "status": target_status,
+                "completed_at": datetime.utcnow() if target_status == ExecutionStatus.COMPLETED else None,
+                "execution_phase": target_phase,
                 "next_check_at": None,
             },
             context="complete",
         )
 
-    _send_position_closed_notification(
-        execution=execution,
-        pnl=pnl,
-        pnl_percent=pnl_percent,
-        exit_reason=exit_reason,
-    )
+    if outcome_status != "needs_reconciliation":
+        _send_position_closed_notification(
+            execution=execution,
+            pnl=pnl,
+            pnl_percent=pnl_percent,
+            exit_reason=exit_reason,
+        )
 
-    return {"status": "completed", "pnl": pnl, "pnl_percent": pnl_percent}
+    return {"status": target_phase, "pnl": pnl, "pnl_percent": pnl_percent}
 
 
 def _handle_continue_monitoring(

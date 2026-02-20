@@ -85,12 +85,22 @@ def execute_pipeline(
                     logger.warning("budget_exceeded", user_id=user_id, reason=reason)
                     return {"status": "skipped", "reason": reason}
 
-            # Preflight 1: Check DATABASE for existing MONITORING/RUNNING execution for this pipeline.
-            # This prevents duplicate runs regardless of broker availability.
+            # Preflight 1: Check DATABASE for existing active execution for the SAME SYMBOL
+            # in this pipeline.  We intentionally do NOT block the entire pipeline when a
+            # different ticker is already running — only duplicate (pipeline + ticker)
+            # pairs are prevented.
             from app.models.scanner import Scanner
             from app.telemetry import pipeline_executions_counter
 
-            existing_active = db.query(Execution).filter(
+            # Determine the symbol we're about to execute so we can scope the check.
+            execution_symbol_for_preflight = symbol
+            if not execution_symbol_for_preflight and pipeline.scanner_id:
+                scanner = db.query(Scanner).filter(Scanner.id == pipeline.scanner_id).first()
+                if scanner:
+                    tickers = scanner.get_tickers()
+                    execution_symbol_for_preflight = tickers[0] if tickers else None
+
+            preflight_query = db.query(Execution).filter(
                 Execution.pipeline_id == pipeline.id,
                 Execution.status.in_([
                     ExecutionStatus.PENDING,
@@ -98,7 +108,16 @@ def execute_pipeline(
                     ExecutionStatus.MONITORING,
                     ExecutionStatus.COMMUNICATION_ERROR,
                 ])
-            ).first()
+            )
+            # When we know the symbol, only block if the SAME symbol is active.
+            # If the symbol is unknown (manual run without symbol), fall back to
+            # pipeline-level guard to be safe.
+            if execution_symbol_for_preflight:
+                preflight_query = preflight_query.filter(
+                    Execution.symbol == execution_symbol_for_preflight
+                )
+
+            existing_active = preflight_query.first()
 
             if existing_active:
                 logger.info(
@@ -106,11 +125,12 @@ def execute_pipeline(
                     pipeline_id=pipeline_id,
                     existing_execution_id=str(existing_active.id),
                     existing_status=existing_active.status.value,
-                    symbol=existing_active.symbol,
+                    existing_symbol=existing_active.symbol,
+                    requested_symbol=execution_symbol_for_preflight,
                 )
                 return {
                     "status": "skipped",
-                    "reason": f"Pipeline already has active execution ({existing_active.status.value})",
+                    "reason": f"Pipeline already has active execution for {existing_active.symbol} ({existing_active.status.value})",
                     "existing_execution_id": str(existing_active.id),
                 }
 
@@ -119,13 +139,8 @@ def execute_pipeline(
             # Extract broker tool from pipeline config
             broker_tool = _extract_broker_tool(pipeline.config)
 
-            # Determine symbol for preflight check
-            execution_symbol = symbol
-            if not execution_symbol and pipeline.scanner_id:
-                scanner = db.query(Scanner).filter(Scanner.id == pipeline.scanner_id).first()
-                if scanner:
-                    tickers = scanner.get_tickers()
-                    execution_symbol = tickers[0] if tickers else None
+            # Reuse symbol resolved in Preflight 1 (avoids duplicate scanner query)
+            execution_symbol = execution_symbol_for_preflight
 
             # Preflight 2a: Cross-pipeline symbol guard — prevent duplicate MONITORING
             # for the same user+symbol across ALL pipelines (not just this one).

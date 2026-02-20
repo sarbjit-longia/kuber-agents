@@ -725,54 +725,167 @@ class TradeManagerAgent(BaseAgent):
                 return state
 
             # Position closed (bracket orders worked or manually closed)
-            self.log(state, "✓ Position closed - monitoring complete")
-            state.should_complete = True
+            self.log(state, "✓ Position closed - fetching realized P&L from broker")
             
-            # Try to get final P&L from trade_execution or last monitoring report
-            final_pnl = None
-            final_pnl_percent = None
-            exit_price = None
-            
-            # Check if we have trade execution data with entry price
-            if state.trade_execution and state.strategy:
-                # Get last known P&L from previous reports if available
-                if hasattr(state, 'agent_reports') and self.agent_id in state.agent_reports:
-                    last_report = state.agent_reports[self.agent_id]
-                    if isinstance(last_report, dict) and 'data' in last_report:
-                        final_pnl = last_report['data'].get('unrealized_pl')
-                        final_pnl_percent = last_report['data'].get('pnl_percent')
-                        exit_price = last_report['data'].get('current_price')
-            
-            # Populate trade_outcome for easy access in monitoring task
+            # ---------------------------------------------------------------
+            # Broker is the SINGLE SOURCE OF TRUTH for P&L.
+            # If we cannot get P&L from the broker, we mark as
+            # NEEDS_RECONCILIATION — we never guess from cached data.
+            # ---------------------------------------------------------------
             from app.schemas.pipeline_state import TradeOutcome
-            state.trade_outcome = TradeOutcome(
-                status="executed",  # Trade was executed and position was opened
-                pnl=final_pnl,
-                pnl_percent=final_pnl_percent,
-                exit_reason="Position closed",
-                exit_price=exit_price,
-                entry_price=state.strategy.entry_price if state.strategy else None,
-                closed_at=datetime.now()
-            )
             
-            self.record_report(
-                state,
-                title="Position closed",
-                summary=f"{state.symbol} position closed" + (f" | Final P&L: ${final_pnl:+.2f} ({final_pnl_percent:+.2f}%)" if final_pnl is not None else ""),
-                status="completed",
-                data={
-                    "symbol": state.symbol,
-                    "reason": "Position closed",
-                    "final_pnl": final_pnl,
-                    "final_pnl_percent": final_pnl_percent,
-                    "exit_price": exit_price,
-                    "entry_price": state.strategy.entry_price if state.strategy else None,
-                    "closed_at": datetime.now().isoformat(),
-                    "order_id": order_id,
-                    "trade_id": trade_id
-                },
-            )
-            return state
+            if trade_id:
+                try:
+                    self.log(state, f"📊 Fetching realized P&L from broker for trade_id={trade_id}")
+                    trade_details = broker.get_trade_details(str(trade_id))
+                    
+                    if trade_details and trade_details.get("found"):
+                        broker_realized_pl = float(trade_details.get("realized_pl", 0))
+                        broker_close_price = trade_details.get("close_price")
+                        broker_open_price = trade_details.get("open_price")
+                        broker_state = trade_details.get("state", "")
+                        
+                        final_pnl = broker_realized_pl
+                        exit_price = float(broker_close_price) if broker_close_price else None
+                        
+                        # Calculate P&L percent from broker data
+                        entry = broker_open_price or (state.strategy.entry_price if state.strategy else None)
+                        if not entry and state.trade_execution:
+                            entry = state.trade_execution.filled_price
+                        final_pnl_percent = None
+                        if entry and entry > 0 and exit_price:
+                            final_pnl_percent = ((exit_price - entry) / entry) * 100
+                        
+                        exit_reason = "Position closed by broker (SL/TP/manual)" if broker_state == "closed" else "Position closed"
+                        
+                        self.log(
+                            state,
+                            f"✅ Broker P&L for trade {trade_id}: "
+                            f"${broker_realized_pl:+.2f} | exit_price={exit_price} | state={broker_state}"
+                        )
+                        
+                        state.should_complete = True
+                        state.trade_outcome = TradeOutcome(
+                            status="executed",
+                            pnl=final_pnl,
+                            pnl_percent=final_pnl_percent,
+                            exit_reason=exit_reason,
+                            exit_price=exit_price,
+                            entry_price=entry,
+                            closed_at=datetime.now()
+                        )
+                        
+                        self.record_report(
+                            state,
+                            title="Position closed",
+                            summary=f"{state.symbol} position closed | P&L: ${final_pnl:+.2f}" + (f" ({final_pnl_percent:+.2f}%)" if final_pnl_percent is not None else ""),
+                            status="completed",
+                            data={
+                                "symbol": state.symbol,
+                                "reason": exit_reason,
+                                "final_pnl": final_pnl,
+                                "final_pnl_percent": final_pnl_percent,
+                                "exit_price": exit_price,
+                                "entry_price": entry,
+                                "closed_at": datetime.now().isoformat(),
+                                "order_id": order_id,
+                                "trade_id": trade_id
+                            },
+                        )
+                        return state
+                    else:
+                        # Trade not found on broker — mark for reconciliation
+                        self.log(
+                            state,
+                            f"⚠️ Trade {trade_id} not found on broker — marking as NEEDS_RECONCILIATION",
+                            level="warning"
+                        )
+                        state.should_complete = True
+                        state.trade_outcome = TradeOutcome(
+                            status="needs_reconciliation",
+                            pnl=None,
+                            pnl_percent=None,
+                            exit_reason=f"Trade {trade_id} not found on broker — manual review required",
+                            exit_price=None,
+                            entry_price=state.strategy.entry_price if state.strategy else None,
+                            closed_at=datetime.now()
+                        )
+                        self.record_report(
+                            state,
+                            title="Position closed — P&L unknown",
+                            summary=f"{state.symbol} position closed but trade {trade_id} not found on broker",
+                            status="needs_reconciliation",
+                            data={
+                                "symbol": state.symbol,
+                                "reason": f"Trade {trade_id} not found on broker",
+                                "order_id": order_id,
+                                "trade_id": trade_id
+                            },
+                        )
+                        return state
+                        
+                except Exception as e:
+                    # Broker API error — mark for reconciliation
+                    self.log(
+                        state,
+                        f"⚠️ Failed to fetch trade details from broker: {str(e)} — "
+                        f"marking as NEEDS_RECONCILIATION",
+                        level="warning"
+                    )
+                    state.should_complete = True
+                    state.trade_outcome = TradeOutcome(
+                        status="needs_reconciliation",
+                        pnl=None,
+                        pnl_percent=None,
+                        exit_reason=f"Cannot reach broker to fetch P&L: {str(e)}",
+                        exit_price=None,
+                        entry_price=state.strategy.entry_price if state.strategy else None,
+                        closed_at=datetime.now()
+                    )
+                    self.record_report(
+                        state,
+                        title="Position closed — P&L unknown",
+                        summary=f"{state.symbol} position closed but broker API failed: {str(e)}",
+                        status="needs_reconciliation",
+                        data={
+                            "symbol": state.symbol,
+                            "reason": f"Broker API error: {str(e)}",
+                            "order_id": order_id,
+                            "trade_id": trade_id
+                        },
+                    )
+                    return state
+            else:
+                # No trade_id at all — mark for reconciliation
+                self.log(
+                    state,
+                    "⚠️ No trade_id available — cannot fetch P&L from broker. "
+                    "Marking as NEEDS_RECONCILIATION",
+                    level="warning"
+                )
+                state.should_complete = True
+                state.trade_outcome = TradeOutcome(
+                    status="needs_reconciliation",
+                    pnl=None,
+                    pnl_percent=None,
+                    exit_reason="Trade ID missing — cannot fetch P&L from broker",
+                    exit_price=None,
+                    entry_price=state.strategy.entry_price if state.strategy else None,
+                    closed_at=datetime.now()
+                )
+                self.record_report(
+                    state,
+                    title="Position closed — P&L unknown",
+                    summary=f"{state.symbol} position closed but no trade_id to fetch P&L",
+                    status="needs_reconciliation",
+                    data={
+                        "symbol": state.symbol,
+                        "reason": "No trade_id — cannot fetch P&L from broker",
+                        "order_id": order_id,
+                        "trade_id": trade_id
+                    },
+                )
+                return state
     
     def _has_duplicate_position(self, state: PipelineState, broker_tool) -> bool:
         """Check if position or pending order already exists for symbol."""

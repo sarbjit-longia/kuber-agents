@@ -425,8 +425,9 @@ class TriggerDispatcher:
                 pipeline_uuids = [PyUUID(pid) for pid in pipeline_ids]
                 
                 # Query for running executions (per ticker)
-                # Include MONITORING to prevent duplicate orders when a limit order is
-                # already active on the broker for the same ticker.
+                # Include MONITORING, COMMUNICATION_ERROR and NEEDS_RECONCILIATION to
+                # prevent duplicate orders when a trade is still "in play" for the same
+                # ticker — even if the system temporarily lost contact or needs user review.
                 query = select(
                     executions_table.c.id,
                     executions_table.c.pipeline_id,
@@ -438,7 +439,8 @@ class TriggerDispatcher:
                     and_(
                         executions_table.c.pipeline_id.in_(pipeline_uuids),
                         cast(executions_table.c.status, String).in_(
-                            ['PENDING', 'RUNNING', 'MONITORING']
+                            ['PENDING', 'RUNNING', 'MONITORING',
+                             'COMMUNICATION_ERROR', 'NEEDS_RECONCILIATION']
                         )
                     )
                 )
@@ -459,9 +461,11 @@ class TriggerDispatcher:
                     pid = str(row.pipeline_id)
                     sym = row.symbol or "*"
 
-                    # MONITORING is a legitimate long-running state (pending limit
-                    # orders).  Always treat it as "running" — never mark stale.
-                    if row.status == "MONITORING":
+                    # MONITORING, COMMUNICATION_ERROR and NEEDS_RECONCILIATION are
+                    # legitimate long-running states (pending limit orders, broker
+                    # connectivity issues, or trades awaiting user reconciliation).
+                    # Always treat them as "running" — never mark stale.
+                    if row.status in ("MONITORING", "COMMUNICATION_ERROR", "NEEDS_RECONCILIATION"):
                         if pid not in running_map:
                             running_map[pid] = set()
                         running_map[pid].add(sym)
