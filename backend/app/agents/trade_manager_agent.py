@@ -560,12 +560,6 @@ class TradeManagerAgent(BaseAgent):
                 if state.trade_execution:
                     state.trade_execution.trade_id = position['trade_id']
             
-            # 🎯 CRITICAL: Place TP/SL exit orders on Tradier after limit fill
-            # Tradier doesn't support conditional orders (OTO/OCO), so we place
-            # TP (limit sell) and SL (stop sell) as separate orders once the entry fills.
-            if just_filled:
-                self._place_exit_orders_after_fill(state, broker, position)
-            
             # Log position status
             pnl_percent = ((position["unrealized_pl"] / position["cost_basis"]) * 100) if position.get("cost_basis") else 0
             self.log(state, f"Position: {position['qty']} shares @ {pnl_percent:+.2f}% P&L")
@@ -577,8 +571,6 @@ class TradeManagerAgent(BaseAgent):
                 self.log(state, f"🚨 Emergency exit triggered: {reason}")
                 try:
                     self._close_position(state.symbol, broker_tool, reason)
-                    # Cancel remaining TP/SL exit orders (OCO cleanup)
-                    self._cancel_remaining_exit_orders(state, broker)
                     state.should_complete = True
                     
                     unrealized_pl = position.get("unrealized_pl", 0)
@@ -745,10 +737,6 @@ class TradeManagerAgent(BaseAgent):
 
             # Position closed (bracket orders worked or manually closed)
             self.log(state, "✓ Position closed - fetching realized P&L from broker")
-            
-            # Cancel any remaining exit orders (OCO-like cleanup)
-            # If TP hit, we must cancel the SL order, and vice versa.
-            self._cancel_remaining_exit_orders(state, broker)
             
             # ---------------------------------------------------------------
             # Broker is the SINGLE SOURCE OF TRUTH for P&L.
@@ -1533,176 +1521,6 @@ class TradeManagerAgent(BaseAgent):
             
             return state
     
-    def _place_exit_orders_after_fill(self, state: PipelineState, broker, position: dict) -> None:
-        """
-        Place TP/SL exit orders after a limit entry order fills.
-        
-        This is needed for brokers like Tradier that don't support conditional
-        orders (OTO/OCO). When `place_limit_bracket_order` is used, only the
-        limit entry is placed; TP and SL must be placed separately once the
-        entry fills and a position is confirmed.
-        
-        For Oanda, TP/SL are attached on-fill natively, so this is a no-op.
-        For Alpaca, bracket orders are native, so this is also a no-op.
-        
-        Args:
-            state: Pipeline state with trade_execution and strategy
-            broker: Broker instance
-            position: Position dict from broker
-        """
-        from app.services.brokers.tradier_service import TradierBrokerService
-        from app.services.brokers.base import OrderSide, OrderType as BrokerOrderType, TimeInForce as BrokerTimeInForce
-        
-        # Only Tradier needs this — Oanda/Alpaca handle TP/SL natively
-        if not isinstance(broker, TradierBrokerService):
-            return
-        
-        # Check if exit orders were already placed (avoid duplicates on re-run)
-        broker_resp = state.trade_execution.broker_response or {} if state.trade_execution else {}
-        if broker_resp.get("exit_orders_placed"):
-            self.log(state, "ℹ️ Exit orders already placed — skipping duplicate placement")
-            return
-        
-        # Get TP/SL from broker_response (stored during execution)
-        take_profit = broker_resp.get("take_profit")
-        stop_loss = broker_resp.get("stop_loss")
-        
-        # Also check strategy as fallback
-        if not take_profit and state.strategy:
-            take_profit = state.strategy.take_profit
-        if not stop_loss and state.strategy:
-            stop_loss = state.strategy.stop_loss
-        
-        if not take_profit and not stop_loss:
-            self.log(state, "ℹ️ No TP/SL targets to place after fill (market order without targets)")
-            return
-        
-        # Determine exit side (opposite of entry)
-        qty = position.get("qty", 0)
-        if qty == 0 and state.strategy:
-            qty = state.risk.position_size if state.risk else 0
-        abs_qty = abs(qty)
-        
-        # Determine side from strategy action or position qty sign
-        action = (state.strategy.action if state.strategy else "BUY").upper()
-        exit_side = OrderSide.SELL if action == "BUY" else OrderSide.BUY
-        
-        is_forex = "_" in state.symbol
-        price_precision = 5 if is_forex else 2
-        
-        tp_order_id = None
-        sl_order_id = None
-        
-        # Place Take Profit (limit order at TP price)
-        if take_profit:
-            try:
-                tp_order = broker.place_order(
-                    symbol=state.symbol,
-                    qty=abs_qty,
-                    side=exit_side,
-                    order_type=BrokerOrderType.LIMIT,
-                    limit_price=take_profit,
-                    time_in_force=BrokerTimeInForce.GTC,
-                )
-                tp_order_id = tp_order.order_id
-                self.log(
-                    state,
-                    f"✅ Take Profit order placed: {exit_side.value} {abs_qty} @ ${take_profit:.{price_precision}f} "
-                    f"(order_id={tp_order_id})"
-                )
-            except Exception as e:
-                self.log(state, f"⚠️ Failed to place TP order: {str(e)}", level="error")
-        
-        # Place Stop Loss (stop order at SL price)
-        if stop_loss:
-            try:
-                sl_order = broker.place_order(
-                    symbol=state.symbol,
-                    qty=abs_qty,
-                    side=exit_side,
-                    order_type=BrokerOrderType.STOP,
-                    stop_price=stop_loss,
-                    time_in_force=BrokerTimeInForce.GTC,
-                )
-                sl_order_id = sl_order.order_id
-                self.log(
-                    state,
-                    f"✅ Stop Loss order placed: {exit_side.value} {abs_qty} @ ${stop_loss:.{price_precision}f} "
-                    f"(order_id={sl_order_id})"
-                )
-            except Exception as e:
-                self.log(state, f"⚠️ Failed to place SL order: {str(e)}", level="error")
-        
-        # Store exit order IDs in broker_response for tracking
-        if state.trade_execution and state.trade_execution.broker_response:
-            state.trade_execution.broker_response["tp_order_id"] = tp_order_id
-            state.trade_execution.broker_response["sl_order_id"] = sl_order_id
-            state.trade_execution.broker_response["exit_orders_placed"] = True
-        
-        if tp_order_id or sl_order_id:
-            self.record_report(
-                state,
-                title="Exit orders placed",
-                summary=f"TP/SL orders placed after limit fill for {state.symbol}",
-                status="completed",
-                data={
-                    "symbol": state.symbol,
-                    "take_profit": take_profit,
-                    "stop_loss": stop_loss,
-                    "tp_order_id": tp_order_id,
-                    "sl_order_id": sl_order_id,
-                },
-            )
-    
-    def _cancel_remaining_exit_orders(self, state: PipelineState, broker) -> None:
-        """
-        Cancel remaining TP/SL exit orders when position closes.
-
-        When a position closes (e.g. TP fills), the opposing exit order (SL)
-        is still open on the broker.  We must cancel it to avoid opening an
-        unintended new position.  This is the OCO-like cleanup that brokers
-        like Tradier do not handle automatically.
-        """
-        from app.services.brokers.tradier_service import TradierBrokerService
-
-        if not isinstance(broker, TradierBrokerService):
-            return  # Oanda/Alpaca handle this natively
-
-        broker_resp = (
-            state.trade_execution.broker_response or {}
-        ) if state.trade_execution else {}
-        tp_order_id = broker_resp.get("tp_order_id")
-        sl_order_id = broker_resp.get("sl_order_id")
-
-        if not tp_order_id and not sl_order_id:
-            return  # No exit orders were placed
-
-        self.log(
-            state,
-            f"🧹 Cleaning up remaining exit orders: tp={tp_order_id}, sl={sl_order_id}",
-        )
-
-        for label, oid in [("TP", tp_order_id), ("SL", sl_order_id)]:
-            if not oid:
-                continue
-            try:
-                result = broker.cancel_order(str(oid))
-                if result.get("success"):
-                    self.log(state, f"✅ Cancelled {label} order {oid}")
-                else:
-                    # Order may already be filled/cancelled — that's fine
-                    self.log(
-                        state,
-                        f"ℹ️ Could not cancel {label} order {oid}: {result.get('error', 'unknown')}",
-                        level="debug",
-                    )
-            except Exception as e:
-                self.log(
-                    state,
-                    f"⚠️ Error cancelling {label} order {oid}: {e}",
-                    level="warning",
-                )
-
     def _evaluate_exit_conditions(self, state, position) -> tuple[bool, str]:
         """
         Evaluate emergency exit conditions from instructions.

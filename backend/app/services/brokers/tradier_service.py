@@ -450,107 +450,90 @@ class TradierBrokerService(BrokerService):
         account_id: Optional[str] = None
     ) -> Order:
         """
-        Place a bracket order (market entry + TP + SL).
-        
-        ⚠️ FIX #4: Implements actual TP/SL orders for Tradier.
-        Note: Tradier doesn't support native bracket orders like Alpaca.
-        We place the main market order, then immediately place TP/SL as separate limit/stop orders.
-        These are NOT linked (not true OCO), but they provide exit protection.
+        Place a bracket order (market entry + TP + SL) using Tradier's native OTOCO order.
+
+        Tradier supports One-Triggers-One-Cancels-Other (OTOCO) orders natively.
+        The entry order triggers an OCO pair (take-profit limit + stop-loss stop),
+        and filling either leg automatically cancels the other.
+
+        See: https://docs.tradier.com/reference/advanced-orders
         """
         account = account_id or self.account_id
         if not account:
             raise ValueError("No account ID provided")
-        
-        # Place main market order
-        main_order = self.place_order(
-            symbol, qty, side, OrderType.MARKET, time_in_force=time_in_force, account_id=account
-        )
-        
-        # ⚠️ FIX #4: Place TP/SL orders after main order
-        # Determine opposite side for exit orders
+
         exit_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
-        
-        tp_order_id = None
-        sl_order_id = None
-        
+
+        tradier_tif = {
+            TimeInForce.DAY: "day",
+            TimeInForce.GTC: "gtc",
+            TimeInForce.IOC: "ioc",
+            TimeInForce.FOK: "fok",
+        }.get(time_in_force, "gtc")
+
+        # Tradier OTOCO uses indexed form-data parameters:
+        #   [0] = entry order (market)
+        #   [1] = take-profit leg (limit)
+        #   [2] = stop-loss leg (stop)
+        order_data = {
+            'class': 'otoco',
+            'duration': tradier_tif,
+            # Leg 0 – entry (market)
+            'symbol[0]': symbol.upper(),
+            'side[0]': side.value.lower(),
+            'quantity[0]': str(int(qty)),
+            'type[0]': 'market',
+            # Leg 1 – take-profit (limit)
+            'symbol[1]': symbol.upper(),
+            'side[1]': exit_side.value.lower(),
+            'quantity[1]': str(int(qty)),
+            'type[1]': 'limit',
+            'price[1]': str(take_profit_price),
+            # Leg 2 – stop-loss (stop)
+            'symbol[2]': symbol.upper(),
+            'side[2]': exit_side.value.lower(),
+            'quantity[2]': str(int(qty)),
+            'type[2]': 'stop',
+            'stop[2]': str(stop_loss_price),
+        }
+
         try:
-            # Place take profit order (limit order at TP price)
-            tp_order = self.place_order(
-                symbol=symbol,
-                qty=qty,
-                side=exit_side,
-                order_type=OrderType.LIMIT,
-                limit_price=take_profit_price,
-                time_in_force=time_in_force,
-                account_id=account
-            )
-            tp_order_id = tp_order.order_id
+            result = self._make_request('POST', f'/v1/accounts/{account}/orders', data=order_data)
+
+            if 'error' in result:
+                raise Exception(result['error'])
+
+            order_response = result.get("order", {})
+            order_id = order_response.get("id", "unknown")
+
             self.logger.info(
-                "Tradier TP order placed",
-                tp_order_id=tp_order_id,
+                "Tradier OTOCO bracket order placed",
+                order_id=order_id,
                 symbol=symbol,
-                tp_price=take_profit_price
-            )
-        except Exception as e:
-            self.logger.error(
-                "Failed to place Tradier TP order",
-                error=str(e),
-                symbol=symbol,
-                tp_price=take_profit_price
-            )
-            # Don't fail the entire bracket order if TP fails - main order is already placed
-        
-        try:
-            # Place stop loss order (stop order at SL price)
-            sl_order = self.place_order(
-                symbol=symbol,
+                side=side.value,
                 qty=qty,
-                side=exit_side,
-                order_type=OrderType.STOP,
-                stop_price=stop_loss_price,
+                tp=take_profit_price,
+                sl=stop_loss_price,
+            )
+
+            return Order(
+                order_id=str(order_id),
+                symbol=symbol.upper(),
+                qty=qty,
+                side=side,
+                type=OrderType.BRACKET,
+                status=OrderStatus.ACCEPTED,
+                filled_qty=0.0,
+                limit_price=None,
+                stop_price=None,
                 time_in_force=time_in_force,
-                account_id=account
+                submitted_at=datetime.utcnow(),
+                broker_data=order_response,
             )
-            sl_order_id = sl_order.order_id
-            self.logger.info(
-                "Tradier SL order placed",
-                sl_order_id=sl_order_id,
-                symbol=symbol,
-                sl_price=stop_loss_price
-            )
+
         except Exception as e:
-            self.logger.error(
-                "Failed to place Tradier SL order",
-                error=str(e),
-                symbol=symbol,
-                sl_price=stop_loss_price
-            )
-            # Don't fail the entire bracket order if SL fails - main order is already placed
-        
-        self.logger.info(
-            "Tradier bracket order placed",
-            main_order_id=main_order.order_id,
-            tp_order_id=tp_order_id,
-            sl_order_id=sl_order_id,
-            symbol=symbol,
-            tp=take_profit_price,
-            sl=stop_loss_price
-        )
-        
-        # Update order type to indicate it's a bracket
-        main_order.type = OrderType.BRACKET
-        
-        # Store TP/SL order IDs in broker_data for reference
-        if main_order.broker_data:
-            main_order.broker_data["tp_order_id"] = tp_order_id
-            main_order.broker_data["sl_order_id"] = sl_order_id
-        else:
-            main_order.broker_data = {
-                "tp_order_id": tp_order_id,
-                "sl_order_id": sl_order_id
-            }
-        
-        return main_order
+            self.logger.error("Failed to place Tradier OTOCO bracket order", error=str(e))
+            raise
     
     def place_limit_bracket_order(
         self,
@@ -564,53 +547,92 @@ class TradierBrokerService(BrokerService):
         account_id: Optional[str] = None
     ) -> Order:
         """
-        Place a limit bracket order (limit entry + TP + SL).
-        
-        ⚠️ FIX #4: For limit orders, we place the entry limit order first.
-        TP/SL orders will be placed by monitoring once the limit order fills.
-        This is because Tradier doesn't support conditional orders that activate on fill.
+        Place a limit bracket order (limit entry + TP + SL) using Tradier's native OTOCO order.
+
+        Tradier supports One-Triggers-One-Cancels-Other (OTOCO) orders natively.
+        The limit entry order triggers an OCO pair (take-profit limit + stop-loss stop)
+        once filled, and filling either exit leg automatically cancels the other.
+
+        See: https://docs.tradier.com/reference/advanced-orders
         """
         account = account_id or self.account_id
         if not account:
             raise ValueError("No account ID provided")
-        
-        # Place limit entry order
-        limit_order = self.place_order(
-            symbol=symbol,
-            qty=qty,
-            side=side,
-            order_type=OrderType.LIMIT,
-            limit_price=limit_price,
-            time_in_force=time_in_force,
-            account_id=account
-        )
-        
-        # Store TP/SL prices in broker_data so monitoring can place exit orders once limit fills
-        if limit_order.broker_data:
-            limit_order.broker_data["take_profit_price"] = take_profit_price
-            limit_order.broker_data["stop_loss_price"] = stop_loss_price
-            limit_order.broker_data["bracket_order"] = True
-        else:
-            limit_order.broker_data = {
-                "take_profit_price": take_profit_price,
-                "stop_loss_price": stop_loss_price,
-                "bracket_order": True
-            }
-        
-        self.logger.info(
-            "Tradier limit bracket order placed",
-            order_id=limit_order.order_id,
-            symbol=symbol,
-            entry_price=limit_price,
-            tp=take_profit_price,
-            sl=stop_loss_price,
-            note="TP/SL orders will be placed by monitoring once limit order fills"
-        )
-        
-        # Update order type to indicate it's a bracket
-        limit_order.type = OrderType.BRACKET
-        
-        return limit_order
+
+        exit_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
+
+        tradier_tif = {
+            TimeInForce.DAY: "day",
+            TimeInForce.GTC: "gtc",
+            TimeInForce.IOC: "ioc",
+            TimeInForce.FOK: "fok",
+        }.get(time_in_force, "gtc")
+
+        # Tradier OTOCO uses indexed form-data parameters:
+        #   [0] = entry order (limit)
+        #   [1] = take-profit leg (limit)
+        #   [2] = stop-loss leg (stop)
+        order_data = {
+            'class': 'otoco',
+            'duration': tradier_tif,
+            # Leg 0 – entry (limit)
+            'symbol[0]': symbol.upper(),
+            'side[0]': side.value.lower(),
+            'quantity[0]': str(int(qty)),
+            'type[0]': 'limit',
+            'price[0]': str(limit_price),
+            # Leg 1 – take-profit (limit)
+            'symbol[1]': symbol.upper(),
+            'side[1]': exit_side.value.lower(),
+            'quantity[1]': str(int(qty)),
+            'type[1]': 'limit',
+            'price[1]': str(take_profit_price),
+            # Leg 2 – stop-loss (stop)
+            'symbol[2]': symbol.upper(),
+            'side[2]': exit_side.value.lower(),
+            'quantity[2]': str(int(qty)),
+            'type[2]': 'stop',
+            'stop[2]': str(stop_loss_price),
+        }
+
+        try:
+            result = self._make_request('POST', f'/v1/accounts/{account}/orders', data=order_data)
+
+            if 'error' in result:
+                raise Exception(result['error'])
+
+            order_response = result.get("order", {})
+            order_id = order_response.get("id", "unknown")
+
+            self.logger.info(
+                "Tradier OTOCO limit bracket order placed",
+                order_id=order_id,
+                symbol=symbol,
+                side=side.value,
+                qty=qty,
+                entry_price=limit_price,
+                tp=take_profit_price,
+                sl=stop_loss_price,
+            )
+
+            return Order(
+                order_id=str(order_id),
+                symbol=symbol.upper(),
+                qty=qty,
+                side=side,
+                type=OrderType.BRACKET,
+                status=OrderStatus.ACCEPTED,
+                filled_qty=0.0,
+                limit_price=limit_price,
+                stop_price=None,
+                time_in_force=time_in_force,
+                submitted_at=datetime.utcnow(),
+                broker_data=order_response,
+            )
+
+        except Exception as e:
+            self.logger.error("Failed to place Tradier OTOCO limit bracket order", error=str(e))
+            raise
     
     def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
         """Get all open orders"""

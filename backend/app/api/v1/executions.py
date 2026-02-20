@@ -714,28 +714,6 @@ async def close_position_endpoint(
                 detail=f"Failed to close position: {close_result.get('error', 'Unknown error')}"
             )
         
-        # Cancel remaining TP/SL exit orders (OCO cleanup)
-        # If we placed separate TP/SL orders on Tradier, cancel them so they don't
-        # trigger against a future position or cause errors.
-        tp_order_id = broker_response.get("tp_order_id")
-        sl_order_id = broker_response.get("sl_order_id")
-        if tp_order_id or sl_order_id:
-            logger.info(
-                "cancelling_exit_orders_after_manual_close",
-                execution_id=str(execution_id),
-                tp_order_id=tp_order_id,
-                sl_order_id=sl_order_id
-            )
-            for label, oid in [("TP", tp_order_id), ("SL", sl_order_id)]:
-                if not oid:
-                    continue
-                try:
-                    cancel_result = broker.cancel_order(str(oid))
-                    logger.info(f"Cancelled {label} order {oid}: {cancel_result}")
-                except Exception as cancel_err:
-                    # Order may already be filled/cancelled — not critical
-                    logger.warning(f"Could not cancel {label} order {oid}: {cancel_err}")
-        
         # Fetch final P&L from broker (single source of truth)
         final_pnl = None
         final_pnl_percent = None
@@ -981,21 +959,6 @@ async def reconcile_execution_endpoint(
                                 closed_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
                             except Exception:
                                 pass
-
-                        # Cancel remaining TP/SL exit orders (OCO cleanup)
-                        tp_order_id = broker_response.get("tp_order_id")
-                        sl_order_id = broker_response.get("sl_order_id")
-                        if tp_order_id or sl_order_id:
-                            for label, oid in [("TP", tp_order_id), ("SL", sl_order_id)]:
-                                if not oid:
-                                    continue
-                                try:
-                                    broker.cancel_order(str(oid))
-                                    logger.info(f"Cancelled {label} order {oid} during reconcile")
-                                except Exception as cancel_err:
-                                    logger.warning(
-                                        f"Could not cancel {label} order {oid}: {cancel_err}"
-                                    )
 
                         logger.info(
                             "auto_reconciled_from_broker",

@@ -234,8 +234,8 @@ TRADIER_ACCOUNT_ID=your_account_id
 ```
 
 **Special Notes:**
-- Supports OCO (One-Cancels-Other) orders
-- Bracket order = main order + separate TP/SL orders
+- Supports native OTOCO (One-Triggers-One-Cancels-Other) bracket orders
+- Bracket order = single OTOCO request (entry + TP limit + SL stop); OCO cleanup is automatic
 
 ---
 
