@@ -35,7 +35,8 @@ export type ExecutionStatus =
   | 'failed'
   | 'cancelled'
   | 'paused'
-  | 'communication_error'; // API failure during monitoring
+  | 'communication_error' // API failure during monitoring
+  | 'needs_reconciliation'; // Position closed but P&L unknown — user must reconcile
 
 export type ExecutionMode = 
   | 'live'

@@ -180,7 +180,9 @@ export class DashboardService {
    */
   loadDashboard(): Observable<DashboardData> {
     this.loadingSubject.next(true);
-    return this.apiService.get<DashboardData>('/api/v1/dashboard/').pipe(
+    // Get user's timezone and send it to backend for accurate "today" calculation
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return this.apiService.get<DashboardData>(`/api/v1/dashboard/?timezone=${encodeURIComponent(userTimezone)}`).pipe(
       tap(data => {
         this.dashboardSubject.next(data);
         this.loadingSubject.next(false);

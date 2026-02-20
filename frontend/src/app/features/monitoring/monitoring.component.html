@@ -76,6 +76,15 @@
           </div>
           
           <div class="active-actions">
+            <button 
+              *ngIf="isNeedsReconciliation(execution)"
+              mat-raised-button 
+              color="warn" 
+              (click)="openReconciliationDialog(execution, $event)"
+              class="reconcile-button">
+              <mat-icon>warning</mat-icon>
+              Reconcile
+            </button>
             <button mat-raised-button color="primary" (click)="viewExecution(execution); $event.stopPropagation()">
               <mat-icon>visibility</mat-icon>
               View Details
@@ -393,6 +402,13 @@
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>Actions</th>
             <td mat-cell *matCellDef="let execution">
+              <button mat-icon-button 
+                      [matTooltip]="'Reconcile Trade'" 
+                      color="warn"
+                      *ngIf="isNeedsReconciliation(execution)"
+                      (click)="openReconciliationDialog(execution, $event)">
+                <mat-icon>warning</mat-icon>
+              </button>
               <button mat-icon-button 
                       [matTooltip]="'View Details'" 
                       (click)="viewExecution(execution); $event.stopPropagation()">

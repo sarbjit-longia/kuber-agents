@@ -779,7 +779,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     return { ready: missing.length === 0, missing };
   }
 
-  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings'): 'READY' | 'SETUP' | 'TODO' {
+  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings'): 'READY' | 'SETUP' | 'TODO' {
     if (key === 'pipeline_settings') {
       if (this.triggerMode === TriggerMode.SIGNAL && !this.scannerId) return 'SETUP';
       return 'READY';
@@ -790,6 +790,10 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     if (key === 'signal_filters') {
       if (this.triggerMode !== TriggerMode.SIGNAL) return 'TODO';
       return (this.signalSubscriptions && this.signalSubscriptions.length > 0) ? 'READY' : 'SETUP';
+    }
+    if (key === 'notification_settings') {
+      // Notification settings are optional, so always return READY if enabled or SETUP if disabled
+      return this.notificationEnabled ? 'READY' : 'SETUP';
     }
     return 'TODO';
   }

@@ -29,6 +29,7 @@ import { MonitoringService } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { ExecutionReportModalComponent } from './execution-report-modal/execution-report-modal.component';
+import { ReconciliationDialogComponent } from './reconciliation-dialog/reconciliation-dialog.component';
 
 @Component({
   selector: 'app-monitoring',
@@ -94,7 +95,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     { value: 'COMPLETED', label: 'Completed' },
     { value: 'FAILED', label: 'Failed' },
     { value: 'PENDING', label: 'Pending' },
-    { value: 'COMMUNICATION_ERROR', label: 'Comm. Error' }
+    { value: 'COMMUNICATION_ERROR', label: 'Comm. Error' },
+    { value: 'NEEDS_RECONCILIATION', label: 'Needs Reconciliation' }
   ];
   
   modeOptions = [
@@ -206,7 +208,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     
     // Split into active and historical
-    const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR']);
+    const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR', 'NEEDS_RECONCILIATION']);
     this.activeExecutions = filtered.filter(
       e => activeStatuses.has(e.status.toUpperCase())
     );
@@ -376,7 +378,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       'failed': 'warn',
       'cancelled': 'default',
       'paused': 'default',
-      'communication_error': 'warn'
+      'communication_error': 'warn',
+      'needs_reconciliation': 'warn'
     };
     return colors[status] || 'default';
   }
@@ -390,7 +393,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       'failed': 'error',
       'cancelled': 'cancel',
       'paused': 'pause_circle',
-      'communication_error': 'wifi_off'
+      'communication_error': 'wifi_off',
+      'needs_reconciliation': 'warning'
     };
     return icons[status?.toLowerCase()] || 'help';
   }
@@ -631,6 +635,34 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     }
     return null;
+  }
+
+  openReconciliationDialog(execution: ExecutionSummary, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    const dialogRef = this.dialog.open(ReconciliationDialogComponent, {
+      width: '700px',
+      maxWidth: '90vw',
+      data: { execution }
+    });
+    
+    dialogRef.afterClosed().subscribe(result => {
+      if (result && result.success) {
+        this.showNotification(
+          result.action === 'close' 
+            ? 'Trade reconciled successfully' 
+            : 'Monitoring resumed successfully',
+          'success'
+        );
+        this.loadData();
+      }
+    });
+  }
+
+  isNeedsReconciliation(execution: ExecutionSummary): boolean {
+    return execution.status.toUpperCase() === 'NEEDS_RECONCILIATION';
   }
 }
 

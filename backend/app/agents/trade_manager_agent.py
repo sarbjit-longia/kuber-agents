@@ -276,6 +276,7 @@ class TradeManagerAgent(BaseAgent):
         order_id = state.trade_execution.order_id if state.trade_execution else None
         trade_id = state.trade_execution.trade_id if state.trade_execution else None
         pending_order = None
+        order_rejected_or_cancelled = False
         
         if order_id and not trade_id:  # Only check if order not yet filled (no trade_id)
             # Check if the order is still pending (limit not filled yet)
@@ -286,6 +287,22 @@ class TradeManagerAgent(BaseAgent):
                         pending_order = order
                         break
                 
+                # If order_id exists but not found in open_orders, it might be rejected/cancelled
+                # Check by trying to get all orders (including closed/rejected) if broker supports it
+                if not pending_order:
+                    # Try to check order status directly if broker supports it
+                    # For now, we'll use has_active_symbol to check if there's any active order/position
+                    # If has_active_symbol returns False, the order is likely rejected/cancelled
+                    try:
+                        has_active = broker.has_active_symbol(state.symbol)
+                        if not has_active:
+                            # No active position or order - order was likely rejected/cancelled
+                            order_rejected_or_cancelled = True
+                            self.log(state, f"⚠️ Order {order_id} not found in open orders and no active position - likely rejected/cancelled", level="warning")
+                    except Exception as e:
+                        self.log(state, f"⚠️ Could not verify order status: {str(e)}", level="warning")
+                        # Continue monitoring - might be temporary API issue
+                
                 # Successfully checked - reset error counter
                 if state.trade_execution:
                     state.trade_execution.api_error_count = 0
@@ -295,6 +312,24 @@ class TradeManagerAgent(BaseAgent):
                 self.log(state, f"❌ API error checking orders: {str(e)}", level="error")
                 self._handle_api_error(state, f"Failed to check orders: {str(e)}")
                 return state
+        
+        # STEP 1.5: Handle rejected/cancelled orders
+        if order_rejected_or_cancelled:
+            self.log(state, f"❌ Order {order_id} was rejected or cancelled - completing execution", level="warning")
+            # Mark as cancelled with zero P&L
+            if not state.trade_outcome:
+                from app.schemas.pipeline_state import TradeOutcome
+                state.trade_outcome = TradeOutcome(
+                    status="cancelled",
+                    pnl=0.0,
+                    pnl_percent=0.0,
+                    exit_reason=f"Order {order_id} was rejected or cancelled on broker",
+                    exit_price=None,
+                    entry_price=None,
+                    closed_at=datetime.utcnow()
+                )
+            state.should_complete = True
+            return state
         
         # STEP 2: If order is still pending, check if we should cancel it
         if pending_order:

@@ -8,12 +8,13 @@ Provides aggregated data for the main dashboard view including:
 - Active positions
 - Recent activity
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, and_
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import structlog
+from zoneinfo import ZoneInfo
 
 from app.database import get_db
 from app.models.user import User
@@ -149,6 +150,7 @@ def _extract_trade_info(execution: Execution) -> Optional[Dict[str, Any]]:
 
 @router.get("/")
 async def get_dashboard(
+    timezone: Optional[str] = Query(None, description="User's timezone (e.g., 'America/New_York'). Defaults to UTC if not provided."),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -191,6 +193,7 @@ async def get_dashboard(
     total_executions = len(all_executions)
     running_count = len([e for e in all_executions if e.status == ExecutionStatus.RUNNING])
     monitoring_count = len([e for e in all_executions if e.status == ExecutionStatus.MONITORING])
+    needs_reconciliation_count = len([e for e in all_executions if e.status == ExecutionStatus.NEEDS_RECONCILIATION])
     completed_count = len([e for e in all_executions if e.status == ExecutionStatus.COMPLETED])
     failed_count = len([e for e in all_executions if e.status == ExecutionStatus.FAILED])
     
@@ -284,7 +287,7 @@ async def get_dashboard(
     # ── 4. Active positions ────────────────────────────────────
     active_positions = []
     for execution, pipeline_name in executions_with_names:
-        if execution.status not in (ExecutionStatus.MONITORING, ExecutionStatus.RUNNING):
+        if execution.status not in (ExecutionStatus.MONITORING, ExecutionStatus.RUNNING, ExecutionStatus.NEEDS_RECONCILIATION):
             continue
         
         trade_info = _extract_trade_info(execution)
@@ -372,7 +375,7 @@ async def get_dashboard(
     for p in pipelines:
         # Count executions per pipeline
         p_execs = [e for e in all_executions if str(e.pipeline_id) == str(p.id)]
-        p_active = len([e for e in p_execs if e.status in (ExecutionStatus.MONITORING, ExecutionStatus.RUNNING)])
+        p_active = len([e for e in p_execs if e.status in (ExecutionStatus.MONITORING, ExecutionStatus.RUNNING, ExecutionStatus.NEEDS_RECONCILIATION)])
         p_completed = len([e for e in p_execs if e.status == ExecutionStatus.COMPLETED])
         p_failed = len([e for e in p_execs if e.status == ExecutionStatus.FAILED])
         
@@ -400,34 +403,79 @@ async def get_dashboard(
         })
     
     # ── 7. Today's stats ───────────────────────────────────────
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_execs = [e for e in all_executions if e.created_at and e.created_at >= today_start]
-    today_count = len(today_execs)
+    # Use user's local timezone if provided, otherwise default to UTC
+    # This ensures "today" means today in the user's timezone, not UTC
+    user_tz = ZoneInfo(timezone) if timezone else ZoneInfo("UTC")
+    now_utc = datetime.utcnow()
+    now_local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(user_tz)
+    today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end_local = today_start_local + timedelta(days=1)
+    
+    # Convert local "today" boundaries back to UTC for database comparison
+    # (database stores everything in UTC)
+    today_start_utc = today_start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    today_end_utc = today_end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    
+    # For "today" calculations in user's local timezone:
+    # - Completed trades: Must be BOTH created AND completed TODAY in user's local timezone
+    #   This prevents yesterday evening trades from showing up if they completed after midnight local time
+    # - Active trades: Must be created today in user's local timezone
+    today_execs = []
+    for e in all_executions:
+        # For completed trades, require BOTH created_at and completed_at to be today
+        # Convert UTC timestamps to user's timezone for comparison
+        if e.status == ExecutionStatus.COMPLETED:
+            if e.created_at and e.completed_at:
+                # Convert UTC to user's timezone
+                created_local = e.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(user_tz)
+                completed_local = e.completed_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(user_tz)
+                
+                created_today = created_local >= today_start_local and created_local < today_end_local
+                completed_today = completed_local >= today_start_local and completed_local < today_end_local
+                
+                if created_today and completed_today:
+                    today_execs.append(e)
+        # For active/monitoring trades, use created_at (when execution started)
+        # Convert to user's timezone to check if created today
+        elif e.status in (ExecutionStatus.MONITORING, ExecutionStatus.RUNNING, ExecutionStatus.PENDING, ExecutionStatus.NEEDS_RECONCILIATION, ExecutionStatus.COMMUNICATION_ERROR):
+            if e.created_at:
+                created_local = e.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(user_tz)
+                if created_local >= today_start_local and created_local < today_end_local:
+                    today_execs.append(e)
+    
+    # Separate completed vs active executions for today
+    today_completed = [e for e in today_execs if e.status == ExecutionStatus.COMPLETED]
+    today_active = [e for e in today_execs if e.status != ExecutionStatus.COMPLETED]
+    
+    today_count = len(today_execs)  # Total executions (completed + active)
     today_cost = sum(e.cost or 0 for e in today_execs)
+    
+    # Only count P&L from trades that were COMPLETED today
+    # Active/monitoring trades don't contribute to today's P&L (they're unrealized)
     today_pnl = 0.0
     today_wins: List[float] = []
     today_losses: List[float] = []
-    for e in today_execs:
+    
+    # Only process completed executions for P&L and trade stats
+    for e in today_completed:
         pnl = _extract_pnl(e)
         if pnl and pnl["value"] is not None:
             pnl_val = pnl["value"]
             today_pnl += pnl_val
-            # Count trades with non-zero P&L for win/loss stats
-            if e.status == ExecutionStatus.COMPLETED:
-                result_data = e.result or {}
-                trade_outcome = result_data.get("trade_outcome")
-                is_real_trade = False
-                if trade_outcome and isinstance(trade_outcome, dict):
-                    if trade_outcome.get("status") in ("executed", "cancelled"):
-                        is_real_trade = True
-                elif pnl_val != 0:
+            result_data = e.result or {}
+            trade_outcome = result_data.get("trade_outcome")
+            is_real_trade = False
+            if trade_outcome and isinstance(trade_outcome, dict):
+                if trade_outcome.get("status") in ("executed", "cancelled"):
                     is_real_trade = True
-                
-                if is_real_trade:
-                    if pnl_val > 0:
-                        today_wins.append(pnl_val)
-                    elif pnl_val < 0:
-                        today_losses.append(pnl_val)
+            elif pnl_val != 0:
+                is_real_trade = True
+            
+            if is_real_trade:
+                if pnl_val > 0:
+                    today_wins.append(pnl_val)
+                elif pnl_val < 0:
+                    today_losses.append(pnl_val)
     
     today_total_trades = len(today_wins) + len(today_losses)
     today_win_rate = round(len(today_wins) / today_total_trades, 4) if today_total_trades > 0 else 0.0
@@ -520,6 +568,7 @@ async def get_dashboard(
             "total": total_executions,
             "running": running_count,
             "monitoring": monitoring_count,
+            "needs_reconciliation": needs_reconciliation_count,
             "completed": completed_count,
             "failed": failed_count,
             "total_cost": round(total_cost, 4),

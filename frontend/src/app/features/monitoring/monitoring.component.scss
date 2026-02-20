@@ -944,6 +944,16 @@
         color: var(--color-warning) !important;
       }
     }
+
+    &.status-needs_reconciliation {
+      background-color: var(--color-warning-bg) !important;
+      color: var(--color-warning) !important;
+      animation: pulse-error 2s ease-in-out infinite;
+
+      mat-icon {
+        color: var(--color-warning) !important;
+      }
+    }
   }
 
   .mode-chip {

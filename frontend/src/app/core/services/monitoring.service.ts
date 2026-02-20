@@ -100,6 +100,20 @@ export class MonitoringService {
   }
 
   /**
+   * Manually reconcile a NEEDS_RECONCILIATION execution with P&L data
+   */
+  reconcileExecution(executionId: string, reconciliationData: any): Observable<any> {
+    return this.apiService.post<any>(`/api/v1/executions/${executionId}/reconcile`, reconciliationData);
+  }
+
+  /**
+   * Resume monitoring for a NEEDS_RECONCILIATION execution
+   */
+  resumeMonitoring(executionId: string): Observable<any> {
+    return this.apiService.post<any>(`/api/v1/executions/${executionId}/resume-monitoring`, {});
+  }
+
+  /**
    * Start polling for updates (every 3 seconds)
    */
   startPolling(executionId: string): void {

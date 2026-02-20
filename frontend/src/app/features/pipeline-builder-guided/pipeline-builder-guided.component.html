@@ -313,7 +313,6 @@
             <div class="event-checkboxes">
               <mat-checkbox
                 *ngFor="let event of availableNotificationEvents"
-                [(ngModel)]="event.checked"
                 (change)="toggleNotificationEvent(event.value)"
                 [checked]="notificationEvents.includes(event.value)"
               >

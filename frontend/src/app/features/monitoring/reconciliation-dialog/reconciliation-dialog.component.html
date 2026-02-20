@@ -1,0 +1,175 @@
+<div class="reconciliation-dialog">
+  <div class="dialog-header">
+    <h2>
+      <mat-icon>warning</mat-icon>
+      Trade Reconciliation Required
+    </h2>
+    <button mat-icon-button (click)="cancel()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <div class="dialog-content">
+    <!-- Execution Info -->
+    <div class="execution-info">
+      <div class="info-row">
+        <span class="info-label">Symbol:</span>
+        <span class="info-value">{{ getSymbol() }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Pipeline:</span>
+        <span class="info-value">{{ getPipelineName() }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Status:</span>
+        <mat-chip class="status-chip-warning">
+          <mat-icon>warning</mat-icon>
+          Needs Reconciliation
+        </mat-chip>
+      </div>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Action Selection -->
+    <div class="action-selection">
+      <h3>Choose an action:</h3>
+      
+      <div class="action-buttons">
+        <button 
+          mat-raised-button 
+          [color]="action === 'close' ? 'primary' : ''"
+          (click)="onActionChange('close')"
+          class="action-button">
+          <mat-icon>check_circle</mat-icon>
+          Close Trade Manually
+        </button>
+        <button 
+          mat-raised-button 
+          [color]="action === 'resume' ? 'primary' : ''"
+          (click)="onActionChange('resume')"
+          class="action-button">
+          <mat-icon>play_circle</mat-icon>
+          Resume Monitoring
+        </button>
+      </div>
+    </div>
+
+    <!-- Manual Reconciliation Form -->
+    <div *ngIf="action === 'close'" class="reconciliation-form">
+      <h3>
+        <mat-icon>edit</mat-icon>
+        Enter Trade Details
+      </h3>
+      
+      <div class="form-grid">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>P&L (Profit/Loss) *</mat-label>
+          <input 
+            matInput 
+            type="number" 
+            step="0.01"
+            [(ngModel)]="reconciliationForm.pnl"
+            placeholder="0.00"
+            required>
+          <mat-icon matSuffix>attach_money</mat-icon>
+          <mat-hint>Enter the final profit or loss in dollars</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>P&L Percentage</mat-label>
+          <input 
+            matInput 
+            type="number" 
+            step="0.01"
+            [(ngModel)]="reconciliationForm.pnl_percent"
+            placeholder="0.00">
+          <span matSuffix>%</span>
+          <mat-hint>Optional: Profit/Loss as a percentage</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Exit Reason</mat-label>
+          <input 
+            matInput 
+            [(ngModel)]="reconciliationForm.exit_reason"
+            placeholder="e.g., Stop loss hit, Take profit reached">
+          <mat-hint>Optional: Why the position was closed</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Entry Price</mat-label>
+          <input 
+            matInput 
+            type="number" 
+            step="0.00001"
+            [(ngModel)]="reconciliationForm.entry_price"
+            placeholder="0.00000">
+          <mat-hint>Optional</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Exit Price</mat-label>
+          <input 
+            matInput 
+            type="number" 
+            step="0.00001"
+            [(ngModel)]="reconciliationForm.exit_price"
+            placeholder="0.00000">
+          <mat-hint>Optional</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Closed At</mat-label>
+          <input 
+            matInput 
+            [matDatepicker]="closedAtPicker"
+            [(ngModel)]="reconciliationForm.closed_at">
+          <mat-datepicker-toggle matSuffix [for]="closedAtPicker"></mat-datepicker-toggle>
+          <mat-datepicker #closedAtPicker></mat-datepicker>
+          <mat-hint>Optional: When the position was closed (defaults to now)</mat-hint>
+        </mat-form-field>
+      </div>
+    </div>
+
+    <!-- Resume Monitoring Info -->
+    <div *ngIf="action === 'resume'" class="resume-info">
+      <div class="info-box">
+        <mat-icon>info</mat-icon>
+        <div>
+          <h4>Resume Monitoring</h4>
+          <p>This will push the trade back into monitoring mode. The system will:</p>
+          <ul>
+            <li>Resume automatic position monitoring</li>
+            <li>Attempt to fetch P&L from the broker</li>
+            <li>Update the execution status automatically</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Message -->
+    <div *ngIf="error" class="error-message">
+      <mat-icon>error</mat-icon>
+      <span>{{ error }}</span>
+    </div>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <div class="dialog-footer">
+    <button mat-button (click)="cancel()" [disabled]="loading">Cancel</button>
+    <button 
+      mat-raised-button 
+      color="primary" 
+      (click)="submit()" 
+      [disabled]="loading">
+      <mat-spinner *ngIf="loading" diameter="20" class="inline-spinner"></mat-spinner>
+      <mat-icon *ngIf="!loading">{{ action === 'close' ? 'check_circle' : 'play_circle' }}</mat-icon>
+      <span *ngIf="!loading">{{ action === 'close' ? 'Reconcile & Close' : 'Resume Monitoring' }}</span>
+      <span *ngIf="loading">Processing...</span>
+    </button>
+  </div>
+</div>

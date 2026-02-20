@@ -654,6 +654,288 @@ async def close_position_endpoint(
         )
 
 
+@router.post("/{execution_id}/reconcile", response_model=dict)
+async def reconcile_execution_endpoint(
+    execution_id: UUID,
+    reconciliation_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """
+    Manually reconcile a NEEDS_RECONCILIATION execution with user-provided P&L and metadata.
+    
+    This endpoint allows users to manually close a trade that couldn't be automatically
+    reconciled by providing P&L information and other trade metadata.
+    
+    Args:
+        execution_id: Execution UUID
+        reconciliation_data: Dict containing:
+            - pnl: float (required) - Profit/Loss in dollars
+            - pnl_percent: Optional[float] - Profit/Loss percentage
+            - exit_reason: Optional[str] - Why the position closed
+            - exit_price: Optional[float] - Exit price
+            - entry_price: Optional[float] - Entry price
+            - closed_at: Optional[str] - ISO datetime string when position closed
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Result of the reconciliation operation
+    """
+    # Load execution
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    # Verify ownership
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to reconcile this execution"
+        )
+    
+    # Verify execution is in NEEDS_RECONCILIATION status
+    if execution.status != ExecutionStatus.NEEDS_RECONCILIATION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reconcile execution with status: {execution.status.value}. Only NEEDS_RECONCILIATION executions can be reconciled."
+        )
+    
+    # Validate required fields
+    pnl = reconciliation_data.get("pnl")
+    if pnl is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="pnl is required in reconciliation_data"
+        )
+    
+    try:
+        pnl = float(pnl)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="pnl must be a valid number"
+        )
+    
+    # Extract optional fields
+    pnl_percent = reconciliation_data.get("pnl_percent")
+    if pnl_percent is not None:
+        try:
+            pnl_percent = float(pnl_percent)
+        except (ValueError, TypeError):
+            pnl_percent = None
+    
+    exit_reason = reconciliation_data.get("exit_reason", "Manually reconciled by user")
+    exit_price = reconciliation_data.get("exit_price")
+    entry_price = reconciliation_data.get("entry_price")
+    closed_at_str = reconciliation_data.get("closed_at")
+    
+    # Parse closed_at if provided
+    closed_at = None
+    if closed_at_str:
+        try:
+            # Try parsing ISO format datetime string
+            if isinstance(closed_at_str, str):
+                closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+            else:
+                closed_at = datetime.utcnow()
+        except Exception:
+            closed_at = datetime.utcnow()
+    else:
+        closed_at = datetime.utcnow()
+    
+    # Update execution status and save reconciliation data
+    execution.status = ExecutionStatus.COMPLETED
+    execution.completed_at = closed_at
+    execution.execution_phase = "completed"
+    execution.next_check_at = None
+    execution.error_message = None
+    
+    # Update the result with reconciliation data
+    if not execution.result:
+        execution.result = {}
+    
+    execution.result['final_pnl'] = pnl
+    execution.result['final_pnl_percent'] = pnl_percent
+    execution.result['reconciled_manually'] = True
+    execution.result['reconciled_at'] = datetime.utcnow().isoformat()
+    execution.result['reconciled_by'] = str(current_user.id)
+    
+    # Update trade_outcome if it exists
+    if 'trade_outcome' not in execution.result:
+        execution.result['trade_outcome'] = {}
+    
+    execution.result['trade_outcome'].update({
+        'status': 'executed' if pnl != 0 else 'cancelled',
+        'pnl': pnl,
+        'pnl_percent': pnl_percent,
+        'exit_reason': exit_reason,
+        'exit_price': exit_price,
+        'entry_price': entry_price,
+        'closed_at': closed_at.isoformat()
+    })
+    
+    # Update pipeline state if it exists
+    try:
+        from app.orchestration.tasks._helpers import load_pipeline_state, save_pipeline_state
+        from app.schemas.pipeline_state import TradeOutcome
+        
+        pipeline_state = load_pipeline_state(execution)
+        if pipeline_state:
+            if not pipeline_state.trade_outcome:
+                from app.schemas.pipeline_state import TradeOutcome
+                pipeline_state.trade_outcome = TradeOutcome(
+                    status='executed' if pnl != 0 else 'cancelled',
+                    pnl=pnl,
+                    pnl_percent=pnl_percent,
+                    exit_reason=exit_reason,
+                    exit_price=exit_price,
+                    entry_price=entry_price,
+                    closed_at=closed_at
+                )
+            else:
+                pipeline_state.trade_outcome.pnl = pnl
+                pipeline_state.trade_outcome.pnl_percent = pnl_percent
+                pipeline_state.trade_outcome.exit_reason = exit_reason
+                pipeline_state.trade_outcome.exit_price = exit_price
+                pipeline_state.trade_outcome.entry_price = entry_price
+                pipeline_state.trade_outcome.closed_at = closed_at
+                pipeline_state.trade_outcome.status = 'executed' if pnl != 0 else 'cancelled'
+            
+            pipeline_state.should_complete = True
+            save_pipeline_state(execution, pipeline_state, db=db)
+    except Exception as e:
+        logger.warning(
+            "failed_to_update_pipeline_state",
+            execution_id=str(execution_id),
+            error=str(e)
+        )
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(execution, 'result')
+    
+    await db.commit()
+    
+    logger.info(
+        "execution_reconciled_manually",
+        execution_id=str(execution_id),
+        symbol=execution.symbol,
+        pnl=pnl,
+        pnl_percent=pnl_percent
+    )
+    
+    return {
+        "success": True,
+        "message": f"Execution for {execution.symbol} reconciled successfully",
+        "execution_id": str(execution_id),
+        "pnl": pnl,
+        "pnl_percent": pnl_percent
+    }
+
+
+@router.post("/{execution_id}/resume-monitoring", response_model=dict)
+async def resume_monitoring_endpoint(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """
+    Resume monitoring for a NEEDS_RECONCILIATION execution.
+    
+    This endpoint pushes a NEEDS_RECONCILIATION execution back into MONITORING status,
+    allowing the system to resume automatic monitoring and P&L tracking.
+    
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+        
+    Returns:
+        Result of the resume operation
+    """
+    # Load execution
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+    
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+    
+    # Verify ownership
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to resume monitoring for this execution"
+        )
+    
+    # Verify execution is in NEEDS_RECONCILIATION status
+    if execution.status != ExecutionStatus.NEEDS_RECONCILIATION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot resume monitoring for execution with status: {execution.status.value}. Only NEEDS_RECONCILIATION executions can resume monitoring."
+        )
+    
+    # Update execution status back to MONITORING
+    execution.status = ExecutionStatus.MONITORING
+    execution.error_message = None
+    
+    # Set next_check_at to trigger immediate monitoring check
+    from datetime import timedelta
+    execution.next_check_at = datetime.utcnow() + timedelta(minutes=1)
+    
+    # Clear any reconciliation flags in result
+    if execution.result:
+        execution.result.pop('reconciled_manually', None)
+        execution.result.pop('reconciled_at', None)
+        execution.result.pop('reconciled_by', None)
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    if execution.result:
+        flag_modified(execution, 'result')
+    
+    await db.commit()
+    
+    # Schedule immediate monitoring check
+    try:
+        from app.orchestration.tasks.monitoring import schedule_monitoring_check
+        schedule_monitoring_check.apply_async(
+            args=[str(execution.id)],
+            countdown=60  # 1 minute
+        )
+    except Exception as e:
+        logger.error(
+            "failed_to_schedule_monitoring",
+            execution_id=str(execution_id),
+            error=str(e)
+        )
+        # Don't fail the request - status is updated, monitoring will be picked up by reconciliation task
+    
+    logger.info(
+        "monitoring_resumed",
+        execution_id=str(execution_id),
+        symbol=execution.symbol
+    )
+    
+    return {
+        "success": True,
+        "message": f"Monitoring resumed for {execution.symbol}",
+        "execution_id": str(execution_id),
+        "status": "MONITORING",
+        "next_check_at": execution.next_check_at.isoformat() if execution.next_check_at else None
+    }
+
+
 @router.get("/{execution_id}/logs", response_model=List[dict])
 async def get_execution_logs(
     execution_id: UUID,
