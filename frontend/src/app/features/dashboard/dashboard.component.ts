@@ -313,7 +313,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'remove';
   }
 
-  getActionClass(action: string | null): string {
+  getActionClass(action: string | null | undefined): string {
     if (!action) return '';
     const a = action.toUpperCase();
     if (a === 'BUY') return 'action-buy';

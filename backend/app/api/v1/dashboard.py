@@ -129,11 +129,14 @@ def _extract_trade_info(execution: Execution) -> Optional[Dict[str, Any]]:
         Dict with trade details or None
     """
     reports = execution.reports or {}
+    trade_info = None
+    
+    # First, try to get from trade_manager_agent reports
     for agent_id, report in reports.items():
         if isinstance(report, dict) and report.get("agent_type") == "trade_manager_agent":
             data = report.get("data", {})
             if data:
-                return {
+                trade_info = {
                     "order_status": data.get("order_status"),
                     "order_type": data.get("order_type"),
                     "side": data.get("side"),
@@ -145,7 +148,30 @@ def _extract_trade_info(execution: Execution) -> Optional[Dict[str, Any]]:
                     "take_profit": data.get("take_profit"),
                     "stop_loss": data.get("stop_loss"),
                 }
-    return None
+                break
+    
+    # If side is missing, try to get it from strategy in result
+    if trade_info and not trade_info.get("side"):
+        result = execution.result or {}
+        strategy = result.get("strategy")
+        if strategy and isinstance(strategy, dict):
+            action = strategy.get("action")
+            if action:
+                # Convert "BUY" -> "LONG", "SELL" -> "SHORT"
+                trade_info["side"] = "LONG" if action.upper() == "BUY" else "SHORT" if action.upper() == "SELL" else action.upper()
+    
+    # If still no side, try to get from pipeline_state
+    if trade_info and not trade_info.get("side"):
+        if execution.pipeline_state:
+            pipeline_state = execution.pipeline_state
+            if isinstance(pipeline_state, dict):
+                strategy = pipeline_state.get("strategy")
+                if strategy and isinstance(strategy, dict):
+                    action = strategy.get("action")
+                    if action:
+                        trade_info["side"] = "LONG" if action.upper() == "BUY" else "SHORT" if action.upper() == "SELL" else action.upper()
+    
+    return trade_info
 
 
 @router.get("/")

@@ -476,11 +476,16 @@
             </mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="positions-list" *ngIf="data.active_positions.length > 0; else noPositions">
+            <div class="positions-grid" *ngIf="data.active_positions.length > 0; else noPositions">
               <div class="position-card" *ngFor="let pos of data.active_positions"
                    (click)="viewPosition(pos)">
                 <div class="position-header">
-                  <div class="symbol-badge">{{ pos.symbol || 'N/A' }}</div>
+                  <div class="symbol-section">
+                    <div class="symbol-badge">{{ pos.symbol || 'N/A' }}</div>
+                    <div class="side-badge" *ngIf="pos.trade_info?.side" [ngClass]="getActionClass(pos.trade_info?.side || null)">
+                      {{ pos.trade_info?.side }}
+                    </div>
+                  </div>
                   <mat-chip class="status-chip-monitoring">
                     <mat-icon>{{ getStatusIcon(pos.status) }}</mat-icon>
                     {{ pos.status }}
@@ -492,12 +497,6 @@
                 </div>
                 <div class="position-details" *ngIf="pos.trade_info">
                   <div class="position-detail">
-                    <span class="detail-label">Side</span>
-                    <span class="detail-value" [ngClass]="getActionClass(pos.trade_info.side)">
-                      {{ pos.trade_info.side || '-' }}
-                    </span>
-                  </div>
-                  <div class="position-detail">
                     <span class="detail-label">Entry</span>
                     <span class="detail-value">
                       {{ pos.trade_info.entry_price ? ('$' + pos.trade_info.entry_price.toFixed(5)) : '-' }}
@@ -507,6 +506,12 @@
                     <span class="detail-label">Current</span>
                     <span class="detail-value">
                       {{ pos.trade_info.current_price ? ('$' + pos.trade_info.current_price.toFixed(5)) : '-' }}
+                    </span>
+                  </div>
+                  <div class="position-detail" *ngIf="pos.trade_info.quantity">
+                    <span class="detail-label">Qty</span>
+                    <span class="detail-value">
+                      {{ pos.trade_info.quantity }}
                     </span>
                   </div>
                   <div class="position-detail pnl-detail">
