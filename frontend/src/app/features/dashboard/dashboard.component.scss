@@ -184,97 +184,90 @@
   }
 }
 
-// ── Today Card ────────────────────────────────────────────────
+// ── Today's Performance Card (tile grid) ─────────────────────
 
-.today-card {
-  margin-bottom: 1.5rem;
-
+.today-performance-card {
   mat-card-content {
-    padding: 1rem 1.5rem !important;
+    padding: 0.5rem 1.5rem 1.5rem !important;
+  }
+}
+
+.today-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.today-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-sm);
   }
 
-  .today-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 0.75rem;
+  &.today-tile-large {
+    grid-column: span 1;
 
-    mat-icon {
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
+    .today-tile-value {
+      font-size: 1.5rem;
+    }
+  }
+
+  .today-tile-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+
+    &.win-rate-value {
       color: var(--accent-primary);
     }
   }
 
-  .today-stats {
-    display: flex;
-    align-items: center;
-    gap: 2rem;
-    flex-wrap: wrap;
+  .today-tile-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+  }
 
-    .today-item {
-      .today-value {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: var(--text-primary);
+  .win-loss-bar.compact {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(239, 68, 68, 0.3);
+    margin-top: 6px;
+    min-width: 60px;
 
-        &.pnl-positive {
-          color: var(--color-success);
-        }
-
-        &.pnl-negative {
-          color: var(--color-error);
-        }
-
-        &.win-rate-value {
-          color: var(--accent-primary);
-        }
-      }
-
-      .today-label {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        margin-top: 2px;
-      }
-
-      .win-loss-bar.compact {
-        width: 100%;
-        height: 4px;
-        border-radius: 2px;
-        background: rgba(239, 68, 68, 0.3);
-        margin-top: 6px;
-        min-width: 60px;
-
-        .win-portion {
-          height: 100%;
-          border-radius: 2px;
-          background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-          transition: width 0.5s ease;
-        }
-      }
-    }
-
-    mat-divider {
-      height: 40px !important;
+    .win-portion {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+      transition: width 0.5s ease;
     }
   }
 }
 
-// ── Main Grid ─────────────────────────────────────────────────
+// ── Pipelines & Brokers Grid ─────────────────────────────────
 
-.main-grid {
+.pipelines-brokers-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr;
   gap: 1.5rem;
   margin-bottom: 1.5rem;
 }
 
 @media (max-width: 1200px) {
-  .main-grid {
+  .pipelines-brokers-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -327,6 +320,13 @@
       font-size: 0.75rem;
       font-weight: 600;
       padding: 0 6px;
+    }
+
+    .section-subtitle {
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-left: 0.25rem;
     }
   }
 }
@@ -1255,6 +1255,26 @@
   max-width: 100%;
 }
 
+// ── Empty Section Slim (single-line) ─────────────────────────
+
+.empty-section.slim {
+  flex-direction: row;
+  padding: 1rem 1.5rem;
+  gap: 0.5rem;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    margin-bottom: 0;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+}
+
 // ── Empty Section Compact ────────────────────────────────────
 
 .empty-section.compact {
@@ -1306,13 +1326,8 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .today-card .today-stats {
-    flex-wrap: wrap;
-    gap: 1rem;
-
-    mat-divider {
-      display: none;
-    }
+  .today-tiles {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .broker-card .broker-details {
@@ -1323,5 +1338,9 @@
 @media (max-width: 480px) {
   .stats-row {
     grid-template-columns: 1fr;
+  }
+
+  .today-tiles {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
