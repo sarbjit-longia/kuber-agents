@@ -48,6 +48,14 @@ interface PricingTier {
   cta: string;
 }
 
+interface Highlight {
+  icon: string;
+  number: string;
+  label: string;
+  description: string;
+}
+
+
 @Component({
   selector: 'app-landing',
   standalone: true,
@@ -63,6 +71,28 @@ interface PricingTier {
   styleUrls: ['./landing.component.scss']
 })
 export class LandingComponent {
+
+  // ── Platform Highlights ──────────────────────────────────────
+  highlights: Highlight[] = [
+    {
+      icon: 'bolt',
+      number: '< 5 min',
+      label: 'Setup Time',
+      description: 'Go from zero to a fully automated pipeline in under five minutes with the guided builder.'
+    },
+    {
+      icon: 'psychology',
+      number: 'GPT-4',
+      label: 'AI Engine',
+      description: 'Strategies are powered by GPT-4 with custom trading tools — FVG, RSI, MACD, VWAP, and more.'
+    },
+    {
+      icon: 'security',
+      number: '100%',
+      label: 'Risk Controlled',
+      description: 'Every trade has bracket orders with take-profit and stop-loss. Budget caps prevent runaway spending.'
+    }
+  ];
 
   // ── How It Works ──────────────────────────────────────────────
   howItWorksSteps: HowItWorksStep[] = [
