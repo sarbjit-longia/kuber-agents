@@ -1,61 +1,133 @@
-<div class="login-container">
+<div class="auth-page">
   <app-navbar></app-navbar>
-  <div class="login-content">
-  <mat-card class="login-card">
-    <mat-card-header>
-      <mat-card-title>Login</mat-card-title>
-      <mat-card-subtitle>Sign in to your account</mat-card-subtitle>
-    </mat-card-header>
-    
-    <mat-card-content>
-      <!-- Session Expired Message -->
-      <div class="info-message" *ngIf="sessionExpiredMessage">
-        {{ sessionExpiredMessage }}
-      </div>
 
-      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Email</mat-label>
-          <input matInput type="email" formControlName="email" required>
-          <mat-error *ngIf="loginForm.get('email')?.hasError('required')">
-            Email is required
-          </mat-error>
-          <mat-error *ngIf="loginForm.get('email')?.hasError('email')">
-            Please enter a valid email
-          </mat-error>
-        </mat-form-field>
+  <div class="auth-layout">
+    <!-- Left: Branding Panel -->
+    <div class="auth-branding">
+      <div class="branding-orb branding-orb--1"></div>
+      <div class="branding-orb branding-orb--2"></div>
 
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Password</mat-label>
-          <input matInput type="password" formControlName="password" required>
-          <mat-error *ngIf="loginForm.get('password')?.hasError('required')">
-            Password is required
-          </mat-error>
-          <mat-error *ngIf="loginForm.get('password')?.hasError('minlength')">
-            Password must be at least 8 characters
-          </mat-error>
-        </mat-form-field>
-
-        <div class="error-message" *ngIf="error">
-          {{ error }}
+      <div class="branding-content">
+        <div class="branding-logo">
+          <mat-icon>show_chart</mat-icon>
+          <span>TradingPipeline</span>
         </div>
+        <h2>Welcome back</h2>
+        <p>Sign in to manage your AI-powered trading pipelines and monitor executions in real time.</p>
 
-        <button 
-          mat-raised-button 
-          color="primary" 
-          type="submit" 
-          class="full-width submit-button"
-          [disabled]="loading || loginForm.invalid">
-          <span *ngIf="!loading">Login</span>
-          <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
-        </button>
-      </form>
-
-      <div class="register-link">
-        Don't have an account? <a routerLink="/register">Register here</a>
+        <div class="branding-features">
+          <div class="branding-feature">
+            <mat-icon>psychology</mat-icon>
+            <span>AI-powered strategies with GPT-4</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>shield</mat-icon>
+            <span>Built-in risk management on every trade</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>schedule</mat-icon>
+            <span>24/7 automated pipeline execution</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>candlestick_chart</mat-icon>
+            <span>Multi-timeframe market analysis</span>
+          </div>
+        </div>
       </div>
-    </mat-card-content>
-  </mat-card>
-  </div>
-</div>
+    </div>
 
+    <!-- Right: Login Form -->
+    <div class="auth-form-panel">
+      <mat-card class="auth-card">
+        <mat-card-header>
+          <mat-card-title>Sign In</mat-card-title>
+          <mat-card-subtitle>Enter your credentials to continue</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <!-- Session Expired Message -->
+          <div class="info-message" *ngIf="sessionExpiredMessage">
+            {{ sessionExpiredMessage }}
+          </div>
+
+          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Email</mat-label>
+              <input matInput type="email" formControlName="email" required>
+              <mat-error *ngIf="loginForm.get('email')?.hasError('required')">
+                Email is required
+              </mat-error>
+              <mat-error *ngIf="loginForm.get('email')?.hasError('email')">
+                Please enter a valid email
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Password</mat-label>
+              <input matInput type="password" formControlName="password" required>
+              <mat-error *ngIf="loginForm.get('password')?.hasError('required')">
+                Password is required
+              </mat-error>
+              <mat-error *ngIf="loginForm.get('password')?.hasError('minlength')">
+                Password must be at least 8 characters
+              </mat-error>
+            </mat-form-field>
+
+            <div class="error-message" *ngIf="error">
+              {{ error }}
+            </div>
+
+            <button
+              mat-raised-button
+              color="primary"
+              type="submit"
+              class="full-width submit-button"
+              [disabled]="loading || loginForm.invalid">
+              <span *ngIf="!loading">Sign In</span>
+              <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
+            </button>
+          </form>
+
+          <div class="auth-switch-link">
+            Don't have an account? <a routerLink="/register">Create one</a>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <h3>
+          <mat-icon>show_chart</mat-icon>
+          TradingPipeline
+        </h3>
+        <p>Agent-based algorithmic trading platform</p>
+      </div>
+      <div class="footer-columns">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a routerLink="/how-it-works">How It Works</a>
+          <a routerLink="/register">Pipeline Builder</a>
+          <a routerLink="/register">Agent Marketplace</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a routerLink="/terms">Terms of Service</a>
+          <a routerLink="/privacy">Privacy Policy</a>
+          <a routerLink="/disclaimer">Disclaimer</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a routerLink="/login">Sign In</a>
+          <a routerLink="/register">Create Account</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+    </div>
+  </footer>
+</div>

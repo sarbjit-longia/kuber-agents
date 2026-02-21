@@ -1,78 +1,150 @@
-<div class="register-container">
+<div class="auth-page">
   <app-navbar></app-navbar>
-  <div class="register-content">
-  <mat-card class="register-card">
-    <mat-card-header>
-      <mat-card-title>Register</mat-card-title>
-      <mat-card-subtitle>Create a new account</mat-card-subtitle>
-    </mat-card-header>
-    
-    <mat-card-content>
-      <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Full Name</mat-label>
-          <input matInput type="text" formControlName="full_name" required>
-          <mat-error *ngIf="registerForm.get('full_name')?.hasError('required')">
-            Full name is required
-          </mat-error>
-        </mat-form-field>
 
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Email</mat-label>
-          <input matInput type="email" formControlName="email" required>
-          <mat-error *ngIf="registerForm.get('email')?.hasError('required')">
-            Email is required
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('email')?.hasError('email')">
-            Please enter a valid email
-          </mat-error>
-        </mat-form-field>
+  <div class="auth-layout">
+    <!-- Left: Branding Panel -->
+    <div class="auth-branding">
+      <div class="branding-orb branding-orb--1"></div>
+      <div class="branding-orb branding-orb--2"></div>
 
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Password</mat-label>
-          <input matInput type="password" formControlName="password" required>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('required')">
-            Password is required
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('minlength')">
-            Password must be at least 8 characters
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('maxlength')">
-            Password must not exceed 72 characters
-          </mat-error>
-        </mat-form-field>
-
-        <mat-form-field appearance="fill" class="full-width">
-          <mat-label>Confirm Password</mat-label>
-          <input matInput type="password" formControlName="confirmPassword" required>
-          <mat-error *ngIf="registerForm.get('confirmPassword')?.hasError('required')">
-            Please confirm your password
-          </mat-error>
-          <mat-error *ngIf="registerForm.hasError('mismatch')">
-            Passwords do not match
-          </mat-error>
-        </mat-form-field>
-
-        <div class="error-message" *ngIf="error">
-          {{ error }}
+      <div class="branding-content">
+        <div class="branding-logo">
+          <mat-icon>show_chart</mat-icon>
+          <span>TradingPipeline</span>
         </div>
+        <h2>Start trading smarter</h2>
+        <p>Create your free account and build your first AI-powered trading pipeline in minutes.</p>
 
-        <button 
-          mat-raised-button 
-          color="primary" 
-          type="submit" 
-          class="full-width submit-button"
-          [disabled]="loading || registerForm.invalid">
-          <span *ngIf="!loading">Register</span>
-          <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
-        </button>
-      </form>
-
-      <div class="login-link">
-        Already have an account? <a routerLink="/login">Login here</a>
+        <div class="branding-features">
+          <div class="branding-feature">
+            <mat-icon>rocket_launch</mat-icon>
+            <span>Free to start with $10 AI credits</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>code_off</mat-icon>
+            <span>Zero code — guided pipeline builder</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>account_balance</mat-icon>
+            <span>Paper trading on all supported brokers</span>
+          </div>
+          <div class="branding-feature">
+            <mat-icon>trending_up</mat-icon>
+            <span>Connect Tradier, Alpaca, or OANDA</span>
+          </div>
+        </div>
       </div>
-    </mat-card-content>
-  </mat-card>
-  </div>
-</div>
+    </div>
 
+    <!-- Right: Register Form -->
+    <div class="auth-form-panel">
+      <mat-card class="auth-card">
+        <mat-card-header>
+          <mat-card-title>Create Account</mat-card-title>
+          <mat-card-subtitle>Sign up to get started for free</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Full Name</mat-label>
+              <input matInput type="text" formControlName="full_name" required>
+              <mat-error *ngIf="registerForm.get('full_name')?.hasError('required')">
+                Full name is required
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Email</mat-label>
+              <input matInput type="email" formControlName="email" required>
+              <mat-error *ngIf="registerForm.get('email')?.hasError('required')">
+                Email is required
+              </mat-error>
+              <mat-error *ngIf="registerForm.get('email')?.hasError('email')">
+                Please enter a valid email
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Password</mat-label>
+              <input matInput type="password" formControlName="password" required>
+              <mat-error *ngIf="registerForm.get('password')?.hasError('required')">
+                Password is required
+              </mat-error>
+              <mat-error *ngIf="registerForm.get('password')?.hasError('minlength')">
+                Password must be at least 8 characters
+              </mat-error>
+              <mat-error *ngIf="registerForm.get('password')?.hasError('maxlength')">
+                Password must not exceed 72 characters
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Confirm Password</mat-label>
+              <input matInput type="password" formControlName="confirmPassword" required>
+              <mat-error *ngIf="registerForm.get('confirmPassword')?.hasError('required')">
+                Please confirm your password
+              </mat-error>
+              <mat-error *ngIf="registerForm.hasError('mismatch')">
+                Passwords do not match
+              </mat-error>
+            </mat-form-field>
+
+            <div class="error-message" *ngIf="error">
+              {{ error }}
+            </div>
+
+            <button
+              mat-raised-button
+              color="primary"
+              type="submit"
+              class="full-width submit-button"
+              [disabled]="loading || registerForm.invalid">
+              <span *ngIf="!loading">Create Account</span>
+              <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
+            </button>
+          </form>
+
+          <div class="auth-switch-link">
+            Already have an account? <a routerLink="/login">Sign in</a>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <h3>
+          <mat-icon>show_chart</mat-icon>
+          TradingPipeline
+        </h3>
+        <p>Agent-based algorithmic trading platform</p>
+      </div>
+      <div class="footer-columns">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a routerLink="/how-it-works">How It Works</a>
+          <a routerLink="/register">Pipeline Builder</a>
+          <a routerLink="/register">Agent Marketplace</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a routerLink="/terms">Terms of Service</a>
+          <a routerLink="/privacy">Privacy Policy</a>
+          <a routerLink="/disclaimer">Disclaimer</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a routerLink="/login">Sign In</a>
+          <a routerLink="/register">Create Account</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+    </div>
+  </footer>
+</div>

@@ -11,6 +11,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatIconModule } from '@angular/material/icon';
 
 import { AuthService } from '../../../core/services/auth.service';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
@@ -27,6 +28,7 @@ import { NavbarComponent } from '../../../core/components/navbar/navbar.componen
     MatInputModule,
     MatButtonModule,
     MatProgressSpinnerModule,
+    MatIconModule,
     NavbarComponent
   ],
   templateUrl: './login.component.html',
