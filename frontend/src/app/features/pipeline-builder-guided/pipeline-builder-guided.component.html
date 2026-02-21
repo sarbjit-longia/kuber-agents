@@ -297,30 +297,58 @@
             Telegram Notifications
           </div>
 
-          <div class="hint">
-            <mat-icon>info</mat-icon>
-            Configure Telegram in <a routerLink="/settings">User Settings</a> first
-          </div>
-
-          <div class="notification-toggle">
-            <mat-slide-toggle [(ngModel)]="notificationEnabled">
-              Enable Notifications
-            </mat-slide-toggle>
-          </div>
-
-          <div class="notification-events" *ngIf="notificationEnabled">
-            <div class="col-title">Choose events to notify:</div>
-            <div class="event-checkboxes">
-              <mat-checkbox
-                *ngFor="let event of availableNotificationEvents"
-                (change)="toggleNotificationEvent(event.value)"
-                [checked]="notificationEvents.includes(event.value)"
-              >
-                <mat-icon class="event-icon">{{ event.icon }}</mat-icon>
-                {{ event.label }}
-              </mat-checkbox>
+          <div class="approval-info-banner">
+            <div class="approval-info-icon">
+              <mat-icon>telegram</mat-icon>
+            </div>
+            <div class="approval-info-text">
+              <strong>Set up Telegram</strong>
+              <span>Configure your Telegram bot token and chat ID in <a routerLink="/settings">User Settings</a> to receive notifications.</span>
             </div>
           </div>
+
+          <div class="approval-toggle-card">
+            <div class="approval-toggle-left">
+              <div class="approval-toggle-icon" [class.active]="notificationEnabled">
+                <mat-icon>{{ notificationEnabled ? 'notifications_active' : 'notifications_off' }}</mat-icon>
+              </div>
+              <div class="approval-toggle-text">
+                <div class="approval-toggle-title">Enable Notifications</div>
+                <div class="approval-toggle-desc">{{ notificationEnabled ? 'You will be notified of selected events' : 'Notifications are disabled' }}</div>
+              </div>
+            </div>
+            <mat-slide-toggle [(ngModel)]="notificationEnabled"></mat-slide-toggle>
+          </div>
+
+          <ng-container *ngIf="notificationEnabled">
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>event</mat-icon>
+                <span>Notification Events</span>
+              </div>
+              <div class="approval-section-desc">Choose which pipeline events trigger a Telegram notification</div>
+              <div class="notif-event-grid">
+                <div class="notif-event-option"
+                     *ngFor="let event of availableNotificationEvents"
+                     [class.selected]="notificationEvents.includes(event.value)"
+                     (click)="toggleNotificationEvent(event.value)">
+                  <div class="notif-event-icon" [ngClass]="event.value">
+                    <mat-icon>{{ event.icon }}</mat-icon>
+                  </div>
+                  <div class="notif-event-text">
+                    <span class="notif-event-title">{{ event.label }}</span>
+                    <span class="notif-event-desc" [ngSwitch]="event.value">
+                      <ng-container *ngSwitchCase="'trade_executed'">When a trade is successfully placed</ng-container>
+                      <ng-container *ngSwitchCase="'position_closed'">When a position is closed or exits</ng-container>
+                      <ng-container *ngSwitchCase="'pipeline_failed'">When a pipeline encounters an error</ng-container>
+                      <ng-container *ngSwitchCase="'risk_rejected'">When risk manager blocks a trade</ng-container>
+                    </span>
+                  </div>
+                  <mat-icon class="notif-event-check">{{ notificationEvents.includes(event.value) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+              </div>
+            </div>
+          </ng-container>
         </div>
 
         <!-- Trade Approval Settings -->

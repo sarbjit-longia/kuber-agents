@@ -995,3 +995,86 @@
     flex: 1;
   }
 }
+
+// ── Notification Settings ──────────────────────────────────
+
+.notif-event-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.notif-event-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+
+  &:hover {
+    border-color: rgba(99, 102, 241, 0.3);
+    background: var(--bg-card-hover);
+  }
+
+  &.selected {
+    border-color: rgba(99, 102, 241, 0.5);
+    background: var(--accent-bg);
+
+    .notif-event-check {
+      color: var(--accent-primary);
+    }
+  }
+
+  .notif-event-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: white;
+    }
+
+    &.trade_executed { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+    &.position_closed { background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); }
+    &.pipeline_failed { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+    &.risk_rejected { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+  }
+
+  .notif-event-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+
+    .notif-event-title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .notif-event-desc {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+    }
+  }
+
+  .notif-event-check {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--text-disabled);
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+  }
+}
