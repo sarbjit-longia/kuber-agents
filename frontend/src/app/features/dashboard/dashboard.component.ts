@@ -19,6 +19,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { Subject, interval, takeUntil, switchMap } from 'rxjs';
 
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { FooterComponent } from '../../shared/components/footer/footer.component';
 import { ApiService } from '../../core/services/api.service';
 import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 import {
@@ -49,6 +50,7 @@ import {
     MatDividerModule,
     MatBadgeModule,
     NavbarComponent,
+    FooterComponent,
     LocalDatePipe,
   ],
   templateUrl: './dashboard.component.html',

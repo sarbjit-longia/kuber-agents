@@ -18,6 +18,7 @@ import { Scanner, ScannerCreate } from '../../core/models/scanner.model';
 import { ScannerService } from '../../core/services/scanner.service';
 import { CreateScannerDialogComponent } from './create-scanner-dialog/create-scanner-dialog.component';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { FooterComponent } from '../../shared/components/footer/footer.component';
 import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 
 @Component({
@@ -35,6 +36,7 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
     MatProgressSpinnerModule,
     MatButtonToggleModule,
     NavbarComponent,
+    FooterComponent,
     CreateScannerDialogComponent,
     LocalDatePipe
   ],

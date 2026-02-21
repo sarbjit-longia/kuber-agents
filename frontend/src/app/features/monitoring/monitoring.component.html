@@ -227,9 +227,12 @@
 
       <div class="filter-summary">
         <span class="filter-info">
-          <strong>{{ historicalDataSource.data.length }}</strong> trades in table · 
-          <strong>{{ activeExecutions.length }}</strong> active · 
-          <strong>{{ allExecutions.length }}</strong> total executions
+          <strong>{{ historicalDataSource.data.length }}</strong> trades in table ·
+          <strong>{{ activeExecutions.length }}</strong> active ·
+          <strong>{{ allExecutions.length }}</strong> loaded
+          <span *ngIf="totalServerCount > allExecutions.length">
+            of <strong>{{ totalServerCount }}</strong> total on server
+          </span>
         </span>
       </div>
     </mat-card-content>
@@ -447,15 +450,28 @@
           <tr mat-row *matRowDef="let row; columns: displayedColumns;" (click)="viewExecution(row)" class="execution-row"></tr>
         </table>
 
-        <mat-paginator [length]="historicalTotal"
-                       [pageSizeOptions]="[25, 50, 100, 200]"
-                       [pageSize]="pageSize"
-                       [pageIndex]="pageIndex"
-                       (page)="onPageChange($event)"
+        <mat-paginator [pageSizeOptions]="[25, 50, 100]"
+                       [pageSize]="50"
                        showFirstLastButtons>
         </mat-paginator>
+
+        <div class="load-more-container" *ngIf="hasMore">
+          <button mat-stroked-button
+                  color="primary"
+                  (click)="loadMore()"
+                  [disabled]="loadingMore">
+            <mat-icon *ngIf="!loadingMore">expand_more</mat-icon>
+            <mat-spinner *ngIf="loadingMore" diameter="18"></mat-spinner>
+            <span *ngIf="!loadingMore">
+              Load More ({{ totalServerCount - allExecutions.length }} remaining)
+            </span>
+            <span *ngIf="loadingMore">Loading...</span>
+          </button>
+        </div>
       </div>
     </mat-card-content>
   </mat-card>
 </div>
+
+<app-footer></app-footer>
 </div>

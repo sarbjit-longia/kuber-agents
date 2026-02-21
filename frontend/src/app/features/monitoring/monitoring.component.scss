@@ -1054,6 +1054,31 @@ mat-paginator {
   color: var(--text-secondary);
 }
 
+// Load More
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0 0.5rem;
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+
+    mat-spinner {
+      display: inline-block;
+    }
+
+    &:hover:not(:disabled) {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+  }
+}
+
 // Responsive
 @media (max-width: 768px) {
   .monitoring-container {

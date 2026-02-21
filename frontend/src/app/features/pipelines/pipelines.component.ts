@@ -21,6 +21,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { PipelineService } from '../../core/services/pipeline.service';
 import { ExecutionService } from '../../core/services/execution.service';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { FooterComponent } from '../../shared/components/footer/footer.component';
 
 @Component({
   selector: 'app-pipelines',
@@ -37,7 +38,8 @@ import { NavbarComponent } from '../../core/components/navbar/navbar.component';
     MatMenuModule,
     MatDividerModule,
     MatSnackBarModule,
-    NavbarComponent
+    NavbarComponent,
+    FooterComponent
   ],
   templateUrl: './pipelines.component.html',
   styleUrls: ['./pipelines.component.scss']

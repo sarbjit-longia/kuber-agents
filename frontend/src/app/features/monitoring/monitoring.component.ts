@@ -28,6 +28,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MonitoringService, ExecutionListResponse } from '../../core/services/monitoring.service';
 import { ExecutionSummary, ExecutionStats } from '../../core/models/execution.model';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
+import { FooterComponent } from '../../shared/components/footer/footer.component';
 import { ExecutionReportModalComponent } from './execution-report-modal/execution-report-modal.component';
 import { ReconciliationDialogComponent } from './reconciliation-dialog/reconciliation-dialog.component';
 
@@ -52,7 +53,8 @@ import { ReconciliationDialogComponent } from './reconciliation-dialog/reconcili
     MatInputModule,
     MatDatepickerModule,
     MatNativeDateModule,
-    NavbarComponent
+    NavbarComponent,
+    FooterComponent
   ],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.scss']
@@ -99,16 +101,17 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   stats: ExecutionStats | null = null;
   loading = true;
 
-  // Server-side pagination for historical executions
-  pageSize = 50;
-  pageIndex = 0;
-  historicalTotal = 0;
-  
+  // Client-side pagination — fetch a large batch, filter + paginate locally
+  private fetchSize = 500;
+  totalServerCount = 0;
+  hasMore = false;
+  loadingMore = false;
+
   // Filter values
   filters = {
     status: 'all',
     mode: 'all',
-    tradeOutcome: 'executed',
+    tradeOutcome: 'all',
     symbol: '',
     pipeline: '',
     startDate: null as Date | null,
@@ -174,22 +177,17 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngAfterViewInit(): void {
-    // No client-side paginator binding — pagination is server-side
+    this.historicalDataSource.paginator = this.paginator;
   }
 
   loadData(): void {
-    const offset = this.pageIndex * this.pageSize;
-
-    this.monitoringService.loadExecutions(this.pageSize, offset).subscribe({
+    this.monitoringService.loadExecutions(this.fetchSize, 0).subscribe({
       next: (resp: ExecutionListResponse) => {
-        // Store all executions returned (active + current page of historical)
         this.allExecutions = resp.executions;
-        this.historicalTotal = resp.historical_total;
+        this.totalServerCount = resp.historical_total + resp.active_count;
+        this.hasMore = resp.executions.length < this.totalServerCount;
 
-        // Build execution timeline bars (from all returned executions)
         this.buildExecutionBars();
-
-        // Apply client-side filters for display
         this.applyFilters();
 
         this.loading = false;
@@ -211,11 +209,29 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  /** Called when the user changes page in the historical table */
-  onPageChange(event: any): void {
-    this.pageIndex = event.pageIndex;
-    this.pageSize = event.pageSize;
-    this.loadData();
+  loadMore(): void {
+    this.loadingMore = true;
+    const offset = this.allExecutions.length;
+
+    this.monitoringService.loadExecutions(this.fetchSize, offset).subscribe({
+      next: (resp: ExecutionListResponse) => {
+        // Append new executions (skip duplicates by id)
+        const existingIds = new Set(this.allExecutions.map(e => e.id));
+        const newExecs = resp.executions.filter(e => !existingIds.has(e.id));
+        this.allExecutions = [...this.allExecutions, ...newExecs];
+        this.totalServerCount = resp.historical_total + resp.active_count;
+        this.hasMore = this.allExecutions.length < this.totalServerCount;
+
+        this.buildExecutionBars();
+        this.applyFilters();
+        this.loadingMore = false;
+      },
+      error: (error) => {
+        console.error('Failed to load more executions:', error);
+        this.loadingMore = false;
+        this.showNotification('Failed to load more executions', 'error');
+      }
+    });
   }
 
   applyFilters(): void {
@@ -267,9 +283,10 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     this.historicalDataSource.data = historical;
-    
+
+    // Reset paginator to first page on filter change
     if (this.paginator) {
-      this.historicalDataSource.paginator = this.paginator;
+      this.paginator.firstPage();
     }
   }
 
@@ -277,7 +294,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     this.filters = {
       status: 'all',
       mode: 'all',
-      tradeOutcome: 'executed',
+      tradeOutcome: 'all',
       symbol: '',
       pipeline: '',
       startDate: null,
