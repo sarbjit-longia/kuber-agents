@@ -1,0 +1,216 @@
+// ════════════════════════════════════════════════════════════════
+// Disclaimer Page
+// ════════════════════════════════════════════════════════════════
+
+.legal-page {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+// ── Hero ────────────────────────────────────────────────────────
+
+.legal-hero {
+  padding: 8rem 4rem 4rem;
+  background: var(--bg-primary);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    padding: 6rem 1.5rem 3rem;
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -30%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 100%;
+    background: radial-gradient(ellipse, rgba(102, 126, 234, 0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .legal-hero-content {
+    position: relative;
+    z-index: 1;
+
+    h1 {
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin: 0 0 0.75rem;
+
+      @media (max-width: 768px) {
+        font-size: 2.25rem;
+      }
+    }
+
+    .legal-effective {
+      font-size: 1rem;
+      color: var(--text-muted);
+    }
+  }
+}
+
+// ── Body ────────────────────────────────────────────────────────
+
+.legal-body {
+  padding: 0 4rem 6rem;
+
+  @media (max-width: 768px) {
+    padding: 0 1.5rem 4rem;
+  }
+}
+
+.legal-content {
+  max-width: 860px;
+  margin: 0 auto;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  font-size: 1rem;
+
+  .legal-intro {
+    font-size: 1.1rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 2.5rem 0 1rem;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 1.75rem 0 0.75rem;
+  }
+
+  p {
+    margin: 0 0 1rem;
+  }
+
+  ul {
+    margin: 0 0 1.25rem;
+    padding-left: 1.5rem;
+
+    li {
+      margin-bottom: 0.5rem;
+      line-height: 1.7;
+    }
+  }
+
+  a {
+    color: var(--accent-primary);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  strong {
+    color: var(--text-primary);
+  }
+}
+
+// ── Footer ──────────────────────────────────────────────────────
+
+.footer {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 4rem 4rem 1rem;
+  border-top: 1px solid var(--border-color);
+
+  @media (max-width: 768px) {
+    padding: 3rem 1.5rem 1rem;
+  }
+
+  .footer-content {
+    max-width: 1400px;
+    margin: 0 auto 3rem;
+    display: grid;
+    grid-template-columns: 1.5fr 2fr;
+    gap: 3rem;
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+
+    .footer-brand {
+      h3 {
+        font-size: 1.4rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        mat-icon {
+          font-size: 1.3rem;
+          width: 1.3rem;
+          height: 1.3rem;
+          color: var(--accent-primary);
+        }
+      }
+
+      p {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+    }
+
+    .footer-columns {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+
+      @media (max-width: 600px) {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .footer-col {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+
+        h4 {
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 0.5rem;
+        }
+
+        a {
+          color: var(--text-muted);
+          text-decoration: none;
+          font-size: 0.9rem;
+          transition: color 0.3s ease;
+
+          &:hover {
+            color: var(--accent-primary);
+          }
+        }
+      }
+    }
+  }
+
+  .footer-bottom {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+}

@@ -6,28 +6,44 @@
   <!-- HERO SECTION                                               -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="hero-section">
+    <!-- Animated gradient orbs -->
+    <div class="hero-orb hero-orb--1"></div>
+    <div class="hero-orb hero-orb--2"></div>
+    <div class="hero-orb hero-orb--3"></div>
+    <!-- Dot grid pattern -->
+    <div class="hero-grid-pattern"></div>
+
     <div class="hero-content">
       <div class="hero-text">
         <div class="hero-badge">
-          <mat-icon>auto_awesome</mat-icon>
+          <span class="badge-dot"></span>
           <span>AI-Powered Algorithmic Trading</span>
         </div>
         <h1 class="hero-title">
-          Build Trading Strategies<br>
-          <span class="gradient-text">with AI Agents</span>
+          Automate Your Trading<br>
+          <span class="gradient-text">with Intelligent Agents</span>
         </h1>
         <p class="hero-subtitle">
-          Visually connect AI agents to create automated trading pipelines.
-          No coding. No complexity. Just configure and deploy.
+          Chain AI agents into automated pipelines that analyse markets,
+          generate signals, manage risk, and execute trades — around the clock.
         </p>
+
+        <!-- Feature pills -->
+        <div class="hero-pills">
+          <span class="pill"><mat-icon>psychology</mat-icon> GPT-4 Strategies</span>
+          <span class="pill"><mat-icon>shield</mat-icon> Bracket Orders</span>
+          <span class="pill"><mat-icon>candlestick_chart</mat-icon> Multi-Timeframe</span>
+          <span class="pill"><mat-icon>code_off</mat-icon> Zero Code</span>
+        </div>
+
         <div class="hero-actions">
           <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
             <mat-icon>rocket_launch</mat-icon>
             Start Building — It's Free
           </button>
-          <button mat-stroked-button class="secondary-button" routerLink="/login">
+          <button mat-stroked-button class="secondary-button" routerLink="/how-it-works">
             <mat-icon>play_circle</mat-icon>
-            Watch Demo
+            See How It Works
           </button>
         </div>
         <div class="hero-trust">
@@ -42,38 +58,67 @@
 
       <div class="hero-visual">
         <div class="pipeline-preview">
-          <div class="preview-label">Your first pipeline in 5 minutes</div>
-          <div class="preview-card agent-card">
-            <mat-icon>schedule</mat-icon>
-            <span>Time Trigger</span>
-            <span class="card-tag free">FREE</span>
+          <!-- Dashboard-like header -->
+          <div class="preview-header">
+            <div class="preview-header-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <span class="preview-header-title">My Trading Pipeline</span>
+            <span class="preview-status">
+              <span class="status-dot"></span>
+              Running
+            </span>
           </div>
-          <div class="flow-connector">
-            <div class="connector-line"></div>
-            <mat-icon class="connector-icon">arrow_downward</mat-icon>
-          </div>
-          <div class="preview-card agent-card">
-            <mat-icon>candlestick_chart</mat-icon>
-            <span>Market Data</span>
-            <span class="card-tag free">FREE</span>
-          </div>
-          <div class="flow-connector">
-            <div class="connector-line"></div>
-            <mat-icon class="connector-icon">arrow_downward</mat-icon>
-          </div>
-          <div class="preview-card agent-card ai">
-            <mat-icon>psychology</mat-icon>
-            <span>AI Strategy</span>
-            <span class="card-tag premium">AI</span>
-          </div>
-          <div class="flow-connector">
-            <div class="connector-line"></div>
-            <mat-icon class="connector-icon">arrow_downward</mat-icon>
-          </div>
-          <div class="preview-card agent-card">
-            <mat-icon>swap_horiz</mat-icon>
-            <span>Execute Trade</span>
-            <span class="card-tag free">FREE</span>
+
+          <div class="preview-body">
+            <div class="preview-card agent-card">
+              <div class="agent-status done"></div>
+              <mat-icon>schedule</mat-icon>
+              <span>Time Trigger</span>
+              <span class="card-tag free">FREE</span>
+            </div>
+            <div class="flow-connector">
+              <div class="connector-line"></div>
+              <mat-icon class="connector-icon">arrow_downward</mat-icon>
+            </div>
+            <div class="preview-card agent-card">
+              <div class="agent-status done"></div>
+              <mat-icon>candlestick_chart</mat-icon>
+              <span>Market Data</span>
+              <span class="card-tag free">FREE</span>
+            </div>
+            <div class="flow-connector">
+              <div class="connector-line"></div>
+              <mat-icon class="connector-icon">arrow_downward</mat-icon>
+            </div>
+            <div class="preview-card agent-card ai">
+              <div class="agent-status active"></div>
+              <mat-icon>psychology</mat-icon>
+              <span>AI Strategy</span>
+              <span class="card-tag premium">AI</span>
+            </div>
+            <div class="flow-connector">
+              <div class="connector-line"></div>
+              <mat-icon class="connector-icon">arrow_downward</mat-icon>
+            </div>
+            <div class="preview-card agent-card">
+              <div class="agent-status pending"></div>
+              <mat-icon>shield</mat-icon>
+              <span>Risk Manager</span>
+              <span class="card-tag free">FREE</span>
+            </div>
+            <div class="flow-connector">
+              <div class="connector-line"></div>
+              <mat-icon class="connector-icon">arrow_downward</mat-icon>
+            </div>
+            <div class="preview-card agent-card">
+              <div class="agent-status pending"></div>
+              <mat-icon>swap_horiz</mat-icon>
+              <span>Execute Trade</span>
+              <span class="card-tag free">FREE</span>
+            </div>
           </div>
         </div>
       </div>
@@ -104,6 +149,22 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- PLATFORM HIGHLIGHTS                                        -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="highlights-section">
+    <div class="highlights-grid">
+      <div class="highlight-card" *ngFor="let h of highlights">
+        <div class="highlight-icon">
+          <mat-icon>{{ h.icon }}</mat-icon>
+        </div>
+        <div class="highlight-number">{{ h.number }}</div>
+        <div class="highlight-label">{{ h.label }}</div>
+        <p class="highlight-desc">{{ h.description }}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- HOW IT WORKS                                               -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="how-it-works-section">
@@ -113,14 +174,19 @@
       <p>From idea to automated trading in four easy steps</p>
     </div>
     <div class="steps-grid">
-      <div class="step-card" *ngFor="let step of howItWorksSteps">
-        <div class="step-number">{{ step.step }}</div>
-        <div class="step-icon">
-          <mat-icon>{{ step.icon }}</mat-icon>
+      <ng-container *ngFor="let step of howItWorksSteps; let last = last">
+        <div class="step-card">
+          <div class="step-number">{{ step.step }}</div>
+          <div class="step-icon">
+            <mat-icon>{{ step.icon }}</mat-icon>
+          </div>
+          <h3>{{ step.title }}</h3>
+          <p>{{ step.description }}</p>
         </div>
-        <h3>{{ step.title }}</h3>
-        <p>{{ step.description }}</p>
-      </div>
+        <div class="step-arrow" *ngIf="!last">
+          <mat-icon>east</mat-icon>
+        </div>
+      </ng-container>
     </div>
   </section>
 
@@ -134,13 +200,14 @@
       <p>Powerful features designed for both beginners and experienced traders</p>
     </div>
     <div class="features-grid">
-      <mat-card class="feature-card" *ngFor="let feature of features">
+      <div class="feature-card" *ngFor="let feature of features">
+        <div class="feature-accent"></div>
         <div class="feature-icon">
           <mat-icon>{{ feature.icon }}</mat-icon>
         </div>
         <h3>{{ feature.title }}</h3>
         <p>{{ feature.description }}</p>
-      </mat-card>
+      </div>
     </div>
   </section>
 
@@ -249,7 +316,7 @@
     <div class="footer-content">
       <div class="footer-brand">
         <h3>
-          <mat-icon>auto_awesome</mat-icon>
+          <mat-icon>show_chart</mat-icon>
           TradingPipeline
         </h3>
         <p>Agent-based algorithmic trading platform</p>
@@ -257,15 +324,15 @@
       <div class="footer-columns">
         <div class="footer-col">
           <h4>Product</h4>
+          <a routerLink="/how-it-works">How It Works</a>
           <a routerLink="/register">Pipeline Builder</a>
           <a routerLink="/register">Agent Marketplace</a>
-          <a routerLink="/register">Pricing</a>
         </div>
         <div class="footer-col">
-          <h4>Resources</h4>
-          <a routerLink="/register">Documentation</a>
-          <a routerLink="/register">API Reference</a>
-          <a routerLink="/register">Blog</a>
+          <h4>Legal</h4>
+          <a routerLink="/terms">Terms of Service</a>
+          <a routerLink="/privacy">Privacy Policy</a>
+          <a routerLink="/disclaimer">Disclaimer</a>
         </div>
         <div class="footer-col">
           <h4>Account</h4>
@@ -275,7 +342,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <p>&copy; 2025 TradingPipeline. All rights reserved.</p>
+      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
     </div>
   </footer>
 </div>

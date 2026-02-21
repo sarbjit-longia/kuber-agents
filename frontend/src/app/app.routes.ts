@@ -15,6 +15,18 @@ export const routes: Routes = [
     loadComponent: () => import('./features/how-it-works/how-it-works.component').then(m => m.HowItWorksComponent)
   },
   {
+    path: 'terms',
+    loadComponent: () => import('./features/legal/terms/terms.component').then(m => m.TermsComponent)
+  },
+  {
+    path: 'privacy',
+    loadComponent: () => import('./features/legal/privacy/privacy.component').then(m => m.PrivacyComponent)
+  },
+  {
+    path: 'disclaimer',
+    loadComponent: () => import('./features/legal/disclaimer/disclaimer.component').then(m => m.DisclaimerComponent)
+  },
+  {
     path: 'login',
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },

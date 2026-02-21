@@ -1,0 +1,166 @@
+<div class="how-it-works-page">
+  <!-- Navigation Bar -->
+  <app-navbar></app-navbar>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- HERO                                                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <mat-icon>auto_awesome</mat-icon>
+        <span>Step-by-Step Guide</span>
+      </div>
+      <h1 class="hero-title">
+        How <span class="gradient-text">TradingPipeline</span> Works
+      </h1>
+      <p class="hero-subtitle">
+        Go from zero to a fully automated trading strategy in four simple steps.
+        No code. No complexity. Just results.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- STEPS                                                      -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="steps-section">
+    <div class="steps-timeline">
+      <div class="step-block" *ngFor="let step of steps; let last = last">
+        <!-- Left: number + connector line -->
+        <div class="step-indicator">
+          <div class="step-number">{{ step.number }}</div>
+          <div class="step-line" *ngIf="!last"></div>
+        </div>
+
+        <!-- Right: content card -->
+        <div class="step-content">
+          <div class="step-header">
+            <div class="step-icon">
+              <mat-icon>{{ step.icon }}</mat-icon>
+            </div>
+            <div>
+              <h2>{{ step.title }}</h2>
+              <span class="step-subtitle">{{ step.subtitle }}</span>
+            </div>
+          </div>
+          <p class="step-description">{{ step.description }}</p>
+          <ul class="step-details">
+            <li *ngFor="let detail of step.details">
+              <mat-icon class="check-icon">check_circle</mat-icon>
+              <span>{{ detail }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- PIPELINE WALKTHROUGH                                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="pipeline-section">
+    <div class="section-header">
+      <span class="section-tag">Example Pipeline</span>
+      <h2>See a Pipeline in Action</h2>
+      <p>
+        Here's what a typical automated pipeline looks like — six agents chained
+        together, each handling one step of the trading lifecycle.
+      </p>
+    </div>
+
+    <div class="pipeline-flow">
+      <div class="pipeline-agent" *ngFor="let agent of pipelineAgents; let i = index">
+        <div class="agent-card" [class.ai]="!agent.free && agent.category === 'analysis'">
+          <div class="agent-number">{{ i + 1 }}</div>
+          <div class="agent-icon">
+            <mat-icon>{{ agent.icon }}</mat-icon>
+          </div>
+          <div class="agent-info">
+            <h4>{{ agent.name }}</h4>
+            <span class="agent-category">{{ agent.category }}</span>
+          </div>
+          <span class="agent-badge" [class.free]="agent.free" [class.premium]="!agent.free">
+            {{ agent.free ? 'FREE' : 'AI' }}
+          </span>
+        </div>
+        <p class="agent-desc">{{ agent.description }}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FAQ                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="faq-section">
+    <div class="section-header">
+      <span class="section-tag">FAQ</span>
+      <h2>Frequently Asked Questions</h2>
+      <p>Everything you need to know before you start.</p>
+    </div>
+
+    <div class="faq-list">
+      <div class="faq-item" *ngFor="let faq of faqs" [class.open]="faq.open" (click)="toggleFaq(faq)">
+        <div class="faq-question">
+          <span>{{ faq.question }}</span>
+          <mat-icon>{{ faq.open ? 'expand_less' : 'expand_more' }}</mat-icon>
+        </div>
+        <div class="faq-answer" *ngIf="faq.open">
+          <p>{{ faq.answer }}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- CTA                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="cta-section">
+    <div class="cta-content">
+      <h2>Ready to Build Your First Pipeline?</h2>
+      <p>Sign up for free, connect your broker, and have an automated strategy running in minutes.</p>
+      <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
+        <mat-icon>arrow_forward</mat-icon>
+        Get Started — It's Free
+      </button>
+      <p class="cta-note">No credit card required · $10 free AI credits · Paper trading included</p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FOOTER                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <h3>
+          <mat-icon>auto_awesome</mat-icon>
+          TradingPipeline
+        </h3>
+        <p>Agent-based algorithmic trading platform</p>
+      </div>
+      <div class="footer-columns">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a routerLink="/how-it-works">How It Works</a>
+          <a routerLink="/register">Pipeline Builder</a>
+          <a routerLink="/register">Agent Marketplace</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a routerLink="/terms">Terms of Service</a>
+          <a routerLink="/privacy">Privacy Policy</a>
+          <a routerLink="/disclaimer">Disclaimer</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a routerLink="/login">Sign In</a>
+          <a routerLink="/register">Create Account</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+    </div>
+  </footer>
+</div>
