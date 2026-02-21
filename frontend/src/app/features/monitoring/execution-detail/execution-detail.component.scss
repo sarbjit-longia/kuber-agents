@@ -511,6 +511,204 @@
 }
 
 // Live Monitoring Card
+// ── Trade Approval Card ──────────────────────────────────────
+
+.approval-card {
+  margin-bottom: 2rem;
+  border: 1px solid rgba(102, 126, 234, 0.3) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.12);
+  overflow: hidden;
+
+  mat-card-header {
+    background: var(--accent-gradient);
+    color: white;
+    padding: 1.25rem 1.5rem;
+
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin: 0;
+
+      .approval-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+        animation: approval-glow 2s ease-in-out infinite;
+      }
+    }
+  }
+
+  mat-card-content {
+    padding: 1.5rem !important;
+  }
+
+  .approval-countdown-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .timer-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: var(--color-warning-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: var(--color-warning);
+        animation: approval-glow 2s ease-in-out infinite;
+      }
+    }
+
+    .countdown-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+
+      .countdown-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+
+      .countdown-value {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: var(--color-warning);
+        font-family: 'SF Mono', 'Courier New', monospace;
+        letter-spacing: 1px;
+      }
+    }
+  }
+
+  .approval-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .approval-detail-section {
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border-left: 3px solid var(--accent-primary);
+
+      h3 {
+        margin: 0 0 0.875rem 0;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--accent-primary);
+      }
+
+      .monitoring-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid var(--border-color);
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        .monitoring-label {
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+
+        .monitoring-value {
+          color: var(--text-primary);
+          font-weight: 600;
+
+          &.text-success { color: var(--color-success); }
+          &.text-danger { color: var(--color-error); }
+        }
+      }
+    }
+  }
+
+  .approval-actions {
+    display: flex;
+    gap: 0.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      border-radius: 10px;
+      transition: all 0.2s ease;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .approve-btn-large {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+      color: white !important;
+      padding: 0.625rem 2rem;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+      }
+    }
+
+    .reject-btn-large {
+      background: var(--bg-elevated) !important;
+      color: var(--color-error) !important;
+      border: 1px solid rgba(239, 68, 68, 0.3) !important;
+      padding: 0.625rem 2rem;
+
+      &:hover {
+        background: var(--color-error-bg) !important;
+      }
+    }
+  }
+}
+
+@keyframes approval-glow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+
 .monitoring-card {
   margin-bottom: 2rem;
   border: 2px solid rgba(99, 102, 241, 0.4);

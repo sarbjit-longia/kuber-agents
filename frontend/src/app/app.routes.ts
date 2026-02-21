@@ -75,6 +75,10 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'approve/:token',
+    loadComponent: () => import('./features/approval/approval.component').then(m => m.ApprovalComponent)
+  },
+  {
     path: '**',
     redirectTo: '/dashboard'
   }

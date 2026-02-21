@@ -98,6 +98,13 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     { value: 'risk_rejected', label: 'Risk Rejected', icon: 'block' }
   ];
 
+  // Trade approval settings
+  requireApproval = false;
+  approvalModes: string[] = ['live'];
+  approvalTimeoutMinutes = 15;
+  approvalChannels: string[] = ['web'];
+  approvalPhone = '';
+
   triggerMode: TriggerMode = TriggerMode.PERIODIC;
   scannerId: string | null = null;
   signalSubscriptions: any[] | null = null; // backend shape: {signal_type,timeframe?,min_confidence?}[] | null
@@ -179,7 +186,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   ];
 
-  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings'; title: string; subtitle: string; icon: string }> = [
+  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings'; title: string; subtitle: string; icon: string }> = [
     {
       key: 'pipeline_settings',
       title: 'Pipeline settings',
@@ -203,6 +210,12 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       title: 'Notifications',
       subtitle: 'Telegram alerts for trades + events',
       icon: 'notifications'
+    },
+    {
+      key: 'approval_settings',
+      title: 'Trade Approval',
+      subtitle: 'Require manual approval before trades',
+      icon: 'verified_user'
     }
   ];
 
@@ -311,6 +324,13 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         // Load notification settings
         this.notificationEnabled = pipeline.notification_enabled || false;
         this.notificationEvents = pipeline.notification_events || [];
+
+        // Load approval settings
+        this.requireApproval = pipeline.require_approval || false;
+        this.approvalModes = pipeline.approval_modes || ['live'];
+        this.approvalTimeoutMinutes = pipeline.approval_timeout_minutes || 15;
+        this.approvalChannels = pipeline.approval_channels || ['web'];
+        this.approvalPhone = pipeline.approval_phone || '';
 
         this.triggerMode = pipeline.trigger_mode || TriggerMode.PERIODIC;
         this.scannerId = pipeline.scanner_id || null;
@@ -622,6 +642,11 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       if (this.currentPipelineId) this.savePipeline(false);
       return;
     }
+    if (this.selectedItemKey === 'approval_settings') {
+      this.showNotification('Approval settings applied', 'success');
+      if (this.currentPipelineId) this.savePipeline(false);
+      return;
+    }
   }
 
   private recomputeEstimatedPipelineCost(): void {
@@ -686,6 +711,12 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       notification_events: this.notificationEvents,
       // Scanner can be used for both periodic and signal pipelines; for SIGNAL it is required.
       scanner_id: this.scannerId,
+      // Approval settings
+      require_approval: this.requireApproval,
+      approval_modes: this.approvalModes,
+      approval_timeout_minutes: this.approvalTimeoutMinutes,
+      approval_channels: this.approvalChannels,
+      approval_phone: this.approvalPhone || null,
     };
     // Only set is_active when creating a new pipeline; don't accidentally deactivate existing pipelines on every save
     if (!this.currentPipelineId) {
@@ -779,7 +810,25 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     return { ready: missing.length === 0, missing };
   }
 
-  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings'): 'READY' | 'SETUP' | 'TODO' {
+  toggleApprovalMode(mode: string): void {
+    const index = this.approvalModes.indexOf(mode);
+    if (index >= 0) {
+      this.approvalModes = this.approvalModes.filter(m => m !== mode);
+    } else {
+      this.approvalModes = [...this.approvalModes, mode];
+    }
+  }
+
+  toggleApprovalChannel(channel: string): void {
+    const index = this.approvalChannels.indexOf(channel);
+    if (index >= 0) {
+      this.approvalChannels = this.approvalChannels.filter(c => c !== channel);
+    } else {
+      this.approvalChannels = [...this.approvalChannels, channel];
+    }
+  }
+
+  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings'): 'READY' | 'SETUP' | 'TODO' {
     if (key === 'pipeline_settings') {
       if (this.triggerMode === TriggerMode.SIGNAL && !this.scannerId) return 'SETUP';
       return 'READY';
@@ -794,6 +843,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     if (key === 'notification_settings') {
       // Notification settings are optional, so always return READY if enabled or SETUP if disabled
       return this.notificationEnabled ? 'READY' : 'SETUP';
+    }
+    if (key === 'approval_settings') {
+      return this.requireApproval ? 'READY' : 'SETUP';
     }
     return 'TODO';
   }

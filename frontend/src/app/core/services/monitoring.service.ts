@@ -127,6 +127,27 @@ export class MonitoringService {
   }
 
   /**
+   * Approve a trade execution awaiting approval
+   */
+  approveExecution(executionId: string): Observable<any> {
+    return this.apiService.post<any>(`/api/v1/executions/${executionId}/approve`, { decision: 'approve' });
+  }
+
+  /**
+   * Reject a trade execution awaiting approval
+   */
+  rejectExecution(executionId: string, reason?: string): Observable<any> {
+    return this.apiService.post<any>(`/api/v1/executions/${executionId}/reject`, { decision: 'reject', reason });
+  }
+
+  /**
+   * Get pre-trade report for an execution awaiting approval
+   */
+  getPreTradeReport(executionId: string): Observable<any> {
+    return this.apiService.get<any>(`/api/v1/executions/${executionId}/pre-trade-report`);
+  }
+
+  /**
    * Start polling for updates (every 3 seconds)
    */
   startPolling(executionId: string): void {

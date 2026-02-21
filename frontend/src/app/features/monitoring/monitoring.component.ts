@@ -123,6 +123,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     { value: 'all', label: 'All Statuses' },
     { value: 'RUNNING', label: 'Running' },
     { value: 'MONITORING', label: 'Monitoring' },
+    { value: 'AWAITING_APPROVAL', label: 'Awaiting Approval' },
     { value: 'COMPLETED', label: 'Completed' },
     { value: 'FAILED', label: 'Failed' },
     { value: 'PENDING', label: 'Pending' },
@@ -262,7 +263,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // Split into active and historical
-    const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR', 'NEEDS_RECONCILIATION']);
+    const activeStatuses = new Set(['MONITORING', 'RUNNING', 'PENDING', 'COMMUNICATION_ERROR', 'NEEDS_RECONCILIATION', 'AWAITING_APPROVAL']);
     this.activeExecutions = filtered.filter(
       e => activeStatuses.has(e.status.toUpperCase())
     );
@@ -472,7 +473,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       'cancelled': 'default',
       'paused': 'default',
       'communication_error': 'warn',
-      'needs_reconciliation': 'warn'
+      'needs_reconciliation': 'warn',
+      'awaiting_approval': 'accent'
     };
     return colors[status] || 'default';
   }
@@ -487,7 +489,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
       'cancelled': 'cancel',
       'paused': 'pause_circle',
       'communication_error': 'wifi_off',
-      'needs_reconciliation': 'warning'
+      'needs_reconciliation': 'warning',
+      'awaiting_approval': 'verified_user'
     };
     return icons[status?.toLowerCase()] || 'help';
   }
@@ -757,6 +760,56 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
 
   isNeedsReconciliation(execution: ExecutionSummary): boolean {
     return execution.status.toUpperCase() === 'NEEDS_RECONCILIATION';
+  }
+
+  isAwaitingApproval(execution: ExecutionSummary): boolean {
+    return execution.status.toUpperCase() === 'AWAITING_APPROVAL';
+  }
+
+  approveExecution(execution: ExecutionSummary, event?: Event): void {
+    if (event) event.stopPropagation();
+    if (confirm(`Approve trade for ${execution.symbol || execution.pipeline_name}?`)) {
+      this.monitoringService.approveExecution(execution.id).subscribe({
+        next: () => {
+          this.showNotification('Trade approved — executing now', 'success');
+          this.loadData();
+        },
+        error: (error) => {
+          console.error('Failed to approve execution:', error);
+          this.showNotification(error.error?.detail || 'Failed to approve trade', 'error');
+        }
+      });
+    }
+  }
+
+  rejectExecution(execution: ExecutionSummary, event?: Event): void {
+    if (event) event.stopPropagation();
+    if (confirm(`Reject trade for ${execution.symbol || execution.pipeline_name}?`)) {
+      this.monitoringService.rejectExecution(execution.id).subscribe({
+        next: () => {
+          this.showNotification('Trade rejected', 'info');
+          this.loadData();
+        },
+        error: (error) => {
+          console.error('Failed to reject execution:', error);
+          this.showNotification(error.error?.detail || 'Failed to reject trade', 'error');
+        }
+      });
+    }
+  }
+
+  getApprovalTimeRemaining(execution: any): string {
+    const expiresAt = execution.approval_expires_at || execution.result?.approval_expires_at;
+    if (!expiresAt) return '';
+    let isoString = expiresAt;
+    if (!expiresAt.endsWith('Z') && !expiresAt.match(/[+-]\d{2}:\d{2}$/)) {
+      isoString = expiresAt + 'Z';
+    }
+    const diff = new Date(isoString).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
   }
 }
 

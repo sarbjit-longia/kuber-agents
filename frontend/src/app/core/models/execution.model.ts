@@ -23,11 +23,15 @@ export interface Execution {
   logs?: ExecutionLog[];
   reports?: { [agentId: string]: AgentReport };
   execution_artifacts?: any; // Chart data and other execution outputs
+  // Approval fields
+  approval_status?: string; // pending, approved, rejected, timed_out
+  approval_requested_at?: string;
+  approval_expires_at?: string;
   created_at: string;
   updated_at: string;
 }
 
-export type ExecutionStatus = 
+export type ExecutionStatus =
   | 'pending'
   | 'running'
   | 'monitoring'
@@ -36,7 +40,8 @@ export type ExecutionStatus =
   | 'cancelled'
   | 'paused'
   | 'communication_error' // API failure during monitoring
-  | 'needs_reconciliation'; // Position closed but P&L unknown — user must reconcile
+  | 'needs_reconciliation' // Position closed but P&L unknown — user must reconcile
+  | 'awaiting_approval'; // Paused waiting for human approval before trade
 
 export type ExecutionMode = 
   | 'live'
@@ -75,12 +80,13 @@ export interface AgentReport {
   created_at: string;
 }
 
-export type AgentStatus = 
+export type AgentStatus =
   | 'pending'
   | 'running'
   | 'completed'
   | 'failed'
-  | 'skipped';
+  | 'skipped'
+  | 'awaiting_approval';
 
 export interface CostBreakdown {
   total_cost: number;

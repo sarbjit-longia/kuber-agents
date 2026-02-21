@@ -76,6 +76,13 @@ class Pipeline(Base):
     # Notification settings
     notification_enabled = Column(Boolean, default=False, nullable=False)
     notification_events = Column(JSONB, nullable=True, default=list)
+
+    # Trade approval settings
+    require_approval = Column(Boolean, default=False, nullable=False)
+    approval_modes = Column(JSONB, nullable=True, default=list)  # e.g. ["live", "paper"]
+    approval_timeout_minutes = Column(Integer, default=15, nullable=False)
+    approval_channels = Column(JSONB, nullable=True, default=list)  # e.g. ["web", "sms"]
+    approval_phone = Column(String(20), nullable=True)  # E.164 phone number for SMS
     # Example notification_events:
     # ["trade_executed", "position_closed", "pipeline_failed", "risk_rejected"]
     

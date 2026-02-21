@@ -80,6 +80,96 @@
         </mat-card>
       </div>
 
+      <!-- Trade Approval Section -->
+      <mat-card *ngIf="isAwaitingApproval()" class="approval-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon class="approval-icon">verified_user</mat-icon>
+            Trade Approval Required
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="approval-countdown-banner">
+            <div class="timer-badge">
+              <mat-icon>timer</mat-icon>
+            </div>
+            <div class="countdown-info">
+              <span class="countdown-label">Auto-rejects in</span>
+              <span class="countdown-value">{{ getApprovalTimeRemaining() }}</span>
+            </div>
+          </div>
+
+          <div class="approval-details-grid" *ngIf="execution.result as result">
+            <div class="approval-detail-section" *ngIf="result.strategy">
+              <h3>Strategy Signal</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Action:</span>
+                <span class="monitoring-value" [ngClass]="result.strategy.action === 'BUY' ? 'text-success' : 'text-danger'">
+                  {{ result.strategy.action }}
+                </span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.strategy.confidence">
+                <span class="monitoring-label">Confidence:</span>
+                <span class="monitoring-value">{{ (result.strategy.confidence * 100).toFixed(0) }}%</span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.strategy.entry_price">
+                <span class="monitoring-label">Entry Price:</span>
+                <span class="monitoring-value">${{ result.strategy.entry_price | number: '1.2-5' }}</span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.strategy.stop_loss">
+                <span class="monitoring-label">Stop Loss:</span>
+                <span class="monitoring-value text-danger">${{ result.strategy.stop_loss | number: '1.2-5' }}</span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.strategy.take_profit">
+                <span class="monitoring-label">Take Profit:</span>
+                <span class="monitoring-value text-success">${{ result.strategy.take_profit | number: '1.2-5' }}</span>
+              </div>
+            </div>
+
+            <div class="approval-detail-section" *ngIf="result.risk_assessment">
+              <h3>Risk Assessment</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Risk Approved:</span>
+                <span class="monitoring-value" [ngClass]="result.risk_assessment.approved ? 'text-success' : 'text-danger'">
+                  {{ result.risk_assessment.approved ? 'Yes' : 'No' }}
+                </span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.risk_assessment.position_size">
+                <span class="monitoring-label">Position Size:</span>
+                <span class="monitoring-value">{{ result.risk_assessment.position_size | number }}</span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.risk_assessment.risk_score !== undefined">
+                <span class="monitoring-label">Risk Score:</span>
+                <span class="monitoring-value">{{ result.risk_assessment.risk_score }}</span>
+              </div>
+            </div>
+
+            <div class="approval-detail-section" *ngIf="result.market_bias">
+              <h3>Market Bias</h3>
+              <div class="monitoring-item">
+                <span class="monitoring-label">Direction:</span>
+                <span class="monitoring-value">{{ result.market_bias.direction }}</span>
+              </div>
+              <div class="monitoring-item" *ngIf="result.market_bias.strength">
+                <span class="monitoring-label">Strength:</span>
+                <span class="monitoring-value">{{ result.market_bias.strength }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="approval-actions">
+            <button mat-raised-button class="approve-btn-large" (click)="approveExecution()">
+              <mat-icon>check</mat-icon>
+              Approve Trade
+            </button>
+            <button mat-raised-button class="reject-btn-large" (click)="rejectExecution()">
+              <mat-icon>close</mat-icon>
+              Reject Trade
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- Live Position Monitoring Section -->
       <mat-card *ngIf="isMonitoring()" class="monitoring-card">
         <mat-card-header>

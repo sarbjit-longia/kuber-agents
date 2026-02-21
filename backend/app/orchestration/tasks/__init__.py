@@ -26,6 +26,10 @@ from app.orchestration.tasks.maintenance import (
     reset_daily_budgets,
 )
 from app.orchestration.tasks.stop_execution import stop_execution
+from app.orchestration.tasks.approval import (
+    resume_approved_execution,
+    check_approval_timeout,
+)
 
 __all__ = [
     "execute_pipeline",
@@ -37,4 +41,6 @@ __all__ = [
     "cleanup_stale_running_executions",
     "reset_daily_budgets",
     "stop_execution",
+    "resume_approved_execution",
+    "check_approval_timeout",
 ]

@@ -770,10 +770,47 @@ class PipelineExecutor:
             agent_id = node["id"]
             agent_config = node.get("config", {})
             
+            # ── Approval gate: pause before Trade Manager if approval is required ──
+            if agent_type == "trade_manager_agent":
+                from app.services.approval_service import ApprovalService
+                if ApprovalService.should_require_approval(self.pipeline, self.mode):
+                    # Only pause if risk approved and action is not HOLD
+                    should_pause = (
+                        state.risk_assessment
+                        and getattr(state.risk_assessment, "approved", False)
+                        and state.strategy
+                        and getattr(state.strategy, "action", "HOLD") != "HOLD"
+                    )
+                    if should_pause:
+                        agent_states[i]["status"] = "awaiting_approval"
+                        execution.agent_states = agent_states
+                        flag_modified(execution, "agent_states")
+
+                        # Persist current results so approval UI can show them
+                        result = {}
+                        if state.strategy:
+                            result["strategy"] = state.strategy.dict() if hasattr(state.strategy, "dict") else state.strategy
+                        if state.risk_assessment:
+                            result["risk_assessment"] = state.risk_assessment.dict() if hasattr(state.risk_assessment, "dict") else state.risk_assessment
+                        if state.market_bias:
+                            result["market_bias"] = state.market_bias.dict() if hasattr(state.market_bias, "dict") else state.market_bias
+                        execution.result = result
+                        flag_modified(execution, "result")
+                        execution.reports = self._serialize_reports(state.agent_reports)
+                        flag_modified(execution, "reports")
+
+                        ApprovalService.initiate_approval(execution, self.pipeline, state, db_session)
+                        self.logger.info(
+                            "approval_gate_activated",
+                            execution_id=str(execution.id),
+                            pipeline_id=str(self.pipeline.id),
+                        )
+                        return execution  # Exit executor — Celery task ends here
+
             # Update agent state to running
             agent_states[i]["status"] = "running"
             agent_states[i]["started_at"] = datetime.utcnow().isoformat()
-            
+
             # Update DB with current progress
             execution.agent_states = agent_states
             execution.logs = self._serialize_logs(state.execution_log)
@@ -781,7 +818,7 @@ class PipelineExecutor:
             flag_modified(execution, "agent_states")
             flag_modified(execution, "logs")
             db_session.commit()
-            
+
             self.logger.info(
                 "executing_agent",
                 step=f"{i+1}/{len(execution_order)}",

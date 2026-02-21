@@ -4,7 +4,7 @@ Pydantic schemas for Execution model.
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.execution import ExecutionStatus
 
@@ -45,6 +45,10 @@ class ExecutionInDB(ExecutionBase):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
+    # Approval fields
+    approval_status: Optional[str] = None
+    approval_requested_at: Optional[datetime] = None
+    approval_expires_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

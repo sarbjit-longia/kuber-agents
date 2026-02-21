@@ -23,6 +23,7 @@ class ExecutionStatus(str, PyEnum):
     SKIPPED = "SKIPPED"  # When trigger not met or budget exceeded
     COMMUNICATION_ERROR = "COMMUNICATION_ERROR"  # Cannot reach broker API during monitoring
     NEEDS_RECONCILIATION = "NEEDS_RECONCILIATION"  # Position closed but P&L unknown — user must reconcile
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"  # Paused waiting for human approval before trade execution
 
 
 class Execution(Base):
@@ -66,6 +67,13 @@ class Execution(Base):
     next_check_at = Column(DateTime, nullable=True)  # When to check position next
     monitor_interval_minutes = Column(Float, default=5.0, nullable=False)  # Polling frequency (supports sub-minute like 0.25 = 15s)
     
+    # Trade approval fields
+    approval_status = Column(String(20), nullable=True)  # pending, approved, rejected, timed_out
+    approval_requested_at = Column(DateTime, nullable=True)
+    approval_responded_at = Column(DateTime, nullable=True)
+    approval_token = Column(String(64), nullable=True, unique=True, index=True)  # For SMS link auth
+    approval_expires_at = Column(DateTime, nullable=True)
+
     # Optimistic locking to prevent concurrent update conflicts
     version = Column(Integer, default=1, nullable=False)  # Incremented on each update
     

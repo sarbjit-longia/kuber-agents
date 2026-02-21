@@ -42,6 +42,13 @@ class PipelineBase(BaseModel):
         description="Events to notify: trade_executed, position_closed, pipeline_failed, risk_rejected"
     )
 
+    # Trade approval settings
+    require_approval: bool = Field(default=False, description="Require manual approval before trades")
+    approval_modes: Optional[List[str]] = Field(default=None, description="Modes requiring approval, e.g. ['live', 'paper']")
+    approval_timeout_minutes: int = Field(default=15, ge=1, le=1440, description="Minutes before auto-reject")
+    approval_channels: Optional[List[str]] = Field(default=None, description="Notification channels: ['web', 'sms']")
+    approval_phone: Optional[str] = Field(default=None, max_length=20, description="E.164 phone number for SMS approval")
+
 
 class PipelineCreate(PipelineBase):
     """Schema for creating a new pipeline."""
@@ -60,6 +67,11 @@ class PipelineUpdate(BaseModel):
     scanner_tickers: Optional[List[str]] = None  # Deprecated
     notification_enabled: Optional[bool] = None
     notification_events: Optional[List[str]] = None
+    require_approval: Optional[bool] = None
+    approval_modes: Optional[List[str]] = None
+    approval_timeout_minutes: Optional[int] = None
+    approval_channels: Optional[List[str]] = None
+    approval_phone: Optional[str] = None
 
 
 class PipelineInDB(PipelineBase):
@@ -73,6 +85,11 @@ class PipelineInDB(PipelineBase):
     scanner_tickers: Optional[List[str]]  # Deprecated
     notification_enabled: bool
     notification_events: Optional[List[str]]
+    require_approval: bool
+    approval_modes: Optional[List[str]]
+    approval_timeout_minutes: int
+    approval_channels: Optional[List[str]]
+    approval_phone: Optional[str]
     created_at: datetime
     updated_at: datetime
 

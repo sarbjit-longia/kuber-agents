@@ -75,6 +75,11 @@ export interface Pipeline {
   scanner_tickers?: string[]; // Deprecated - for backward compatibility
   notification_enabled: boolean;
   notification_events?: string[];
+  require_approval: boolean;
+  approval_modes?: string[];
+  approval_timeout_minutes: number;
+  approval_channels?: string[];
+  approval_phone?: string;
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +93,11 @@ export interface PipelineCreate {
   signal_subscriptions?: SignalSubscription[];
   notification_enabled?: boolean;
   notification_events?: string[];
+  require_approval?: boolean;
+  approval_modes?: string[];
+  approval_timeout_minutes?: number;
+  approval_channels?: string[];
+  approval_phone?: string;
 }
 
 export interface PipelineUpdate {
@@ -101,6 +111,11 @@ export interface PipelineUpdate {
   scanner_tickers?: string[]; // Deprecated
   notification_enabled?: boolean;
   notification_events?: string[];
+  require_approval?: boolean;
+  approval_modes?: string[];
+  approval_timeout_minutes?: number;
+  approval_channels?: string[];
+  approval_phone?: string;
 }
 
 export enum ExecutionStatus {

@@ -323,6 +323,156 @@
           </div>
         </div>
 
+        <!-- Trade Approval Settings -->
+        <div class="section" *ngIf="selectedItemKey === 'approval_settings'">
+          <div class="section-title">
+            <mat-icon>verified_user</mat-icon>
+            Trade Approval
+          </div>
+
+          <div class="approval-info-banner">
+            <div class="approval-info-icon">
+              <mat-icon>shield</mat-icon>
+            </div>
+            <div class="approval-info-text">
+              <strong>Human-in-the-loop</strong>
+              <span>Pipeline pauses after Risk Manager and waits for your approval before executing trades.</span>
+            </div>
+          </div>
+
+          <div class="approval-toggle-card">
+            <div class="approval-toggle-left">
+              <div class="approval-toggle-icon" [class.active]="requireApproval">
+                <mat-icon>{{ requireApproval ? 'verified_user' : 'shield' }}</mat-icon>
+              </div>
+              <div class="approval-toggle-text">
+                <div class="approval-toggle-title">Require Manual Approval</div>
+                <div class="approval-toggle-desc">{{ requireApproval ? 'Trades will wait for your approval' : 'Trades execute automatically' }}</div>
+              </div>
+            </div>
+            <mat-slide-toggle [(ngModel)]="requireApproval"></mat-slide-toggle>
+          </div>
+
+          <ng-container *ngIf="requireApproval">
+            <!-- Execution Modes -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>speed</mat-icon>
+                <span>Execution Modes</span>
+              </div>
+              <div class="approval-section-desc">Select which execution modes require approval before trading</div>
+              <div class="approval-mode-grid">
+                <div class="approval-mode-option"
+                     [class.selected]="approvalModes.includes('live')"
+                     (click)="toggleApprovalMode('live')">
+                  <div class="mode-option-icon live">
+                    <mat-icon>flash_on</mat-icon>
+                  </div>
+                  <div class="mode-option-text">
+                    <span class="mode-option-title">Live</span>
+                    <span class="mode-option-desc">Real money trades</span>
+                  </div>
+                  <mat-icon class="mode-check">{{ approvalModes.includes('live') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+                <div class="approval-mode-option"
+                     [class.selected]="approvalModes.includes('paper')"
+                     (click)="toggleApprovalMode('paper')">
+                  <div class="mode-option-icon paper">
+                    <mat-icon>description</mat-icon>
+                  </div>
+                  <div class="mode-option-text">
+                    <span class="mode-option-title">Paper</span>
+                    <span class="mode-option-desc">Simulated trades</span>
+                  </div>
+                  <mat-icon class="mode-check">{{ approvalModes.includes('paper') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+                <div class="approval-mode-option"
+                     [class.selected]="approvalModes.includes('simulation')"
+                     (click)="toggleApprovalMode('simulation')">
+                  <div class="mode-option-icon simulation">
+                    <mat-icon>science</mat-icon>
+                  </div>
+                  <div class="mode-option-text">
+                    <span class="mode-option-title">Simulation</span>
+                    <span class="mode-option-desc">Backtest mode</span>
+                  </div>
+                  <mat-icon class="mode-check">{{ approvalModes.includes('simulation') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+              </div>
+            </div>
+
+            <!-- Timeout -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>timer</mat-icon>
+                <span>Approval Timeout</span>
+              </div>
+              <div class="approval-section-desc">Trade auto-rejects if no response within this time</div>
+              <div class="approval-timeout-row">
+                <mat-form-field appearance="outline" class="timeout-field">
+                  <mat-label>Minutes</mat-label>
+                  <input matInput type="number" [(ngModel)]="approvalTimeoutMinutes" min="1" max="1440" />
+                </mat-form-field>
+                <div class="timeout-presets">
+                  <button mat-stroked-button type="button" class="timeout-preset"
+                          [class.active]="approvalTimeoutMinutes === 5" (click)="approvalTimeoutMinutes = 5">5m</button>
+                  <button mat-stroked-button type="button" class="timeout-preset"
+                          [class.active]="approvalTimeoutMinutes === 15" (click)="approvalTimeoutMinutes = 15">15m</button>
+                  <button mat-stroked-button type="button" class="timeout-preset"
+                          [class.active]="approvalTimeoutMinutes === 30" (click)="approvalTimeoutMinutes = 30">30m</button>
+                  <button mat-stroked-button type="button" class="timeout-preset"
+                          [class.active]="approvalTimeoutMinutes === 60" (click)="approvalTimeoutMinutes = 60">1h</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notification Channels -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>notifications_active</mat-icon>
+                <span>Notification Channels</span>
+              </div>
+              <div class="approval-section-desc">How you'll be notified when approval is needed</div>
+              <div class="approval-channel-grid">
+                <div class="approval-channel-option"
+                     [class.selected]="approvalChannels.includes('web')"
+                     (click)="toggleApprovalChannel('web')">
+                  <div class="channel-option-icon web">
+                    <mat-icon>monitor</mat-icon>
+                  </div>
+                  <div class="channel-option-text">
+                    <span class="channel-option-title">Web</span>
+                    <span class="channel-option-desc">Monitoring page</span>
+                  </div>
+                  <mat-icon class="channel-check">{{ approvalChannels.includes('web') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+                <div class="approval-channel-option"
+                     [class.selected]="approvalChannels.includes('sms')"
+                     (click)="toggleApprovalChannel('sms')">
+                  <div class="channel-option-icon sms">
+                    <mat-icon>sms</mat-icon>
+                  </div>
+                  <div class="channel-option-text">
+                    <span class="channel-option-title">SMS</span>
+                    <span class="channel-option-desc">Via Twilio</span>
+                  </div>
+                  <mat-icon class="channel-check">{{ approvalChannels.includes('sms') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                </div>
+              </div>
+
+              <!-- Phone Number (conditional) -->
+              <div class="approval-phone-card" *ngIf="approvalChannels.includes('sms')">
+                <mat-icon class="phone-icon">phone</mat-icon>
+                <mat-form-field appearance="outline" class="phone-field">
+                  <mat-label>Phone Number (E.164)</mat-label>
+                  <input matInput [(ngModel)]="approvalPhone" placeholder="+15551234567" />
+                  <mat-hint>e.g. +15551234567</mat-hint>
+                </mat-form-field>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+
         <!-- Agent settings -->
         <ng-container *ngIf="getSelectedAgentType() as at">
           <div class="meta">

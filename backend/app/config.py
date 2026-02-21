@@ -105,6 +105,25 @@ class Settings(BaseSettings):
     # Email (SES)
     SES_FROM_EMAIL: Optional[str] = Field(default=None, description="SES from email address")
     
+    # Twilio (SMS Approval)
+    TWILIO_ACCOUNT_SID: Optional[str] = Field(default=None, description="Twilio Account SID")
+    TWILIO_AUTH_TOKEN: Optional[str] = Field(default=None, description="Twilio Auth Token")
+    TWILIO_FROM_NUMBER: Optional[str] = Field(default=None, description="Twilio sender phone number (E.164)")
+    APPROVAL_BASE_URL: Optional[str] = Field(
+        default=None,
+        description="Base URL for approval SMS links. Auto-derived from ALLOWED_ORIGINS if not set."
+    )
+
+    @validator("APPROVAL_BASE_URL", always=True)
+    def derive_approval_base_url(cls, v, values):
+        """Default to first ALLOWED_ORIGINS entry (the frontend URL)."""
+        if v:
+            return v.rstrip("/")
+        origins = values.get("ALLOWED_ORIGINS", [])
+        if origins:
+            return origins[0].rstrip("/")
+        return "http://localhost:4200"
+
     # Subscription & Billing
     ENFORCE_SUBSCRIPTION_LIMITS: bool = Field(
         default=False,

@@ -313,6 +313,7 @@ async def list_executions(
         ExecutionStatus.PENDING,
         ExecutionStatus.COMMUNICATION_ERROR,
         ExecutionStatus.NEEDS_RECONCILIATION,
+        ExecutionStatus.AWAITING_APPROVAL,
     ]
     
     base_filters = [Execution.user_id == current_user.id]

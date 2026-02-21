@@ -1,0 +1,117 @@
+<div class="approval-page">
+  <div class="approval-container">
+    <!-- Loading -->
+    <div *ngIf="loading" class="state-card loading-state">
+      <mat-spinner diameter="48"></mat-spinner>
+      <h2>Loading Trade Details</h2>
+      <p>Verifying your approval link...</p>
+    </div>
+
+    <!-- Error -->
+    <div *ngIf="error && !loading" class="state-card error-state">
+      <div class="state-icon-wrapper">
+        <mat-icon>error_outline</mat-icon>
+      </div>
+      <h2>Unable to Load Approval</h2>
+      <p>{{ error }}</p>
+    </div>
+
+    <!-- Success: Approved -->
+    <div *ngIf="actionTaken === 'approved'" class="state-card success-state">
+      <div class="state-icon-wrapper">
+        <mat-icon>check_circle</mat-icon>
+      </div>
+      <h2>Trade Approved</h2>
+      <p>The trade is now being executed. You can close this page.</p>
+    </div>
+
+    <!-- Success: Rejected -->
+    <div *ngIf="actionTaken === 'rejected'" class="state-card rejected-state">
+      <div class="state-icon-wrapper">
+        <mat-icon>cancel</mat-icon>
+      </div>
+      <h2>Trade Rejected</h2>
+      <p>The trade has been rejected and will not execute.</p>
+    </div>
+
+    <!-- Approval Details -->
+    <div *ngIf="approvalData && !actionTaken && !error" class="approval-content">
+      <div class="approval-header">
+        <div class="header-icon-wrapper">
+          <mat-icon>verified_user</mat-icon>
+        </div>
+        <h1>Trade Approval</h1>
+      </div>
+
+      <div class="pipeline-name">{{ approvalData.pipeline_name }}</div>
+
+      <!-- Already resolved or expired -->
+      <div *ngIf="approvalData.approval_status !== 'pending' || approvalData.is_expired" class="state-card expired-state">
+        <div class="state-icon-wrapper">
+          <mat-icon>{{ approvalData.is_expired ? 'timer_off' : 'info' }}</mat-icon>
+        </div>
+        <h2 *ngIf="approvalData.is_expired">Approval Expired</h2>
+        <h2 *ngIf="!approvalData.is_expired">Already {{ approvalData.approval_status }}</h2>
+        <p>This approval can no longer be modified.</p>
+      </div>
+
+      <!-- Active approval -->
+      <ng-container *ngIf="approvalData.approval_status === 'pending' && !approvalData.is_expired">
+        <div class="countdown-bar">
+          <div class="timer-icon-wrapper">
+            <mat-icon>timer</mat-icon>
+          </div>
+          <div class="countdown-content">
+            <span class="countdown-label">Auto-rejects in</span>
+            <span class="countdown-value">{{ timeRemaining }}</span>
+          </div>
+        </div>
+
+        <mat-card class="trade-details-card">
+          <mat-card-content>
+            <div class="trade-header">
+              <div class="symbol-badge-large">{{ approvalData.symbol }}</div>
+              <div class="action-badge" [class.buy]="approvalData.action === 'BUY'" [class.sell]="approvalData.action === 'SELL'">
+                {{ approvalData.action }}
+              </div>
+            </div>
+
+            <div class="details-grid">
+              <div class="detail-item" *ngIf="approvalData.entry_price">
+                <span class="detail-label">Entry Price</span>
+                <span class="detail-value">${{ approvalData.entry_price | number: '1.2-5' }}</span>
+              </div>
+              <div class="detail-item" *ngIf="approvalData.stop_loss">
+                <span class="detail-label">Stop Loss</span>
+                <span class="detail-value danger">${{ approvalData.stop_loss | number: '1.2-5' }}</span>
+              </div>
+              <div class="detail-item" *ngIf="approvalData.take_profit">
+                <span class="detail-label">Take Profit</span>
+                <span class="detail-value success">${{ approvalData.take_profit | number: '1.2-5' }}</span>
+              </div>
+              <div class="detail-item" *ngIf="approvalData.position_size">
+                <span class="detail-label">Position Size</span>
+                <span class="detail-value">{{ approvalData.position_size | number }}</span>
+              </div>
+              <div class="detail-item" *ngIf="approvalData.confidence">
+                <span class="detail-label">Confidence</span>
+                <span class="detail-value">{{ (approvalData.confidence * 100) | number: '1.0-0' }}%</span>
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <div class="action-buttons">
+          <button mat-raised-button class="approve-btn" (click)="approve()" [disabled]="submitting">
+            <mat-icon>check</mat-icon>
+            {{ submitting ? 'Processing...' : 'Approve Trade' }}
+          </button>
+          <button mat-raised-button class="reject-btn" (click)="reject()" [disabled]="submitting">
+            <mat-icon>close</mat-icon>
+            {{ submitting ? 'Processing...' : 'Reject Trade' }}
+          </button>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+</div>

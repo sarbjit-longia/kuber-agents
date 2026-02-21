@@ -75,11 +75,35 @@
             </div>
           </div>
           
+          <!-- Approval countdown + buttons -->
+          <div class="approval-section" *ngIf="isAwaitingApproval(execution)">
+            <div class="approval-header-row">
+              <div class="approval-badge">
+                <mat-icon>verified_user</mat-icon>
+              </div>
+              <span class="approval-title">Trade Approval Required</span>
+            </div>
+            <div class="approval-countdown">
+              <mat-icon>timer</mat-icon>
+              <span class="countdown-text">Auto-rejects in: <strong>{{ getApprovalTimeRemaining(execution) }}</strong></span>
+            </div>
+            <div class="approval-buttons">
+              <button mat-raised-button class="approve-btn" (click)="approveExecution(execution, $event)">
+                <mat-icon>check</mat-icon>
+                Approve
+              </button>
+              <button mat-raised-button class="reject-btn" (click)="rejectExecution(execution, $event)">
+                <mat-icon>close</mat-icon>
+                Reject
+              </button>
+            </div>
+          </div>
+
           <div class="active-actions">
-            <button 
+            <button
               *ngIf="isNeedsReconciliation(execution)"
-              mat-raised-button 
-              color="warn" 
+              mat-raised-button
+              color="warn"
               (click)="openReconciliationDialog(execution, $event)"
               class="reconcile-button">
               <mat-icon>warning</mat-icon>

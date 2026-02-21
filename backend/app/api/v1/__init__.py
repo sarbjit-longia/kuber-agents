@@ -16,6 +16,8 @@ from app.api.v1.scanners import router as scanners_router
 from app.api.v1.signals import router as signals_router
 from app.api.v1.files import router as files_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.approvals import router as approvals_router
+from app.api.v1.approvals import token_router as approvals_token_router
 
 router = APIRouter()
 
@@ -27,6 +29,8 @@ router.include_router(scanners_router)
 router.include_router(signals_router)
 router.include_router(agents_router)
 router.include_router(executions_router)
+router.include_router(approvals_router)
+router.include_router(approvals_token_router)
 router.include_router(websocket_router)
 router.include_router(tools_router)
 router.include_router(files_router)

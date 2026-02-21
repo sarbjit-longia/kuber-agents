@@ -69,12 +69,12 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     if (id) {
       this.loadExecution(id);
       
-      // Auto-refresh every 10 seconds if monitoring
+      // Auto-refresh every 10 seconds if monitoring or awaiting approval
       this.refreshInterval = setInterval(() => {
-        if (this.isMonitoring()) {
+        if (this.isMonitoring() || this.isAwaitingApproval()) {
           this.loadExecution(id);
         } else {
-          // Stop auto-refresh if no longer monitoring
+          // Stop auto-refresh if no longer monitoring/awaiting
           this.stopAutoRefresh();
         }
       }, 10000); // 10 seconds
@@ -218,6 +218,55 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
 
   isString(value: any): boolean {
     return typeof value === 'string';
+  }
+
+  // Approval-specific methods
+  isAwaitingApproval(): boolean {
+    return this.execution?.status === 'AWAITING_APPROVAL';
+  }
+
+  getApprovalTimeRemaining(): string {
+    const expiresAt = this.execution?.approval_expires_at;
+    if (!expiresAt) return '';
+    let isoString = expiresAt;
+    if (!expiresAt.endsWith('Z') && !expiresAt.match(/[+-]\d{2}:\d{2}$/)) {
+      isoString = expiresAt + 'Z';
+    }
+    const diff = new Date(isoString).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  }
+
+  approveExecution(): void {
+    if (!this.execution?.id) return;
+    if (confirm(`Approve trade for ${this.execution.symbol}?`)) {
+      this.monitoringService.approveExecution(this.execution.id).subscribe({
+        next: () => {
+          this.snackBar.open('Trade approved — executing now', 'Dismiss', { duration: 3000 });
+          this.loadExecution(this.execution.id);
+        },
+        error: (error) => {
+          this.snackBar.open(error.error?.detail || 'Failed to approve trade', 'Dismiss', { duration: 5000 });
+        }
+      });
+    }
+  }
+
+  rejectExecution(): void {
+    if (!this.execution?.id) return;
+    if (confirm(`Reject trade for ${this.execution.symbol}?`)) {
+      this.monitoringService.rejectExecution(this.execution.id).subscribe({
+        next: () => {
+          this.snackBar.open('Trade rejected', 'Dismiss', { duration: 3000 });
+          this.loadExecution(this.execution.id);
+        },
+        error: (error) => {
+          this.snackBar.open(error.error?.detail || 'Failed to reject trade', 'Dismiss', { duration: 5000 });
+        }
+      });
+    }
   }
 
   // Monitoring-specific methods

@@ -1,0 +1,431 @@
+// ── SMS Approval Page (Public, Mobile-First) ──────────────────
+
+.approval-page {
+  min-height: 100vh;
+  background: var(--bg-primary, #0f1117);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem 1rem;
+  position: relative;
+  overflow: hidden;
+
+  // Subtle gradient orbs in background
+  &::before,
+  &::after {
+    content: '';
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    pointer-events: none;
+  }
+
+  &::before {
+    width: 400px;
+    height: 400px;
+    background: #667eea;
+    top: -100px;
+    right: -100px;
+  }
+
+  &::after {
+    width: 300px;
+    height: 300px;
+    background: #764ba2;
+    bottom: -50px;
+    left: -50px;
+  }
+}
+
+.approval-container {
+  max-width: 480px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+// ── State Cards (Loading, Error, Success, Rejected) ──────────
+
+.state-card {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: var(--bg-card, #1e1f2e);
+  border-radius: 16px;
+  border: 1px solid var(--border-color, #2e2f42);
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
+
+  .state-icon-wrapper {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+
+    mat-icon {
+      font-size: 40px;
+      width: 40px;
+      height: 40px;
+    }
+  }
+
+  h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary, #e1e2e8);
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-secondary, #a0a1b2);
+    line-height: 1.6;
+  }
+
+  // Loading
+  &.loading-state {
+    mat-spinner {
+      margin: 0 auto 1.5rem;
+    }
+
+    h2 {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  }
+
+  // Error
+  &.error-state .state-icon-wrapper {
+    background: var(--color-error-bg, rgba(239, 68, 68, 0.15));
+
+    mat-icon {
+      color: var(--color-error, #ef4444);
+    }
+  }
+
+  // Success (Approved)
+  &.success-state {
+    border-color: rgba(16, 185, 129, 0.3);
+
+    .state-icon-wrapper {
+      background: var(--color-success-bg, rgba(16, 185, 129, 0.15));
+      animation: success-pulse 2s ease-in-out infinite;
+
+      mat-icon {
+        color: var(--color-success, #10b981);
+      }
+    }
+  }
+
+  // Rejected
+  &.rejected-state .state-icon-wrapper {
+    background: var(--color-warning-bg, rgba(245, 158, 11, 0.15));
+
+    mat-icon {
+      color: var(--color-warning, #f59e0b);
+    }
+  }
+
+  // Expired / Already resolved
+  &.expired-state .state-icon-wrapper {
+    background: var(--bg-elevated, #2a2b3d);
+
+    mat-icon {
+      color: var(--text-muted, #6b6c7e);
+    }
+  }
+}
+
+@keyframes success-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3); }
+  50% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+}
+
+// ── Approval Content (Active State) ──────────────────────────
+
+.approval-content {
+  .approval-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+
+    .header-icon-wrapper {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--accent-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+
+      mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+        color: white;
+      }
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text-primary, #e1e2e8);
+    }
+  }
+
+  .pipeline-name {
+    color: var(--text-secondary, #a0a1b2);
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+    padding-left: 3.5rem;
+  }
+}
+
+// ── Countdown Timer Bar ──────────────────────────────────────
+
+.countdown-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-card, #1e1f2e);
+  border: 1px solid var(--border-color, #2e2f42);
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(239, 68, 68, 0.05) 100%);
+    pointer-events: none;
+  }
+
+  .timer-icon-wrapper {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--color-warning-bg, rgba(245, 158, 11, 0.15));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: var(--color-warning, #f59e0b);
+      animation: timer-pulse 2s ease-in-out infinite;
+    }
+  }
+
+  .countdown-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+
+    .countdown-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      color: var(--text-muted, #6b6c7e);
+    }
+
+    .countdown-value {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--color-warning, #f59e0b);
+      font-family: 'SF Mono', 'Courier New', monospace;
+      letter-spacing: 1px;
+    }
+  }
+}
+
+@keyframes timer-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+// ── Trade Details Card ───────────────────────────────────────
+
+.trade-details-card {
+  background: var(--bg-card, #1e1f2e) !important;
+  border: 1px solid var(--border-color, #2e2f42) !important;
+  border-radius: 16px !important;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.3)) !important;
+  overflow: hidden;
+
+  mat-card-content {
+    padding: 1.5rem !important;
+  }
+
+  .trade-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-color, #2e2f42);
+
+    .symbol-badge-large {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: white;
+      background: var(--accent-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+      padding: 0.5rem 1.25rem;
+      border-radius: 10px;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .action-badge {
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0.5rem 1.25rem;
+      border-radius: 10px;
+      letter-spacing: 0.5px;
+
+      &.buy {
+        background: var(--color-success-bg, rgba(16, 185, 129, 0.15));
+        color: var(--color-success, #10b981);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+
+      &.sell {
+        background: var(--color-error-bg, rgba(239, 68, 68, 0.15));
+        color: var(--color-error, #ef4444);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+    }
+  }
+
+  .details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+
+    .detail-item {
+      padding: 0.75rem;
+      background: var(--bg-elevated, #2a2b3d);
+      border-radius: 10px;
+
+      .detail-label {
+        display: block;
+        font-size: 0.7rem;
+        color: var(--text-muted, #6b6c7e);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-bottom: 0.375rem;
+      }
+
+      .detail-value {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary, #e1e2e8);
+
+        &.success { color: var(--color-success, #10b981); }
+        &.danger { color: var(--color-error, #ef4444); }
+      }
+    }
+  }
+}
+
+// ── Action Buttons ───────────────────────────────────────────
+
+.action-buttons {
+  display: flex;
+  gap: 0.75rem;
+
+  button {
+    flex: 1;
+    padding: 0.875rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.25px;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .approve-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .reject-btn {
+    background: var(--bg-elevated, #2a2b3d);
+    color: var(--color-error, #ef4444);
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+
+    &:hover:not(:disabled) {
+      background: var(--color-error-bg, rgba(239, 68, 68, 0.15));
+      transform: translateY(-1px);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+// ── Mobile-Friendly Spacing ──────────────────────────────────
+
+@media (max-width: 480px) {
+  .approval-page {
+    padding: 1rem 0.75rem;
+  }
+
+  .trade-details-card .details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+}
