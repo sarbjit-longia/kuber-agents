@@ -313,6 +313,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'remove';
   }
 
+  getPositionSideClass(pos: ActivePosition): string {
+    const side = (pos.trade_info?.side || '').toUpperCase();
+    if (side === 'BUY' || side === 'LONG') return 'position-side-buy';
+    if (side === 'SELL' || side === 'SHORT') return 'position-side-sell';
+    return '';
+  }
+
   getActionClass(action: string | null | undefined): string {
     if (!action) return '';
     const a = action.toUpperCase();

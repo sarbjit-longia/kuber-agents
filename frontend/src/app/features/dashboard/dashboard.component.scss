@@ -95,12 +95,18 @@
   margin-bottom: 1.5rem;
 }
 
+// ── Stat Cards (Enhanced) ────────────────────────────────────
+
 .stat-card {
+  border-radius: 16px !important;
+  overflow: hidden;
+  transition: all 0.3s ease;
+
   mat-card-content {
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 1.25rem !important;
+    padding: 1.5rem !important;
   }
 
   .stat-icon {
@@ -109,7 +115,7 @@
     justify-content: center;
     width: 56px;
     height: 56px;
-    border-radius: 12px;
+    border-radius: 14px;
     flex-shrink: 0;
 
     mat-icon {
@@ -121,22 +127,27 @@
 
     &.pipelines-icon {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
 
     &.executions-icon {
       background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
     }
 
     &.cost-icon {
       background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
 
     &.pnl-positive {
       background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
     }
 
     &.pnl-negative {
       background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
     }
   }
 
@@ -182,6 +193,85 @@
       }
     }
   }
+
+  // Per-category tint classes
+  &.stat-card-active {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(251, 191, 36, 0.04)) !important;
+    border-left: 3px solid #f59e0b;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(245, 158, 11, 0.15);
+      transform: translateY(-2px);
+    }
+  }
+
+  &.stat-card-pnl-up {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.04)) !important;
+    border-left: 3px solid #10b981;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
+      transform: translateY(-2px);
+    }
+  }
+
+  &.stat-card-pnl-down {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.04)) !important;
+    border-left: 3px solid #ef4444;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+      transform: translateY(-2px);
+    }
+  }
+
+  &.stat-card-cost {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04)) !important;
+    border-left: 3px solid #6366f1;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+      transform: translateY(-2px);
+    }
+  }
+}
+
+// ── Tile Tint Utilities ──────────────────────────────────────
+
+.tile-tint-success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.03)) !important;
+  border-color: rgba(16, 185, 129, 0.15) !important;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.15) !important;
+  }
+}
+
+.tile-tint-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.03)) !important;
+  border-color: rgba(239, 68, 68, 0.15) !important;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.15) !important;
+  }
+}
+
+.tile-tint-info {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(14, 165, 233, 0.03)) !important;
+  border-color: rgba(56, 189, 248, 0.15) !important;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(56, 189, 248, 0.15) !important;
+  }
+}
+
+.tile-tint-accent {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.03)) !important;
+  border-color: rgba(99, 102, 241, 0.15) !important;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15) !important;
+  }
 }
 
 // ── Today's Performance Card (tile grid) ─────────────────────
@@ -203,26 +293,27 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 0.75rem;
-  border-radius: 10px;
+  padding: 1rem;
+  border-radius: 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  transition: box-shadow 0.2s ease;
+  transition: all 0.3s ease;
 
   &:hover {
     box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
   }
 
   &.today-tile-large {
     grid-column: span 1;
 
     .today-tile-value {
-      font-size: 1.5rem;
+      font-size: 1.75rem;
     }
   }
 
   .today-tile-value {
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.3;
@@ -242,17 +333,20 @@
 
   .win-loss-bar.compact {
     width: 100%;
-    height: 4px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 3px;
     background: rgba(239, 68, 68, 0.3);
     margin-top: 6px;
     min-width: 60px;
+    overflow: hidden;
 
     .win-portion {
       height: 100%;
-      border-radius: 2px;
+      border-radius: 3px;
       background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
       transition: width 0.5s ease;
+      transform-origin: left;
+      animation: fillBar 0.6s ease-out;
     }
   }
 }
@@ -272,9 +366,12 @@
   }
 }
 
-// ── Section Cards ─────────────────────────────────────────────
+// ── Section Cards (Enhanced) ─────────────────────────────────
 
 .section-card {
+  border-radius: 16px !important;
+  overflow: hidden;
+
   &.full-width {
     margin-bottom: 1.5rem;
   }
@@ -302,6 +399,15 @@
 
     mat-icon {
       color: var(--accent-primary);
+      width: 28px;
+      height: 28px;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(99, 102, 241, 0.12);
+      border-radius: 8px;
+      padding: 4px;
 
       &.pulse {
         animation: pulse-icon 2s ease-in-out infinite;
@@ -320,6 +426,7 @@
       font-size: 0.75rem;
       font-weight: 600;
       padding: 0 6px;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
     }
 
     .section-subtitle {
@@ -331,7 +438,7 @@
   }
 }
 
-// ── Broker Cards ──────────────────────────────────────────────
+// ── Broker Cards (Enhanced) ──────────────────────────────────
 
 .broker-list {
   display: flex;
@@ -341,14 +448,30 @@
 }
 
 .broker-card {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 1rem;
-  background: var(--bg-secondary);
-  transition: box-shadow 0.2s ease;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 1.25rem;
+  padding-top: calc(1.25rem + 3px);
+  background: rgba(30, 31, 46, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  transition: all 0.3s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent-gradient);
+  }
 
   &:hover {
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+    transform: translateY(-1px);
   }
 
   .broker-header {
@@ -386,13 +509,24 @@
     }
 
     .broker-pnl {
-      font-size: 1.25rem;
+      font-size: 1.5rem;
       font-weight: 700;
+      padding: 4px 14px;
+      border-radius: 10px;
+
+      &.pnl-positive {
+        background: rgba(16, 185, 129, 0.12);
+      }
+
+      &.pnl-negative {
+        background: rgba(239, 68, 68, 0.12);
+      }
     }
   }
 
   mat-divider {
     margin: 0.5rem 0;
+    opacity: 0.3;
   }
 
   .broker-details {
@@ -406,6 +540,9 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
+      background: var(--bg-elevated);
+      border-radius: 10px;
+      padding: 0.5rem 0.25rem;
 
       .detail-label {
         font-size: 0.7rem;
@@ -428,6 +565,7 @@
   font-size: 0.65rem !important;
   min-height: 20px !important;
   padding: 0 8px !important;
+  border-radius: 20px !important;
 
   &.account-paper {
     background: rgba(37, 99, 235, 0.15) !important;
@@ -440,7 +578,7 @@
   }
 }
 
-// ── Active Positions ──────────────────────────────────────────
+// ── Active Positions (Enhanced) ──────────────────────────────
 
 .positions-grid {
   display: grid;
@@ -454,18 +592,37 @@
 }
 
 .position-card {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 1rem;
-  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 1.25rem;
+  background: rgba(30, 31, 46, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
 
+  // Side accent by trade direction
+  &.position-side-buy {
+    border-left: 3px solid #10b981;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2);
+    }
+  }
+
+  &.position-side-sell {
+    border-left: 3px solid #ef4444;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2);
+    }
+  }
+
   &:hover {
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
-    border-color: var(--accent-primary);
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
   }
 
@@ -487,9 +644,9 @@
       font-size: 1.1rem;
       font-weight: 700;
       color: var(--text-primary);
-      background: var(--bg-elevated);
+      background: linear-gradient(135deg, var(--bg-elevated), rgba(99, 102, 241, 0.08));
       padding: 4px 12px;
-      border-radius: 6px;
+      border-radius: 8px;
     }
 
     .side-badge {
@@ -558,9 +715,24 @@
         margin-top: 2px;
       }
 
-      &.pnl-detail .detail-value {
-        font-size: 1rem;
-        font-weight: 700;
+      // P&L pill styling
+      &.pnl-detail {
+        .detail-value {
+          font-size: 1rem;
+          font-weight: 700;
+          display: inline-block;
+          padding: 2px 10px;
+          border-radius: 6px;
+          width: fit-content;
+
+          &.pnl-positive {
+            background: rgba(16, 185, 129, 0.12);
+          }
+
+          &.pnl-negative {
+            background: rgba(239, 68, 68, 0.12);
+          }
+        }
       }
     }
   }
@@ -590,6 +762,7 @@
   background: var(--color-warning-bg) !important;
   color: var(--color-warning) !important;
   font-size: 0.75rem !important;
+  border-radius: 20px !important;
 
   mat-icon {
     font-size: 14px !important;
@@ -603,6 +776,7 @@
   font-size: 0.7rem !important;
   min-height: 20px !important;
   padding: 0 8px !important;
+  border-radius: 20px !important;
 }
 
 // ── Tables ────────────────────────────────────────────────────
@@ -1064,7 +1238,7 @@
   text-align: center;
 }
 
-// ── Trade Stats ──────────────────────────────────────────────
+// ── Trade Stats (Enhanced) ──────────────────────────────────
 
 .trade-stats-card {
   mat-card-content {
@@ -1083,18 +1257,19 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 0.75rem;
-  border-radius: 10px;
+  padding: 1rem;
+  border-radius: 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  transition: box-shadow 0.2s ease;
+  transition: all 0.3s ease;
 
   &:hover {
     box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
   }
 
   .trade-stat-value {
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.3;
@@ -1113,19 +1288,54 @@
   }
 }
 
+// ── Win Rate Ring Indicator ─────────────────────────────────
+
+.win-rate-ring {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: conic-gradient(#10b981 var(--win-deg, 0deg), rgba(239, 68, 68, 0.25) var(--win-deg, 0deg));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+
+  .ring-inner {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+  }
+}
+
+// Adjust ring inner bg when inside tinted tiles
+.tile-tint-accent .win-rate-ring .ring-inner {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(30, 31, 46, 0.95));
+}
+
+// ── Win-Loss Bar (Enhanced) ─────────────────────────────────
+
 .win-loss-bar {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 4px;
   background: rgba(239, 68, 68, 0.3);
   margin-top: 8px;
   overflow: hidden;
 
   .win-portion {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 4px;
     background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
     transition: width 0.5s ease;
+    transform-origin: left;
+    animation: fillBar 0.6s ease-out;
   }
 }
 
@@ -1301,6 +1511,15 @@
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+@keyframes fillBar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
