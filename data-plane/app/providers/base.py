@@ -81,27 +81,34 @@ class BaseProvider(ABC):
                 usage_pct=round((1 - remaining/total) * 100, 1) if total > 0 else 0
             )
     
-    def _track_api_call(self, endpoint: str, duration: float, status: str = "success"):
+    def _track_api_call(self, endpoint: str, duration: float, status: str = "success", response_bytes: int = 0):
         """
         Track API call metrics.
-        
+
         Args:
             endpoint: API endpoint called (e.g., "quote", "candles")
             duration: Call duration in seconds
             status: "success" or "error"
+            response_bytes: Size of response body in bytes
         """
-        from app.telemetry import api_calls_total, api_call_duration_seconds
-        
+        from app.telemetry import api_calls_total, api_call_duration_seconds, provider_bandwidth_bytes_total
+
         api_calls_total.labels(
             provider=self.provider_type.value,
             endpoint=endpoint,
             status=status
         ).inc()
-        
+
         api_call_duration_seconds.labels(
             provider=self.provider_type.value,
             endpoint=endpoint
         ).observe(duration)
+
+        if response_bytes > 0:
+            provider_bandwidth_bytes_total.labels(
+                provider=self.provider_type.value,
+                endpoint=endpoint
+            ).inc(response_bytes)
     
     @property
     @abstractmethod

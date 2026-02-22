@@ -24,7 +24,7 @@ Authentication: Header "Authorization: Token <api_key>"
 Documentation: https://www.tiingo.com/documentation/general/overview
 """
 import httpx
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import structlog
 import time
@@ -77,7 +77,7 @@ class TiingoProvider(BaseProvider):
     def __init__(self, api_key: str, **kwargs):
         """
         Initialize Tiingo provider.
-        
+
         Args:
             api_key: Tiingo API token
         """
@@ -86,8 +86,28 @@ class TiingoProvider(BaseProvider):
             "Authorization": f"Token {self.api_key}",
             "Content-Type": "application/json",
         }
-        
+        self._http_client: Optional[httpx.AsyncClient] = None
+
         logger.info("tiingo_provider_initialized")
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a persistent HTTP client with connection pooling."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                headers=self.headers,
+                timeout=15.0,
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=10,
+                ),
+            )
+        return self._http_client
+
+    async def close(self):
+        """Close the persistent HTTP client."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.close()
+            self._http_client = None
     
     @property
     def provider_type(self) -> ProviderType:
@@ -136,54 +156,50 @@ class TiingoProvider(BaseProvider):
         
         start_time = time.time()
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    headers=self.headers,
-                    timeout=10.0
-                )
-                duration = time.time() - start_time
-                
-                response.raise_for_status()
-                data = response.json()
-                
-                # Track successful API call
-                self._track_api_call("quote", duration, "success")
-                
-                if not data:
-                    raise ValueError(f"No quote data returned for {symbol}")
-                
-                # Tiingo returns a list, take the first item
-                quote = data[0] if isinstance(data, list) else data
-                
-                current_price = quote.get("tngoLast") or quote.get("last", 0.0)
-                
-                # Parse timestamp
-                timestamp_str = quote.get("lastSaleTimestamp", "")
-                try:
-                    timestamp = datetime.fromisoformat(
-                        timestamp_str.replace("Z", "+00:00")
-                    ) if timestamp_str else datetime.utcnow()
-                except (ValueError, AttributeError):
-                    timestamp = datetime.utcnow()
-                
-                return {
-                    "symbol": symbol,
-                    "current_price": current_price,
-                    "bid": quote.get("bidPrice", current_price),
-                    "ask": quote.get("askPrice", current_price),
-                    "spread": round(
-                        (quote.get("askPrice", 0) or 0) - (quote.get("bidPrice", 0) or 0),
-                        4
-                    ),
-                    "high": quote.get("high", 0.0) or 0.0,
-                    "low": quote.get("low", 0.0) or 0.0,
-                    "open": quote.get("open", 0.0) or 0.0,
-                    "previous_close": quote.get("prevClose", 0.0) or 0.0,
-                    "volume": quote.get("volume", 0) or 0,
-                    "timestamp": timestamp,
-                }
-        
+            client = await self._get_client()
+            response = await client.get(url, timeout=10.0)
+            duration = time.time() - start_time
+
+            response.raise_for_status()
+            data = response.json()
+
+            # Track successful API call with bandwidth
+            self._track_api_call("quote", duration, "success", len(response.content))
+
+            if not data:
+                raise ValueError(f"No quote data returned for {symbol}")
+
+            # Tiingo returns a list, take the first item
+            quote = data[0] if isinstance(data, list) else data
+
+            current_price = quote.get("tngoLast") or quote.get("last", 0.0)
+
+            # Parse timestamp
+            timestamp_str = quote.get("lastSaleTimestamp", "")
+            try:
+                timestamp = datetime.fromisoformat(
+                    timestamp_str.replace("Z", "+00:00")
+                ) if timestamp_str else datetime.utcnow()
+            except (ValueError, AttributeError):
+                timestamp = datetime.utcnow()
+
+            return {
+                "symbol": symbol,
+                "current_price": current_price,
+                "bid": quote.get("bidPrice", current_price),
+                "ask": quote.get("askPrice", current_price),
+                "spread": round(
+                    (quote.get("askPrice", 0) or 0) - (quote.get("bidPrice", 0) or 0),
+                    4
+                ),
+                "high": quote.get("high", 0.0) or 0.0,
+                "low": quote.get("low", 0.0) or 0.0,
+                "open": quote.get("open", 0.0) or 0.0,
+                "previous_close": quote.get("prevClose", 0.0) or 0.0,
+                "volume": quote.get("volume", 0) or 0,
+                "timestamp": timestamp,
+            }
+
         except httpx.HTTPStatusError as e:
             duration = time.time() - start_time
             self._track_api_call("quote", duration, "error")
@@ -285,57 +301,52 @@ class TiingoProvider(BaseProvider):
         
         start_time = time.time()
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    headers=self.headers,
-                    params=params,
-                    timeout=15.0
-                )
-                duration = time.time() - start_time
-                
-                response.raise_for_status()
-                data = response.json()
-                
-                self._track_api_call("candles_intraday", duration, "success")
-                
-                if not data:
-                    logger.warning(
-                        "tiingo_no_intraday_data",
-                        symbol=original_symbol,
-                        resample_freq=resample_freq
-                    )
-                    return []
-                
-                # Convert to standard candle format, take last `count` candles
-                candles = []
-                for item in data[-count:]:
-                    date_str = item.get("date", "")
-                    try:
-                        dt = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except (ValueError, AttributeError):
-                        continue
-                    
-                    candles.append({
-                        "time": dt.isoformat(),
-                        "open": item.get("open", 0.0) or 0.0,
-                        "high": item.get("high", 0.0) or 0.0,
-                        "low": item.get("low", 0.0) or 0.0,
-                        "close": item.get("close", 0.0) or 0.0,
-                        "volume": item.get("volume", 0) or 0,
-                    })
-                
-                logger.info(
-                    "tiingo_intraday_candles_fetched",
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            duration = time.time() - start_time
+
+            response.raise_for_status()
+            data = response.json()
+
+            self._track_api_call("candles_intraday", duration, "success", len(response.content))
+
+            if not data:
+                logger.warning(
+                    "tiingo_no_intraday_data",
                     symbol=original_symbol,
-                    resample_freq=resample_freq,
-                    count=len(candles)
+                    resample_freq=resample_freq
                 )
-                
-                return candles
-        
+                return []
+
+            # Convert to standard candle format, take last `count` candles
+            candles = []
+            for item in data[-count:]:
+                date_str = item.get("date", "")
+                try:
+                    dt = datetime.fromisoformat(
+                        date_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, AttributeError):
+                    continue
+
+                candles.append({
+                    "time": dt.isoformat(),
+                    "open": item.get("open", 0.0) or 0.0,
+                    "high": item.get("high", 0.0) or 0.0,
+                    "low": item.get("low", 0.0) or 0.0,
+                    "close": item.get("close", 0.0) or 0.0,
+                    "volume": item.get("volume", 0) or 0,
+                })
+
+            logger.info(
+                "tiingo_intraday_candles_fetched",
+                symbol=original_symbol,
+                resample_freq=resample_freq,
+                count=len(candles)
+            )
+
+            return candles
+
         except httpx.HTTPStatusError as e:
             duration = time.time() - start_time
             self._track_api_call("candles_intraday", duration, "error")
@@ -394,58 +405,53 @@ class TiingoProvider(BaseProvider):
         
         start_time = time.time()
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    headers=self.headers,
-                    params=params,
-                    timeout=15.0
-                )
-                duration = time.time() - start_time
-                
-                response.raise_for_status()
-                data = response.json()
-                
-                self._track_api_call("candles_eod", duration, "success")
-                
-                if not data:
-                    logger.warning(
-                        "tiingo_no_eod_data",
-                        symbol=original_symbol,
-                        timeframe=timeframe
-                    )
-                    return []
-                
-                # Convert to standard candle format, take last `count`
-                candles = []
-                for item in data[-count:]:
-                    date_str = item.get("date", "")
-                    try:
-                        dt = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except (ValueError, AttributeError):
-                        continue
-                    
-                    # Use adjusted prices if available (more accurate for stocks)
-                    candles.append({
-                        "time": dt.isoformat(),
-                        "open": item.get("adjOpen") or item.get("open", 0.0) or 0.0,
-                        "high": item.get("adjHigh") or item.get("high", 0.0) or 0.0,
-                        "low": item.get("adjLow") or item.get("low", 0.0) or 0.0,
-                        "close": item.get("adjClose") or item.get("close", 0.0) or 0.0,
-                        "volume": item.get("adjVolume") or item.get("volume", 0) or 0,
-                    })
-                
-                logger.info(
-                    "tiingo_eod_candles_fetched",
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            duration = time.time() - start_time
+
+            response.raise_for_status()
+            data = response.json()
+
+            self._track_api_call("candles_eod", duration, "success", len(response.content))
+
+            if not data:
+                logger.warning(
+                    "tiingo_no_eod_data",
                     symbol=original_symbol,
-                    timeframe=timeframe,
-                    count=len(candles)
+                    timeframe=timeframe
                 )
-                
-                return candles
-        
+                return []
+
+            # Convert to standard candle format, take last `count`
+            candles = []
+            for item in data[-count:]:
+                date_str = item.get("date", "")
+                try:
+                    dt = datetime.fromisoformat(
+                        date_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, AttributeError):
+                    continue
+
+                # Use adjusted prices if available (more accurate for stocks)
+                candles.append({
+                    "time": dt.isoformat(),
+                    "open": item.get("adjOpen") or item.get("open", 0.0) or 0.0,
+                    "high": item.get("adjHigh") or item.get("high", 0.0) or 0.0,
+                    "low": item.get("adjLow") or item.get("low", 0.0) or 0.0,
+                    "close": item.get("adjClose") or item.get("close", 0.0) or 0.0,
+                    "volume": item.get("adjVolume") or item.get("volume", 0) or 0,
+                })
+
+            logger.info(
+                "tiingo_eod_candles_fetched",
+                symbol=original_symbol,
+                timeframe=timeframe,
+                count=len(candles)
+            )
+
+            return candles
+
         except httpx.HTTPStatusError as e:
             duration = time.time() - start_time
             self._track_api_call("candles_eod", duration, "error")

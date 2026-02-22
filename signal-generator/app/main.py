@@ -209,6 +209,27 @@ class SignalGeneratorService:
             self.kafka_producer = None
             logger.warning("signals_will_only_log", message="Kafka unavailable, falling back to logs only")
     
+    def _get_interval_for_timeframe(self, base_interval: int, timeframe: str) -> int:
+        """
+        Return check interval appropriate for the given timeframe.
+
+        Logic: interval = max(base_interval, candle_period_seconds * 0.8)
+        This ensures we check shortly before a new candle closes but never
+        more frequently than the base interval.
+        """
+        tf_seconds = {
+            "1": 60, "1m": 60,
+            "5": 300, "5m": 300,
+            "15": 900, "15m": 900,
+            "30": 1800, "30m": 1800,
+            "60": 3600, "1h": 3600,
+            "240": 14400, "4h": 14400,
+            "D": 86400,
+            "W": 604800,
+        }
+        candle_seconds = tf_seconds.get(timeframe, base_interval)
+        return max(base_interval, int(candle_seconds * 0.8))
+
     def _initialize_generators(self):
         """Initialize all configured generators.
         
@@ -255,7 +276,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"golden_cross_{tf}",
                 "generator": GoldenCrossSignalGenerator(golden_cross_config),
-                "interval": settings.GOLDEN_CROSS_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.GOLDEN_CROSS_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Death cross generator (multi-timeframe)
@@ -271,7 +292,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"death_cross_{tf}",
                 "generator": DeathCrossSignalGenerator(death_cross_config),
-                "interval": settings.DEATH_CROSS_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.DEATH_CROSS_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # RSI generator (multi-timeframe)
@@ -287,7 +308,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"rsi_{tf}",
                 "generator": RSISignalGenerator(rsi_config),
-                "interval": settings.RSI_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.RSI_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # MACD generator (multi-timeframe)
@@ -304,7 +325,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"macd_{tf}",
                 "generator": MACDSignalGenerator(macd_config),
-                "interval": settings.MACD_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.MACD_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Volume Spike generator (multi-timeframe)
@@ -321,7 +342,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"volume_spike_{tf}",
                 "generator": VolumeSpikeSignalGenerator(volume_spike_config),
-                "interval": settings.VOLUME_SPIKE_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.VOLUME_SPIKE_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Bollinger Bands generator (multi-timeframe)
@@ -338,7 +359,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"bollinger_bands_{tf}",
                 "generator": BollingerBandsSignalGenerator(bbands_config),
-                "interval": settings.BBANDS_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.BBANDS_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Stochastic generator (multi-timeframe)
@@ -356,7 +377,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"stochastic_{tf}",
                 "generator": StochasticSignalGenerator(stoch_config),
-                "interval": settings.STOCH_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.STOCH_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # ADX generator (multi-timeframe)
@@ -372,7 +393,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"adx_{tf}",
                 "generator": ADXSignalGenerator(adx_config),
-                "interval": settings.ADX_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.ADX_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # EMA Crossover generator (multi-timeframe)
@@ -388,7 +409,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"ema_crossover_{tf}",
                 "generator": EMACrossoverSignalGenerator(ema_config),
-                "interval": settings.EMA_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.EMA_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # ATR generator (multi-timeframe)
@@ -405,7 +426,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"atr_{tf}",
                 "generator": ATRSignalGenerator(atr_config),
-                "interval": settings.ATR_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.ATR_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # CCI generator (multi-timeframe)
@@ -421,7 +442,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"cci_{tf}",
                 "generator": CCISignalGenerator(cci_config),
-                "interval": settings.CCI_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.CCI_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Stochastic RSI generator (multi-timeframe)
@@ -439,7 +460,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"stochrsi_{tf}",
                 "generator": StochRSISignalGenerator(stochrsi_config),
-                "interval": settings.STOCHRSI_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.STOCHRSI_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Williams %R generator (multi-timeframe)
@@ -455,7 +476,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"williams_r_{tf}",
                 "generator": WilliamsRSignalGenerator(willr_config),
-                "interval": settings.WILLR_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.WILLR_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # AROON generator (multi-timeframe)
@@ -470,7 +491,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"aroon_{tf}",
                 "generator": AroonSignalGenerator(aroon_config),
-                "interval": settings.AROON_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.AROON_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # MFI generator (multi-timeframe)
@@ -486,7 +507,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"mfi_{tf}",
                 "generator": MFISignalGenerator(mfi_config),
-                "interval": settings.MFI_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.MFI_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # OBV generator (multi-timeframe)
@@ -502,7 +523,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"obv_{tf}",
                 "generator": OBVSignalGenerator(obv_config),
-                "interval": settings.OBV_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.OBV_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # SAR generator (multi-timeframe)
@@ -517,7 +538,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"sar_{tf}",
                 "generator": SARSignalGenerator(sar_config),
-                "interval": settings.SAR_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.SAR_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # 200 EMA Crossover generator (multi-timeframe)
@@ -532,7 +553,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"ema_200_crossover_{tf}",
                 "generator": EMA200CrossoverSignalGenerator(ema200_config),
-                "interval": settings.EMA_200_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.EMA_200_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Swing Point Break generator (multi-timeframe)
@@ -547,7 +568,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"swing_point_break_{tf}",
                 "generator": SwingPointBreakSignalGenerator(swing_config),
-                "interval": settings.SWING_POINT_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.SWING_POINT_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Momentum Divergence generator (RSI - multi-timeframe)
@@ -563,7 +584,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"rsi_divergence_{tf}",
                 "generator": MomentumDivergenceSignalGenerator(rsi_div_config),
-                "interval": settings.DIVERGENCE_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.DIVERGENCE_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Fair Value Gap generator (multi-timeframe)
@@ -577,7 +598,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"fvg_{tf}",
                 "generator": FairValueGapSignalGenerator(fvg_config),
-                "interval": settings.FVG_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.FVG_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Liquidity Sweep generator (multi-timeframe)
@@ -592,7 +613,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"liquidity_sweep_{tf}",
                 "generator": LiquiditySweepSignalGenerator(liq_sweep_config),
-                "interval": settings.LIQUIDITY_SWEEP_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.LIQUIDITY_SWEEP_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Break of Structure generator (multi-timeframe)
@@ -607,7 +628,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"bos_{tf}",
                 "generator": BreakOfStructureSignalGenerator(bos_config),
-                "interval": settings.BOS_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.BOS_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Order Block generator (multi-timeframe)
@@ -622,7 +643,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"order_block_{tf}",
                 "generator": OrderBlockSignalGenerator(order_block_config),
-                "interval": settings.ORDER_BLOCK_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.ORDER_BLOCK_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Change of Character generator (multi-timeframe)
@@ -637,7 +658,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"choch_{tf}",
                 "generator": ChangeOfCharacterSignalGenerator(choch_config),
-                "interval": settings.CHOCH_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.CHOCH_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Volume Profile POC Break generator (multi-timeframe)
@@ -651,7 +672,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"poc_break_{tf}",
                 "generator": VolumeProfilePOCSignalGenerator(poc_config),
-                "interval": settings.POC_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.POC_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # Accumulation/Distribution generator (multi-timeframe)
@@ -666,7 +687,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"accum_dist_{tf}",
                 "generator": AccumulationDistributionSignalGenerator(accum_dist_config),
-                "interval": settings.ACCUM_DIST_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.ACCUM_DIST_CHECK_INTERVAL_SECONDS, tf)
             })
         
         # HTF Trend Alignment generator (multi-timeframe)
@@ -683,7 +704,7 @@ class SignalGeneratorService:
             self.generators.append({
                 "name": f"htf_trend_{tf}",
                 "generator": HTFTrendAlignmentSignalGenerator(htf_trend_config),
-                "interval": settings.HTF_TREND_CHECK_INTERVAL_SECONDS
+                "interval": self._get_interval_for_timeframe(settings.HTF_TREND_CHECK_INTERVAL_SECONDS, tf)
             })
         
         logger.info(

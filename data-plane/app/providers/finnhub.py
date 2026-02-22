@@ -113,10 +113,10 @@ class FinnhubProvider(BaseProvider):
                 
                 response.raise_for_status()
                 data = response.json()
-                
-                # Track successful API call
-                self._track_api_call("quote", duration, "success")
-                
+
+                # Track successful API call with bandwidth
+                self._track_api_call("quote", duration, "success", len(response.content))
+
                 if "error" in data:
                     raise ValueError(f"Finnhub error: {data['error']}")
                 
@@ -219,10 +219,10 @@ class FinnhubProvider(BaseProvider):
                 
                 response.raise_for_status()
                 data = response.json()
-                
-                # Track successful API call
-                self._track_api_call("candles", duration, "success")
-                
+
+                # Track successful API call with bandwidth
+                self._track_api_call("candles", duration, "success", len(response.content))
+
                 if data.get("s") == "no_data":
                     logger.warning("finnhub_no_candle_data", symbol=symbol, timeframe=timeframe)
                     return []

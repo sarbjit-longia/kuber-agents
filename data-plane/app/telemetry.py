@@ -44,6 +44,53 @@ api_call_duration_seconds = Histogram(
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
 )
 
+# Provider bandwidth tracking
+provider_bandwidth_bytes_total = Counter(
+    'provider_bandwidth_bytes_total',
+    'Total bytes received from data providers',
+    ['provider', 'endpoint']
+)
+
+# Candle cache metrics
+candle_cache_hits_total = Counter(
+    'candle_cache_hits_total',
+    'Total candle cache hits in Redis',
+    ['timeframe']
+)
+
+candle_cache_misses_total = Counter(
+    'candle_cache_misses_total',
+    'Total candle cache misses in Redis',
+    ['timeframe']
+)
+
+# TimescaleDB metrics
+timescale_candles_written_total = Counter(
+    'timescale_candles_written_total',
+    'Total candle rows written to TimescaleDB',
+    ['timeframe']
+)
+
+timescale_aggregates_read_total = Counter(
+    'timescale_aggregates_read_total',
+    'Total rows read from TimescaleDB continuous aggregates',
+    ['timeframe']
+)
+
+timescale_aggregate_refresh_seconds = Histogram(
+    'timescale_aggregate_refresh_seconds',
+    'Duration of continuous aggregate refresh in seconds',
+    buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]
+)
+
+# Prefetch task metrics
+prefetch_task_duration_seconds = Histogram(
+    'prefetch_task_duration_seconds',
+    'Duration of prefetch Celery tasks in seconds',
+    ['task'],
+    buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]
+)
+
 # Process resource metrics
 process_cpu_percent = Gauge(
     'process_cpu_percent',

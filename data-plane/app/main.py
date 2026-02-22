@@ -59,6 +59,14 @@ async def startup_event():
         metrics_port=settings.METRICS_PORT
     )
 
+    # Initialize TimescaleDB hypertable (non-fatal — Redis caching still works)
+    try:
+        from app.services.timescale_writer import init_hypertable
+        await init_hypertable()
+        logger.info("hypertable_initialized_on_startup")
+    except Exception as e:
+        logger.warning("hypertable_init_failed_on_startup", error=str(e))
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
