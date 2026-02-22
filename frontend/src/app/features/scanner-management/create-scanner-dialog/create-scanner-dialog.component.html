@@ -29,35 +29,217 @@
       <mat-hint>Optional description for this scanner</mat-hint>
     </mat-form-field>
 
+    <!-- Ticker Selection Section -->
     <div class="form-group">
       <label class="section-label">Ticker Symbols *</label>
-      <mat-hint class="ticker-hint">
-        Enter tickers one at a time or paste multiple (separated by commas, spaces, or newlines)
-      </mat-hint>
 
-      <mat-form-field appearance="outline" class="full-width ticker-input">
-        <mat-label>Add Tickers</mat-label>
-        <mat-chip-grid #chipGrid>
-          <mat-chip-row *ngFor="let ticker of tickers"
-                        (removed)="removeTicker(ticker)">
+      <mat-tab-group [(selectedIndex)]="selectedTabIndex" class="ticker-tabs">
+        <!-- S&P 500 Tab -->
+        <mat-tab label="S&P 500">
+          <div class="tab-body">
+            <div class="tab-controls">
+              <mat-form-field appearance="outline" class="search-field">
+                <mat-icon matPrefix>search</mat-icon>
+                <input matInput [(ngModel)]="sp500Search" [ngModelOptions]="{standalone: true}"
+                       placeholder="Search by symbol, name, or sector...">
+                <button mat-icon-button matSuffix *ngIf="sp500Search" (click)="clearTabSearch('sp500')"
+                        matTooltip="Clear search">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </mat-form-field>
+              <button mat-stroked-button class="bulk-btn" (click)="selectAllDisplayed('sp500')"
+                      matTooltip="Select all visible tickers">
+                Select All
+              </button>
+              <button mat-stroked-button class="bulk-btn" (click)="clearAllDisplayed('sp500')"
+                      matTooltip="Deselect all visible tickers">
+                Clear
+              </button>
+            </div>
+
+            <div class="sector-filters">
+              <button class="sector-pill" [class.active]="selectedSector === ''"
+                      (click)="onSectorChange('')">All</button>
+              <button class="sector-pill" *ngFor="let sector of sectors"
+                      [class.active]="selectedSector === sector"
+                      (click)="onSectorChange(sector)">
+                {{ sector }}
+              </button>
+            </div>
+
+            <div class="preset-buttons">
+              <button class="preset-btn" (click)="applyPreset('Mag 7')" matTooltip="AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA">
+                + Mag 7
+              </button>
+              <button class="preset-btn" (click)="applyPreset('FAANG+')" matTooltip="META, AAPL, AMZN, NFLX, GOOGL, MSFT">
+                + FAANG+
+              </button>
+            </div>
+
+            <div class="selection-count">
+              {{ getSelectedCount('sp500') }} of {{ getTotalCount('sp500') }} selected
+            </div>
+
+            <div class="ticker-grid">
+              <div class="ticker-card" *ngFor="let ticker of getDisplayedTickers('sp500')"
+                   [class.selected]="isTickerSelected(ticker.symbol)"
+                   (click)="toggleTicker(ticker.symbol)">
+                <div class="ticker-checkbox">
+                  <mat-icon>{{ isTickerSelected(ticker.symbol) ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+                </div>
+                <div class="ticker-info">
+                  <span class="ticker-symbol">{{ ticker.symbol }}</span>
+                  <span class="ticker-name">{{ ticker.name }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- Forex Tab -->
+        <mat-tab label="Forex">
+          <div class="tab-body">
+            <div class="tab-controls">
+              <mat-form-field appearance="outline" class="search-field">
+                <mat-icon matPrefix>search</mat-icon>
+                <input matInput [(ngModel)]="forexSearch" [ngModelOptions]="{standalone: true}"
+                       placeholder="Search forex pairs...">
+                <button mat-icon-button matSuffix *ngIf="forexSearch" (click)="clearTabSearch('forex')"
+                        matTooltip="Clear search">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </mat-form-field>
+              <button mat-stroked-button class="bulk-btn" (click)="selectAllDisplayed('forex')">
+                Select All
+              </button>
+              <button mat-stroked-button class="bulk-btn" (click)="clearAllDisplayed('forex')">
+                Clear
+              </button>
+            </div>
+
+            <div class="preset-buttons">
+              <button class="preset-btn" (click)="applyPreset('Major Forex')" matTooltip="EUR_USD, GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD">
+                + Major Forex
+              </button>
+            </div>
+
+            <div class="selection-count">
+              {{ getSelectedCount('forex') }} of {{ getTotalCount('forex') }} selected
+            </div>
+
+            <div class="ticker-grid">
+              <div class="ticker-card" *ngFor="let ticker of getDisplayedTickers('forex')"
+                   [class.selected]="isTickerSelected(ticker.symbol)"
+                   (click)="toggleTicker(ticker.symbol)">
+                <div class="ticker-checkbox">
+                  <mat-icon>{{ isTickerSelected(ticker.symbol) ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+                </div>
+                <div class="ticker-info">
+                  <span class="ticker-symbol">{{ ticker.symbol }}</span>
+                  <span class="ticker-name">{{ ticker.name }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- ETFs Tab -->
+        <mat-tab label="ETFs">
+          <div class="tab-body">
+            <div class="tab-controls">
+              <mat-form-field appearance="outline" class="search-field">
+                <mat-icon matPrefix>search</mat-icon>
+                <input matInput [(ngModel)]="etfSearch" [ngModelOptions]="{standalone: true}"
+                       placeholder="Search ETFs...">
+                <button mat-icon-button matSuffix *ngIf="etfSearch" (click)="clearTabSearch('etf')"
+                        matTooltip="Clear search">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </mat-form-field>
+              <button mat-stroked-button class="bulk-btn" (click)="selectAllDisplayed('etf')">
+                Select All
+              </button>
+              <button mat-stroked-button class="bulk-btn" (click)="clearAllDisplayed('etf')">
+                Clear
+              </button>
+            </div>
+
+            <div class="preset-buttons">
+              <button class="preset-btn" (click)="applyPreset('Top ETFs')" matTooltip="SPY, QQQ, IWM, DIA, GLD">
+                + Top ETFs
+              </button>
+            </div>
+
+            <div class="selection-count">
+              {{ getSelectedCount('etf') }} of {{ getTotalCount('etf') }} selected
+            </div>
+
+            <div class="ticker-grid">
+              <div class="ticker-card" *ngFor="let ticker of getDisplayedTickers('etf')"
+                   [class.selected]="isTickerSelected(ticker.symbol)"
+                   (click)="toggleTicker(ticker.symbol)">
+                <div class="ticker-checkbox">
+                  <mat-icon>{{ isTickerSelected(ticker.symbol) ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+                </div>
+                <div class="ticker-info">
+                  <span class="ticker-symbol">{{ ticker.symbol }}</span>
+                  <span class="ticker-name">{{ ticker.name }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- Custom Tab -->
+        <mat-tab label="Custom">
+          <div class="tab-body custom-tab">
+            <p class="custom-hint">
+              Enter tickers manually one at a time, or paste multiple tickers separated by commas, spaces, or newlines.
+            </p>
+
+            <mat-form-field appearance="outline" class="full-width ticker-input">
+              <mat-label>Add Tickers</mat-label>
+              <mat-chip-grid #chipGrid>
+                <mat-chip-row *ngFor="let ticker of tickers"
+                              (removed)="removeTicker(ticker)">
+                  {{ ticker }}
+                  <button matChipRemove>
+                    <mat-icon>cancel</mat-icon>
+                  </button>
+                </mat-chip-row>
+              </mat-chip-grid>
+              <input placeholder="AAPL, MSFT, GOOGL..."
+                     [matChipInputFor]="chipGrid"
+                     [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                     [matChipInputAddOnBlur]="true"
+                     (matChipInputTokenEnd)="addTicker($event)"
+                     (paste)="onPaste($event)"
+                     [formControl]="tickerInputControl">
+            </mat-form-field>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+
+      <!-- Selected Tickers Bar -->
+      <div class="selected-tickers-bar" *ngIf="tickers.length > 0">
+        <div class="selected-bar-header">
+          <div class="selected-bar-info">
+            <div class="selected-bar-icon">
+              <mat-icon>label</mat-icon>
+            </div>
+            <span>{{ tickers.length }} ticker{{ tickers.length !== 1 ? 's' : '' }} selected</span>
+          </div>
+          <button mat-button class="clear-all-btn" (click)="clearAllTickers()">
+            <mat-icon>clear_all</mat-icon>
+            Clear All
+          </button>
+        </div>
+        <div class="selected-chips">
+          <span class="selected-chip" *ngFor="let ticker of tickers">
             {{ ticker }}
-            <button matChipRemove>
-              <mat-icon>cancel</mat-icon>
-            </button>
-          </mat-chip-row>
-        </mat-chip-grid>
-        <input placeholder="AAPL, MSFT, GOOGL..."
-               [matChipInputFor]="chipGrid"
-               [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
-               [matChipInputAddOnBlur]="true"
-               (matChipInputTokenEnd)="addTicker($event)"
-               (paste)="onPaste($event)"
-               [formControl]="tickerInputControl">
-      </mat-form-field>
-
-      <div class="ticker-count" *ngIf="tickers.length > 0">
-        <div class="ticker-count-icon"><mat-icon>label</mat-icon></div>
-        <span>{{ tickers.length }} ticker{{ tickers.length > 1 ? 's' : '' }} added</span>
+            <mat-icon class="chip-remove" (click)="removeTicker(ticker)">close</mat-icon>
+          </span>
+        </div>
       </div>
     </div>
 

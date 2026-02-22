@@ -105,7 +105,7 @@ export class ScannerManagementComponent implements OnInit {
 
   openCreateDialog(): void {
     const dialogRef = this.dialog.open(CreateScannerDialogComponent, {
-      width: '600px',
+      width: '720px',
       data: {}
     });
 
@@ -118,7 +118,7 @@ export class ScannerManagementComponent implements OnInit {
 
   openEditDialog(scanner: Scanner): void {
     const dialogRef = this.dialog.open(CreateScannerDialogComponent, {
-      width: '600px',
+      width: '720px',
       data: { scanner }
     });
 
