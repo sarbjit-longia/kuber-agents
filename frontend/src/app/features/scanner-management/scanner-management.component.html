@@ -5,10 +5,15 @@
     <div class="page-header">
     <div class="header-content">
       <h1>
-        <mat-icon>filter_alt</mat-icon>
+        <div class="header-icon-box"><mat-icon>filter_alt</mat-icon></div>
         Scanners
       </h1>
       <p class="subtitle">Manage ticker lists for signal-based pipelines</p>
+      <div class="header-stats" *ngIf="!loading && allScanners.length > 0">
+        <span class="header-stat-pill"><span class="pill-dot dot-total"></span> {{ allScanners.length }} total</span>
+        <span class="header-stat-pill"><span class="pill-dot dot-active"></span> {{ activeCount }} active</span>
+        <span class="header-stat-pill"><span class="pill-dot dot-inactive"></span> {{ inactiveCount }} inactive</span>
+      </div>
     </div>
     <button mat-raised-button color="primary" (click)="openCreateDialog()">
       <mat-icon>add</mat-icon>
@@ -17,6 +22,13 @@
   </div>
 
   <div class="filters">
+    <mat-form-field appearance="outline" class="search-field" subscriptSizing="dynamic">
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput placeholder="Search scanners..." [value]="searchQuery" (input)="onSearchChange($event)">
+      <button *ngIf="searchQuery" matSuffix mat-icon-button (click)="clearSearch()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </mat-form-field>
     <mat-button-toggle-group [value]="filterActive === undefined ? 'all' : (filterActive ? 'active' : 'inactive')"
                               (change)="applyFilter($event.value)">
       <mat-button-toggle value="all">All</mat-button-toggle>
@@ -25,8 +37,9 @@
     </mat-button-toggle-group>
   </div>
 
-  <div class="scanner-list" *ngIf="!loading && scanners.length > 0">
-    <div class="scanner-card" *ngFor="let scanner of scanners">
+  <div class="scanner-list" *ngIf="!loading && filteredScanners.length > 0">
+    <div class="scanner-card" *ngFor="let scanner of filteredScanners"
+         [ngClass]="scanner.is_active ? 'card-tint-active' : 'card-tint-inactive'">
       <div class="scanner-card-header">
         <div class="scanner-title">
           <h3>{{ scanner.name }}</h3>
@@ -61,24 +74,30 @@
 
       <div class="scanner-stats">
         <div class="stat">
-          <mat-icon>label</mat-icon>
-          <span class="stat-value">{{ scanner.ticker_count || 0 }}</span>
-          <span class="stat-label">Tickers</span>
+          <div class="stat-icon-box icon-tickers"><mat-icon>label</mat-icon></div>
+          <div class="stat-content">
+            <span class="stat-value">{{ scanner.ticker_count || 0 }}</span>
+            <span class="stat-label">Tickers</span>
+          </div>
         </div>
         <div class="stat">
-          <mat-icon>account_tree</mat-icon>
-          <span class="stat-value">{{ scanner.pipeline_count || 0 }}</span>
-          <span class="stat-label">Pipelines</span>
+          <div class="stat-icon-box icon-pipelines"><mat-icon>account_tree</mat-icon></div>
+          <div class="stat-content">
+            <span class="stat-value">{{ scanner.pipeline_count || 0 }}</span>
+            <span class="stat-label">Pipelines</span>
+          </div>
         </div>
         <div class="stat">
-          <mat-icon>category</mat-icon>
-          <span class="stat-value">{{ scanner.scanner_type }}</span>
-          <span class="stat-label">Type</span>
+          <div class="stat-icon-box icon-type"><mat-icon>category</mat-icon></div>
+          <div class="stat-content">
+            <span class="stat-value">{{ scanner.scanner_type }}</span>
+            <span class="stat-label">Type</span>
+          </div>
         </div>
       </div>
 
       <div class="scanner-tickers" *ngIf="getTickerCount(scanner) > 0">
-        <div class="tickers-label">Tickers:</div>
+        <div class="tickers-label">Tickers</div>
         <div class="ticker-chips">
           <mat-chip *ngFor="let ticker of getTickers(scanner).slice(0, 10)">
             {{ ticker }}
@@ -98,13 +117,19 @@
     </div>
   </div>
 
-  <div class="empty-state" *ngIf="!loading && scanners.length === 0">
-    <mat-icon>filter_alt</mat-icon>
-    <h2>No scanners found</h2>
-    <p>Create your first scanner to get started with signal-based pipelines</p>
-    <button mat-raised-button color="primary" (click)="openCreateDialog()">
+  <div class="empty-state" *ngIf="!loading && filteredScanners.length === 0">
+    <div class="empty-icon-box"><mat-icon>filter_alt</mat-icon></div>
+    <h2 *ngIf="searchQuery">No scanners match "{{ searchQuery }}"</h2>
+    <h2 *ngIf="!searchQuery">No scanners found</h2>
+    <p *ngIf="searchQuery">Try a different search term or clear the filter</p>
+    <p *ngIf="!searchQuery">Create your first scanner to get started with signal-based pipelines</p>
+    <button *ngIf="!searchQuery" mat-raised-button color="primary" (click)="openCreateDialog()">
       <mat-icon>add</mat-icon>
       Create Scanner
+    </button>
+    <button *ngIf="searchQuery" mat-stroked-button (click)="clearSearch()">
+      <mat-icon>clear</mat-icon>
+      Clear Search
     </button>
   </div>
 
@@ -116,4 +141,3 @@
 
   <app-footer></app-footer>
 </div>
-

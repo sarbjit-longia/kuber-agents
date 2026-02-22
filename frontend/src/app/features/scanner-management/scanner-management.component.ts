@@ -1,6 +1,6 @@
 /**
  * Scanner Management Component
- * 
+ *
  * Main page for managing scanners (ticker lists).
  */
 import { Component, OnInit } from '@angular/core';
@@ -14,9 +14,13 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { FormsModule } from '@angular/forms';
 import { Scanner, ScannerCreate } from '../../core/models/scanner.model';
 import { ScannerService } from '../../core/services/scanner.service';
 import { CreateScannerDialogComponent } from './create-scanner-dialog/create-scanner-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog/confirm-dialog.component';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { FooterComponent } from '../../shared/components/footer/footer.component';
 import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
@@ -26,6 +30,7 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatDialogModule,
     MatSnackBarModule,
     MatButtonModule,
@@ -35,6 +40,8 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
     MatMenuModule,
     MatProgressSpinnerModule,
     MatButtonToggleModule,
+    MatFormFieldModule,
+    MatInputModule,
     NavbarComponent,
     FooterComponent,
     CreateScannerDialogComponent,
@@ -44,9 +51,11 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
   styleUrls: ['./scanner-management.component.scss']
 })
 export class ScannerManagementComponent implements OnInit {
+  allScanners: Scanner[] = [];
   scanners: Scanner[] = [];
   loading = false;
   filterActive: boolean | undefined = undefined;
+  searchQuery = '';
 
   constructor(
     private scannerService: ScannerService,
@@ -58,11 +67,32 @@ export class ScannerManagementComponent implements OnInit {
     this.loadScanners();
   }
 
+  get activeCount(): number {
+    return this.allScanners.filter(s => s.is_active).length;
+  }
+
+  get inactiveCount(): number {
+    return this.allScanners.filter(s => !s.is_active).length;
+  }
+
+  get filteredScanners(): Scanner[] {
+    if (!this.searchQuery) {
+      return this.scanners;
+    }
+    const query = this.searchQuery.toLowerCase();
+    return this.scanners.filter(s =>
+      s.name.toLowerCase().includes(query) ||
+      (s.description && s.description.toLowerCase().includes(query)) ||
+      (s.config?.tickers && s.config.tickers.some(t => t.toLowerCase().includes(query)))
+    );
+  }
+
   loadScanners(): void {
     this.loading = true;
-    this.scannerService.getScanners(this.filterActive).subscribe({
+    this.scannerService.getScanners().subscribe({
       next: (scanners) => {
-        this.scanners = scanners;
+        this.allScanners = scanners;
+        this.applyClientFilter();
         this.loading = false;
       },
       error: (error) => {
@@ -128,10 +158,52 @@ export class ScannerManagementComponent implements OnInit {
   }
 
   deleteScanner(scanner: Scanner): void {
-    if (!confirm(`Are you sure you want to delete "${scanner.name}"?`)) {
-      return;
-    }
+    this.scannerService.getScannerUsage(scanner.id).subscribe({
+      next: (usage) => {
+        let message = `Are you sure you want to delete "${scanner.name}"?`;
+        if (usage.pipeline_count > 0) {
+          const pipelineNames = usage.pipelines.map(p => p.name).join(', ');
+          message += `\n\nThis scanner is used by ${usage.pipeline_count} pipeline${usage.pipeline_count > 1 ? 's' : ''}: ${pipelineNames}`;
+        }
 
+        const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+          width: '440px',
+          data: {
+            title: 'Delete Scanner',
+            message,
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+          } as ConfirmDialogData
+        });
+
+        dialogRef.afterClosed().subscribe(confirmed => {
+          if (confirmed) {
+            this.performDelete(scanner);
+          }
+        });
+      },
+      error: () => {
+        // If usage check fails, still allow delete with basic confirm
+        const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+          width: '440px',
+          data: {
+            title: 'Delete Scanner',
+            message: `Are you sure you want to delete "${scanner.name}"?`,
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+          } as ConfirmDialogData
+        });
+
+        dialogRef.afterClosed().subscribe(confirmed => {
+          if (confirmed) {
+            this.performDelete(scanner);
+          }
+        });
+      }
+    });
+  }
+
+  private performDelete(scanner: Scanner): void {
     this.scannerService.deleteScanner(scanner.id).subscribe({
       next: () => {
         this.snackBar.open('Scanner deleted successfully', 'Close', { duration: 3000 });
@@ -161,7 +233,15 @@ export class ScannerManagementComponent implements OnInit {
 
   applyFilter(filter: 'all' | 'active' | 'inactive'): void {
     this.filterActive = filter === 'all' ? undefined : filter === 'active';
-    this.loadScanners();
+    this.applyClientFilter();
+  }
+
+  onSearchChange(event: Event): void {
+    this.searchQuery = (event.target as HTMLInputElement).value;
+  }
+
+  clearSearch(): void {
+    this.searchQuery = '';
   }
 
   getTickerCount(scanner: Scanner): number {
@@ -171,5 +251,12 @@ export class ScannerManagementComponent implements OnInit {
   getTickers(scanner: Scanner): string[] {
     return scanner.config?.tickers || [];
   }
-}
 
+  private applyClientFilter(): void {
+    if (this.filterActive === undefined) {
+      this.scanners = [...this.allScanners];
+    } else {
+      this.scanners = this.allScanners.filter(s => s.is_active === this.filterActive);
+    }
+  }
+}

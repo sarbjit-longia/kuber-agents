@@ -1,6 +1,12 @@
-<h2 mat-dialog-title>
-  {{ isEditMode ? 'Edit Scanner' : 'Create Scanner' }}
-</h2>
+<div class="dialog-header">
+  <div class="dialog-icon-box">
+    <mat-icon>{{ isEditMode ? 'edit' : 'add_circle' }}</mat-icon>
+  </div>
+  <div class="dialog-title-text">
+    <h2 mat-dialog-title>{{ isEditMode ? 'Edit Scanner' : 'Create Scanner' }}</h2>
+    <p class="dialog-subtitle">{{ isEditMode ? 'Update your scanner configuration' : 'Set up a new ticker list' }}</p>
+  </div>
+</div>
 
 <mat-dialog-content>
   <form [formGroup]="scannerForm">
@@ -18,7 +24,7 @@
 
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Description (Optional)</mat-label>
-      <textarea matInput formControlName="description" rows="2" 
+      <textarea matInput formControlName="description" rows="2"
                 placeholder="A list of tech stocks"></textarea>
       <mat-hint>Optional description for this scanner</mat-hint>
     </mat-form-field>
@@ -50,7 +56,7 @@
       </mat-form-field>
 
       <div class="ticker-count" *ngIf="tickers.length > 0">
-        <mat-icon>label</mat-icon>
+        <div class="ticker-count-icon"><mat-icon>label</mat-icon></div>
         <span>{{ tickers.length }} ticker{{ tickers.length > 1 ? 's' : '' }} added</span>
       </div>
     </div>
@@ -78,4 +84,3 @@
     {{ isEditMode ? 'Save Changes' : 'Create Scanner' }}
   </button>
 </mat-dialog-actions>
-

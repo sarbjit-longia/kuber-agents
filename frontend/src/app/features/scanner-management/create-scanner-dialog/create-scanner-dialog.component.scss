@@ -1,10 +1,45 @@
-h2[mat-dialog-title] {
-  margin: 0;
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   padding: 1.5rem;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
+  .dialog-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    mat-icon {
+      color: white;
+      font-size: 22px;
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  .dialog-title-text {
+    h2[mat-dialog-title] {
+      margin: 0;
+      padding: 0;
+      border: none;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .dialog-subtitle {
+      margin: 0.15rem 0 0 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+  }
 }
 
 mat-dialog-content {
@@ -48,6 +83,7 @@ mat-dialog-content {
         background-color: rgba(99, 102, 241, 0.15) !important;
         color: var(--accent-primary) !important;
         font-weight: 500;
+        border-left: 3px solid var(--accent-primary);
 
         button[matChipRemove] {
           opacity: 0.7;
@@ -69,19 +105,31 @@ mat-dialog-content {
     .ticker-count {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.75rem;
       margin-top: 0.5rem;
-      padding: 0.5rem;
-      background-color: var(--bg-elevated);
-      border-radius: 4px;
+      padding: 0.65rem 0.85rem;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.04));
+      border: 1px solid rgba(102, 126, 234, 0.15);
+      border-radius: 10px;
       font-size: 0.9rem;
       color: var(--text-secondary);
 
-      mat-icon {
-        font-size: 1.25rem;
-        width: 1.25rem;
-        height: 1.25rem;
-        color: var(--accent-primary);
+      .ticker-count-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        mat-icon {
+          color: white;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+        }
       }
     }
 
@@ -129,7 +177,7 @@ mat-dialog-content {
 
 mat-dialog-actions {
   padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   margin: 0;
 
   button {
