@@ -1,167 +1,320 @@
-<div class="user-settings-container">
-  <h1><mat-icon>settings</mat-icon> User Settings</h1>
+<app-navbar></app-navbar>
 
-  <mat-tab-group>
-    <!-- Telegram Notifications Tab -->
-    <mat-tab label="Telegram Notifications">
-      <div class="tab-content">
-        <mat-card>
-          <mat-card-header>
-            <mat-card-title>
-              <mat-icon>telegram</mat-icon>
-              Telegram Bot Configuration
-            </mat-card-title>
-          </mat-card-header>
+<div class="settings-layout">
+  <!-- Sidebar Navigation -->
+  <aside class="settings-nav">
+    <div class="nav-header">
+      <mat-icon>settings</mat-icon>
+      <span>Settings</span>
+    </div>
+    <div class="nav-items">
+      <button *ngFor="let section of sections"
+              class="nav-item"
+              [class.active]="activeSection === section.id"
+              (click)="setSection(section.id)">
+        <div class="nav-icon">
+          <mat-icon>{{ section.icon }}</mat-icon>
+        </div>
+        <span>{{ section.label }}</span>
+      </button>
+    </div>
+  </aside>
 
-          <mat-card-content>
-            <!-- Loading State -->
-            <div *ngIf="isLoading" class="loading-container">
-              <mat-spinner diameter="40"></mat-spinner>
-              <p>Loading configuration...</p>
-            </div>
+  <!-- Content Area -->
+  <main class="settings-content">
 
-            <!-- Configuration Status -->
-            <div *ngIf="!isLoading && telegramConfig" class="config-status">
-              <div class="status-badge" [class.configured]="telegramConfig.is_configured">
-                <mat-icon>{{ telegramConfig.is_configured ? 'check_circle' : 'info' }}</mat-icon>
-                <span>{{ telegramConfig.is_configured ? 'Configured' : 'Not Configured' }}</span>
-              </div>
-              
-              <div *ngIf="telegramConfig.is_configured" class="chat-id-display">
-                <strong>Chat ID:</strong> {{ telegramConfig.chat_id }}
-              </div>
-            </div>
+    <!-- ═══ Profile Section ═══ -->
+    <section *ngIf="activeSection === 'profile'" class="settings-section">
+      <h2 class="section-title">Profile</h2>
 
-            <!-- Setup Instructions -->
-            <div class="setup-instructions" *ngIf="!telegramConfig?.is_configured || showTokenInput">
-              <h3>📱 How to Set Up Telegram Notifications</h3>
-              <ol>
-                <li>
-                  Open Telegram and search for <strong>&#64;BotFather</strong>
-                  <a href="https://t.me/botfather" target="_blank" mat-button color="primary">
-                    <mat-icon>open_in_new</mat-icon> Open BotFather
-                  </a>
-                </li>
-                <li>Send the command: <code>/newbot</code></li>
-                <li>Follow the instructions to create your bot</li>
-                <li>Copy the <strong>bot token</strong> (looks like <code>123456:ABC-DEF...</code>)</li>
-                <li>
-                  Search for <strong>&#64;userinfobot</strong> to get your Chat ID
-                  <a href="https://t.me/userinfobot" target="_blank" mat-button color="primary">
-                    <mat-icon>open_in_new</mat-icon> Get Chat ID
-                  </a>
-                </li>
-                <li>Paste both below and test the connection</li>
-              </ol>
-            </div>
+      <!-- Account Info Card -->
+      <div class="settings-card">
+        <h3 class="card-title">Account Information</h3>
 
-            <!-- Configuration Form -->
-            <div class="config-form" *ngIf="!telegramConfig?.is_configured || showTokenInput">
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Bot Token</mat-label>
-                <input matInput 
-                       type="password" 
-                       [(ngModel)]="botToken" 
-                       placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-                       [disabled]="isTesting || isSaving">
-                <mat-icon matPrefix>key</mat-icon>
-                <mat-hint>Token from &#64;BotFather</mat-hint>
+        <div class="profile-info-row">
+          <div class="info-icon-pill">
+            <mat-icon>email</mat-icon>
+          </div>
+          <div class="info-content">
+            <span class="info-label">Email</span>
+            <span class="info-value">{{ user?.email }}</span>
+          </div>
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <div class="profile-info-row">
+          <div class="info-icon-pill">
+            <mat-icon>person</mat-icon>
+          </div>
+          <div class="info-content">
+            <span class="info-label">Full Name</span>
+            <ng-container *ngIf="!editingName">
+              <span class="info-value">{{ user?.full_name || 'Not set' }}</span>
+            </ng-container>
+            <div *ngIf="editingName" class="inline-edit">
+              <mat-form-field appearance="outline">
+                <input matInput [(ngModel)]="editNameValue" placeholder="Enter your name">
               </mat-form-field>
-
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Chat ID</mat-label>
-                <input matInput 
-                       [(ngModel)]="chatId" 
-                       placeholder="123456789"
-                       [disabled]="isTesting || isSaving">
-                <mat-icon matPrefix>chat</mat-icon>
-                <mat-hint>Your Telegram Chat ID from &#64;userinfobot</mat-hint>
-              </mat-form-field>
-
-              <div class="button-group">
-                <button mat-raised-button 
-                        color="accent" 
-                        (click)="testConnection()" 
-                        [disabled]="isTesting || isSaving || !botToken || !chatId">
-                  <mat-icon *ngIf="!isTesting">send</mat-icon>
-                  <mat-spinner *ngIf="isTesting" diameter="20"></mat-spinner>
-                  {{ isTesting ? 'Testing...' : 'Test Connection' }}
+              <div class="inline-edit-actions">
+                <button mat-flat-button class="btn-accent" (click)="saveName()" [disabled]="isSavingName || !editNameValue.trim()">
+                  <mat-spinner *ngIf="isSavingName" diameter="18"></mat-spinner>
+                  <span *ngIf="!isSavingName">Save</span>
                 </button>
-
-                <button mat-raised-button 
-                        color="primary" 
-                        (click)="saveTelegramConfig()" 
-                        [disabled]="isTesting || isSaving || !botToken || !chatId">
-                  <mat-icon *ngIf="!isSaving">save</mat-icon>
-                  <mat-spinner *ngIf="isSaving" diameter="20"></mat-spinner>
-                  {{ isSaving ? 'Saving...' : 'Save Configuration' }}
-                </button>
-
-                <button mat-button 
-                        *ngIf="telegramConfig?.is_configured"
-                        (click)="toggleTokenInput()">
-                  <mat-icon>cancel</mat-icon>
-                  Cancel
-                </button>
+                <button mat-button class="btn-muted" (click)="cancelEditName()">Cancel</button>
               </div>
             </div>
+          </div>
+          <button *ngIf="!editingName" mat-icon-button class="edit-btn" (click)="startEditName()">
+            <mat-icon>edit</mat-icon>
+          </button>
+        </div>
 
-            <!-- Configured Actions -->
-            <div class="configured-actions" *ngIf="telegramConfig?.is_configured && !showTokenInput">
-              <button mat-raised-button color="primary" (click)="toggleTokenInput()">
-                <mat-icon>edit</mat-icon>
-                Update Configuration
-              </button>
+        <mat-divider></mat-divider>
 
-              <button mat-raised-button 
-                      color="warn" 
-                      (click)="deleteTelegramConfig()" 
-                      [disabled]="isDeleting">
-                <mat-icon *ngIf="!isDeleting">delete</mat-icon>
-                <mat-spinner *ngIf="isDeleting" diameter="20"></mat-spinner>
-                {{ isDeleting ? 'Removing...' : 'Remove Configuration' }}
-              </button>
-            </div>
-
-            <!-- Info Box -->
-            <div class="info-box">
-              <mat-icon>info</mat-icon>
-              <div>
-                <h4>📢 About Notifications</h4>
-                <p>Once configured, you can enable notifications per pipeline in the pipeline settings. You'll receive alerts for:</p>
-                <ul>
-                  <li>✅ Trade executions</li>
-                  <li>💰 Position closures with P&L</li>
-                  <li>⚠️ Risk manager rejections</li>
-                  <li>❌ Pipeline failures</li>
-                </ul>
-                <p><strong>Free forever!</strong> You control your own bot, no rate limits.</p>
-              </div>
-            </div>
-          </mat-card-content>
-        </mat-card>
+        <div class="profile-info-row">
+          <div class="info-icon-pill">
+            <mat-icon>calendar_today</mat-icon>
+          </div>
+          <div class="info-content">
+            <span class="info-label">Member Since</span>
+            <span class="info-value">{{ user?.created_at | date:'mediumDate' }}</span>
+          </div>
+        </div>
       </div>
-    </mat-tab>
 
-    <!-- Other Settings Tabs (Future) -->
-    <mat-tab label="Profile">
-      <div class="tab-content">
-        <mat-card>
-          <mat-card-content>
-            <p>Profile settings coming soon...</p>
-          </mat-card-content>
-        </mat-card>
-      </div>
-    </mat-tab>
+      <!-- Change Password Card -->
+      <div class="settings-card">
+        <div class="card-title-row">
+          <h3 class="card-title">Security</h3>
+          <button mat-button class="btn-muted" (click)="togglePasswordChange()">
+            <mat-icon>{{ showPasswordChange ? 'expand_less' : 'lock' }}</mat-icon>
+            {{ showPasswordChange ? 'Cancel' : 'Change Password' }}
+          </button>
+        </div>
 
-    <mat-tab label="Subscription">
-      <div class="tab-content">
-        <mat-card>
-          <mat-card-content>
-            <p>Subscription management coming soon...</p>
-          </mat-card-content>
-        </mat-card>
+        <div *ngIf="showPasswordChange" class="password-form">
+          <mat-form-field appearance="outline">
+            <mat-label>New Password</mat-label>
+            <input matInput type="password" [(ngModel)]="newPassword" placeholder="Min 8 characters">
+            <mat-icon matPrefix>lock</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Confirm Password</mat-label>
+            <input matInput type="password" [(ngModel)]="confirmPassword" placeholder="Re-enter password">
+            <mat-icon matPrefix>lock_outline</mat-icon>
+          </mat-form-field>
+
+          <div *ngIf="newPassword && confirmPassword && !passwordsMatch" class="field-error">
+            Passwords do not match
+          </div>
+
+          <button mat-flat-button class="btn-accent" (click)="savePassword()" [disabled]="!passwordValid || isSavingPassword">
+            <mat-spinner *ngIf="isSavingPassword" diameter="18"></mat-spinner>
+            <mat-icon *ngIf="!isSavingPassword">save</mat-icon>
+            <span>{{ isSavingPassword ? 'Saving...' : 'Update Password' }}</span>
+          </button>
+        </div>
       </div>
-    </mat-tab>
-  </mat-tab-group>
+    </section>
+
+    <!-- ═══ Subscription Section ═══ -->
+    <section *ngIf="activeSection === 'subscription'" class="settings-section">
+      <h2 class="section-title">Subscription</h2>
+
+      <div *ngIf="isLoadingSubscription" class="loading-container">
+        <mat-spinner diameter="40"></mat-spinner>
+        <p>Loading subscription info...</p>
+      </div>
+
+      <ng-container *ngIf="!isLoadingSubscription && subscription">
+        <!-- Tier Card -->
+        <div class="settings-card">
+          <h3 class="card-title">Current Plan</h3>
+          <div class="tier-row">
+            <span class="tier-badge">{{ subscription.tier }}</span>
+            <span *ngIf="subscription.subscription_expires_at" class="tier-expires">
+              Expires {{ subscription.subscription_expires_at | date:'mediumDate' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Pipeline Usage Card -->
+        <div class="settings-card">
+          <h3 class="card-title">Pipeline Usage</h3>
+
+          <div class="usage-header">
+            <span class="usage-count">
+              {{ subscription.current_active_pipelines }} / {{ subscription.max_active_pipelines }} active
+            </span>
+            <span class="usage-remaining">{{ subscription.pipelines_remaining }} remaining</span>
+          </div>
+
+          <div class="usage-bar-track">
+            <div class="usage-bar-fill" [style.width.%]="usagePercent"></div>
+          </div>
+
+          <div class="usage-detail">
+            <span>Total pipelines created: {{ subscription.total_pipelines }}</span>
+          </div>
+        </div>
+
+        <!-- Available Signals Card -->
+        <div class="settings-card" *ngIf="subscription.available_signals.length">
+          <h3 class="card-title">Available Signals</h3>
+          <div class="signal-chips">
+            <span *ngFor="let signal of subscription.available_signals" class="signal-chip">
+              {{ signal }}
+            </span>
+          </div>
+        </div>
+      </ng-container>
+    </section>
+
+    <!-- ═══ Notifications Section ═══ -->
+    <section *ngIf="activeSection === 'notifications'" class="settings-section">
+      <h2 class="section-title">Notifications</h2>
+
+      <div class="settings-card">
+        <div class="card-title-row">
+          <h3 class="card-title">
+            <mat-icon class="title-icon">send</mat-icon>
+            Telegram Bot Configuration
+          </h3>
+        </div>
+
+        <!-- Loading State -->
+        <div *ngIf="isLoading" class="loading-container">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading configuration...</p>
+        </div>
+
+        <!-- Configuration Status -->
+        <div *ngIf="!isLoading && telegramConfig" class="config-status">
+          <div class="status-badge" [class.configured]="telegramConfig.is_configured">
+            <mat-icon>{{ telegramConfig.is_configured ? 'check_circle' : 'info' }}</mat-icon>
+            <span>{{ telegramConfig.is_configured ? 'Configured' : 'Not Configured' }}</span>
+          </div>
+
+          <div *ngIf="telegramConfig.is_configured" class="chat-id-display">
+            <strong>Chat ID:</strong> {{ telegramConfig.chat_id }}
+          </div>
+        </div>
+
+        <!-- Setup Instructions -->
+        <div class="setup-steps" *ngIf="!telegramConfig?.is_configured || showTokenInput">
+          <h4>
+            <mat-icon>phone_android</mat-icon>
+            How to Set Up Telegram Notifications
+          </h4>
+          <ol>
+            <li>
+              Open Telegram and search for <strong>&#64;BotFather</strong>
+              <a href="https://t.me/botfather" target="_blank" mat-button color="primary">
+                <mat-icon>open_in_new</mat-icon> Open BotFather
+              </a>
+            </li>
+            <li>Send the command: <code>/newbot</code></li>
+            <li>Follow the instructions to create your bot</li>
+            <li>Copy the <strong>bot token</strong> (looks like <code>123456:ABC-DEF...</code>)</li>
+            <li>
+              Search for <strong>&#64;userinfobot</strong> to get your Chat ID
+              <a href="https://t.me/userinfobot" target="_blank" mat-button color="primary">
+                <mat-icon>open_in_new</mat-icon> Get Chat ID
+              </a>
+            </li>
+            <li>Paste both below and test the connection</li>
+          </ol>
+        </div>
+
+        <!-- Configuration Form -->
+        <div class="config-form" *ngIf="!telegramConfig?.is_configured || showTokenInput">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Bot Token</mat-label>
+            <input matInput
+                   type="password"
+                   [(ngModel)]="botToken"
+                   placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                   [disabled]="isTesting || isSaving">
+            <mat-icon matPrefix>key</mat-icon>
+            <mat-hint>Token from &#64;BotFather</mat-hint>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Chat ID</mat-label>
+            <input matInput
+                   [(ngModel)]="chatId"
+                   placeholder="123456789"
+                   [disabled]="isTesting || isSaving">
+            <mat-icon matPrefix>chat</mat-icon>
+            <mat-hint>Your Telegram Chat ID from &#64;userinfobot</mat-hint>
+          </mat-form-field>
+
+          <div class="button-group">
+            <button mat-raised-button
+                    color="accent"
+                    (click)="testConnection()"
+                    [disabled]="isTesting || isSaving || !botToken || !chatId">
+              <mat-icon *ngIf="!isTesting">send</mat-icon>
+              <mat-spinner *ngIf="isTesting" diameter="20"></mat-spinner>
+              {{ isTesting ? 'Testing...' : 'Test Connection' }}
+            </button>
+
+            <button mat-raised-button
+                    color="primary"
+                    (click)="saveTelegramConfig()"
+                    [disabled]="isTesting || isSaving || !botToken || !chatId">
+              <mat-icon *ngIf="!isSaving">save</mat-icon>
+              <mat-spinner *ngIf="isSaving" diameter="20"></mat-spinner>
+              {{ isSaving ? 'Saving...' : 'Save Configuration' }}
+            </button>
+
+            <button mat-button
+                    *ngIf="telegramConfig?.is_configured"
+                    (click)="toggleTokenInput()">
+              <mat-icon>cancel</mat-icon>
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Configured Actions -->
+        <div class="configured-actions" *ngIf="telegramConfig?.is_configured && !showTokenInput">
+          <button mat-raised-button color="primary" (click)="toggleTokenInput()">
+            <mat-icon>edit</mat-icon>
+            Update Configuration
+          </button>
+
+          <button mat-raised-button
+                  color="warn"
+                  (click)="deleteTelegramConfig()"
+                  [disabled]="isDeleting">
+            <mat-icon *ngIf="!isDeleting">delete</mat-icon>
+            <mat-spinner *ngIf="isDeleting" diameter="20"></mat-spinner>
+            {{ isDeleting ? 'Removing...' : 'Remove Configuration' }}
+          </button>
+        </div>
+
+        <!-- Info Banner -->
+        <div class="info-banner">
+          <mat-icon>info</mat-icon>
+          <div>
+            <h4>About Notifications</h4>
+            <p>Once configured, you can enable notifications per pipeline in the pipeline settings. You'll receive alerts for:</p>
+            <ul>
+              <li>Trade executions</li>
+              <li>Position closures with P&amp;L</li>
+              <li>Risk manager rejections</li>
+              <li>Pipeline failures</li>
+            </ul>
+            <p><strong>Free forever!</strong> You control your own bot, no rate limits.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
 </div>
+
+<app-footer></app-footer>

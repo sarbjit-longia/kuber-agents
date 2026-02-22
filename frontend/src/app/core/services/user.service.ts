@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { User, UserUpdate, SubscriptionInfo } from '../models/user.model';
 
 export interface TelegramConfig {
   enabled: boolean;
@@ -33,6 +34,20 @@ export class UserService {
   private apiUrl = `${environment.apiUrl}/api/v1/users`;
 
   constructor(private http: HttpClient) {}
+
+  /**
+   * Update current user's profile
+   */
+  updateProfile(data: UserUpdate): Observable<User> {
+    return this.http.put<User>(`${this.apiUrl}/me`, data);
+  }
+
+  /**
+   * Get current user's subscription information
+   */
+  getSubscriptionInfo(): Observable<SubscriptionInfo> {
+    return this.http.get<SubscriptionInfo>(`${this.apiUrl}/me/subscription`);
+  }
 
   /**
    * Get current user's Telegram configuration

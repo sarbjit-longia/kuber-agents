@@ -14,11 +14,13 @@ from app.models.pipeline import Pipeline
 from app.schemas.user import (
     UserSubscriptionInfo,
     User as UserSchema,
+    UserUpdate,
     TelegramConfigUpdate,
     TelegramConfigResponse,
     TelegramTestRequest
 )
 from app.core.deps import get_current_active_user
+from app.core.security import hash_password
 from app.subscriptions.signal_buckets import get_pipeline_limit, get_available_signals
 from app.config import settings
 from app.services.telegram_notifier import telegram_notifier
@@ -46,6 +48,25 @@ async def get_current_user_profile(
     Returns:
         User profile information
     """
+    return current_user
+
+
+@router.put("/me", response_model=UserSchema)
+async def update_current_user_profile(
+    update_data: UserUpdate,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Update current user's profile (name and/or password)."""
+    if update_data.full_name is not None:
+        current_user.full_name = update_data.full_name
+    if update_data.password is not None:
+        current_user.hashed_password = hash_password(update_data.password)
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    logger.info("user_profile_updated", user_id=str(current_user.id))
     return current_user
 
 
