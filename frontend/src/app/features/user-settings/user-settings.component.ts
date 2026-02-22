@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -80,12 +81,22 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
   showTokenInput = false;
 
   constructor(
+    private route: ActivatedRoute,
     private authService: AuthService,
     private userService: UserService,
     private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
+    this.route.queryParams
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(params => {
+        const section = params['section'];
+        if (section === 'profile' || section === 'subscription' || section === 'notifications') {
+          this.activeSection = section;
+        }
+      });
+
     this.authService.currentUser$
       .pipe(takeUntil(this.destroy$))
       .subscribe(user => {

@@ -23,16 +23,28 @@
   <!-- Content Area -->
   <main class="settings-content">
 
-    <!-- ═══ Profile Section ═══ -->
+    <!-- Profile Section -->
     <section *ngIf="activeSection === 'profile'" class="settings-section">
       <h2 class="section-title">Profile</h2>
 
+      <!-- Profile Avatar Header -->
+      <div class="profile-header">
+        <div class="profile-avatar">
+          <mat-icon *ngIf="!user?.full_name">person</mat-icon>
+          <span *ngIf="user?.full_name" class="avatar-initial">{{ user!.full_name!.charAt(0).toUpperCase() }}</span>
+        </div>
+        <div class="profile-header-info">
+          <span class="profile-name">{{ user?.full_name || 'Your Profile' }}</span>
+          <span class="profile-email">{{ user?.email }}</span>
+        </div>
+      </div>
+
       <!-- Account Info Card -->
-      <div class="settings-card">
+      <div class="settings-card card-tint-profile">
         <h3 class="card-title">Account Information</h3>
 
         <div class="profile-info-row">
-          <div class="info-icon-pill">
+          <div class="info-icon-pill icon-email">
             <mat-icon>email</mat-icon>
           </div>
           <div class="info-content">
@@ -44,7 +56,7 @@
         <mat-divider></mat-divider>
 
         <div class="profile-info-row">
-          <div class="info-icon-pill">
+          <div class="info-icon-pill icon-person">
             <mat-icon>person</mat-icon>
           </div>
           <div class="info-content">
@@ -73,7 +85,7 @@
         <mat-divider></mat-divider>
 
         <div class="profile-info-row">
-          <div class="info-icon-pill">
+          <div class="info-icon-pill icon-calendar">
             <mat-icon>calendar_today</mat-icon>
           </div>
           <div class="info-content">
@@ -83,15 +95,24 @@
         </div>
       </div>
 
-      <!-- Change Password Card -->
-      <div class="settings-card">
+      <!-- Security Card -->
+      <div class="settings-card card-tint-security">
         <div class="card-title-row">
-          <h3 class="card-title">Security</h3>
+          <h3 class="card-title">
+            <div class="info-icon-pill icon-lock">
+              <mat-icon>lock</mat-icon>
+            </div>
+            Security
+          </h3>
           <button mat-button class="btn-muted" (click)="togglePasswordChange()">
-            <mat-icon>{{ showPasswordChange ? 'expand_less' : 'lock' }}</mat-icon>
+            <mat-icon>{{ showPasswordChange ? 'expand_less' : 'vpn_key' }}</mat-icon>
             {{ showPasswordChange ? 'Cancel' : 'Change Password' }}
           </button>
         </div>
+
+        <p *ngIf="!showPasswordChange" class="security-description">
+          Manage your password and account security settings.
+        </p>
 
         <div *ngIf="showPasswordChange" class="password-form">
           <mat-form-field appearance="outline">
@@ -119,7 +140,7 @@
       </div>
     </section>
 
-    <!-- ═══ Subscription Section ═══ -->
+    <!-- Subscription Section -->
     <section *ngIf="activeSection === 'subscription'" class="settings-section">
       <h2 class="section-title">Subscription</h2>
 
@@ -130,7 +151,7 @@
 
       <ng-container *ngIf="!isLoadingSubscription && subscription">
         <!-- Tier Card -->
-        <div class="settings-card">
+        <div class="settings-card card-tint-subscription">
           <h3 class="card-title">Current Plan</h3>
           <div class="tier-row">
             <span class="tier-badge">{{ subscription.tier }}</span>
@@ -141,7 +162,7 @@
         </div>
 
         <!-- Pipeline Usage Card -->
-        <div class="settings-card">
+        <div class="settings-card card-tint-usage">
           <h3 class="card-title">Pipeline Usage</h3>
 
           <div class="usage-header">
@@ -153,6 +174,7 @@
 
           <div class="usage-bar-track">
             <div class="usage-bar-fill" [style.width.%]="usagePercent"></div>
+            <span class="usage-percent-label">{{ usagePercent }}%</span>
           </div>
 
           <div class="usage-detail">
@@ -172,7 +194,7 @@
       </ng-container>
     </section>
 
-    <!-- ═══ Notifications Section ═══ -->
+    <!-- Notifications Section -->
     <section *ngIf="activeSection === 'notifications'" class="settings-section">
       <h2 class="section-title">Notifications</h2>
 

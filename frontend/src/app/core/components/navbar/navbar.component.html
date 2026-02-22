@@ -54,28 +54,11 @@
           <mat-icon>account_circle</mat-icon>
         </button>
         <mat-menu #userMenu="matMenu">
-          <button mat-menu-item routerLink="/dashboard">
-            <mat-icon>dashboard</mat-icon>
-            <span>Dashboard</span>
+          <button mat-menu-item routerLink="/settings" [queryParams]="{section: 'profile'}">
+            <mat-icon>person</mat-icon>
+            <span>Profile</span>
           </button>
-          <button mat-menu-item routerLink="/pipelines">
-            <mat-icon>account_tree</mat-icon>
-            <span>My Pipelines</span>
-          </button>
-          <button mat-menu-item routerLink="/scanners">
-            <mat-icon>filter_alt</mat-icon>
-            <span>Scanners</span>
-          </button>
-          <button mat-menu-item routerLink="/pipeline-builder">
-            <mat-icon>edit</mat-icon>
-            <span>Builder</span>
-          </button>
-          <button mat-menu-item routerLink="/monitoring">
-            <mat-icon>monitoring</mat-icon>
-            <span>Monitoring</span>
-          </button>
-          <mat-divider></mat-divider>
-          <button mat-menu-item routerLink="/settings">
+          <button mat-menu-item routerLink="/settings" [queryParams]="{section: 'notifications'}">
             <mat-icon>settings</mat-icon>
             <span>Settings</span>
           </button>
