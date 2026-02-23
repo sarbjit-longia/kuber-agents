@@ -117,7 +117,7 @@ class OANDAProvider(BaseProvider):
                 data = response.json()
                 
                 # Track successful API call (OANDA has no rate limits)
-                self._track_api_call("quote", duration, "success")
+                self._track_api_call("quote", duration, "success", len(response.content))
                 
                 if not data.get("prices"):
                     raise ValueError(f"No price data for {symbol}")
@@ -210,7 +210,7 @@ class OANDAProvider(BaseProvider):
                 data = response.json()
                 
                 # Track successful API call
-                self._track_api_call("candles", duration, "success")
+                self._track_api_call("candles", duration, "success", len(response.content))
                 
                 candles = []
                 for candle in data.get("candles", []):

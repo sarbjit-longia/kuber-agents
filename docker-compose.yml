@@ -343,7 +343,7 @@ services:
       context: ./data-plane
       dockerfile: Dockerfile
     container_name: trading-data-plane-worker
-    command: celery -A app.tasks.celery_tasks worker --loglevel=INFO -n data-plane-worker
+    command: celery -A app.tasks.celery_tasks worker --loglevel=INFO --pool=solo -n data-plane-worker
     environment:
       - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
@@ -371,7 +371,7 @@ services:
       context: ./data-plane
       dockerfile: Dockerfile
     container_name: trading-data-plane-beat
-    command: celery -A app.tasks.celery_tasks beat --loglevel=INFO
+    command: celery -A app.tasks.celery_tasks beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
     environment:
       - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}

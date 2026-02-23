@@ -249,10 +249,10 @@ async def refresh_aggregates():
     import time as _time
     start = _time.time()
 
-    async with timescale_engine.begin() as conn:
-        for tf, cfg in CONTINUOUS_AGGREGATES.items():
-            view = cfg["view"]
-            try:
+    for tf, cfg in CONTINUOUS_AGGREGATES.items():
+        view = cfg["view"]
+        try:
+            async with timescale_engine.begin() as conn:
                 await conn.execute(text(f"""
                     CALL refresh_continuous_aggregate(
                         '{view}',
@@ -260,12 +260,12 @@ async def refresh_aggregates():
                         NOW()
                     )
                 """))
-            except Exception as e:
-                logger.warning(
-                    "continuous_aggregate_refresh_failed",
-                    view=view,
-                    error=str(e),
-                )
+        except Exception as e:
+            logger.warning(
+                "continuous_aggregate_refresh_failed",
+                view=view,
+                error=str(e),
+            )
 
     duration = _time.time() - start
     try:

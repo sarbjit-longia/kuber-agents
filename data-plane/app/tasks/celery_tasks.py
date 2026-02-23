@@ -1,6 +1,6 @@
 """Celery tasks for Data Plane"""
 from celery import Celery
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, worker_ready
 import structlog
 import asyncio
 import time as _time
@@ -14,9 +14,8 @@ celery_app.config_from_object("app.config:CeleryConfig")
 _telemetry_initialized = False
 
 
-@worker_process_init.connect
-def init_worker_process(**kwargs):
-    """Initialize telemetry and trigger EOD backfill when worker process starts"""
+def _init_telemetry_and_seed():
+    """Initialize telemetry and trigger EOD backfill (called once on worker start)"""
     global _telemetry_initialized
     if not _telemetry_initialized:
         from app.telemetry import setup_telemetry
@@ -30,9 +29,8 @@ def init_worker_process(**kwargs):
             _telemetry_initialized = True
             logger.info("worker_telemetry_initialized")
         except Exception as e:
-            # If port is already in use (multiple workers), that's okay
             logger.warning("worker_telemetry_init_failed", error=str(e))
-            _telemetry_initialized = True  # Set to True to avoid retrying
+            _telemetry_initialized = True
 
     # Trigger one-time EOD backfill on worker startup (idempotent)
     try:
@@ -40,6 +38,18 @@ def init_worker_process(**kwargs):
         logger.info("seed_eod_candles_task_scheduled_on_startup")
     except Exception as e:
         logger.warning("seed_eod_task_schedule_failed", error=str(e))
+
+
+@worker_process_init.connect
+def init_worker_process(**kwargs):
+    """Initialize telemetry when prefork worker process starts"""
+    _init_telemetry_and_seed()
+
+
+@worker_ready.connect
+def init_worker_ready(**kwargs):
+    """Initialize telemetry when solo/threads pool worker is ready"""
+    _init_telemetry_and_seed()
 
 
 def run_async(coro):
