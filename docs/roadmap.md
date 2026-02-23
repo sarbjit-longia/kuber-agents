@@ -978,7 +978,7 @@ ENTERPRISE ($299/month):
 ## Post-MVP Roadmap (Future Phases)
 
 ### Data Plane Service
-**Status**: ✅ Phase 1 & 2 COMPLETE
+**Status**: ✅ Phase 1, 2 & 3 COMPLETE
 
 #### Phase 1: Basic Caching (✅ Complete)
 - [x] Universe discovery (hot/warm tickers)
@@ -989,17 +989,24 @@ ENTERPRISE ($299/month):
 - [x] Grafana dashboard
 
 #### Phase 2: Technical Indicators (✅ Complete)
-- [x] Finnhub-based indicators (SMA, EMA, RSI, MACD, Bollinger Bands)
+- [x] TA-Lib indicator calculation (15 indicators, ~2ms vs 600ms API)
 - [x] Indicator caching (5min TTL)
 - [x] `/data/indicators/{ticker}` API endpoint
-- [x] Pre-fetch task for universe tickers
+- [x] Pre-fetch task for universe tickers (batch mode, 8 indicators across 3 timeframes)
 - [x] Grafana indicator metrics (3 new panels)
 
-#### Phase 3: TimescaleDB Storage (Future)
-- [ ] Store historical OHLCV in TimescaleDB
-- [ ] Continuous aggregates (5m from 1m candles)
-- [ ] Data compression and retention policies
-- [ ] Backfill 500 days of historical data
+#### Phase 3: TimescaleDB Storage & Bandwidth Optimization (✅ Complete)
+- [x] Store historical OHLCV in TimescaleDB hypertable
+- [x] Continuous aggregates (5m/15m/1h/4h/D from 1m candles)
+- [x] Data compression after 7 days (segmented by ticker, timeframe)
+- [x] EOD candle seeding (400 daily candles for SMA(200) at startup + daily)
+- [x] Multi-provider support (Tiingo primary, Finnhub fallback, OANDA for forex)
+- [x] Provider abstraction layer with automatic fallback
+- [x] Candle caching pipeline (provider → TimescaleDB → continuous aggregates → Redis)
+- [x] Timeframe-appropriate cache TTLs (1m=120s through D=3600s)
+- [x] Prometheus metrics (bandwidth, cache hits/misses, TimescaleDB writes, aggregate refresh)
+- [x] 16 new Grafana panels (bandwidth by provider, cache hit ratio, write rates, task durations)
+- [x] ~80% bandwidth reduction (~50-80 MB/day vs ~300-500 MB/day)
 
 ### Phase 2: Enhanced Features (Weeks 11-14)
 - [ ] News-Based Trigger Agent
@@ -1011,7 +1018,19 @@ ENTERPRISE ($299/month):
 - [ ] Performance analytics
 - [ ] Strategy templates
 
-### Phase 3: Marketplace Foundation (Weeks 15-18)
+### Phase 3: Mobile App
+- [ ] React Native or Flutter cross-platform app
+- [ ] Real-time portfolio monitoring and P&L dashboard
+- [ ] Push notifications for trade executions, signals, and alerts
+- [ ] Emergency position close from mobile
+- [ ] Pipeline status overview (active, paused, errored)
+- [ ] Execution history and agent report viewing
+- [ ] Biometric authentication (Face ID, fingerprint)
+- [ ] Light pipeline management (activate/deactivate/trigger)
+- [ ] Mobile-optimized charts (TradingView lightweight)
+- [ ] Offline mode with cached last-known state
+
+### Phase 4: Marketplace Foundation (Weeks 15-18)
 - [ ] Agent versioning system
 - [ ] Agent publishing workflow
 - [ ] Agent approval/review process
@@ -1021,7 +1040,7 @@ ENTERPRISE ($299/month):
 - [ ] Agent ratings and reviews
 - [ ] Community features
 
-### Phase 4: Multi-Asset Support (Weeks 19-22)
+### Phase 5: Multi-Asset Support (Weeks 19-22)
 - [ ] Cryptocurrency support
 - [ ] Forex support
 - [ ] Options trading
@@ -1029,7 +1048,7 @@ ENTERPRISE ($299/month):
 - [ ] Multi-account support
 - [ ] Position tracking across accounts
 
-### Phase 5: Enterprise Features (Weeks 23-26)
+### Phase 6: Enterprise Features (Weeks 23-26)
 - [ ] Custom agent uploads
 - [ ] Team collaboration
 - [ ] White-label solution
@@ -1096,7 +1115,7 @@ ENTERPRISE ($299/month):
 ### Budget
 - AWS: $300/month during development, $500-800/month in production
 - OpenAI API: $200-500/month (depends on usage)
-- Market Data: $100/month (Finnhub)
+- Market Data: $30-100/month (Tiingo $30/mo or Finnhub $59-99/mo)
 - Domain & SSL: $50/year
 - Tools (GitHub, Sentry, etc.): $100/month
 
@@ -1217,8 +1236,57 @@ ENTERPRISE ($299/month):
 
 ---
 
-**Document Version**: 1.1  
-**Last Updated**: December 19, 2025  
-**Status**: Active Development  
+## Milestone 12: Data Plane Bandwidth Optimization & Multi-Provider ✅ COMPLETE 🆕
+**Duration**: January-February 2026
+**Status**: ✅ **COMPLETED**
+
+### TimescaleDB Integration
+- [x] `ohlcv` hypertable for 1-minute candle storage
+- [x] 5 continuous aggregate views (5m, 15m, 1h, 4h, daily)
+- [x] Automatic aggregate refresh on each prefetch cycle
+- [x] Data compression policy (7 days, segmented by ticker/timeframe)
+- [x] EOD candle seeding (400 daily candles for SMA(200) history)
+- [x] Dual-source daily reads (seeded EOD + intraday aggregate via UNION ALL)
+
+### Multi-Provider Architecture
+- [x] `BaseProvider` abstract class with rate limit tracking
+- [x] `TiingoProvider` (stocks + crypto, adjusted EOD prices, connection pooling)
+- [x] `FinnhubProvider` (stocks, free tier, 60 calls/min)
+- [x] `OANDAProvider` (forex, practice + live)
+- [x] `STOCK_PROVIDER` env var for provider selection
+- [x] Automatic fallback (Tiingo ↔ Finnhub if key missing)
+- [x] Ticker-based routing (forex → OANDA, stocks → configurable)
+
+### Candle Caching Pipeline
+- [x] `prefetch_candles_task` (60s): 1m candles → TimescaleDB → refresh aggregates → Redis
+- [x] `seed_eod_candles_task` (daily + worker startup): 400 daily candles per ticker
+- [x] `prefetch_indicators_task` (5m): TA-Lib batch mode, 8 indicators × 3 timeframes
+- [x] Timeframe-appropriate cache TTLs (1m=120s, 5m=360s, 15m=960s, 1h=3900s, 4h=14700s, D=3600s)
+- [x] Idempotent writes (ON CONFLICT DO NOTHING)
+
+### Monitoring & Observability
+- [x] 6 new Prometheus counters (api_calls, bandwidth, cache hits/misses, TimescaleDB writes/reads)
+- [x] 3 new histograms (API call duration, aggregate refresh, prefetch task duration)
+- [x] 6 new gauges (rate limits, process metrics)
+- [x] 16 new Grafana dashboard panels (bandwidth, cache effectiveness, write rates, task durations)
+- [x] Application Resources dashboard (CPU, memory, threads per service)
+
+### Performance Results
+- [x] ~80% bandwidth reduction (~50-80 MB/day vs ~300-500 MB/day)
+- [x] Candle fetch latency: <10ms from Redis (was 450ms on-demand)
+- [x] Indicator calculation: ~2ms via TA-Lib (was 600ms via API)
+
+### Deliverables
+- ✅ **TimescaleDB storage** with continuous aggregates for all timeframes
+- ✅ **Multi-provider support** (Tiingo, Finnhub, OANDA) with automatic fallback
+- ✅ **~80% bandwidth reduction** through candle caching pipeline
+- ✅ **EOD seeding** for long-period indicator support (SMA 200)
+- ✅ **Comprehensive monitoring** with 16 new Grafana panels
+
+---
+
+**Document Version**: 1.2
+**Last Updated**: February 22, 2026
+**Status**: Active Development
 **Next Review**: End of Month
 
