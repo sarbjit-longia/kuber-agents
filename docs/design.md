@@ -2,7 +2,7 @@
 
 ## 1. System Architecture Overview
 
-### 1.1 High-Level Architecture (Updated Dec 2025)
+### 1.1 High-Level Architecture (Updated Feb 2026)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -15,49 +15,63 @@
 │                         FastAPI Backend API                                 │
 │   Auth • Pipelines • Scanners • Executions • Signals • Billing             │
 └────────┬────────────────────────────────────────────────────┬───────────────┘
-         │                                                    │
          │                                                    │ Enqueue Tasks
 ┌────────▼────────────────────────────────────────────────────▼───────────────┐
 │                         Redis (Queue + Cache)                               │
-└────────┬────────────────────────────────────────────────────────────────────┘
-         │
-         │                                       ┌─────────────────────────────┐
-         │                                       │   Signal Generators         │
-         │                                       │  ┌───────────────────────┐ │
-         │                                       │  │ Mock Signal Gen       │ │
-         │                                       │  │ Golden Cross Gen      │ │
-         │                                       │  │ News Sentiment Gen    │ │
-         │                                       │  └──────────┬────────────┘ │
-         │                                       └─────────────┼──────────────┘
-         │                                                     │ Publish
-         │                                              ┌──────▼──────────┐
-         │                                              │     Kafka       │
-         │                                              │ trading-signals │
-         │                                              └──────┬──────────┘
-         │                                                     │ Subscribe
-         │                                              ┌──────▼──────────────┐
-         │                                              │ Trigger Dispatcher  │
-         │                                              │ • Cache Pipelines   │
-         │                                              │ • Match Signals     │
-         │                                              │ • Enqueue Tasks     │
-         │                                              └──────┬──────────────┘
-         │                                                     │ Enqueue
-         │                                                     │
-┌────────▼─────────────────────────────────────────────────────▼───────────────┐
-│                      Celery Workers (Pipeline Execution)                     │
+└────────┬──────────────────────────────────────┬─────────────────────────────┘
+         │                                      │
+         │                         ┌────────────▼─────────────────────────────┐
+         │                         │         Data Plane Service               │
+         │                         │  ┌──────────────────────────────────┐   │
+         │                         │  │ Providers: Tiingo / Finnhub / OANDA │ │
+         │                         │  │ → 1m candles → TimescaleDB          │ │
+         │                         │  │ → Continuous Aggregates (5m-D)      │ │
+         │                         │  │ → Redis Cache → REST API            │ │
+         │                         │  │ → TA-Lib Indicators (15 types)      │ │
+         │                         │  └──────────────────────────────────┘   │
+         │                         └──────────┬──────────────────────────────┘
+         │                                    │
+         │                                    │
+         │                         ┌──────────▼──────────────────────────────┐
+         │                         │   Signal Generators (18+ indicators)    │
+         │                         │  RSI • MACD • Bollinger • Golden Cross  │
+         │                         │  Stochastic • ADX • EMA • ATR • CCI    │
+         │                         │  Williams %R • Aroon • MFI • OBV • SAR │
+         │                         └──────────┬──────────────────────────────┘
+         │                                    │ Publish
+         │                             ┌──────▼──────────┐
+         │                             │     Kafka       │
+         │                             │ trading-signals │
+         │                             └──────┬──────────┘
+         │                                    │ Subscribe
+         │                             ┌──────▼──────────────┐
+         │                             │ Trigger Dispatcher  │
+         │                             │ • Cache Pipelines   │
+         │                             │ • Match Signals     │
+         │                             │ • Enqueue Tasks     │
+         │                             └──────┬──────────────┘
+         │                                    │ Enqueue
+┌────────▼────────────────────────────────────▼───────────────────────────────┐
+│                   Celery Workers (Pipeline Execution)                        │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    CrewAI Agent Flow Orchestration                    │  │
-│  │  ┌────────┐  ┌────────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌────────┐  │  │
-│  │  │Market  │→│  Bias  │→│Strat │→│ Risk │→│ Order│→│Reports │  │  │
-│  │  │ Data   │  │ Agent  │  │Agent │  │ Mgr  │  │ Mgr  │  │        │  │  │
-│  │  └────────┘  └────────┘  └──────┘  └──────┘  └──────┘  └────────┘  │  │
+│  │              Sequential Agent Execution (PipelineExecutor)            │  │
+│  │  ┌────────┐  ┌────────┐  ┌──────┐  ┌──────┐  ┌──────────┐          │  │
+│  │  │Market  │→│  Bias  │→│Strat │→│ Risk │→│  Trade   │          │  │
+│  │  │ Data   │  │ Agent  │  │Agent │  │ Mgr  │  │  Manager │          │  │
+│  │  └────────┘  └────────┘  └──────┘  └──────┘  └──────────┘          │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
-└───┬─────────────┬──────────────┬──────────────┬────────────────┬────────────┘
-    │             │              │              │                │
-┌───▼────┐  ┌─────▼──────┐  ┌───▼───────┐  ┌───▼──────┐  ┌─────▼─────────┐
-│  PG    │  │  OpenAI    │  │ Finnhub   │  │ Alpaca   │  │  Prometheus   │
-│  RDS   │  │  API (LLM) │  │(Mkt Data) │  │ (Broker) │  │  + Grafana    │
-└────────┘  └────────────┘  └───────────┘  └──────────┘  └───────────────┘
+└───┬──────────────┬──────────────┬───────────────────────┬──────────────────┘
+    │              │              │                        │
+┌───▼────┐  ┌──────▼─────┐  ┌───▼───────────────────┐  ┌─▼─────────────┐
+│  PG    │  │  OpenAI    │  │ Brokers               │  │  Prometheus   │
+│  RDS   │  │  API (LLM) │  │ Alpaca/Tradier/OANDA  │  │  + Grafana    │
+└────────┘  └────────────┘  └───────────────────────┘  └───────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         TimescaleDB                                         │
+│  ohlcv hypertable • Continuous Aggregates (5m/15m/1h/4h/D)                 │
+│  EOD candle seed (400 days) • Compression after 7 days                     │
+└─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      Periodic Trigger (Celery Beat)                         │
@@ -102,25 +116,41 @@
 - Enqueue periodic pipelines if not already running
 - No polling per-pipeline (centralized scheduling)
 
-**Pipeline Orchestrator (Celery Workers + CrewAI)**
-- Execute pipeline workflows (agent DAG)
-- Manage agent lifecycle
+**Pipeline Orchestrator (Celery Workers)**
+- Execute pipeline workflows (fixed sequential order via `PipelineExecutor`)
+- Manage agent lifecycle (Market Data → Bias → Strategy → Risk → Trade Manager)
 - Track execution costs (LLM tokens, agent runtime)
 - Generate structured reports per agent
 - Handle retries & failures
+- Dual-phase execution (Execute → Monitor) for position-aware trading
+
+**Data Plane Service (FastAPI + Celery Workers)**
+- Centralized market data service (quotes, candles, indicators)
+- Multi-provider abstraction (Tiingo primary, Finnhub fallback, OANDA for forex)
+- 1m candle storage in TimescaleDB hypertable
+- Continuous aggregates for 5m/15m/1h/4h/D timeframes
+- EOD candle seeding (400 daily candles for SMA(200) history)
+- TA-Lib indicator computation (15 indicators, ~2ms per calculation)
+- Redis caching with timeframe-appropriate TTLs
+- Universe management (hot/warm tickers from active pipelines)
+- ~80% bandwidth reduction vs direct API calls
 
 **Data Layer**
-- **PostgreSQL (RDS)**: Users, pipelines, scanners, trades, executions, subscriptions
-- **Redis (ElastiCache)**: Celery task queue, caching
-- **Kafka**: Signal message bus
+- **PostgreSQL (RDS)**: Users, pipelines, scanners, trades, executions, subscriptions, LLM models
+- **TimescaleDB**: Time-series market data (ohlcv hypertable, continuous aggregates, compression)
+- **Redis (ElastiCache)**: Celery task queue, candle/quote/indicator caching
+- **Kafka**: Signal message bus (`trading-signals` topic)
 - **Prometheus**: Metrics time-series database
-- **Grafana**: Monitoring dashboards
+- **Grafana**: Monitoring dashboards (3 provisioned dashboards)
 - **S3** (future): Detailed reports, logs, archives
 
 **Monitoring & Observability (OpenTelemetry + Prometheus + Grafana)**
 - Application metrics (HTTP requests, DB queries, Celery tasks)
 - Business metrics (pipelines, executions, signals, system health)
-- Dashboards for real-time visualization
+- Data Plane metrics (bandwidth, cache hits, TimescaleDB writes, provider rate limits)
+- Process metrics (CPU, memory, threads per service)
+- 3 Grafana dashboards: System Overview, Application Resources, Recent Signals
+- Langfuse integration for LLM tracing and cost tracking
 - Future: Distributed tracing, log aggregation, alerting
 
 ---
@@ -132,79 +162,137 @@
 ```
 backend/
 ├── app/
-│   ├── main.py                 # FastAPI app initialization
-│   ├── config.py               # Configuration management
-│   ├── dependencies.py         # Dependency injection
+│   ├── main.py                    # FastAPI app initialization
+│   ├── config.py                  # Pydantic Settings (env vars)
+│   ├── database.py                # SQLAlchemy async engine
+│   ├── redis_client.py            # Redis connection
+│   ├── telemetry.py               # OpenTelemetry setup
 │   │
 │   ├── api/
-│   │   ├── v1/
-│   │   │   ├── auth.py         # Authentication endpoints
-│   │   │   ├── pipelines.py    # Pipeline CRUD
-│   │   │   ├── executions.py   # Execution control
-│   │   │   ├── trades.py       # Trade history
-│   │   │   ├── reports.py      # Report viewing
-│   │   │   ├── billing.py      # Cost tracking
-│   │   │   └── agents.py       # Agent registry
-│   │   └── websocket.py        # WebSocket handlers
+│   │   ├── dependencies.py        # FastAPI dependency injection
+│   │   └── v1/
+│   │       ├── auth.py            # Authentication endpoints
+│   │       ├── pipelines.py       # Pipeline CRUD
+│   │       ├── executions.py      # Execution control
+│   │       ├── approvals.py       # Trade approval workflows
+│   │       ├── scanners.py        # Scanner CRUD
+│   │       ├── signals.py         # Signal types endpoint
+│   │       ├── agents.py          # Agent registry + tool validation
+│   │       ├── tools.py           # Tool endpoints
+│   │       ├── users.py           # User profile + subscription
+│   │       ├── files.py           # File upload/download (PDF strategies)
+│   │       ├── dashboard.py       # Dashboard data
+│   │       ├── health.py          # Health check
+│   │       └── websocket.py       # WebSocket handlers
 │   │
 │   ├── models/
-│   │   ├── user.py             # SQLAlchemy models
-│   │   ├── pipeline.py
-│   │   ├── execution.py
-│   │   ├── trade.py
-│   │   ├── report.py
-│   │   └── billing.py
+│   │   ├── user.py                # User model (with subscription fields)
+│   │   ├── pipeline.py            # Pipeline model (JSONB config)
+│   │   ├── execution.py           # Execution model + ExecutionStatus
+│   │   ├── scanner.py             # Scanner model
+│   │   ├── cost_tracking.py       # Cost tracking model
+│   │   └── llm_model.py           # LLM model registry
 │   │
 │   ├── schemas/
-│   │   ├── pipeline.py         # Pydantic schemas
-│   │   ├── agent.py
-│   │   └── state.py
+│   │   ├── pipeline_state.py      # PipelineState + AgentMetadata
+│   │   ├── pipeline.py            # Pipeline Pydantic schemas
+│   │   ├── execution.py           # Execution schemas
+│   │   ├── approval.py            # Approval schemas
+│   │   ├── scanner.py             # Scanner schemas
+│   │   ├── signal.py              # Signal schemas
+│   │   ├── user.py                # User schemas
+│   │   ├── tool.py                # Tool schemas
+│   │   └── tool_detection.py      # Tool detection schemas
 │   │
 │   ├── services/
-│   │   ├── auth_service.py
-│   │   ├── pipeline_service.py
-│   │   ├── billing_service.py
-│   │   └── notification_service.py
+│   │   ├── pipeline_service.py    # Pipeline business logic
+│   │   ├── approval_service.py    # Approval workflows
+│   │   ├── user_service.py        # User management
+│   │   ├── model_registry.py      # LLM model registry service
+│   │   ├── tool_detection_service.py  # LLM-powered tool detection
+│   │   ├── instruction_parser.py  # Parse agent instructions
+│   │   ├── pdf_generator.py       # WeasyPrint PDF reports
+│   │   ├── chart_annotation_builder.py  # TradingView chart data
+│   │   ├── reasoning_chart_parser.py    # Parse reasoning for charts
+│   │   ├── executive_report_generator.py
+│   │   ├── sms_notifier.py        # SMS notifications
+│   │   ├── telegram_notifier.py   # Telegram notifications
+│   │   ├── langfuse_service.py    # LLM tracing
+│   │   ├── templates/             # Report HTML templates
+│   │   └── brokers/               # Multi-broker abstraction
+│   │       ├── base.py            # BaseBrokerService interface
+│   │       ├── factory.py         # BrokerFactory
+│   │       ├── alpaca_service.py  # Alpaca (stocks/crypto)
+│   │       ├── tradier_service.py # Tradier (stocks/options)
+│   │       └── oanda_service.py   # OANDA (forex)
 │   │
-│   ├── agents/                 # Agent implementations
-│   │   ├── base.py             # Base agent interface
-│   │   ├── triggers/
-│   │   │   ├── time_trigger.py
-│   │   │   ├── technical_trigger.py
-│   │   │   ├── price_trigger.py
-│   │   │   └── news_trigger.py
-│   │   ├── market_data_agent.py
-│   │   ├── bias_agent.py
-│   │   ├── strategy_agent.py
-│   │   ├── risk_manager_agent.py
-│   │   ├── trade_manager_agent.py
-│   │   └── reporting_agent.py
+│   ├── agents/                    # Agent implementations
+│   │   ├── base.py                # BaseAgent + error hierarchy
+│   │   ├── registry.py            # AgentRegistry (discovery)
+│   │   ├── market_data_agent.py   # Fetches from Data Plane API
+│   │   ├── bias_agent.py          # LLM-powered bias analysis
+│   │   ├── strategy_agent.py      # Instruction-driven strategy
+│   │   ├── risk_manager_agent.py  # LLM + broker-aware risk
+│   │   └── trade_manager_agent.py # Multi-broker execution
 │   │
-│   ├── tools/                  # Agent tools
-│   │   ├── market_data_tool.py
-│   │   ├── broker_tool.py
-│   │   ├── database_tool.py
-│   │   └── notification_tool.py
+│   ├── tools/                     # Agent tools
+│   │   ├── base.py                # BaseTool interface
+│   │   ├── registry.py            # ToolRegistry
+│   │   ├── crewai_tools.py        # CrewAI tool wrappers
+│   │   ├── market_data.py         # Data Plane market data tool
+│   │   ├── alpaca_broker.py       # Alpaca broker tool
+│   │   ├── tradier_broker.py      # Tradier broker tool
+│   │   ├── oanda_broker.py        # OANDA broker tool
+│   │   ├── email_notifier.py      # Email notification tool
+│   │   ├── webhook_notifier.py    # Webhook notification tool
+│   │   ├── strategy_tools_registry.py  # OpenAI function-calling tools
+│   │   └── strategy_tools/        # ICT + indicator tools
+│   │       ├── tool_executor.py   # Dynamic tool invocation
+│   │       ├── indicator_tools.py # RSI, SMA, MACD, Bollinger
+│   │       ├── fvg_detector.py    # Fair Value Gap detection
+│   │       ├── liquidity_analyzer.py  # Liquidity pools/grabs
+│   │       ├── market_structure.py    # BOS/CHoCH detection
+│   │       └── premium_discount.py    # Premium/Discount zones
 │   │
 │   ├── orchestration/
-│   │   ├── flow.py             # CrewAI flow definition
-│   │   ├── state.py            # Pipeline state management
-│   │   └── executor.py         # Celery tasks
+│   │   ├── executor.py            # PipelineExecutor (sequential)
+│   │   ├── validator.py           # Pipeline config validation
+│   │   ├── celery_app.py          # Celery broker setup
+│   │   └── tasks/
+│   │       ├── execute_pipeline.py    # Main execution task
+│   │       ├── monitoring.py          # Position monitoring (5-min)
+│   │       ├── check_scheduled_pipelines.py  # Celery Beat
+│   │       ├── approval.py            # Approval workflows
+│   │       ├── reconciliation.py      # Trade reconciliation
+│   │       ├── maintenance.py         # Cleanup tasks
+│   │       └── stop_execution.py      # Graceful stop
 │   │
-│   ├── llm/
-│   │   ├── provider.py         # LLM abstraction
-│   │   ├── openai_provider.py
-│   │   └── token_counter.py
+│   ├── storage/
+│   │   ├── storage_service.py     # LocalDisk + S3 abstraction
+│   │   └── pdf_parser.py          # PDF text extraction
+│   │
+│   ├── subscriptions/
+│   │   ├── signal_buckets.py      # Signal tier definitions
+│   │   └── enforcement.py         # Subscription enforcement
+│   │
+│   ├── core/
+│   │   ├── deps.py                # FastAPI dependencies
+│   │   └── security.py            # JWT auth
+│   │
+│   ├── websocket/
+│   │   └── manager.py             # WebSocket connection manager
+│   │
+│   ├── metrics/
+│   │   └── system_metrics.py      # Business metrics
 │   │
 │   └── utils/
-│       ├── encryption.py
-│       ├── validators.py
-│       └── constants.py
+│       └── market_hours.py        # Market hours helper
 │
 ├── tests/
-├── migrations/                 # Alembic migrations
+├── migrations/                    # Alembic migrations
+├── seed_database.py               # LLM model seeding (idempotent)
 ├── requirements.txt
-└── docker-compose.yml
+└── Dockerfile
 ```
 
 ### 2.2 Key Design Patterns
@@ -473,80 +561,61 @@ class StrategyAgent(BaseAgent):
         )
 ```
 
-### 3.3 CrewAI Flow Integration
+### 3.3 Pipeline Executor (Sequential Execution)
+
+The pipeline executor runs agents in a **fixed sequential order**, not as a dynamic graph. This was chosen over CrewAI Flow for reliability and simplicity:
 
 ```python
-from crewai.flow.flow import Flow, listen, start
-from typing import Dict
+# app/orchestration/executor.py
 
-class TradingPipelineFlow(Flow):
-    """CrewAI flow for orchestrating trading pipeline"""
-    
-    def __init__(self, pipeline_config: Dict, user_id: str):
-        super().__init__()
-        self.pipeline_config = pipeline_config
+FIXED_AGENT_ORDER = [
+    "market_data_agent",      # Step 1: Fetch from Data Plane
+    "bias_agent",             # Step 2: LLM-powered bias analysis
+    "strategy_agent",         # Step 3: Instruction-driven trade plan
+    "risk_manager_agent",     # Step 4: Broker-aware risk sizing
+    "trade_manager_agent"     # Step 5: Multi-broker execution
+]
+
+class PipelineExecutor:
+    """
+    Executes pipeline agents in fixed sequential order.
+
+    Pipeline configs store nodes/edges as JSONB, but execution
+    ignores edges and uses FIXED_AGENT_ORDER. Tool nodes are
+    configuration metadata (not executable).
+    """
+
+    def __init__(self, pipeline_config: Dict, execution_id: str, user_id: str):
+        self.config = pipeline_config
+        self.execution_id = execution_id
         self.user_id = user_id
-        self.state = PipelineState(
-            pipeline_id=pipeline_config['id'],
-            execution_id=generate_execution_id(),
-            user_id=user_id,
-            symbol=pipeline_config['symbol'],
-            start_time=datetime.utcnow(),
-            current_agent="trigger"
-        )
-    
-    @start()
-    def trigger_wait(self):
-        """First step: Wait for trigger condition"""
-        agent = create_agent_from_config(
-            self.pipeline_config['agents']['trigger']
-        )
-        self.state = agent.process(self.state)
-        return self.state
-    
-    @listen(trigger_wait)
-    def fetch_market_data(self, state: PipelineState):
-        """Fetch current market data"""
-        agent = MarketDataAgent(self.pipeline_config['agents']['market_data'])
-        self.state = agent.process(state)
-        return self.state
-    
-    @listen(fetch_market_data)
-    def analyze_bias(self, state: PipelineState):
-        """Determine market bias"""
-        agent = BiasAgent(self.pipeline_config['agents']['bias'])
-        self.state = agent.process(state)
-        return self.state
-    
-    @listen(analyze_bias)
-    def generate_strategy(self, state: PipelineState):
-        """Generate trading signal with stops/targets"""
-        agent = StrategyAgent(self.pipeline_config['agents']['strategy'])
-        self.state = agent.process(state)
-        return self.state
-    
-    @listen(generate_strategy)
-    def validate_risk(self, state: PipelineState):
-        """Validate and adjust for risk"""
-        agent = RiskManagerAgent(self.pipeline_config['agents']['risk'])
-        self.state = agent.process(state)
-        return self.state
-    
-    @listen(validate_risk)
-    def execute_trade(self, state: PipelineState):
-        """Execute approved trade"""
-        if state.risk and state.risk.approved:
-            agent = TradeManagerAgent(self.pipeline_config['agents']['trade'])
-            self.state = agent.process(state)
-        return self.state
-    
-    @listen(execute_trade)
-    def generate_report(self, state: PipelineState):
-        """Create execution report"""
-        agent = ReportingAgent(self.pipeline_config['agents']['reporting'])
-        self.state = agent.process(state)
-        return self.state
+        self.execution_order = self._build_execution_order()
+
+    def _build_execution_order(self) -> List[Dict]:
+        """Filter pipeline nodes to match fixed agent sequence"""
+        nodes_by_type = {n["agent_type"]: n for n in self.config.get("nodes", [])}
+        return [nodes_by_type[t] for t in FIXED_AGENT_ORDER if t in nodes_by_type]
+
+    async def execute(self, state: PipelineState) -> PipelineState:
+        """Run agents sequentially, passing state between them"""
+        for node in self.execution_order:
+            agent = registry.create_agent(
+                agent_type=node["agent_type"],
+                agent_id=node["id"],
+                config=node.get("config", {})
+            )
+            state = await agent.process(state)
+            # Emit WebSocket progress event after each agent
+            await emit_agent_completed(self.user_id, self.execution_id, node)
+        return state
 ```
+
+**Why sequential instead of graph-based?**
+- Fixed core pipeline (Market Data → Bias → Strategy → Risk → Trade) covers all use cases
+- Eliminates invalid graph configurations
+- Simpler debugging and monitoring
+- Tool nodes are configuration metadata, not executable steps
+- Reporting is handled as a system function (agent reports stored in `PipelineState`)
 
 ---
 
@@ -604,21 +673,22 @@ class TradingPipelineFlow(Flow):
 
 ### 4.3 Market Data Agent
 
-**Purpose**: Fetch current market data and calculate indicators
+**Purpose**: Fetch current market data and indicators from the Data Plane service
 
-**Input Requirements**: symbol (from config)
+**Input Requirements**: symbol (from config or scanner)
 
 **Tools Used**:
-- FinnhubTool: Real-time quotes, candles
-- IndicatorTool: Calculate SMA, EMA, RSI, MACD, Bollinger Bands
+- Data Plane API: Cached quotes, candles (served from Redis/TimescaleDB)
+- Data Plane Indicators: Pre-computed TA-Lib indicators (SMA, EMA, RSI, MACD, Bollinger Bands, etc.)
 
 **Process**:
-1. Fetch current quote and recent candles
-2. Calculate technical indicators
-3. Format into MarketData object
-4. No LLM required (data fetching only)
+1. Fetch current quote from Data Plane cache (<10ms)
+2. Fetch candles for configured timeframes from Redis (pre-aggregated via TimescaleDB)
+3. Fetch pre-computed technical indicators from Data Plane
+4. Format into MarketData object with multi-timeframe support
+5. No LLM required (data fetching only, FREE agent)
 
-**Output**: Updates `state.market_data`
+**Output**: Updates `state.market_data` and `state.timeframes`
 
 ### 4.4 Bias Agent
 
@@ -950,24 +1020,27 @@ def create_flow_from_pipeline(pipeline_config: Dict) -> TradingPipelineFlow:
 ### 5.3 Agent Registry
 
 ```python
-# Global registry mapping agent types to classes
-AGENT_REGISTRY = {
-    "time_trigger": TimeTriggerAgent,
-    "technical_trigger": TechnicalTriggerAgent,
-    "price_trigger": PriceTriggerAgent,
-    "news_trigger": NewsTriggerAgent,
-    "market_data_agent": MarketDataAgent,
-    "bias_agent": BiasAgent,
-    "strategy_agent": StrategyAgent,
-    "risk_manager_agent": RiskManagerAgent,
-    "trade_manager_agent": TradeManagerAgent,
-    "reporting_agent": ReportingAgent,
-}
+# backend/app/agents/__init__.py
+# 5 registered agents (trigger agents replaced by signal system)
 
-def get_all_agent_metadata() -> List[AgentMetadata]:
-    """Get metadata for all registered agents (for UI)"""
-    return [agent_class.get_metadata() for agent_class in AGENT_REGISTRY.values()]
+from app.agents.registry import registry
+from app.agents.market_data_agent import MarketDataAgent
+from app.agents.bias_agent import BiasAgent
+from app.agents.strategy_agent import StrategyAgent
+from app.agents.risk_manager_agent import RiskManagerAgent
+from app.agents.trade_manager_agent import TradeManagerAgent
+
+registry.register(MarketDataAgent)       # FREE - fetches from Data Plane
+registry.register(BiasAgent)             # LLM-powered, instruction-driven
+registry.register(StrategyAgent)         # LLM-powered, instruction-driven + ICT tools
+registry.register(RiskManagerAgent)      # LLM + broker-aware risk assessment
+registry.register(TradeManagerAgent)     # Multi-broker execution (Alpaca/Tradier/OANDA)
 ```
+
+**Note**: Trigger agents (time, technical, price, news) and the reporting agent were removed.
+Triggers are now handled by the Signal System (signal generators → Kafka → trigger dispatcher).
+Reporting is a system function — agent reports are stored directly in `PipelineState.agent_reports`
+and PDF reports are pre-generated on pipeline completion via `pdf_generator.py`.
 
 ---
 
@@ -6451,11 +6524,12 @@ async def create_pipeline(request: Request, ...):
 - Flower UI for monitoring
 - Easy to scale workers
 
-### 16.3 Why PostgreSQL?
+### 16.3 Why PostgreSQL + TimescaleDB?
 - JSONB for flexible config/state storage
 - ACID compliance for financial data
 - Excellent performance for relational queries
-- TimescaleDB extension option for time-series
+- TimescaleDB for time-series market data (hypertables, continuous aggregates, compression)
+- Separate TimescaleDB instance for Data Plane (ohlcv storage, aggregate views for 5m/15m/1h/4h/D)
 
 ### 16.4 Agent-First Architecture
 
@@ -6509,14 +6583,32 @@ The Signal System is an **event-driven architecture** for triggering pipelines b
 ### 17.3 Signal Generators
 
 Independent Docker containers that:
-- Monitor market data/events
-- Detect conditions (SMA crossover, news, RSI, etc.)
-- Generate structured signals
-- Publish to Kafka
-- Expose Prometheus metrics
+- Monitor market data via configurable providers (Finnhub default)
+- Detect conditions across multiple timeframes (D, W, M + configurable intraday)
+- Generate structured signals with confidence scores
+- Publish to Kafka topic `trading-signals`
+- Expose Prometheus metrics (generation rate, scan duration, errors)
 
-**Current**: Mock, Golden Cross  
-**Future**: News Sentiment, RSI, MACD, Volume Spike, Custom
+**18 Implemented Generators**:
+- Golden Cross / Death Cross (SMA 50/200 crossovers)
+- RSI (oversold/overbought)
+- MACD (crossovers)
+- Bollinger Bands (breakouts/squeezes)
+- Volume Spike
+- EMA Crossover (12/26)
+- Stochastic (%K/%D crossovers)
+- ADX (trend strength)
+- ATR (volatility spikes)
+- CCI (overbought/oversold)
+- Stochastic RSI
+- Williams %R
+- Aroon (trend direction)
+- MFI (money flow)
+- OBV (on-balance volume)
+- SAR (parabolic SAR reversals)
+- Mock Signal Generator (testing)
+
+**Multi-Timeframe**: Each generator can run on multiple timeframes via `ADDITIONAL_TIMEFRAMES` env var
 
 ### 17.4 Trigger Dispatcher
 
@@ -6653,11 +6745,12 @@ class User(Base):
 
 ### 20.2 Metrics Exposed
 
-Each service exposes `/metrics` on port `800X`:
+Each service exposes `/metrics` on its designated port:
 - Backend API: `8001`
 - Celery Worker: `8002`
 - Signal Generator: `8003`
 - Trigger Dispatcher: `8004`
+- Data Plane API: `8001` (on data-plane container)
 
 Prometheus scrapes every 15 seconds.
 
@@ -6673,20 +6766,48 @@ Prometheus scrapes every 15 seconds.
 **Signal System**:
 - `signals_generated_total{signal_type}`, `kafka_publish_success_total`
 - `pipelines_matched_total`, `pipeline_cache_size`
+- `generator_scan_duration_seconds`, `generator_scan_errors_total`
+
+**Data Plane** (new):
+- `api_calls_total{provider, endpoint, status}` — Total calls to market data providers
+- `provider_bandwidth_bytes_total{provider, endpoint}` — Bytes received from providers
+- `candle_cache_hits_total{timeframe}`, `candle_cache_misses_total{timeframe}` — Redis cache effectiveness
+- `timescale_candles_written_total{timeframe}` — Rows written to TimescaleDB
+- `timescale_aggregates_read_total{timeframe}` — Rows read from continuous aggregates
+- `api_call_duration_seconds{provider, endpoint}` — Provider API latency
+- `timescale_aggregate_refresh_seconds` — Aggregate refresh duration
+- `prefetch_task_duration_seconds{task}` — Celery task durations
+- `api_rate_limit_remaining{provider}`, `api_rate_limit_total{provider}` — Rate limit gauges
+- `process_cpu_percent{service}`, `process_memory_bytes{service}` — Process metrics
 
 **Auto-Instrumented** (via OpenTelemetry):
 - `http_server_request_duration_seconds`, `db_client_operation_duration_seconds`
 
-### 20.4 Grafana Dashboard
+### 20.4 Grafana Dashboards
 
-**Trading Platform Overview** dashboard:
-- System Health (active pipelines, users, success rate)
-- System Status (service UP/DOWN)
-- Signal Generator metrics
-- Trigger Dispatcher metrics
-- Pipeline Execution metrics
+Three provisioned dashboards in `monitoring/grafana/dashboards/`:
 
-**Dashboard Provisioning**: `monitoring/grafana/dashboards/trading-platform-overview.json`
+**1. Trading Platform - System Overview** (`trading-platform-overview.json`):
+- System Health row (active pipelines, users, success rate, service status)
+- Signal Generator row (signals by type, generator scan duration, errors)
+- Trigger Dispatcher row (matched pipelines, cache size, latency)
+- Data Plane row (16 panels):
+  - Universe size, hot/warm tickers
+  - Quote/candle/indicator fetch rates and failures
+  - Bandwidth by provider, bandwidth rate
+  - Candle cache hit ratio, hits vs misses
+  - TimescaleDB rows written, write rate by timeframe
+  - Aggregate refresh duration, prefetch task duration
+- Pipeline Execution row (Celery worker metrics)
+
+**2. Application Resources** (`app-resources.json`):
+- CPU usage by service
+- Memory usage (RSS) by service
+- Thread count, open file descriptors
+- Current resource usage bar gauges
+
+**3. Recent Signals Queue** (`recent-signals.json`):
+- Table: Last 20 signals with timestamp, type, ticker, confidence
 
 ### 20.5 Future
 
@@ -6697,8 +6818,8 @@ Prometheus scrapes every 15 seconds.
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: December 10, 2025  
-**Authors**: Engineering Team  
+**Document Version**: 3.0
+**Last Updated**: February 22, 2026
+**Authors**: Engineering Team
 **Status**: Living Document
 
