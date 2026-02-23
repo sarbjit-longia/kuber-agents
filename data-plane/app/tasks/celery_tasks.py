@@ -94,6 +94,22 @@ def _get_stock_provider_instance():
         )
 
 
+def _get_provider_for_ticker(ticker: str):
+    """Get the appropriate provider for a ticker.
+
+    Forex pairs (containing '_') use OANDA; stocks use Tiingo/Finnhub.
+    """
+    if "_" in ticker:
+        from app.config import settings
+        from app.providers import OANDAProvider
+        if settings.OANDA_API_KEY:
+            return OANDAProvider(
+                api_key=settings.OANDA_API_KEY,
+                account_type=getattr(settings, "OANDA_ACCOUNT_TYPE", "practice"),
+            )
+    return _get_stock_provider_instance()
+
+
 # ---------------------------------------------------------------------------
 # Existing tasks (fixed provider instantiation)
 # ---------------------------------------------------------------------------
@@ -150,9 +166,14 @@ def fetch_hot_tickers_task():
 
             if ticker_list:
                 meter = get_meter()
-                provider = _get_stock_provider_instance()
-                fetcher = DataFetcher(provider, redis, meter)
-                await fetcher.fetch_quotes_batch(ticker_list, ttl=60)
+                # Group tickers by provider type
+                forex = [t for t in ticker_list if "_" in t]
+                stocks = [t for t in ticker_list if "_" not in t]
+                for group, ttl_val in [(forex, 60), (stocks, 60)]:
+                    if group:
+                        provider = _get_provider_for_ticker(group[0])
+                        fetcher = DataFetcher(provider, redis, meter)
+                        await fetcher.fetch_quotes_batch(group, ttl=ttl_val)
 
             return {"tickers_fetched": len(ticker_list)}
 
@@ -189,9 +210,14 @@ def fetch_warm_tickers_task():
 
             if ticker_list:
                 meter = get_meter()
-                provider = _get_stock_provider_instance()
-                fetcher = DataFetcher(provider, redis, meter)
-                await fetcher.fetch_quotes_batch(ticker_list, ttl=300)
+                # Group tickers by provider type
+                forex = [t for t in ticker_list if "_" in t]
+                stocks = [t for t in ticker_list if "_" not in t]
+                for group, ttl_val in [(forex, 300), (stocks, 300)]:
+                    if group:
+                        provider = _get_provider_for_ticker(group[0])
+                        fetcher = DataFetcher(provider, redis, meter)
+                        await fetcher.fetch_quotes_batch(group, ttl=ttl_val)
 
             return {"tickers_fetched": len(ticker_list)}
 
@@ -255,13 +281,12 @@ def prefetch_candles_task():
                 logger.info("no_tickers_to_prefetch_candles")
                 return {"tickers": 0, "candles_cached": 0}
 
-            provider = _get_stock_provider_instance()
-
             total_cached = 0
 
             # ---- Step 1-3: Fetch 1m → TimescaleDB + Redis ----
             for ticker in tickers:
                 try:
+                    provider = _get_provider_for_ticker(ticker)
                     candles_1m = await provider.get_candles(ticker, "1m", 500)
                     if not candles_1m:
                         continue
@@ -373,12 +398,11 @@ def seed_eod_candles_task():
                 logger.info("no_tickers_to_seed_eod")
                 return {"tickers": 0, "eod_seeded": 0}
 
-            provider = _get_stock_provider_instance()
-
             eod_seeded = 0
 
             for ticker in tickers:
                 try:
+                    provider = _get_provider_for_ticker(ticker)
                     # Fetch 400 daily candles (headroom for SMA(200))
                     candles_d = await provider.get_candles(ticker, "D", 400)
                     if not candles_d:
@@ -464,13 +488,13 @@ def prefetch_indicators_task():
                 return {"tickers": 0, "indicators": 0}
 
             meter = get_meter()
-            provider = _get_stock_provider_instance()
-            fetcher = DataFetcher(provider, redis, meter)
 
             total_fetched = 0
 
             # Batch: one candle fetch per ticker+timeframe, all indicators at once
             for ticker in tickers:
+                provider = _get_provider_for_ticker(ticker)
+                fetcher = DataFetcher(provider, redis, meter)
                 for timeframe in TIMEFRAMES:
                     try:
                         result = await fetcher.fetch_all_indicators(
