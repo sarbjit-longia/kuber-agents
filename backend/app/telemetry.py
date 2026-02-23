@@ -69,6 +69,35 @@ pipeline_executions_counter = Counter(
     ['status', 'pipeline_id']
 )
 
+# LLM cost tracking metrics
+llm_calls_total = Counter(
+    'llm_calls_total',
+    'Total LLM API calls',
+    ['model', 'agent_type']
+)
+
+llm_tokens_total = Counter(
+    'llm_tokens_total',
+    'Total LLM tokens used',
+    ['model', 'direction']  # direction: input/output
+)
+
+llm_cost_dollars = Counter(
+    'llm_cost_dollars_total',
+    'Estimated LLM cost in USD',
+    ['model', 'agent_type']
+)
+
+# Pre-initialize all label combinations so Prometheus shows 0 instead of "No data"
+_LLM_MODELS = ["gpt-4", "gpt-4o", "gpt-3.5-turbo", "lm-studio"]
+_AGENT_TYPES = ["bias_agent", "strategy_agent", "risk_manager_agent"]
+for _model in _LLM_MODELS:
+    for _agent in _AGENT_TYPES:
+        llm_calls_total.labels(model=_model, agent_type=_agent)
+        llm_cost_dollars.labels(model=_model, agent_type=_agent)
+    for _direction in ["input", "output"]:
+        llm_tokens_total.labels(model=_model, direction=_direction)
+
 
 def setup_telemetry(
     app,

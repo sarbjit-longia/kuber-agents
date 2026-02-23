@@ -308,9 +308,15 @@ Be specific about which indicators you used, their exact values, and any custom 
                     estimated_output_tokens=300   # Typical bias response
                 )
                 self.track_cost(state, total_cost)
+                # Prometheus metrics
+                from app.telemetry import llm_calls_total, llm_tokens_total, llm_cost_dollars
+                llm_calls_total.labels(model=model_id, agent_type="bias_agent").inc()
+                llm_tokens_total.labels(model=model_id, direction="input").inc(1000)
+                llm_tokens_total.labels(model=model_id, direction="output").inc(300)
+                llm_cost_dollars.labels(model=model_id, agent_type="bias_agent").inc(total_cost)
             finally:
                 db.close()
-            
+
             return state
             
         except Exception as e:

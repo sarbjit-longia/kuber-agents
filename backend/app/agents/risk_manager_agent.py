@@ -379,9 +379,15 @@ REASONING: <brief explanation of your calculation including the formula used>
                     estimated_output_tokens=300
                 )
                 self.track_cost(state, cost)
+                # Prometheus metrics
+                from app.telemetry import llm_calls_total, llm_tokens_total, llm_cost_dollars
+                llm_calls_total.labels(model=model_id, agent_type="risk_manager_agent").inc()
+                llm_tokens_total.labels(model=model_id, direction="input").inc(800)
+                llm_tokens_total.labels(model=model_id, direction="output").inc(300)
+                llm_cost_dollars.labels(model=model_id, agent_type="risk_manager_agent").inc(cost)
             finally:
                 db.close()
-            
+
             return state
             
         except Exception as e:

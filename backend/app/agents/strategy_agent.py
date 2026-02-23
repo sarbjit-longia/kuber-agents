@@ -493,9 +493,15 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                     estimated_output_tokens=500   # Typical strategy response
                 )
                 self.track_cost(state, total_cost)
+                # Prometheus metrics
+                from app.telemetry import llm_calls_total, llm_tokens_total, llm_cost_dollars
+                llm_calls_total.labels(model=model_id, agent_type="strategy_agent").inc()
+                llm_tokens_total.labels(model=model_id, direction="input").inc(1500)
+                llm_tokens_total.labels(model=model_id, direction="output").inc(500)
+                llm_cost_dollars.labels(model=model_id, agent_type="strategy_agent").inc(total_cost)
             finally:
                 db.close()
-            
+
             return state
             
         except Exception as e:
