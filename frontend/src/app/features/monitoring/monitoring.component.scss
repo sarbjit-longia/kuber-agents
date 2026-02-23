@@ -219,6 +219,11 @@
     &.bar-pending {
       background: linear-gradient(to top, #2563eb, #60a5fa);
     }
+    // Skipped (amber/yellow)
+    &.bar-skipped {
+      background: linear-gradient(to top, #d97706, #fbbf24);
+      opacity: 0.6;
+    }
     // Rejected (rose)
     &.bar-rejected {
       background: linear-gradient(to top, #be185d, #f472b6);
@@ -312,6 +317,7 @@
     &.bar-no-trade { background: #a5b4fc; }
     &.bar-cancelled { background: #9ca3af; }
     &.bar-pending { background: #60a5fa; }
+    &.bar-skipped { background: #fbbf24; }
     &.bar-rejected { background: #f472b6; }
     &.bar-failed { background: #fca5a5; }
   }
@@ -899,6 +905,15 @@
 
       mat-icon {
         color: var(--text-muted);
+      }
+    }
+
+    &.outcome-skipped {
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+
+      mat-icon {
+        color: #fbbf24;
       }
     }
 

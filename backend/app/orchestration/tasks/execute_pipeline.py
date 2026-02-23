@@ -183,6 +183,26 @@ def execute_pipeline(
                         ).first() if execution_id else None
 
                         now = datetime.utcnow()
+                        skip_reason = "Duplicate open order/position exists on broker"
+                        skip_result = {
+                            "skipped": True,
+                            "reason": skip_reason,
+                            "symbol": execution_symbol,
+                            "trade_outcome": {
+                                "status": "skipped",
+                                "pnl": 0,
+                                "pnl_percent": 0,
+                                "exit_reason": skip_reason,
+                                "closed_at": now.isoformat(),
+                            },
+                        }
+                        skip_logs = [{
+                            "timestamp": now.isoformat(),
+                            "agent_id": "preflight",
+                            "level": "info",
+                            "message": f"Preflight skip: existing broker order/position for {execution_symbol}",
+                        }]
+
                         if not execution:
                             execution = Execution(
                                 id=UUID(execution_id) if execution_id else uuid4(),
@@ -194,17 +214,8 @@ def execute_pipeline(
                                 started_at=now,
                                 completed_at=now,
                                 execution_phase="completed",
-                                result={
-                                    "skipped": True,
-                                    "reason": "Duplicate open order/position exists on broker",
-                                    "symbol": execution_symbol,
-                                },
-                                logs=[{
-                                    "timestamp": now.isoformat(),
-                                    "agent_id": "preflight",
-                                    "level": "info",
-                                    "message": f"Preflight skip: existing broker order/position for {execution_symbol}",
-                                }],
+                                result=skip_result,
+                                logs=skip_logs,
                                 agent_states=[],
                             )
                             db.add(execution)
@@ -212,17 +223,8 @@ def execute_pipeline(
                             execution.status = ExecutionStatus.COMPLETED
                             execution.completed_at = now
                             execution.execution_phase = "completed"
-                            execution.result = {
-                                "skipped": True,
-                                "reason": "Duplicate open order/position exists on broker",
-                                "symbol": execution_symbol,
-                            }
-                            execution.logs = [{
-                                "timestamp": now.isoformat(),
-                                "agent_id": "preflight",
-                                "level": "info",
-                                "message": f"Preflight skip: existing broker order/position for {execution_symbol}",
-                            }]
+                            execution.result = skip_result
+                            execution.logs = skip_logs
                             execution.agent_states = []
 
                         db.commit()

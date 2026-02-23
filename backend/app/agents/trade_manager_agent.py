@@ -342,8 +342,37 @@ class TradeManagerAgent(BaseAgent):
         
         # STEP 2: If order is still pending, check if we should cancel it
         if pending_order:
-            self.log(state, f"📋 Limit order still pending: {order_id}")
-            
+            # ⚠️ BRACKET FIX: For bracket (OTOCO) orders, the parent order stays
+            # in open_orders even after the entry leg fills (because TP/SL legs are
+            # still active). Before treating this as a "pending" order, check if a
+            # position already exists — if so, the entry has filled and we should
+            # transition to position monitoring instead of applying stale timeouts.
+            is_bracket_order = False
+            if state.trade_execution and state.trade_execution.broker_response:
+                order_type = state.trade_execution.broker_response.get("order_type", "")
+                is_bracket_order = "bracket" in order_type.lower()
+
+            if is_bracket_order:
+                bracket_pos_result, bracket_pos_data = self._get_position(state.symbol, broker_tool)
+                if bracket_pos_result == PositionCheckResult.FOUND:
+                    self.log(
+                        state,
+                        f"🔄 Bracket entry filled — position found for {state.symbol}. "
+                        f"Switching to position monitoring (skipping stale-order timeout)."
+                    )
+                    if state.trade_execution:
+                        state.trade_execution.status = "filled"
+                    # Clear pending_order so we fall through to position monitoring
+                    pending_order = None
+
+            # Only run stale-order / price-based cancellation for truly pending orders
+            if not pending_order:
+                # Bracket entry detected as filled above — skip to position monitoring
+                self.log(state, f"📋 Bracket order {order_id} entry filled — proceeding to position check")
+            else:
+                self.log(state, f"📋 Limit order still pending: {order_id}")
+
+        if pending_order:
             should_cancel = False
             cancel_reason = None
             current_price = 0.0
@@ -351,7 +380,7 @@ class TradeManagerAgent(BaseAgent):
             stop_loss = None
             take_profit = None
             price_precision = self._get_price_precision(state.symbol)
-            
+
             # TIME-BASED CANCELLATION: Cancel stale limit orders
             # Default: 1 hour max wait time for limit order to fill
             max_pending_hours = float(self.config.get("max_pending_hours", 1))
@@ -756,10 +785,50 @@ class TradeManagerAgent(BaseAgent):
                         broker_close_price = trade_details.get("close_price")
                         broker_open_price = trade_details.get("open_price")
                         broker_state = trade_details.get("state", "")
-                        
+
+                        # ⚠️ SAFEGUARD: For Tradier (and similar brokers), get_trade_details()
+                        # returns the ORDER status. A "filled" order maps to state="closed", but
+                        # this means the ORDER is filled — NOT that the POSITION is closed.
+                        # If we see state="closed" but no closing P&L and no exit price,
+                        # the order was likely just the entry fill — mark for reconciliation
+                        # rather than assuming the position is truly closed.
+                        if broker_state == "closed" and broker_realized_pl == 0 and not broker_close_price:
+                            self.log(
+                                state,
+                                f"⚠️ Broker reports state='closed' for {id_for_display} but "
+                                f"realized_pl=0 and no close_price. This likely means the ORDER "
+                                f"is filled (entry) but the POSITION closure was not confirmed. "
+                                f"Marking as NEEDS_RECONCILIATION.",
+                                level="warning"
+                            )
+                            state.should_complete = True
+                            state.trade_outcome = TradeOutcome(
+                                status="needs_reconciliation",
+                                pnl=0.0,
+                                pnl_percent=0.0,
+                                exit_reason="Position not confirmed closed — needs reconciliation (order filled but no closing trade found)",
+                                exit_price=None,
+                                entry_price=broker_open_price or (state.strategy.entry_price if state.strategy else None),
+                                closed_at=datetime.now()
+                            )
+                            self.record_report(
+                                state,
+                                title="Position needs reconciliation",
+                                summary=f"{state.symbol} position status unclear — order filled but no closing trade data",
+                                status="needs_reconciliation",
+                                data={
+                                    "symbol": state.symbol,
+                                    "reason": "Order state='closed' (filled) but no realized P&L or exit price",
+                                    "order_id": order_id,
+                                    "trade_id": trade_id,
+                                    "broker_state": broker_state,
+                                },
+                            )
+                            return state
+
                         final_pnl = broker_realized_pl
                         exit_price = float(broker_close_price) if broker_close_price else None
-                        
+
                         # Calculate P&L percent from broker data
                         entry = broker_open_price or (state.strategy.entry_price if state.strategy else None)
                         if not entry and state.trade_execution:
@@ -767,15 +836,15 @@ class TradeManagerAgent(BaseAgent):
                         final_pnl_percent = None
                         if entry and entry > 0 and exit_price:
                             final_pnl_percent = ((exit_price - entry) / entry) * 100
-                        
+
                         exit_reason = "Position closed by broker (SL/TP/manual)" if broker_state == "closed" else "Position closed"
-                        
+
                         self.log(
                             state,
                             f"✅ Broker P&L for {id_for_display}: "
                             f"${broker_realized_pl:+.2f} | exit_price={exit_price} | state={broker_state}"
                         )
-                        
+
                         state.should_complete = True
                         state.trade_outcome = TradeOutcome(
                             status="executed",

@@ -420,7 +420,11 @@ async def list_executions(
                 else:
                     trade_outcome = exec_status or 'unknown'
             
-            # Step 3: Fallback based on what pipeline produced
+            # Step 3: Check for preflight-skipped executions
+            if not trade_outcome and execution.result.get('skipped'):
+                trade_outcome = 'skipped'
+
+            # Step 4: Fallback based on what pipeline produced
             if not trade_outcome:
                 if risk_assessment:
                     approval = risk_assessment.get('approved', None)
@@ -718,23 +722,39 @@ async def close_position_endpoint(
         # Fetch final P&L from broker (single source of truth)
         final_pnl = None
         final_pnl_percent = None
-        
+
         # First try to get realized P&L from broker
+        # Wait briefly for the closing order to settle before querying
         if trade_id or order_id:
+            import time
+            time.sleep(2)  # Give broker time to fill the closing market order
             try:
                 trade_details = broker.get_trade_details(
                     trade_id=str(trade_id) if trade_id else None,
                     order_id=str(order_id) if order_id else None,
                 )
                 if trade_details and trade_details.get("found"):
-                    final_pnl = float(trade_details.get("realized_pl", 0))
+                    broker_realized_pl = float(trade_details.get("realized_pl", 0))
                     entry_price = trade_details.get("open_price")
                     exit_price = trade_details.get("close_price")
-                    if entry_price and float(entry_price) > 0 and exit_price:
-                        final_pnl_percent = ((float(exit_price) - float(entry_price)) / float(entry_price)) * 100
+                    if broker_realized_pl != 0 or exit_price:
+                        # Broker has valid P&L data
+                        final_pnl = broker_realized_pl
+                        if entry_price and float(entry_price) > 0 and exit_price:
+                            final_pnl_percent = ((float(exit_price) - float(entry_price)) / float(entry_price)) * 100
+                    else:
+                        # Broker returned 0 P&L with no exit price — closing order
+                        # may not have settled yet. Leave final_pnl as None so
+                        # we fall through to the monitoring report fallback.
+                        logger.warning(
+                            "broker_pnl_not_available_yet",
+                            execution_id=str(execution_id),
+                            realized_pl=broker_realized_pl,
+                            exit_price=exit_price,
+                        )
             except Exception as e:
                 logger.warning(f"Could not fetch trade details for P&L: {e}")
-        
+
         # Fallback: use unrealized P&L from last monitoring report
         if final_pnl is None and execution.reports:
             trade_manager_report = None
@@ -752,12 +772,22 @@ async def close_position_endpoint(
         execution.execution_phase = "completed"
         execution.next_check_at = None
         
-        # Update the result to include final P&L
+        # Update the result to include final P&L and trade_outcome
         if execution.result:
             execution.result['final_pnl'] = final_pnl
             execution.result['final_pnl_percent'] = final_pnl_percent
             execution.result['closed_from_ui'] = True
             execution.result['closed_at'] = datetime.utcnow().isoformat()
+            # Ensure trade_outcome is set so dashboard P&L counts this execution
+            execution.result['trade_outcome'] = {
+                "status": "executed",
+                "pnl": final_pnl or 0.0,
+                "pnl_percent": final_pnl_percent or 0.0,
+                "exit_reason": "Position closed manually from UI",
+                "exit_price": None,
+                "entry_price": (execution.result.get('trade_execution', {}) or {}).get('filled_price'),
+                "closed_at": datetime.utcnow().isoformat(),
+            }
         
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(execution, 'result')
