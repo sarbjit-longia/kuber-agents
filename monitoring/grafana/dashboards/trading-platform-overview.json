@@ -3908,7 +3908,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(provider_bandwidth_bytes_total)",
+          "expr": "sum(increase(provider_bandwidth_bytes_total[$__range]))",
           "refId": "A"
         }
       ],
@@ -4093,7 +4093,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(timescale_candles_written_total)",
+          "expr": "sum(increase(timescale_candles_written_total[$__range]))",
           "refId": "A"
         }
       ],
