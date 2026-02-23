@@ -971,12 +971,41 @@ async def reconcile_execution_endpoint(
                     broker_close_time = trade_details.get("close_time")
                     broker_state = trade_details.get("state", "")
 
-                    # Only use broker data if position is actually closed and P&L available
-                    if broker_state == "closed" or broker_pnl != 0 or broker_close_price:
+                    # Only use broker data if position is actually closed AND
+                    # we have meaningful closing data (P&L or close_price).
+                    # SAFEGUARD: For OTOCO bracket orders, broker_state="closed"
+                    # means the ORDER completed (all legs resolved). But if
+                    # realized_pl is still 0 and no close_price was found, it
+                    # means we couldn't identify the closing leg — we should NOT
+                    # accept pnl=0 as a valid reconciliation.
+                    order_class = trade_details.get("order_class", "")
+                    has_closing_data = broker_pnl != 0 or broker_close_price is not None
+
+                    if has_closing_data and (broker_state == "closed" or broker_pnl != 0 or broker_close_price):
                         pnl = broker_pnl
                         exit_price = float(broker_close_price) if broker_close_price else exit_price
                         entry_price = float(broker_open_price) if broker_open_price else entry_price
-                        exit_reason = "Auto-reconciled from broker data"
+
+                        # Build exit reason from leg details if available
+                        broker_legs = trade_details.get("legs", [])
+                        exit_via = None
+                        for bl in broker_legs:
+                            bl_status = (bl.get("status", "") or "").lower()
+                            bl_side = (bl.get("side", "") or "").lower()
+                            if bl_status == "filled" and bl_side != stored_side:
+                                bl_type = (bl.get("type", "") or "").lower()
+                                if bl_type == "limit":
+                                    exit_via = "take-profit"
+                                elif bl_type == "stop":
+                                    exit_via = "stop-loss"
+                                else:
+                                    exit_via = bl_type
+                                break
+
+                        if exit_via:
+                            exit_reason = f"Auto-reconciled from broker ({exit_via} filled)"
+                        else:
+                            exit_reason = "Auto-reconciled from broker data"
                         reconcile_method = "auto_broker"
 
                         if entry_price and float(entry_price) > 0:
@@ -998,6 +1027,25 @@ async def reconcile_execution_endpoint(
                             order_id=order_id,
                             pnl=pnl,
                             exit_price=exit_price,
+                            exit_via=exit_via,
+                        )
+                    elif broker_state == "closed" and not has_closing_data:
+                        # OTOCO/bracket order shows "closed" but no exit price or P&L
+                        # was extracted — the closing leg data may not be available yet.
+                        id_label = order_id or trade_id
+                        auto_reconcile_error = (
+                            f"Trade {id_label} order is 'closed' on broker but no "
+                            f"exit price or P&L was found. The broker may not have "
+                            f"processed the closing leg yet. Please try again in a "
+                            f"few minutes, or provide exit_price and entry_price manually."
+                        )
+                        logger.warning(
+                            "broker_closed_but_no_closing_data",
+                            execution_id=str(execution_id),
+                            trade_id=trade_id,
+                            order_id=order_id,
+                            broker_state=broker_state,
+                            order_class=order_class,
                         )
                     else:
                         id_label = order_id or trade_id

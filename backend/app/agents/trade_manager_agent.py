@@ -4,12 +4,12 @@ Trade Manager Agent - Position-Aware Trade Execution & Monitoring
 Executes trades and monitors open positions.
 Supports both webhooks (fire-and-forget) and broker trading (with monitoring).
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import re
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
-from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, TradeExecution
+from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, TradeExecution, BracketLeg
 from app.config import settings
 from enum import Enum
 from typing import Tuple
@@ -362,6 +362,14 @@ class TradeManagerAgent(BaseAgent):
                     )
                     if state.trade_execution:
                         state.trade_execution.status = "filled"
+                        # Update filled_price/filled_quantity from the actual
+                        # position data — the limit price on the order may differ
+                        # from the actual fill price.
+                        if bracket_pos_data:
+                            if bracket_pos_data.get("avg_entry_price"):
+                                state.trade_execution.filled_price = bracket_pos_data["avg_entry_price"]
+                            if bracket_pos_data.get("qty"):
+                                state.trade_execution.filled_quantity = bracket_pos_data["qty"]
                     # Clear pending_order so we fall through to position monitoring
                     pending_order = None
 
@@ -642,6 +650,21 @@ class TradeManagerAgent(BaseAgent):
             
             # Continue monitoring
             unrealized_pl = position.get("unrealized_pl", 0)
+
+            # Build bracket leg summary for the monitoring report
+            bracket_leg_summary = None
+            if state.trade_execution and state.trade_execution.bracket_legs:
+                bracket_leg_summary = [
+                    {
+                        "leg_id": bl.leg_id,
+                        "role": bl.role,
+                        "type": bl.type,
+                        "status": bl.status,
+                        "price": bl.price,
+                        "avg_fill_price": bl.avg_fill_price,
+                    }
+                    for bl in state.trade_execution.bracket_legs
+                ]
             
             self.record_report(
                 state,
@@ -658,7 +681,8 @@ class TradeManagerAgent(BaseAgent):
                     "stop_loss": state.strategy.stop_loss if state.strategy else None,
                     "take_profit": state.strategy.take_profit if state.strategy else None,
                     "order_id": order_id,
-                    "trade_id": trade_id
+                    "trade_id": trade_id,
+                    "bracket_legs": bracket_leg_summary,
                 },
             )
             
@@ -710,59 +734,76 @@ class TradeManagerAgent(BaseAgent):
                         was_previously_found = True
                 
                 if was_previously_found:
-                    # Position was previously found but now missing - this is suspicious
-                    # Could be a transient API error. Don't mark as cancelled yet.
-                    self.log(
-                        state,
-                        f"⚠️ Position previously found but now missing for {state.symbol} "
-                        f"(order_id={order_id}). This might be a transient API error. "
-                        f"Will retry on next check.",
-                        level="warning"
+                    # Position was previously found but now missing.
+                    # For bracket (OTOCO) orders, the position disappearing is EXPECTED
+                    # when a SL/TP leg fills — the position is closed by the broker.
+                    # We should immediately check the bracket order status rather than
+                    # waiting for the next monitoring cycle.
+                    has_bracket_legs = (
+                        state.trade_execution
+                        and state.trade_execution.bracket_legs
+                        and len(state.trade_execution.bracket_legs) > 0
                     )
-                    # Don't mark as cancelled - let the next monitoring check confirm
-                    # The API error handling will track consecutive failures
-                    # If it's a real API error, we'll hit the 5-failure threshold
-                    # If the position was actually closed, we'll confirm on next successful check
+
+                    if has_bracket_legs:
+                        self.log(
+                            state,
+                            f"📊 Position not found for {state.symbol} but bracket legs exist — "
+                            f"checking if SL/TP leg filled on broker (order_id={order_id})",
+                        )
+                        # Don't return — fall through past this entire `if order_id and not trade_id`
+                        # block to the broker P&L fetch section below.
+                        pass  # handled below at "Position closed" section
+                    else:
+                        # Non-bracket order: could be a transient API error. Don't
+                        # mark as cancelled yet — let the next monitoring check confirm.
+                        self.log(
+                            state,
+                            f"⚠️ Position previously found but now missing for {state.symbol} "
+                            f"(order_id={order_id}). This might be a transient API error. "
+                            f"Will retry on next check.",
+                            level="warning"
+                        )
+                        return state
+                else:
+                    # Position was never found - this is a legitimate "order never filled" scenario
+                    # Only mark as cancelled if we're confident:
+                    # 1. Order was placed (we have order_id)
+                    # 2. Order was never filled (no trade_id, no filled_price, no previous successful check)
+                    self.log(state, "⚠️ Limit order not found and no position opened - treating as unfilled")
+                    if state.trade_execution:
+                        state.trade_execution.status = "cancelled"  # Limit order was never filled
+                    state.should_complete = True
+
+                    # Set trade_outcome as "cancelled" (limit order never filled)
+                    from app.schemas.pipeline_state import TradeOutcome
+                    state.trade_outcome = TradeOutcome(
+                        status="cancelled",  # Limit order was never filled
+                        pnl=0.0,
+                        pnl_percent=0.0,
+                        exit_reason="Limit order never filled",
+                        exit_price=None,
+                        entry_price=state.strategy.entry_price if state.strategy else None,
+                        closed_at=datetime.now()
+                    )
+
+                    self.record_report(
+                        state,
+                        title="Limit order not filled",
+                        summary=f"{state.symbol} limit order was accepted but never filled",
+                        status="skipped",  # This execution is being skipped (no actual trade)
+                        data={
+                            "symbol": state.symbol,
+                            "reason": "Order not found in pending list and no position opened",
+                            "order_id": order_id,
+                            "trade_id": trade_id,
+                            "entry_price": state.strategy.entry_price if state.strategy else None,
+                            "stop_loss": state.strategy.stop_loss if state.strategy else None,
+                            "take_profit": state.strategy.take_profit if state.strategy else None,
+                            "checked_at": datetime.utcnow().isoformat(),
+                        },
+                    )
                     return state
-                
-                # Position was never found - this is a legitimate "order never filled" scenario
-                # Only mark as cancelled if we're confident:
-                # 1. Order was placed (we have order_id)
-                # 2. Order was never filled (no trade_id, no filled_price, no previous successful check)
-                self.log(state, "⚠️ Limit order not found and no position opened - treating as unfilled")
-                if state.trade_execution:
-                    state.trade_execution.status = "cancelled"  # Limit order was never filled
-                state.should_complete = True
-
-                # Set trade_outcome as "cancelled" (limit order never filled)
-                from app.schemas.pipeline_state import TradeOutcome
-                state.trade_outcome = TradeOutcome(
-                    status="cancelled",  # Limit order was never filled
-                    pnl=0.0,
-                    pnl_percent=0.0,
-                    exit_reason="Limit order never filled",
-                    exit_price=None,
-                    entry_price=state.strategy.entry_price if state.strategy else None,
-                    closed_at=datetime.now()
-                )
-
-                self.record_report(
-                    state,
-                    title="Limit order not filled",
-                    summary=f"{state.symbol} limit order was accepted but never filled",
-                    status="skipped",  # This execution is being skipped (no actual trade)
-                    data={
-                        "symbol": state.symbol,
-                        "reason": "Order not found in pending list and no position opened",
-                        "order_id": order_id,
-                        "trade_id": trade_id,
-                        "entry_price": state.strategy.entry_price if state.strategy else None,
-                        "stop_loss": state.strategy.stop_loss if state.strategy else None,
-                        "take_profit": state.strategy.take_profit if state.strategy else None,
-                        "checked_at": datetime.utcnow().isoformat(),
-                    },
-                )
-                return state
 
             # Position closed (bracket orders worked or manually closed)
             self.log(state, "✓ Position closed - fetching realized P&L from broker")
@@ -837,13 +878,62 @@ class TradeManagerAgent(BaseAgent):
                         if entry and entry > 0 and exit_price:
                             final_pnl_percent = ((exit_price - entry) / entry) * 100
 
-                        exit_reason = "Position closed by broker (SL/TP/manual)" if broker_state == "closed" else "Position closed"
+                        # Determine exit reason from bracket legs if available
+                        exit_reason = "Position closed"
+                        exit_via_leg = None
+                        if broker_state == "closed":
+                            broker_legs = trade_details.get("legs", [])
+                            # Determine entry side from our own bracket_legs or
+                            # from the trade_details (which resolved it from legs)
+                            entry_side_for_exit = None
+                            if state.trade_execution and state.trade_execution.bracket_legs:
+                                for own_bl in state.trade_execution.bracket_legs:
+                                    if own_bl.role == "entry":
+                                        entry_side_for_exit = own_bl.side
+                                        break
+                            # Find a filled leg on the opposite side (= exit leg)
+                            for bl in broker_legs:
+                                bl_status = (bl.get("status", "") or "").lower()
+                                bl_side = (bl.get("side", "") or "").lower()
+                                if bl_status == "filled" and entry_side_for_exit and bl_side != entry_side_for_exit:
+                                    bl_type = bl.get("type", "")
+                                    if bl_type == "limit":
+                                        exit_via_leg = "take-profit"
+                                    elif bl_type == "stop":
+                                        exit_via_leg = "stop-loss"
+                                    else:
+                                        exit_via_leg = bl_type
+                                    break
+
+                            if exit_via_leg:
+                                exit_reason = f"Position closed by {exit_via_leg} (bracket order)"
+                            else:
+                                exit_reason = "Position closed by broker (SL/TP/manual)"
 
                         self.log(
                             state,
                             f"✅ Broker P&L for {id_for_display}: "
-                            f"${broker_realized_pl:+.2f} | exit_price={exit_price} | state={broker_state}"
+                            f"${broker_realized_pl:+.2f} | exit_price={exit_price} | "
+                            f"state={broker_state} | exit_via={exit_via_leg or 'unknown'}"
                         )
+
+                        # Update bracket_legs statuses from the fresh broker data
+                        if state.trade_execution and state.trade_execution.bracket_legs:
+                            broker_legs = trade_details.get("legs", [])
+                            if broker_legs:
+                                leg_status_map = {
+                                    str(bl.get("leg_id", "")): bl.get("status", "")
+                                    for bl in broker_legs
+                                }
+                                for bl in state.trade_execution.bracket_legs:
+                                    if bl.leg_id in leg_status_map:
+                                        bl.status = leg_status_map[bl.leg_id]
+                                        # Update avg_fill_price if the leg is now filled
+                                        for broker_bl in broker_legs:
+                                            if str(broker_bl.get("leg_id", "")) == bl.leg_id:
+                                                if broker_bl.get("avg_fill_price"):
+                                                    bl.avg_fill_price = broker_bl["avg_fill_price"]
+                                                break
 
                         state.should_complete = True
                         state.trade_outcome = TradeOutcome(
@@ -856,6 +946,21 @@ class TradeManagerAgent(BaseAgent):
                             closed_at=datetime.now()
                         )
                         
+                        # Build bracket leg summary for the close report
+                        close_leg_summary = None
+                        if state.trade_execution and state.trade_execution.bracket_legs:
+                            close_leg_summary = [
+                                {
+                                    "leg_id": bl.leg_id,
+                                    "role": bl.role,
+                                    "type": bl.type,
+                                    "status": bl.status,
+                                    "price": bl.price,
+                                    "avg_fill_price": bl.avg_fill_price,
+                                }
+                                for bl in state.trade_execution.bracket_legs
+                            ]
+
                         self.record_report(
                             state,
                             title="Position closed",
@@ -864,13 +969,15 @@ class TradeManagerAgent(BaseAgent):
                             data={
                                 "symbol": state.symbol,
                                 "reason": exit_reason,
+                                "exit_via": exit_via_leg,
                                 "final_pnl": final_pnl,
                                 "final_pnl_percent": final_pnl_percent,
                                 "exit_price": exit_price,
                                 "entry_price": entry,
                                 "closed_at": datetime.now().isoformat(),
                                 "order_id": order_id,
-                                "trade_id": trade_id
+                                "trade_id": trade_id,
+                                "bracket_legs": close_leg_summary,
                             },
                         )
                         return state
@@ -1053,11 +1160,9 @@ class TradeManagerAgent(BaseAgent):
                         # Use the first trade ID (most common case: single trade per position)
                         trade_id = str(trade_ids[0])
                 
-                # Tradier: Positions don't have individual trade IDs, but we can use
-                # the position ID or create a synthetic ID from position data
-                # Check for any ID-like fields in Tradier position data
+                # Tradier: Positions don't have individual trade IDs.
+                # Check for any ID-like fields in broker position data.
                 if not trade_id:
-                    # Try common ID fields
                     trade_id = (
                         broker_data.get("id") or
                         broker_data.get("position_id") or
@@ -1066,19 +1171,6 @@ class TradeManagerAgent(BaseAgent):
                     )
                     if trade_id:
                         trade_id = str(trade_id)
-                
-                # Fallback: For Tradier, create a synthetic trade_id from position data
-                # This allows us to track the position even if Tradier doesn't provide a trade ID
-                if not trade_id and hasattr(broker, '__class__') and 'Tradier' in broker.__class__.__name__:
-                    # Use symbol + quantity + cost_basis as a unique identifier
-                    # This is stable as long as the position exists
-                    synthetic_id = f"{position.symbol}_{position.qty}_{position.cost_basis:.2f}"
-                    trade_id = synthetic_id
-                    self.logger.debug(
-                        "created_synthetic_trade_id_for_tradier",
-                        symbol=position.symbol,
-                        trade_id=trade_id
-                    )
                 
                 if trade_id:
                     position_dict["trade_id"] = trade_id
@@ -1151,6 +1243,71 @@ class TradeManagerAgent(BaseAgent):
             self.logger.error(error_msg)
             return (0.0, error_msg)
     
+    def _extract_bracket_legs(
+        self,
+        broker_data: Dict[str, Any],
+        action: str,
+        symbol: str,
+        entry_price: float,
+    ) -> Optional[List[BracketLeg]]:
+        """
+        Extract individual leg order IDs from a bracket (OTOCO) order response.
+
+        Tradier OTOCO responses include a ``leg`` array with child order IDs for
+        the entry, take-profit, and stop-loss legs. Storing these allows the
+        monitoring loop to check individual leg statuses and reliably detect
+        when a SL/TP leg fills (= position closure).
+
+        Returns:
+            List of BracketLeg objects, or None if no legs found.
+        """
+        legs_raw = broker_data.get("leg", [])
+        if isinstance(legs_raw, dict):
+            legs_raw = [legs_raw]
+        if not legs_raw:
+            return None
+
+        entry_side = action.lower()  # "buy" or "sell"
+        exit_side = "sell" if entry_side == "buy" else "buy"
+
+        bracket_legs: List[BracketLeg] = []
+        for leg in legs_raw:
+            leg_id = str(leg.get("id", ""))
+            leg_side = (leg.get("side", "") or "").lower()
+            leg_type = (leg.get("type", "") or "").lower()
+            leg_status = (leg.get("status", "") or "").lower()
+            leg_qty = float(leg.get("quantity", 0))
+            leg_fill = float(leg.get("avg_fill_price", 0)) if leg.get("avg_fill_price") else None
+            leg_price = float(leg.get("price", 0)) if leg.get("price") else None
+            leg_stop = float(leg.get("stop_price", 0)) if leg.get("stop_price") else None
+
+            # Determine role based on side and type
+            if leg_side == entry_side:
+                role = "entry"
+                price_val = leg_price  # limit price for limit entries
+            elif leg_type == "limit":
+                role = "take_profit"
+                price_val = leg_price
+            elif leg_type == "stop":
+                role = "stop_loss"
+                price_val = leg_stop
+            else:
+                role = "exit"  # fallback
+                price_val = leg_price or leg_stop
+
+            bracket_legs.append(BracketLeg(
+                leg_id=leg_id,
+                role=role,
+                type=leg_type,
+                side=leg_side,
+                status=leg_status,
+                quantity=leg_qty,
+                price=price_val,
+                avg_fill_price=leg_fill,
+            ))
+
+        return bracket_legs if bracket_legs else None
+
     def _get_price_precision(self, symbol: str) -> int:
         """
         Get the price precision (decimal places) for a symbol.
@@ -1481,6 +1638,19 @@ class TradeManagerAgent(BaseAgent):
                     "order_data": order.broker_data
                 }
             )
+
+            # ── Extract bracket (OTOCO) leg order IDs for monitoring ─────
+            # When a bracket order is placed, the broker response contains
+            # child leg order IDs for SL and TP. Store them so monitoring
+            # can check individual leg statuses for reliable closure detection.
+            if has_targets and order.broker_data:
+                bracket_legs = self._extract_bracket_legs(
+                    order.broker_data, strategy.action, state.symbol, entry
+                )
+                if bracket_legs:
+                    state.trade_execution.bracket_legs = bracket_legs
+                    leg_ids = [f"{l.role}={l.leg_id}" for l in bracket_legs]
+                    self.log(state, f"  Bracket legs tracked: {', '.join(leg_ids)}")
             
             # Log execution details
             self.log(state, f"✓ {strategy.action} {risk.position_size:.0f} units @ ${entry:.{price_precision}f}")

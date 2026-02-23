@@ -441,84 +441,94 @@ class OandaBrokerService(BrokerService):
             raise
     
     def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
-        """Get all pending/open orders"""
+        """Get all pending/open orders.
+
+        Raises on API errors so callers can distinguish "no orders" from
+        "API failure", preventing false reconciliation.
+        """
         target_account = account_id or self.account_id
         if not target_account:
             return []
-        
-        try:
-            result = self._make_request("GET", f"/accounts/{target_account}/pendingOrders")
-            if "error" in result or "orders" not in result:
-                return []
-            
-            orders = []
-            for oanda_order in result["orders"]:
-                try:
-                    # Determine order type
-                    order_type_str = oanda_order.get("type", "MARKET")
-                    order_type = OrderType.MARKET
-                    if "LIMIT" in order_type_str:
-                        order_type = OrderType.LIMIT
-                    elif "STOP" in order_type_str:
-                        order_type = OrderType.STOP
-                    
-                    # Determine side from units
-                    units = float(oanda_order.get("units", 0))
-                    side = OrderSide.BUY if units > 0 else OrderSide.SELL
-                    qty = abs(units)
-                    
-                    instrument = oanda_order.get("instrument", "")
-                    symbol = instrument.replace("_", "/")
-                    
-                    # Get prices
-                    limit_price = None
-                    stop_price = None
-                    if "price" in oanda_order:
-                        limit_price = float(oanda_order["price"])
-                    if "priceBound" in oanda_order:
-                        stop_price = float(oanda_order["priceBound"])
-                    
-                    time_in_force = TimeInForce.GTC
-                    if oanda_order.get("timeInForce") == "FOK":
-                        time_in_force = TimeInForce.DAY
-                    
-                    # Parse createTime — Oanda returns Unix timestamps
-                    # (due to Accept-Datetime-Format: UNIX header)
-                    submitted_at = None
-                    if oanda_order.get("createTime"):
-                        try:
-                            submitted_at = datetime.fromtimestamp(float(oanda_order["createTime"]))
-                        except (ValueError, TypeError):
-                            try:
-                                submitted_at = datetime.fromisoformat(
-                                    oanda_order["createTime"].replace("Z", "+00:00")
-                                )
-                            except Exception:
-                                pass
 
-                    order = Order(
-                        order_id=oanda_order.get("id"),
-                        symbol=symbol,
-                        qty=qty,
-                        side=side,
-                        type=order_type,
-                        status=OrderStatus.OPEN,
-                        limit_price=limit_price,
-                        stop_price=stop_price,
-                        time_in_force=time_in_force,
-                        submitted_at=submitted_at,
-                        broker_data=oanda_order
-                    )
-                    orders.append(order)
-                except Exception as e:
-                    self.logger.warning(f"Failed to convert Oanda order: {e}")
-                    continue
-            
-            return orders
-            
-        except Exception as e:
-            self.logger.error("Failed to get Oanda orders", error=str(e))
-            return []
+        result = self._make_request("GET", f"/accounts/{target_account}/pendingOrders")
+
+        if "error" in result:
+            error_msg = result.get("error", "Unknown API error")
+            self.logger.error("Oanda API error getting orders", error=error_msg)
+            raise Exception(f"Oanda API error: {error_msg}")
+
+        if "orders" not in result:
+            # Successful response but missing orders key — treat as API error
+            self.logger.error(
+                "Oanda API returned unexpected response format for orders",
+                response_keys=list(result.keys()),
+            )
+            raise Exception("Oanda API returned unexpected response format (missing 'orders' key)")
+
+        orders = []
+        for oanda_order in result["orders"]:
+            try:
+                # Determine order type
+                order_type_str = oanda_order.get("type", "MARKET")
+                order_type = OrderType.MARKET
+                if "LIMIT" in order_type_str:
+                    order_type = OrderType.LIMIT
+                elif "STOP" in order_type_str:
+                    order_type = OrderType.STOP
+
+                # Determine side from units
+                units = float(oanda_order.get("units", 0))
+                side = OrderSide.BUY if units > 0 else OrderSide.SELL
+                qty = abs(units)
+
+                instrument = oanda_order.get("instrument", "")
+                symbol = instrument.replace("_", "/")
+
+                # Get prices
+                limit_price = None
+                stop_price = None
+                if "price" in oanda_order:
+                    limit_price = float(oanda_order["price"])
+                if "priceBound" in oanda_order:
+                    stop_price = float(oanda_order["priceBound"])
+
+                time_in_force = TimeInForce.GTC
+                if oanda_order.get("timeInForce") == "FOK":
+                    time_in_force = TimeInForce.DAY
+
+                # Parse createTime — Oanda returns Unix timestamps
+                # (due to Accept-Datetime-Format: UNIX header)
+                submitted_at = None
+                if oanda_order.get("createTime"):
+                    try:
+                        submitted_at = datetime.fromtimestamp(float(oanda_order["createTime"]))
+                    except (ValueError, TypeError):
+                        try:
+                            submitted_at = datetime.fromisoformat(
+                                oanda_order["createTime"].replace("Z", "+00:00")
+                            )
+                        except Exception:
+                            pass
+
+                order = Order(
+                    order_id=oanda_order.get("id"),
+                    symbol=symbol,
+                    qty=qty,
+                    side=side,
+                    type=order_type,
+                    status=OrderStatus.OPEN,
+                    limit_price=limit_price,
+                    stop_price=stop_price,
+                    time_in_force=time_in_force,
+                    submitted_at=submitted_at,
+                    broker_data=oanda_order
+                )
+                orders.append(order)
+            except Exception as e:
+                self.logger.warning(f"Failed to convert Oanda order: {e}")
+                continue
+
+        return orders
     
     def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel an order"""
@@ -867,66 +877,33 @@ class OandaBrokerService(BrokerService):
     def _get_closed_trade_details(self, trade_id: str, account_id: str) -> Dict[str, Any]:
         """
         Get details for a closed trade by searching recent transactions.
-        
+
         When a trade is closed (by SL/TP bracket orders), it's no longer in /trades.
-        We search recent ORDER_FILL transactions that reference this trade_id to get
-        the final realized P&L.
-        
+        We search ORDER_FILL transactions that reference this trade_id to get the
+        final realized P&L and the actual open/close prices.
+
         Args:
             trade_id: Oanda trade ID
             account_id: Oanda account ID
-            
+
         Returns:
             Dict with trade details including realized P&L
         """
         try:
-            # Fetch recent transactions (last 200) to find the close fill
-            result = self._make_request(
-                "GET",
-                f"/accounts/{account_id}/transactions",
-                params={
-                    "count": 200,
-                    "type": "ORDER_FILL",
-                },
-            )
-            
-            if "error" in result:
-                self.logger.warning(
-                    "transaction_fetch_failed",
-                    trade_id=trade_id,
-                    error=result.get("error"),
-                )
-                return {"found": False, "error": result.get("error")}
-            
-            # Get transaction IDs and fetch details
-            transaction_ids = result.get("pages", [])
-            
-            # Try the simpler approach: fetch transactions in the ID range
-            # Oanda returns a list of transaction pages (URLs)
-            # Let's try fetching by trade ID using the trade endpoint with state filter
-            
-            # Alternative: check /accounts/{id}/trades/{tradeId} — closed trades are
-            # still available if we use the "state" filter
-            # But Oanda doesn't support fetching closed trades by ID directly.
-            
-            # Best approach: fetch recent ORDER_FILL transactions and find the one
-            # that references our trade_id
+            # Get the last transaction ID so we know the search range
             txn_result = self._make_request(
                 "GET",
                 f"/accounts/{account_id}/transactions",
-                params={
-                    "pageSize": 200,
-                }
+                params={"pageSize": 1},
             )
-            
-            # Parse transaction pages to find relevant fills
-            # Oanda returns paginated transaction IDs
+
             last_txn_id = txn_result.get("lastTransactionID")
             if not last_txn_id:
                 return {"found": False, "error": "No transactions found"}
-            
-            # Fetch the last batch of transactions by ID range
-            from_id = max(1, int(last_txn_id) - 200)
+
+            # Search a larger window (1000 transactions instead of 200) to handle
+            # active accounts or system downtime where the close may be far back.
+            from_id = max(1, int(last_txn_id) - 1000)
             range_result = self._make_request(
                 "GET",
                 f"/accounts/{account_id}/transactions/idrange",
@@ -935,21 +912,39 @@ class OandaBrokerService(BrokerService):
                     "to": last_txn_id,
                 },
             )
-            
+
+            if "error" in range_result:
+                self.logger.warning(
+                    "transaction_fetch_failed",
+                    trade_id=trade_id,
+                    error=range_result.get("error"),
+                )
+                return {"found": False, "error": range_result.get("error")}
+
             transactions = range_result.get("transactions", [])
-            
+
             # Look for ORDER_FILL transactions that reference our trade_id
             realized_pl = 0.0
             close_price = None
             close_time = None
+            open_price = 0.0
             instrument = ""
             units_closed = 0.0
+            initial_units = 0.0
             found_close = False
-            
+
             for txn in transactions:
                 if txn.get("type") != "ORDER_FILL":
                     continue
-                
+
+                # Check if this fill OPENED our trade — extract the actual entry price
+                trade_opened = txn.get("tradeOpened", {})
+                if trade_opened and str(trade_opened.get("tradeID")) == str(trade_id):
+                    open_price = float(txn.get("price", 0))
+                    initial_units = abs(float(trade_opened.get("units", 0)))
+                    if not instrument:
+                        instrument = txn.get("instrument", "")
+
                 # Check if this fill closed our trade
                 trades_closed = txn.get("tradesClosed", [])
                 for tc in trades_closed:
@@ -959,7 +954,7 @@ class OandaBrokerService(BrokerService):
                         close_price = float(txn.get("price", 0))
                         instrument = txn.get("instrument", "")
                         found_close = True
-                        
+
                         # Parse close time
                         if txn.get("time"):
                             try:
@@ -968,43 +963,44 @@ class OandaBrokerService(BrokerService):
                                 ).isoformat()
                             except (ValueError, TypeError):
                                 close_time = txn.get("time")
-                
+
                 # Also check tradesReduced for partial closes
                 trades_reduced = txn.get("tradesReduced", [])
                 for tr in trades_reduced:
                     if str(tr.get("tradeID")) == str(trade_id):
                         realized_pl += float(tr.get("realizedPL", 0))
                         found_close = True
-            
+
             if found_close:
                 self.logger.info(
                     "found_closed_trade_details",
                     trade_id=trade_id,
                     realized_pl=realized_pl,
+                    open_price=open_price,
                     close_price=close_price,
                 )
                 return {
                     "found": True,
                     "state": "closed",
                     "realized_pl": realized_pl,
-                    "unrealized_pl": 0.0,  # Closed trade has no unrealized P&L
+                    "unrealized_pl": 0.0,
                     "close_time": close_time,
                     "instrument": instrument,
-                    "open_price": 0.0,  # Not available from fill transactions
+                    "open_price": open_price,
                     "close_price": close_price,
                     "units": units_closed,
-                    "initial_units": units_closed,
+                    "initial_units": initial_units or units_closed,
                     "broker_data": {"transactions": [t for t in transactions if any(
                         str(tc.get("tradeID")) == str(trade_id)
                         for tc in t.get("tradesClosed", []) + t.get("tradesReduced", [])
                     )]},
                 }
-            
+
             return {
                 "found": False,
-                "error": f"Trade {trade_id} not found in recent transactions",
+                "error": f"Trade {trade_id} not found in recent transactions (searched last 1000)",
             }
-            
+
         except Exception as e:
             self.logger.error(
                 "closed_trade_lookup_failed",

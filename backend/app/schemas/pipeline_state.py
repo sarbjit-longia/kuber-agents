@@ -103,6 +103,18 @@ class AgentReport(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class BracketLeg(BaseModel):
+    """Individual leg of a bracket (OTOCO) order for tracking."""
+    leg_id: str  # Broker-assigned leg order ID
+    role: str  # "entry", "take_profit", "stop_loss"
+    type: str  # "market", "limit", "stop"
+    side: str  # "buy" or "sell"
+    status: str  # "pending", "open", "filled", "cancelled", "expired"
+    quantity: float = 0.0
+    price: Optional[float] = None  # Limit price or stop price
+    avg_fill_price: Optional[float] = None  # Filled price (once filled)
+
+
 class TradeExecution(BaseModel):
     """Trade execution details from Trade Manager Agent."""
     order_id: Optional[str] = None
@@ -113,6 +125,9 @@ class TradeExecution(BaseModel):
     commission: Optional[float] = None
     execution_time: Optional[datetime] = None
     broker_response: Optional[Dict[str, Any]] = None
+
+    # Bracket order leg tracking (Tradier OTOCO, etc.)
+    bracket_legs: Optional[List[BracketLeg]] = None  # SL/TP leg IDs for monitoring
     
     # Monitoring metadata
     api_error_count: int = 0  # Count of consecutive API failures during monitoring

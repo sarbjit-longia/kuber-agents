@@ -635,56 +635,78 @@ class TradierBrokerService(BrokerService):
             raise
     
     def get_orders(self, account_id: Optional[str] = None) -> List[Order]:
-        """Get all open orders"""
+        """Get all open orders.
+
+        Raises on API errors so that callers (e.g. ``has_active_symbol``,
+        reconciliation) can distinguish between "no orders" and "API failure".
+        Returning ``[]`` on errors previously caused false reconciliation —
+        the caller assumed no orders existed when the API was simply unreachable.
+        """
         account = account_id or self.account_id
         if not account:
             return []
-        
-        try:
-            result = self._make_request('GET', f'/v1/accounts/{account}/orders')
-            
-            if "error" in result or "orders" not in result:
-                return []
-            
-            orders_data = result["orders"]
-            if orders_data is None or orders_data == "null":
-                return []
-            
-            # Handle single order vs list
-            if isinstance(orders_data, dict) and "order" in orders_data:
-                order_list = orders_data["order"]
-                if not isinstance(order_list, list):
-                    order_list = [order_list]
-            else:
-                return []
-            
-            # Filter only open/pending orders
-            orders = []
-            for order_data in order_list:
-                status = order_data.get("status", "").lower()
-                if status in ["open", "pending", "partially_filled"]:
-                    try:
-                        converted = self._convert_order(order_data)
-                        if converted:
-                            orders.append(converted)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to convert Tradier order: {e}")
-                        continue
-            
-            return orders
-            
-        except Exception as e:
-            self.logger.error("Failed to get Tradier orders", error=str(e))
+
+        result = self._make_request('GET', f'/v1/accounts/{account}/orders')
+
+        if "error" in result:
+            error_msg = result.get("error", "Unknown API error")
+            self.logger.error("Tradier API error getting orders", error=error_msg, account_id=account)
+            raise Exception(f"Tradier API error: {error_msg}")
+
+        if "orders" not in result:
+            self.logger.error(
+                "Tradier API returned unexpected response format for orders",
+                response_keys=list(result.keys()),
+            )
+            raise Exception("Tradier API returned unexpected response format (missing 'orders' key)")
+
+        orders_data = result["orders"]
+        if orders_data is None or orders_data == "null":
             return []
+
+        # Handle single order vs list
+        if isinstance(orders_data, dict) and "order" in orders_data:
+            order_list = orders_data["order"]
+            if not isinstance(order_list, list):
+                order_list = [order_list]
+        else:
+            # orders_data is not in expected format — genuinely no orders
+            return []
+
+        # Filter only open/pending orders
+        orders = []
+        for order_data in order_list:
+            status = order_data.get("status", "").lower()
+            if status in ["open", "pending", "partially_filled"]:
+                try:
+                    converted = self._convert_order(order_data)
+                    if converted:
+                        orders.append(converted)
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert Tradier order: {e}")
+                    continue
+
+        return orders
     
     def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
-        """Cancel an order"""
+        """Cancel an order and verify the broker acknowledged the cancellation."""
         account = account_id or self.account_id
         if not account:
             return {"success": False, "error": "No account ID provided"}
-        
+
         try:
             result = self._make_request('DELETE', f'/v1/accounts/{account}/orders/{order_id}')
+
+            # Verify the response — _make_request returns {"error": ...} on failures
+            if "error" in result:
+                error_msg = result["error"]
+                self.logger.error(
+                    "tradier_cancel_order_failed",
+                    order_id=order_id,
+                    error=error_msg,
+                )
+                return {"success": False, "order_id": order_id, "error": error_msg}
+
             self.logger.info("Tradier order cancelled", order_id=order_id)
             return {"success": True, "order_id": order_id, "result": result}
         except Exception as e:
@@ -698,8 +720,12 @@ class TradierBrokerService(BrokerService):
         account_id: Optional[str] = None,
         trade_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Close a position.
-        
+        """Close a position and cancel any remaining bracket (OTOCO) legs.
+
+        After placing a market order to close the position, this method cancels
+        all remaining open orders for the symbol to prevent stale TP/SL legs
+        from executing and opening an unintended short position.
+
         Args:
             symbol: Trading symbol
             qty: Number of shares/units to close (None = close all)
@@ -711,21 +737,59 @@ class TradierBrokerService(BrokerService):
             pos = self.get_position(symbol, account_id)
             if not pos:
                 return {"success": False, "error": f"Position not found for {symbol}"}
-            
+
             # Determine closing qty
             close_qty = qty if qty else pos.qty
-            
+
             # Determine opposite side
             close_side = OrderSide.SELL if pos.side == "long" else OrderSide.BUY
-            
+
             # Place closing order
             order = self.place_order(
                 symbol, close_qty, close_side, OrderType.MARKET, time_in_force=TimeInForce.DAY, account_id=account_id
             )
-            
+
             self.logger.info("Tradier position closed", symbol=symbol, qty=close_qty)
-            return {"success": True, "order_id": order.order_id, "qty_closed": close_qty}
-            
+
+            # Cancel any remaining open orders for this symbol (bracket TP/SL legs).
+            # Without this, stale limit-sell (TP) or stop-sell (SL) orders remain
+            # active on the broker and can execute later, opening a short position.
+            cancelled_ids = []
+            try:
+                open_orders = self.get_orders(account_id)
+                for open_order in open_orders:
+                    if open_order.symbol.upper() == symbol.upper() and open_order.order_id != order.order_id:
+                        cancel_result = self.cancel_order(open_order.order_id, account_id)
+                        if cancel_result.get("success"):
+                            cancelled_ids.append(open_order.order_id)
+                        else:
+                            self.logger.warning(
+                                "tradier_failed_to_cancel_bracket_leg",
+                                order_id=open_order.order_id,
+                                symbol=symbol,
+                                error=cancel_result.get("error"),
+                            )
+                if cancelled_ids:
+                    self.logger.info(
+                        "tradier_cancelled_bracket_legs_after_close",
+                        symbol=symbol,
+                        cancelled_order_ids=cancelled_ids,
+                    )
+            except Exception as cancel_err:
+                # Log but don't fail the close — position is already closed
+                self.logger.warning(
+                    "tradier_bracket_leg_cleanup_failed",
+                    symbol=symbol,
+                    error=str(cancel_err),
+                )
+
+            return {
+                "success": True,
+                "order_id": order.order_id,
+                "qty_closed": close_qty,
+                "cancelled_bracket_legs": cancelled_ids,
+            }
+
         except Exception as e:
             self.logger.error("Failed to close Tradier position", symbol=symbol, error=str(e))
             return {"success": False, "error": str(e)}
@@ -812,21 +876,97 @@ class TradierBrokerService(BrokerService):
                 return {"found": False, "error": "Empty order response"}
 
             tradier_status = (order_data.get("status", "") or "").lower()
-            symbol = order_data.get("symbol", "").upper()
+            order_class = (order_data.get("class", "") or "").lower()
+            symbol = (order_data.get("symbol", "") or "").upper()
             qty = float(order_data.get("quantity", 0))
             exec_qty = float(order_data.get("exec_quantity", 0))
             avg_fill_price = float(order_data.get("avg_fill_price", 0)) if order_data.get("avg_fill_price") else None
             side = (order_data.get("side", "") or "").lower()  # "buy" or "sell"
 
+            # ── OTOCO parent orders: extract entry data from legs ────────
+            # Tradier OTOCO parent orders have symbol=null, side=null, and
+            # avg_fill_price=null at the top level. The actual data lives on
+            # the child "leg" orders. We must parse legs to find:
+            #   1. Entry leg → symbol, side, avg_fill_price, qty
+            #   2. Closing leg (if filled) → close_price, realized_pl
+            legs = order_data.get("leg", [])
+            if isinstance(legs, dict):
+                legs = [legs]
+
+            entry_leg = None
+            closing_leg = None
+
+            if order_class == "otoco" and legs:
+                # For OTOCO, legs are indexed [0]=entry, [1]=TP, [2]=SL
+                # But we identify them by role rather than position for safety.
+
+                # First pass: find the entry leg (first filled leg, or leg[0])
+                for leg in legs:
+                    leg_status = (leg.get("status", "") or "").lower()
+                    leg_fill = float(leg.get("avg_fill_price", 0)) if leg.get("avg_fill_price") else None
+                    leg_side = (leg.get("side", "") or "").lower()
+
+                    if leg_status == "filled" and leg_fill:
+                        if entry_leg is None:
+                            # First filled leg is the entry
+                            entry_leg = leg
+                        else:
+                            # Subsequent filled leg on the opposite side is the closing leg
+                            entry_side = (entry_leg.get("side", "") or "").lower()
+                            if leg_side != entry_side:
+                                closing_leg = leg
+                                break
+
+                # If we found an entry leg, use its data for the parent order fields
+                if entry_leg:
+                    if not symbol:
+                        symbol = (entry_leg.get("symbol", "") or "").upper()
+                    if not side:
+                        side = (entry_leg.get("side", "") or "").lower()
+                    if not avg_fill_price:
+                        avg_fill_price = float(entry_leg.get("avg_fill_price", 0)) if entry_leg.get("avg_fill_price") else None
+                    entry_exec_qty = float(entry_leg.get("exec_quantity", 0))
+                    entry_qty = float(entry_leg.get("quantity", 0))
+                    if not exec_qty:
+                        exec_qty = entry_exec_qty
+                    if not qty:
+                        qty = entry_qty
+
+                    self.logger.info(
+                        "tradier_otoco_entry_from_leg",
+                        symbol=symbol,
+                        side=side,
+                        avg_fill_price=avg_fill_price,
+                        exec_qty=exec_qty,
+                        entry_leg_id=entry_leg.get("id"),
+                    )
+
             # Determine state
-            if tradier_status == "filled":
-                state = "closed"
-            elif tradier_status in ("open", "pending", "partially_filled"):
-                state = "open"
-            elif tradier_status in ("canceled", "cancelled", "rejected", "expired"):
-                state = "cancelled"
+            if order_class == "otoco":
+                # For OTOCO orders, "filled" at the parent level means all
+                # legs have resolved (entry filled + one exit leg filled +
+                # other cancelled). We check leg-level status below.
+                if tradier_status == "filled":
+                    state = "closed"
+                elif tradier_status in ("open", "pending", "partially_filled"):
+                    # Check if entry leg is filled but exit legs are still open
+                    if entry_leg and not closing_leg:
+                        state = "open"  # Entry filled, waiting for SL/TP
+                    else:
+                        state = "open"
+                elif tradier_status in ("canceled", "cancelled", "rejected", "expired"):
+                    state = "cancelled"
+                else:
+                    state = tradier_status
             else:
-                state = tradier_status
+                if tradier_status == "filled":
+                    state = "closed"
+                elif tradier_status in ("open", "pending", "partially_filled"):
+                    state = "open"
+                elif tradier_status in ("canceled", "cancelled", "rejected", "expired"):
+                    state = "cancelled"
+                else:
+                    state = tradier_status
 
             # For Tradier, to get the realized P&L we need to find the
             # closing order(s). Look at order history for the same symbol.
@@ -834,9 +974,69 @@ class TradierBrokerService(BrokerService):
             close_price = None
             close_time = None
 
-            if tradier_status == "filled" and avg_fill_price:
-                # This order is filled. Now check if the position is still open.
-                # If position is closed, we need to find the closing order(s).
+            # ── OTOCO / multileg P&L handling ────────────────────────────
+            # If we already identified a closing leg during the entry-leg scan
+            # above, use it directly. Otherwise scan legs again for any filled
+            # closing order (handles edge cases where leg order isn't sequential).
+            if avg_fill_price and legs:
+                if closing_leg:
+                    # Already found during entry-leg scan
+                    close_price = float(closing_leg.get("avg_fill_price", 0))
+                    leg_qty = float(closing_leg.get("exec_quantity", 0)) or float(closing_leg.get("quantity", 0))
+                    if side == "buy":
+                        realized_pl = (close_price - avg_fill_price) * min(exec_qty or qty, leg_qty)
+                    else:
+                        realized_pl = (avg_fill_price - close_price) * min(exec_qty or qty, leg_qty)
+                    close_time = closing_leg.get("transaction_date") or closing_leg.get("create_date")
+
+                    leg_type = (closing_leg.get("type", "") or "").lower()
+                    exit_via = "take-profit" if leg_type == "limit" else (
+                        "stop-loss" if leg_type == "stop" else leg_type
+                    )
+                    self.logger.info(
+                        "tradier_otoco_leg_pnl",
+                        symbol=symbol,
+                        exit_via=exit_via,
+                        entry_price=avg_fill_price,
+                        close_price=close_price,
+                        realized_pl=realized_pl,
+                        leg_id=closing_leg.get("id"),
+                    )
+                elif order_class != "otoco":
+                    # Non-OTOCO: legacy scan for closing leg in legs array
+                    closing_side = "sell" if side == "buy" else "buy"
+                    for leg in legs:
+                        leg_status = (leg.get("status", "") or "").lower()
+                        leg_side = (leg.get("side", "") or "").lower()
+                        leg_fill = float(leg.get("avg_fill_price", 0)) if leg.get("avg_fill_price") else None
+
+                        if leg_status == "filled" and leg_side == closing_side and leg_fill:
+                            close_price = leg_fill
+                            leg_qty = float(leg.get("exec_quantity", 0)) or float(leg.get("quantity", 0))
+                            if side == "buy":
+                                realized_pl = (close_price - avg_fill_price) * min(exec_qty or qty, leg_qty)
+                            else:
+                                realized_pl = (avg_fill_price - close_price) * min(exec_qty or qty, leg_qty)
+                            close_time = leg.get("transaction_date") or leg.get("create_date")
+
+                            leg_type = (leg.get("type", "") or "").lower()
+                            exit_via = "take-profit" if leg_type == "limit" else (
+                                "stop-loss" if leg_type == "stop" else leg_type
+                            )
+                            self.logger.info(
+                                "tradier_otoco_leg_pnl",
+                                symbol=symbol,
+                                exit_via=exit_via,
+                                entry_price=avg_fill_price,
+                                close_price=close_price,
+                                realized_pl=realized_pl,
+                                leg_id=leg.get("id"),
+                            )
+                            break
+
+            # Fallback: scan order history for a matching closing order
+            # (only for non-OTOCO orders — OTOCO legs are self-contained)
+            if close_price is None and avg_fill_price and order_class != "otoco":
                 close_price, realized_pl, close_time = self._calculate_order_pnl(
                     account, symbol, effective_id, side, avg_fill_price, exec_qty or qty
                 )
@@ -844,6 +1044,23 @@ class TradierBrokerService(BrokerService):
             # Extract timestamps
             created_at = order_data.get("create_date")
             transaction_date = order_data.get("transaction_date")
+
+            # ── Build leg details for monitoring/tracking ────────────────
+            leg_details = []
+            if legs:
+                for leg in legs:
+                    leg_info = {
+                        "leg_id": str(leg.get("id", "")),
+                        "type": (leg.get("type", "") or "").lower(),
+                        "side": (leg.get("side", "") or "").lower(),
+                        "status": (leg.get("status", "") or "").lower(),
+                        "symbol": (leg.get("symbol", "") or "").upper(),
+                        "quantity": float(leg.get("quantity", 0)),
+                        "avg_fill_price": float(leg.get("avg_fill_price", 0)) if leg.get("avg_fill_price") else None,
+                        "stop_price": float(leg.get("stop_price", 0)) if leg.get("stop_price") else None,
+                        "price": float(leg.get("price", 0)) if leg.get("price") else None,
+                    }
+                    leg_details.append(leg_info)
 
             return {
                 "found": True,
@@ -856,6 +1073,8 @@ class TradierBrokerService(BrokerService):
                 "close_price": close_price,
                 "units": exec_qty or qty,
                 "initial_units": qty,
+                "order_class": order_class,
+                "legs": leg_details,
                 "broker_data": order_data,
             }
 
@@ -904,6 +1123,10 @@ class TradierBrokerService(BrokerService):
             orders = orders_data.get("order", [])
             if isinstance(orders, dict):
                 orders = [orders]
+
+            # Sort by create_date ascending so we reliably find entry → closing
+            # order sequence regardless of the order Tradier returns them.
+            orders.sort(key=lambda o: o.get("create_date", ""))
 
             # Determine the closing side
             closing_side = "sell" if entry_side == "buy" else "buy"
