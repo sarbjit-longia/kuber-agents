@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the requirements for an agent-based trading pipeline platform that enables retail traders to create, configure, and deploy automated trading strategies through a visual interface. The platform uses AI agents orchestrated via CrewAI flows to analyze markets, generate signals, manage risk, and execute trades.
+This document outlines the requirements for an agent-based trading pipeline platform that enables retail traders to create, configure, and deploy automated trading strategies through a visual interface. The platform uses AI agents orchestrated via a sequential PipelineExecutor to analyze markets, generate signals, manage risk, and execute trades.
 
 **Key Differentiators:**
 - Visual pipeline builder similar to n8n for connecting AI agents
@@ -210,9 +210,10 @@ Total Monthly:                        $101.00
 - State includes: timestamp, symbol, user_id, pipeline_id, agent outputs, metadata
 
 **FR-2.3.2**: System shall support agent composition
-- Individual agents can be CrewAI crews internally
+- Agents execute in a fixed sequential order via PipelineExecutor
 - Agents can use multiple tools
 - Agent-to-agent communication via state object only
+- Agents configured via natural language instructions (instruction-driven architecture)
 
 **FR-2.3.3**: System shall provide agent retry mechanism
 - Configurable max retries per pipeline (default: 3)
@@ -228,63 +229,52 @@ Total Monthly:                        $101.00
 
 ### 2.4 MVP Agent Requirements
 
-#### 2.4.1 Trigger Agents (Multiple Types)
+#### 2.4.1 Pipeline Triggering (Signal-Based + Periodic)
 
-**FR-2.4.1.0**: System shall support multiple trigger agent types
-- Each trigger agent is a separate, specialized agent
-- Users can connect any trigger agent type to their pipeline
-- Multiple trigger agents can be chained if needed
-- Each trigger type may have different pricing (some free, some paid)
+> **Implementation Note**: Trigger agents were replaced by a dedicated microservice architecture: **Signal Generator** (28+ signal generators monitoring markets, emitting to Kafka) + **Trigger Dispatcher** (matches signals to active pipeline triggers). This provides lower latency, centralized signal generation, and event-driven execution instead of per-pipeline polling.
 
-**FR-2.4.1.1**: Time-Based Trigger Agent (FREE)
-- Market open/close times
-- Specific times of day (e.g., 10:00 AM EST)
-- Days of week
-- Cron-like scheduling
-- **Pricing**: Free for all users
+**FR-2.4.1.0**: System shall support multiple trigger modes
+- **Signal-based**: Pipelines triggered when market signals match user's subscriptions
+- **Periodic**: Pipelines triggered on a schedule via Celery Beat
+- **Manual**: Pipelines triggered on-demand by user
 
-**FR-2.4.1.2**: Technical Indicator Trigger Agent
-- RSI thresholds (e.g., RSI > 70)
-- Moving average crossovers (golden cross, death cross)
-- MACD signals
-- Bollinger Band breakouts
-- Volume spikes
-- Custom indicator combinations
+**FR-2.4.1.1**: Signal Generator Service shall detect market signals
+- 28+ signal generators: golden cross, death cross, RSI, MACD, volume spike, Bollinger bands, stochastic, ADX, EMA crossover, ATR, CCI, StochRSI, Williams %R, Aroon, MFI, OBV, SAR, EMA 200 crossover, swing point break, momentum divergence, fair value gap, liquidity sweep, break of structure, order block, change of character, volume profile POC, accumulation distribution, HTF trend alignment
+- Multi-timeframe support (15m, 1h, daily)
+- Publishes signals to Kafka topic `trading-signals`
+- Configurable watchlist and scanner-driven ticker universe
 
-**FR-2.4.1.3**: Price-Based Trigger Agent
-- Price above/below threshold
-- Price percentage change
-- Price range breakout
-- Support/resistance levels
+**FR-2.4.1.2**: Trigger Dispatcher Service shall match signals to pipelines
+- Consumes Kafka signals in batches
+- Matches against active pipeline trigger configurations
+- Checks: ticker in scanner, signal type matches subscription, confidence above threshold
+- Prevents duplicate pipeline executions (skip if already running)
+- Dispatches matching pipelines to Celery for execution
 
-**FR-2.4.1.4**: News-Based Trigger Agent
-- Monitors news feeds for specific keywords/topics
-- Sentiment analysis on news
-- Earnings announcement triggers
-- SEC filing alerts
-
-**FR-2.4.1.5**: All trigger agents shall pause pipeline efficiently
-- Non-blocking wait (doesn't consume worker resources)
-- Check conditions periodically (configurable interval)
-- Resume pipeline execution when trigger condition met
-- Users not charged for wait time
+**FR-2.4.1.3**: Periodic pipelines shall execute on schedule
+- Celery Beat checks for active periodic pipelines every 5 minutes
+- Skips if pipeline already PENDING or RUNNING
+- Supports market hours windows and trading day configuration
 
 #### 2.4.2 Market Data Agent
 
 **FR-2.4.2.1**: Market Data Agent shall provide real-time stock data
 - Current price (bid/ask/last)
-- OHLCV data
+- OHLCV candles (multiple timeframes: 1m, 5m, 15m, 1h, 4h, D)
 - Volume
-- Basic technical indicators (SMA, EMA, RSI, MACD)
+- 15 technical indicators computed locally via TA-Lib (SMA, EMA, RSI, MACD, Bollinger Bands, Stochastic, ADX, ATR, CCI, StochRSI, Williams %R, Aroon, MFI, OBV, SAR)
 
-**FR-2.4.2.2**: Market Data Agent shall use pluggable data providers
-- MVP: Finnhub API integration
-- Architecture supports swapping providers (Alpha Vantage, Yahoo Finance, etc.)
+**FR-2.4.2.2**: Market Data Agent shall use the Data Plane service
+- Centralized market data microservice abstracts all providers
+- Multi-provider support: Tiingo (primary for stocks), Finnhub (fallback), OANDA (forex)
+- TimescaleDB storage with continuous aggregates (1m → 5m/15m/1h/4h/D)
+- Redis caching with timeframe-appropriate TTLs
+- Provider selection: tickers with `_` → OANDA, others → `STOCK_PROVIDER` env var
 
 **FR-2.4.2.3**: Market Data Agent shall handle data errors gracefully
-- Retry on API failures
-- Use cached data when appropriate
-- Log data quality issues
+- Automatic provider fallback (Tiingo → Finnhub)
+- Use cached data from Redis/TimescaleDB when provider unavailable
+- Log data quality issues via Prometheus metrics
 
 #### 2.4.3 Bias Agent
 
@@ -377,10 +367,11 @@ Total Monthly:                        $101.00
 - Close remaining position when Target 2 reached
 
 **FR-2.4.6.5**: Trade Manager Agent shall support multiple brokers
-- MVP: Alpaca (supports bracket orders)
-- Architecture supports multiple broker integrations via tools
+- **Alpaca**: US stocks/ETFs, paper + live trading, bracket orders (via `alpaca-py` SDK)
+- **Tradier**: US stocks/options/ETFs, sandbox + live (via REST API)
+- **OANDA**: Forex/CFDs, practice + live (via REST API)
+- Unified `BaseBrokerService` abstraction with `BrokerFactory` for instantiation
 - Users connect their own broker accounts
-- Prioritize brokers with bracket order support
 
 **FR-2.4.6.6**: Trade Manager Agent shall handle execution errors
 - Retry failed orders (configurable)
@@ -402,33 +393,33 @@ Total Monthly:                        $101.00
 - Move stop to breakeven: Yes/No
 - Monitoring frequency: Default 60 seconds
 
-#### 2.4.7 Reporting Agent
+#### 2.4.7 Report Generation (System Function)
 
-**FR-2.4.7.1**: Reporting Agent shall collect reasoning from all agents
-- Gather outputs from Trigger Agent(s), Market Data, Bias, Strategy, Risk Manager, Trade Manager
-- Create structured report with full decision chain
-- Capture complete trade plan (entry, stop loss, target 1, target 2)
+> **Implementation Note**: Reporting was moved from a dedicated agent to a system function. PDF reports are now auto-generated by the PipelineExecutor on pipeline completion using WeasyPrint. Each agent records its own report data via `record_report()` during execution.
 
-**FR-2.4.7.2**: Reporting Agent shall generate comprehensive trade reports
-- Executive summary of trade and outcome
-- Trigger conditions that initiated the pipeline
-- Market conditions at time of analysis
-- Bias determination and confidence
-- Complete strategy proposal (entry, stop, targets with reasoning)
-- Risk management decision and position sizing calculation
-- Trade execution details (fill prices, quantity, slippage, time)
+**FR-2.4.7.1**: System shall collect reasoning from all agents
+- Each agent calls `record_report()` with title, summary, and structured data
+- Reports accumulated in execution artifacts during pipeline run
+- Full decision chain captured: market data → bias → strategy → risk → trade
+
+**FR-2.4.7.2**: System shall generate comprehensive trade reports
+- PDF auto-generated on pipeline completion (not on-demand)
+- Executive summary with trade outcome
+- Per-agent report sections with formatted reasoning
+- TradingView chart annotations (entry, stop loss, targets)
 - Cost breakdown (tokens used, API calls, agent fees)
-- Final P&L when trade closes
+- Generated via WeasyPrint HTML-to-PDF conversion
 
-**FR-2.4.7.3**: Reporting Agent shall store reports
+**FR-2.4.7.3**: System shall store reports
 - Save to database for historical access
-- Archive detailed reports to S3
+- PDF stored in S3 (production) or local disk (development)
 - Enable searching and filtering
 
 **FR-2.4.7.4**: Reports shall be viewable in UI
 - List all reports by pipeline
 - Search/filter by date, symbol, outcome
-- Export reports (PDF, JSON)
+- Download pre-generated PDF reports
+- View agent reasoning inline in execution detail view
 
 #### 2.4.8 Pipeline Manager Agent
 
@@ -1044,9 +1035,10 @@ Total Monthly:                        $101.00
 
 **NFR-3.6.3**: Observability
 - Structured logging
-- Distributed tracing (future)
-- Metrics dashboard (CloudWatch/Grafana)
-- Error tracking (Sentry)
+- LLM tracing via Langfuse (token usage, cost, full conversation history)
+- Prometheus metrics (pipeline execution, signal generation, data plane operations)
+- Grafana dashboards (3 provisioned: platform overview, app resources, recent signals)
+- OpenTelemetry instrumentation across all services
 
 ### 3.7 Usability
 
@@ -1069,25 +1061,45 @@ Total Monthly:                        $101.00
 ### 4.1 Technology Stack
 
 **Frontend:**
-- Framework: Angular (latest stable version)
-- UI Components: Angular Material or similar
-- State Management: NgRx or RxJS
+- Framework: Angular 17+ (standalone components, no NgModules)
+- UI Components: Angular Material (dark theme)
+- State Management: RxJS BehaviorSubject (service-based, no NgRx)
 - Real-time: WebSocket client
+- Charts: TradingView Lightweight Charts, Chart.js
 
 **Backend:**
-- Framework: FastAPI (Python 3.10+)
-- Agent Framework: CrewAI
-- LLM: OpenAI API (gpt-4, gpt-3.5-turbo)
+- Framework: FastAPI (Python 3.11+)
+- Pipeline Executor: Custom sequential PipelineExecutor (fixed agent order)
+- LLM: OpenAI API (gpt-4, gpt-3.5-turbo) via LLM Model Registry
 - Task Queue: Celery with Redis backend
-- Web Server: Uvicorn/Gunicorn
+- Web Server: Uvicorn
+- LLM Observability: Langfuse
+
+**Data Plane (Market Data Microservice):**
+- Framework: FastAPI (Python 3.11+)
+- Providers: Tiingo (primary), Finnhub (fallback), OANDA (forex)
+- Storage: TimescaleDB with continuous aggregates (1m → 5m/15m/1h/4h/D)
+- Indicators: TA-Lib (15 indicators computed locally)
+- Cache: Redis with timeframe-appropriate TTLs
+
+**Signal System:**
+- Signal Generator: Python service with 28+ signal generators
+- Trigger Dispatcher: Kafka consumer matching signals to pipelines
+- Message Bus: Apache Kafka
 
 **Databases:**
 - Primary: PostgreSQL (latest stable)
+- Time-Series: TimescaleDB (OHLCV hypertable + continuous aggregates)
 - Cache: Redis
 - Object Storage: AWS S3 (reports, logs)
 
+**Monitoring:**
+- Metrics: OpenTelemetry + Prometheus
+- Dashboards: Grafana (3 provisioned dashboards)
+- LLM Tracing: Langfuse
+
 **Infrastructure:**
-- Containerization: Docker
+- Containerization: Docker (12+ containers in docker-compose)
 - Orchestration: Docker Compose (local), AWS ECS (production)
 - CI/CD: GitHub Actions
 - Cloud Provider: AWS
@@ -1125,13 +1137,18 @@ Total Monthly:                        $101.00
 
 ### 4.4 External Integrations
 
-**TR-4.4.1**: Market data providers
-- Primary: Finnhub API (real-time stock data)
-- Architecture supports swapping providers via abstraction layer
+**TR-4.4.1**: Market data providers (via Data Plane service)
+- **Tiingo**: Primary stock data provider (candles, quotes) — ~$30/mo
+- **Finnhub**: Fallback stock data provider — $59-99/mo
+- **OANDA**: Forex data provider (for pairs like EUR_USD)
+- Automatic provider selection and fallback via Data Plane abstraction
+- All data cached in TimescaleDB + Redis
 
-**TR-4.4.2**: Broker integrations
-- Primary: Alpaca (paper and live trading)
-- Architecture supports multiple brokers via tool abstraction
+**TR-4.4.2**: Broker integrations (via BaseBrokerService abstraction)
+- **Alpaca**: US stocks/ETFs, paper + live trading (`alpaca-py` SDK)
+- **Tradier**: US stocks/options/ETFs, sandbox + live (REST API)
+- **OANDA**: Forex/CFDs, practice + live (REST API)
+- `BrokerFactory` creates broker instances from user configuration
 
 **TR-4.4.3**: LLM providers
 - Primary: OpenAI API
@@ -1213,9 +1230,9 @@ The following features are explicitly **not** included in the MVP but may be con
 - Performance metrics calculation
 - Optimization tools
 
-**OS-6.2**: Multi-asset support
+**OS-6.2**: Multi-asset support (partially implemented)
 - Cryptocurrency trading
-- Forex trading
+- ~~Forex trading~~ → **Implemented** via OANDA broker + data provider
 - Options/futures
 
 **OS-6.3**: Advanced agent features
@@ -1223,8 +1240,9 @@ The following features are explicitly **not** included in the MVP but may be con
 - Agent versioning and A/B testing
 - Community-contributed agents
 
-**OS-6.4**: Advanced notifications
-- SMS notifications
+**OS-6.4**: Advanced notifications (partially implemented)
+- ~~SMS notifications~~ → **Implemented** via Twilio
+- ~~Telegram notifications~~ → **Implemented**
 - Webhook integrations
 - Slack/Discord integrations
 
@@ -1261,15 +1279,15 @@ The MVP will be considered successful when:
 
 1. **Functional Completeness**
    - Core MVP agents implemented and working:
-     - At least 2 trigger agent types (Time-Based free + one paid type)
-     - Market Data Agent
-     - Bias Agent
-     - Strategy Agent (with stop loss & targets)
-     - Risk Manager Agent
-     - Trade Manager Agent
-     - Reporting Agent
+     - Signal-based pipeline triggering (28+ signal generators via Kafka)
+     - Market Data Agent (via Data Plane with multi-provider)
+     - Bias Agent (instruction-driven)
+     - Strategy Agent (instruction-driven, with stop loss & targets)
+     - Risk Manager Agent (instruction-driven)
+     - Trade Manager Agent (multi-broker)
+     - Report generation (system function, auto-PDF on completion)
    - Pipeline builder allows creating and executing pipelines
-   - At least 1 broker integration working (paper trading)
+   - 3 broker integrations working (Alpaca, Tradier, OANDA)
    - Demo mode fully functional
 
 2. **Performance Targets**
@@ -1295,15 +1313,15 @@ The MVP will be considered successful when:
 
 - Users have basic understanding of trading concepts
 - Users have access to broker accounts (or willing to create paper trading accounts)
-- Market data APIs (Finnhub) remain accessible and affordable
+- Market data APIs (Tiingo/Finnhub) remain accessible and affordable
 - OpenAI API remains available with current pricing
 - AWS services remain available
 
 ### 8.2 Dependencies
 
-- **External APIs**: Finnhub (market data), broker APIs (Alpaca)
-- **Third-party services**: OpenAI, AWS
-- **Open-source libraries**: CrewAI, FastAPI, Angular, Celery
+- **External APIs**: Tiingo/Finnhub/OANDA (market data via Data Plane), broker APIs (Alpaca, Tradier, OANDA)
+- **Third-party services**: OpenAI, AWS, Langfuse, Apache Kafka
+- **Open-source libraries**: FastAPI, Angular, Celery, TA-Lib, TimescaleDB, WeasyPrint
 - **Infrastructure**: Domain name, SSL certificates, AWS account
 
 ### 8.3 Risks
@@ -1329,9 +1347,15 @@ The MVP will be considered successful when:
 
 - **Agent**: An AI-powered component that performs a specific task in the trading pipeline
 - **Pipeline**: A connected sequence of agents that work together to analyze markets and execute trades
-- **Trigger Agent**: A specialized agent type that pauses pipeline execution until specific conditions are met (time, price, indicators, news). Multiple trigger agent types exist (time-based, technical, price, news).
-- **CrewAI**: Python framework for orchestrating multi-agent systems
-- **State**: The data object passed between agents containing all pipeline information
+- **PipelineExecutor**: Custom sequential executor that runs agents in a fixed order (market data → bias → strategy → risk → trade manager)
+- **PipelineState**: The data object passed between agents containing all pipeline information
+- **Data Plane**: Centralized market data microservice (candles, indicators, quotes) abstracting multiple providers
+- **Signal Generator**: Microservice that monitors markets and emits signals to Kafka (28+ generators)
+- **Trigger Dispatcher**: Kafka consumer that matches signals to active pipeline triggers and dispatches execution
+- **Scanner**: User-defined ticker list (e.g., "Tech Stocks" = [AAPL, GOOGL, MSFT]) used for signal matching
+- **TimescaleDB**: Time-series database for OHLCV storage with continuous aggregate views
+- **Continuous Aggregate**: TimescaleDB materialized view that rolls up 1m candles to higher timeframes
+- **Instruction-Driven Agent**: Agent configured via natural language instructions instead of JSON schemas
 - **Tool**: A utility function that agents use to interact with external systems (APIs, databases)
 - **Paper Trading**: Simulated trading with fake money for testing strategies
 - **Stop Loss**: A price level where a trade is automatically closed to limit losses
@@ -1340,11 +1364,12 @@ The MVP will be considered successful when:
 - **P&L**: Profit and Loss
 - **Token**: Unit of text processed by LLM models (roughly 4 characters per token)
 - **Slippage**: The difference between expected trade price and actual execution price
+- **Langfuse**: LLM observability platform for tracing, token tracking, and cost monitoring
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: October 22, 2025  
-**Authors**: Principal Engineering Team  
-**Status**: Draft for Review
+**Document Version**: 2.0
+**Last Updated**: February 22, 2026
+**Authors**: Principal Engineering Team
+**Status**: Updated to reflect current implementation
 
