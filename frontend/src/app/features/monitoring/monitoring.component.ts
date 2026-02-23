@@ -84,6 +84,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     'no-trade': true,
     cancelled: true,
     pending: true,
+    rejected: true,
     failed: true,
   };
 
@@ -95,6 +96,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     { key: 'no-trade', label: 'No Trade', colorClass: 'bar-no-trade', count: 0 },
     { key: 'cancelled', label: 'Cancelled', colorClass: 'bar-cancelled', count: 0 },
     { key: 'pending', label: 'Limit Pending', colorClass: 'bar-pending', count: 0 },
+    { key: 'rejected', label: 'Rejected', colorClass: 'bar-rejected', count: 0 },
     { key: 'failed', label: 'Failed', colorClass: 'bar-failed', count: 0 },
   ];
   
@@ -391,7 +393,11 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
         colorClass = 'bar-cancelled';
         height = MIN_H + 8;
         category = 'cancelled';
-      } else if (outcome === 'failed' || outcome === 'rejected') {
+      } else if (outcome === 'rejected') {
+        colorClass = 'bar-rejected';
+        height = MIN_H + 8;
+        category = 'rejected';
+      } else if (outcome === 'failed') {
         colorClass = 'bar-failed';
         height = MIN_H + 8;
         category = 'failed';

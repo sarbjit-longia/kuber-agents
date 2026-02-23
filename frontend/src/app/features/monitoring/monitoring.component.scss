@@ -219,6 +219,10 @@
     &.bar-pending {
       background: linear-gradient(to top, #2563eb, #60a5fa);
     }
+    // Rejected (rose)
+    &.bar-rejected {
+      background: linear-gradient(to top, #be185d, #f472b6);
+    }
     // Failed (dark red)
     &.bar-failed {
       background: linear-gradient(to top, #b91c1c, #fca5a5);
@@ -308,6 +312,7 @@
     &.bar-no-trade { background: #a5b4fc; }
     &.bar-cancelled { background: #9ca3af; }
     &.bar-pending { background: #60a5fa; }
+    &.bar-rejected { background: #f472b6; }
     &.bar-failed { background: #fca5a5; }
   }
 }
