@@ -80,11 +80,11 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   timelineFilters: Record<string, boolean> = {
     profit: true,
     loss: true,
-    hold: true,
+    hold: false,
     'no-trade': true,
-    cancelled: true,
+    cancelled: false,
     pending: true,
-    skipped: true,
+    skipped: false,
     rejected: true,
     failed: true,
   };
@@ -115,13 +115,13 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   filters = {
     status: 'all',
     mode: 'all',
-    tradeOutcome: 'all',
+    tradeOutcome: 'executed',
     symbol: '',
     pipeline: '',
     startDate: null as Date | null,
     endDate: null as Date | null
   };
-  
+
   // Filter options
   statusOptions = [
     { value: 'all', label: 'All Statuses' },
