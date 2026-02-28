@@ -154,6 +154,10 @@
 
   <div class="modal-footer">
     <button mat-button (click)="close()">Close</button>
+    <button mat-stroked-button (click)="openFullReport()">
+      <mat-icon>open_in_new</mat-icon>
+      Open Full Report
+    </button>
     <button mat-raised-button color="primary" (click)="downloadReport()" *ngIf="executiveReport">
       <mat-icon>download</mat-icon>
       Download PDF

@@ -61,7 +61,8 @@ class Execution(Base):
     cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
     report_pdf_path = Column(String(500), nullable=True)  # Path to generated PDF report
     executive_report = Column(JSONB, nullable=True)  # Comprehensive AI-generated report
-    
+    trade_analysis = Column(JSONB, nullable=True)  # AI post-trade analysis
+
     # Position monitoring fields (Trade Manager)
     execution_phase = Column(String(20), default="execute", nullable=False)  # "execute" or "monitoring"
     next_check_at = Column(DateTime, nullable=True)  # When to check position next

@@ -148,6 +148,20 @@ export class MonitoringService {
   }
 
   /**
+   * Get AI-powered executive report for a completed execution
+   */
+  getExecutiveReport(executionId: string): Observable<any> {
+    return this.apiService.get<any>(`/api/v1/executions/${executionId}/executive-report`);
+  }
+
+  /**
+   * Get AI-powered post-trade analysis for a completed execution
+   */
+  getTradeAnalysis(executionId: string): Observable<any> {
+    return this.apiService.get<any>(`/api/v1/executions/${executionId}/trade-analysis`);
+  }
+
+  /**
    * Start polling for updates (every 3 seconds)
    */
   startPolling(executionId: string): void {

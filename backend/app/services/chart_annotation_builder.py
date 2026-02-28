@@ -545,6 +545,87 @@ class ChartAnnotationBuilder:
             }
         }
     
+    @staticmethod
+    def add_post_trade_annotations(
+        chart_data: Dict[str, Any],
+        trade_execution: Optional[Dict[str, Any]],
+        trade_outcome: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Add post-trade markers (fill price, exit price) to existing chart data.
+
+        Args:
+            chart_data: Existing chart data with annotations
+            trade_execution: Trade execution data with filled_price
+            trade_outcome: Trade outcome data with exit_price, pnl, exit_reason
+
+        Returns:
+            Enriched chart data with post-trade annotations
+        """
+        if not chart_data or "annotations" not in chart_data:
+            return chart_data
+
+        annotations = chart_data["annotations"]
+        candles = chart_data.get("candles", [])
+        latest_time = candles[-1].get("time") if candles else None
+
+        # Fill price marker
+        if trade_execution and trade_execution.get("filled_price"):
+            filled_price = trade_execution["filled_price"]
+
+            annotations["markers"].append({
+                "time": latest_time,
+                "price": filled_price,
+                "position": "aboveBar",
+                "color": "#eab308",
+                "shape": "diamond",
+                "size": "large",
+                "text": f"FILL @ ${filled_price:.2f}",
+                "tooltip": (
+                    f"Order filled at ${filled_price:.2f}\n"
+                    f"Qty: {trade_execution.get('filled_quantity', 'N/A')}"
+                ),
+            })
+
+            annotations["lines"].append({
+                "type": "horizontal",
+                "price": filled_price,
+                "color": "#eab308",
+                "width": 1,
+                "style": "dashed",
+                "label": {
+                    "text": f"Fill: ${filled_price:.2f}",
+                    "position": "right",
+                    "color": "#eab308",
+                },
+                "tooltip": f"Actual fill price: ${filled_price:.2f}",
+            })
+
+        # Exit price marker
+        if trade_outcome and trade_outcome.get("exit_price"):
+            exit_price = trade_outcome["exit_price"]
+            pnl = trade_outcome.get("pnl", 0)
+            exit_reason = trade_outcome.get("exit_reason", "closed")
+            is_profit = pnl >= 0 if pnl is not None else True
+            color = "#22c55e" if is_profit else "#ef4444"
+
+            annotations["markers"].append({
+                "time": latest_time,
+                "price": exit_price,
+                "position": "belowBar" if is_profit else "aboveBar",
+                "color": color,
+                "shape": "square",
+                "size": "large",
+                "text": f"EXIT @ ${exit_price:.2f} ({exit_reason})",
+                "tooltip": (
+                    f"Exit at ${exit_price:.2f}\n"
+                    f"P&L: ${pnl:.2f}\n"
+                    f"Reason: {exit_reason}"
+                ),
+            })
+
+        return chart_data
+
     def _generate_subtitle(self, tool_results: Dict[str, Any]) -> str:
         """Generate a subtitle based on which tools were used."""
         tools_used = []

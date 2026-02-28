@@ -27,6 +27,7 @@ from app.api.dependencies import get_current_user
 from app.orchestration.tasks import execute_pipeline, stop_execution
 from app.orchestration.validator import PipelineValidator
 from app.services.executive_report_generator import executive_report_generator
+from app.services.trade_analysis_generator import trade_analysis_generator
 from app.services.langfuse_service import get_langfuse_client
 
 logger = structlog.get_logger()
@@ -1670,6 +1671,88 @@ async def generate_executive_report(
         report["trade_execution"] = execution.result.get("trade_execution")
     
     return report
+
+
+@router.get("/{execution_id}/trade-analysis", response_model=dict)
+async def get_trade_analysis(
+    execution_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Get AI-powered post-trade analysis for a completed execution.
+
+    Analyzes trade quality, provides a grade, and offers lessons learned.
+    Results are cached in the execution's trade_analysis column.
+
+    Args:
+        execution_id: Execution UUID
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        Trade analysis with grade, lessons, and recommendations
+    """
+    result = await db.execute(
+        select(Execution).where(Execution.id == execution_id)
+    )
+    execution = result.scalar_one_or_none()
+
+    if not execution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found",
+        )
+
+    if execution.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this execution",
+        )
+
+    if execution.status != ExecutionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot generate trade analysis for execution with status: {execution.status.value}",
+        )
+
+    # Return cached analysis if available
+    if execution.trade_analysis:
+        return execution.trade_analysis
+
+    # Build execution data for the generator
+    execution_data = {
+        "id": str(execution.id),
+        "symbol": execution.symbol,
+        "mode": execution.mode,
+        "result": execution.result or {},
+    }
+
+    # Create Langfuse trace (optional)
+    langfuse_client = get_langfuse_client()
+    trace = None
+    if langfuse_client:
+        try:
+            trace = langfuse_client.trace(
+                name="trade_analysis_generation",
+                user_id=str(current_user.id),
+                session_id=str(execution_id),
+                metadata={
+                    "execution_id": str(execution_id),
+                },
+            )
+        except Exception:
+            pass
+
+    analysis = await trade_analysis_generator.generate_trade_analysis(
+        execution_data, langfuse_trace=trace
+    )
+
+    # Cache the result
+    execution.trade_analysis = analysis
+    await db.commit()
+
+    return analysis
 
 
 @router.get("/{execution_id}/report.pdf")

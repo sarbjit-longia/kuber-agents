@@ -22,7 +22,6 @@ import { interval, Subscription, switchMap } from 'rxjs';
 import { MonitoringService } from '../../../core/services/monitoring.service';
 import { NavbarComponent } from '../../../core/components/navbar/navbar.component';
 import { TradingChartComponent } from '../../../shared/components/trading-chart/trading-chart.component';
-import { ExecutionReportModalComponent } from '../execution-report-modal/execution-report-modal.component';
 import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog/confirm-dialog.component';
 
@@ -138,11 +137,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
   }
 
   openFinalReport(): void {
-    this.dialog.open(ExecutionReportModalComponent, {
-      width: '800px',
-      maxHeight: '90vh',
-      data: { execution: this.execution }
-    });
+    this.router.navigate(['/monitoring', this.execution.id, 'report']);
   }
 
   getStatusColor(status: string): string {

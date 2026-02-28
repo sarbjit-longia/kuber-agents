@@ -1,0 +1,523 @@
+<app-navbar></app-navbar>
+
+<div class="report-page" *ngIf="!loading && !error">
+
+  <!-- LEFT SIDEBAR NAV -->
+  <aside class="report-sidebar" [class.collapsed]="sidebarCollapsed">
+    <div class="sidebar-header">
+      <button mat-icon-button (click)="goBack()" matTooltip="Back to execution">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <span class="sidebar-title" *ngIf="!sidebarCollapsed">Report</span>
+      <button mat-icon-button (click)="toggleSidebar()" class="collapse-btn"
+              [matTooltip]="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+        <mat-icon>{{ sidebarCollapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+      </button>
+    </div>
+
+    <!-- Symbol & P&L quick summary -->
+    <div class="sidebar-summary" *ngIf="!sidebarCollapsed">
+      <div class="sidebar-symbol">{{ execution.symbol }}</div>
+      <div class="sidebar-pnl"
+           *ngIf="getTradeOutcome()?.pnl !== null && getTradeOutcome()?.pnl !== undefined"
+           [class.positive]="getTradeOutcome().pnl >= 0"
+           [class.negative]="getTradeOutcome().pnl < 0">
+        {{ formatPnL(getTradeOutcome().pnl) }}
+      </div>
+      <div class="sidebar-meta">
+        <span class="sidebar-status" [class]="'status-' + execution.status.toLowerCase()">{{ execution.status }}</span>
+        <span class="sidebar-mode">{{ execution.mode | uppercase }}</span>
+      </div>
+    </div>
+
+    <mat-divider *ngIf="!sidebarCollapsed"></mat-divider>
+
+    <!-- Navigation links -->
+    <nav class="sidebar-nav">
+      <a *ngFor="let section of navSections"
+         [class.hidden-nav]="!section.visible"
+         [class.active]="activeSection === section.id"
+         [class.indented]="section.indent"
+         (click)="scrollToSection(section.id)"
+         [matTooltip]="sidebarCollapsed ? section.label : ''"
+         matTooltipPosition="right">
+        <mat-icon>{{ section.icon }}</mat-icon>
+        <span *ngIf="!sidebarCollapsed">{{ section.label }}</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-actions" *ngIf="!sidebarCollapsed">
+      <mat-divider></mat-divider>
+      <button mat-stroked-button class="download-btn" (click)="downloadReport()">
+        <mat-icon>download</mat-icon>
+        Download PDF
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="report-main" [class.sidebar-collapsed]="sidebarCollapsed">
+
+    <!-- HEADER BAR -->
+    <div class="report-header">
+      <div class="header-left">
+        <div class="header-info">
+          <h1>
+            <span class="symbol">{{ execution.symbol }}</span>
+            <span class="pipeline-name" *ngIf="execution.pipeline_name">{{ execution.pipeline_name }}</span>
+          </h1>
+          <div class="header-meta">
+            <mat-chip-set>
+              <mat-chip [class]="'status-' + execution.status.toLowerCase()">
+                {{ execution.status }}
+              </mat-chip>
+              <mat-chip class="mode-chip">{{ execution.mode | uppercase }}</mat-chip>
+            </mat-chip-set>
+            <span class="date">{{ formatDate(execution.completed_at || execution.created_at) }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="pnl-highlight" *ngIf="getTradeOutcome()?.pnl !== null && getTradeOutcome()?.pnl !== undefined"
+             [class.positive]="getTradeOutcome().pnl >= 0"
+             [class.negative]="getTradeOutcome().pnl < 0">
+          {{ formatPnL(getTradeOutcome().pnl) }}
+          <span class="pnl-percent" *ngIf="getTradeOutcome()?.pnl_percent !== undefined">
+            ({{ getTradeOutcome().pnl_percent >= 0 ? '+' : '' }}{{ getTradeOutcome().pnl_percent | number:'1.2-2' }}%)
+          </span>
+        </div>
+        <button mat-raised-button color="primary" (click)="downloadReport()">
+          <mat-icon>download</mat-icon>
+          Download PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- 1. AI EXECUTIVE SUMMARY -->
+    <section id="summary" class="report-section">
+      <div class="section-header">
+        <mat-icon>stars</mat-icon>
+        <h2>AI Executive Summary</h2>
+      </div>
+      <div *ngIf="reportLoading" class="section-loading">
+        <mat-spinner diameter="32"></mat-spinner>
+        <span>Generating AI summary...</span>
+      </div>
+      <div *ngIf="!reportLoading && executiveReport">
+        <p class="summary-text">{{ executiveReport.executive_summary }}</p>
+
+        <div class="takeaways" *ngIf="executiveReport.key_takeaways?.length">
+          <h3>Key Takeaways</h3>
+          <ul class="takeaways-list">
+            <li *ngFor="let takeaway of executiveReport.key_takeaways">
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ takeaway }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="recommendation" *ngIf="executiveReport.final_recommendation">
+          <h3>Final Recommendation</h3>
+          <p class="recommendation-text">{{ executiveReport.final_recommendation }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. STRATEGY ANALYSIS -->
+    <section id="strategy" class="report-section" *ngIf="getStrategy()">
+      <div class="section-header">
+        <mat-icon>psychology</mat-icon>
+        <h2>Strategy Analysis</h2>
+      </div>
+      <div class="strategy-grid">
+        <div class="metric-card">
+          <span class="metric-label">Decision</span>
+          <span class="metric-value decision" [class]="'action-' + (getStrategy().action || '').toLowerCase()">
+            {{ getStrategy().action }}
+          </span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Confidence</span>
+          <span class="metric-value">{{ (getStrategy().confidence * 100) | number:'1.0-0' }}%</span>
+        </div>
+        <div class="metric-card" *ngIf="getStrategy().pattern_detected">
+          <span class="metric-label">Pattern</span>
+          <span class="metric-value">{{ getStrategy().pattern_detected }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getStrategy().entry_price">
+          <span class="metric-label">Entry Price</span>
+          <span class="metric-value">${{ getStrategy().entry_price | number:'1.2-5' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getStrategy().stop_loss">
+          <span class="metric-label">Stop Loss</span>
+          <span class="metric-value sl">${{ getStrategy().stop_loss | number:'1.2-5' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getStrategy().take_profit">
+          <span class="metric-label">Take Profit</span>
+          <span class="metric-value tp">${{ getStrategy().take_profit | number:'1.2-5' }}</span>
+        </div>
+      </div>
+
+      <!-- Market Bias Sub-section -->
+      <div class="sub-section" *ngIf="getMarketBias()">
+        <h3>Market Bias</h3>
+        <div class="bias-info">
+          <mat-chip-set>
+            <mat-chip *ngIf="getMarketBias().overall_bias"
+                      [class]="'bias-' + (getMarketBias().overall_bias || '').toLowerCase()">
+              {{ getMarketBias().overall_bias }}
+            </mat-chip>
+          </mat-chip-set>
+          <span *ngIf="getMarketBias().confidence" class="bias-confidence">
+            {{ (getMarketBias().confidence * 100) | number:'1.0-0' }}% confidence
+          </span>
+        </div>
+      </div>
+
+      <!-- Reasoning -->
+      <div class="sub-section" *ngIf="getStrategy().reasoning">
+        <h3>Reasoning</h3>
+        <div class="reasoning-text" [innerHTML]="getStrategy().reasoning | markdownToHtml"></div>
+      </div>
+
+      <!-- ENRICHED CHART -->
+      <div class="chart-container-full" *ngIf="hasChart()">
+        <app-trading-chart [chartData]="getChartData()" [height]="600"></app-trading-chart>
+      </div>
+    </section>
+
+    <!-- 3. RISK ASSESSMENT -->
+    <section id="risk" class="report-section" *ngIf="getRiskAssessment()">
+      <div class="section-header">
+        <mat-icon>security</mat-icon>
+        <h2>Risk Assessment</h2>
+      </div>
+      <div class="risk-grid">
+        <div class="metric-card" *ngIf="getRiskAssessment().risk_score !== undefined">
+          <span class="metric-label">Risk Score</span>
+          <span class="metric-value">{{ getRiskAssessment().risk_score }}/10</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Approved</span>
+          <span class="metric-value" [class.approved]="getRiskAssessment().approved" [class.rejected]="!getRiskAssessment().approved">
+            {{ getRiskAssessment().approved ? 'APPROVED' : 'REJECTED' }}
+          </span>
+        </div>
+        <div class="metric-card" *ngIf="getRiskAssessment().position_size">
+          <span class="metric-label">Position Size</span>
+          <span class="metric-value">{{ getRiskAssessment().position_size }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getRiskAssessment().max_loss">
+          <span class="metric-label">Max Loss</span>
+          <span class="metric-value sl">${{ getRiskAssessment().max_loss | number:'1.2-2' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getRiskAssessment().risk_reward_ratio">
+          <span class="metric-label">R:R Ratio</span>
+          <span class="metric-value">1:{{ getRiskAssessment().risk_reward_ratio | number:'1.2-2' }}</span>
+        </div>
+      </div>
+      <div class="risk-warnings" *ngIf="getRiskAssessment().warnings?.length">
+        <div class="warning-item" *ngFor="let warning of getRiskAssessment().warnings">
+          <mat-icon>warning</mat-icon>
+          <span>{{ warning }}</span>
+        </div>
+      </div>
+      <div class="sub-section" *ngIf="getRiskAssessment().reasoning">
+        <h3>Reasoning</h3>
+        <div class="reasoning-text" [innerHTML]="getRiskAssessment().reasoning | markdownToHtml"></div>
+      </div>
+    </section>
+
+    <!-- 4. TRADE EXECUTION -->
+    <section id="execution" class="report-section" *ngIf="getTradeExecution()">
+      <div class="section-header">
+        <mat-icon>swap_horiz</mat-icon>
+        <h2>Trade Execution</h2>
+      </div>
+      <div class="trade-grid">
+        <div class="metric-card" *ngIf="getTradeExecution().order_id">
+          <span class="metric-label">Order ID</span>
+          <span class="metric-value mono">{{ getTradeExecution().order_id }}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Status</span>
+          <span class="metric-value">{{ getTradeExecution().status }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getTradeExecution().filled_price">
+          <span class="metric-label">Filled Price</span>
+          <span class="metric-value">${{ getTradeExecution().filled_price | number:'1.2-5' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getTradeExecution().filled_quantity">
+          <span class="metric-label">Filled Qty</span>
+          <span class="metric-value">{{ getTradeExecution().filled_quantity }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getTradeExecution().commission !== undefined">
+          <span class="metric-label">Commission</span>
+          <span class="metric-value">${{ getTradeExecution().commission | number:'1.2-4' }}</span>
+        </div>
+      </div>
+
+      <!-- Slippage sub-section -->
+      <div class="sub-section slippage-info" *ngIf="getSlippage() !== null">
+        <h3>Execution Quality</h3>
+        <div class="slippage-detail">
+          <span class="metric-label">Slippage:</span>
+          <span class="metric-value" [class.good-slippage]="getSlippage()! < 0.01" [class.bad-slippage]="getSlippage()! >= 0.05">
+            ${{ getSlippage()! | number:'1.4-4' }}
+          </span>
+          <span class="slippage-note">
+            (Planned ${{ getStrategy().entry_price | number:'1.2-5' }} vs Filled ${{ getTradeExecution().filled_price | number:'1.2-5' }})
+          </span>
+        </div>
+      </div>
+
+      <!-- Bracket legs -->
+      <div class="sub-section" *ngIf="getTradeExecution().bracket_legs?.length">
+        <h3>Bracket Orders</h3>
+        <div class="bracket-table">
+          <div class="bracket-row header">
+            <span>Type</span>
+            <span>Price</span>
+            <span>Status</span>
+          </div>
+          <div class="bracket-row" *ngFor="let leg of getTradeExecution().bracket_legs">
+            <span>{{ leg.type || leg.order_type }}</span>
+            <span>{{ leg.price ? ('$' + (leg.price | number:'1.2-5')) : '-' }}</span>
+            <span>{{ leg.status }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. P&L SUMMARY -->
+    <section id="pnl" class="report-section pnl-section" *ngIf="getTradeOutcome() && getTradeOutcome().pnl !== null && getTradeOutcome().pnl !== undefined">
+      <div class="section-header">
+        <mat-icon>account_balance</mat-icon>
+        <h2>P&L Summary</h2>
+      </div>
+      <div class="pnl-display"
+           [class.positive]="getTradeOutcome().pnl >= 0"
+           [class.negative]="getTradeOutcome().pnl < 0">
+        <div class="pnl-main">
+          {{ formatPnL(getTradeOutcome().pnl) }}
+        </div>
+        <div class="pnl-percent" *ngIf="getTradeOutcome().pnl_percent !== undefined">
+          {{ getTradeOutcome().pnl_percent >= 0 ? '+' : '' }}{{ getTradeOutcome().pnl_percent | number:'1.2-2' }}%
+        </div>
+      </div>
+      <div class="pnl-grid">
+        <div class="metric-card" *ngIf="getTradeOutcome().entry_price">
+          <span class="metric-label">Entry</span>
+          <span class="metric-value">${{ getTradeOutcome().entry_price | number:'1.2-5' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getTradeOutcome().exit_price">
+          <span class="metric-label">Exit</span>
+          <span class="metric-value">${{ getTradeOutcome().exit_price | number:'1.2-5' }}</span>
+        </div>
+        <div class="metric-card" *ngIf="getTradeOutcome().exit_reason">
+          <span class="metric-label">Exit Reason</span>
+          <span class="metric-value">{{ getTradeOutcome().exit_reason }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. AI TRADE ANALYSIS -->
+    <section id="analysis" class="report-section" *ngIf="analysisLoading || (tradeAnalysis && tradeAnalysis.available)">
+      <div class="section-header">
+        <mat-icon>school</mat-icon>
+        <h2>AI Trade Analysis</h2>
+      </div>
+      <div *ngIf="analysisLoading" class="section-loading">
+        <mat-spinner diameter="32"></mat-spinner>
+        <span>Generating trade analysis...</span>
+      </div>
+      <div *ngIf="!analysisLoading && tradeAnalysis?.available">
+        <div class="trade-grade-row">
+          <div class="trade-grade" [style.background-color]="getGradeColor(tradeAnalysis.trade_grade)">
+            {{ tradeAnalysis.trade_grade }}
+          </div>
+          <p class="analysis-summary">{{ tradeAnalysis.analysis_summary }}</p>
+        </div>
+
+        <div class="analysis-columns">
+          <div class="analysis-col" *ngIf="tradeAnalysis.what_went_well?.length">
+            <h3>
+              <mat-icon class="success-icon">thumb_up</mat-icon>
+              What Went Well
+            </h3>
+            <ul>
+              <li *ngFor="let item of tradeAnalysis.what_went_well">{{ item }}</li>
+            </ul>
+          </div>
+          <div class="analysis-col" *ngIf="tradeAnalysis.areas_for_improvement?.length">
+            <h3>
+              <mat-icon class="warning-icon">trending_up</mat-icon>
+              Areas for Improvement
+            </h3>
+            <ul>
+              <li *ngFor="let item of tradeAnalysis.areas_for_improvement">{{ item }}</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lessons-section" *ngIf="tradeAnalysis.lessons_learned?.length">
+          <h3>
+            <mat-icon>lightbulb</mat-icon>
+            Lessons Learned
+          </h3>
+          <ul class="lessons-list">
+            <li *ngFor="let lesson of tradeAnalysis.lessons_learned">
+              <mat-icon>school</mat-icon>
+              <span>{{ lesson }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. INDIVIDUAL AGENT REPORTS (one section per agent) -->
+    <section *ngFor="let agent of agentReports"
+             [id]="agent.sectionId"
+             class="report-section agent-section">
+      <div class="section-header">
+        <mat-icon>{{ agent.icon }}</mat-icon>
+        <h2>{{ agent.label }}</h2>
+        <span class="agent-status-badge" *ngIf="agent.report.status"
+              [class]="'badge-' + agent.report.status">
+          {{ agent.report.status }}
+        </span>
+      </div>
+
+      <!-- Title & Summary -->
+      <h4 class="agent-title" *ngIf="agent.report.title">{{ agent.report.title }}</h4>
+      <p class="agent-summary-text" *ngIf="agent.report.summary">{{ agent.report.summary }}</p>
+
+      <!-- Agent Chart -->
+      <div *ngIf="hasAgentChart(agent.report)" class="agent-chart-section">
+        <app-trading-chart [chartData]="getAgentChartData(agent.report)" [height]="400"></app-trading-chart>
+      </div>
+
+      <!-- Short data values in a compact grid -->
+      <div class="agent-data-grid"
+           *ngIf="getAgentDataEntries(agent.report.data).short.length">
+        <div class="agent-data-card" *ngFor="let entry of getAgentDataEntries(agent.report.data).short">
+          <span class="data-label">{{ entry.key }}</span>
+          <span class="data-value">{{ entry.value }}</span>
+        </div>
+      </div>
+
+      <!-- Long data values as full-width blocks -->
+      <div class="agent-data-blocks"
+           *ngIf="getAgentDataEntries(agent.report.data).long.length">
+        <div class="agent-data-block" *ngFor="let entry of getAgentDataEntries(agent.report.data).long">
+          <h4 class="block-label">{{ entry.key }}</h4>
+          <!-- String content (rendered as markdown) -->
+          <div *ngIf="!isArray(entry.value) && !isObject(entry.value)"
+               class="block-content"
+               [innerHTML]="entry.value | markdownToHtml"></div>
+          <!-- Array content -->
+          <ul *ngIf="isArray(entry.value)" class="block-list">
+            <li *ngFor="let val of $any(entry.value)">
+              <span *ngIf="!isObject(val)">{{ val }}</span>
+              <pre *ngIf="isObject(val)" class="block-json">{{ val | json }}</pre>
+            </li>
+          </ul>
+          <!-- Object content -->
+          <pre *ngIf="isObject(entry.value) && !isArray(entry.value)" class="block-json">{{ entry.value | json }}</pre>
+        </div>
+      </div>
+
+      <!-- Metrics (if any) -->
+      <div *ngIf="agent.report.metrics?.length" class="agent-metrics">
+        <h4 class="block-label">Metrics</h4>
+        <div class="agent-data-grid">
+          <div class="agent-data-card" *ngFor="let metric of agent.report.metrics">
+            <span class="data-label">{{ metric.name || metric.key }}</span>
+            <span class="data-value">{{ metric.value }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. EXECUTION TIMELINE -->
+    <section id="timeline" class="report-section" *ngIf="execution.agent_states?.length">
+      <div class="section-header">
+        <mat-icon>timeline</mat-icon>
+        <h2>Execution Timeline</h2>
+      </div>
+      <div class="timeline">
+        <div class="timeline-item" *ngFor="let agent of execution.agent_states; let last = last">
+          <div class="timeline-dot" [style.background-color]="getAgentStateColor(agent.status)"></div>
+          <div class="timeline-connector" *ngIf="!last"></div>
+          <div class="timeline-content">
+            <div class="timeline-header">
+              <mat-icon>{{ getAgentIcon(agent.agent_type) }}</mat-icon>
+              <strong>{{ agent.agent_type | titlecase }}</strong>
+              <mat-chip [style.background-color]="getAgentStateColor(agent.status)" class="timeline-status">
+                {{ agent.status }}
+              </mat-chip>
+            </div>
+            <div class="timeline-meta">
+              <span *ngIf="agent.duration_seconds" class="timing">
+                <mat-icon>timer</mat-icon>
+                {{ formatDuration(agent.duration_seconds) }}
+              </span>
+              <span *ngIf="agent.cost" class="cost">
+                <mat-icon>payments</mat-icon>
+                {{ formatCost(agent.cost) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. COST BREAKDOWN -->
+    <section id="costs" class="report-section" *ngIf="execution.cost_breakdown && (execution.cost_breakdown | keyvalue)?.length">
+      <div class="section-header">
+        <mat-icon>payments</mat-icon>
+        <h2>Cost Breakdown</h2>
+      </div>
+      <div class="cost-table">
+        <div class="cost-row" *ngFor="let item of execution.cost_breakdown | keyvalue">
+          <span class="cost-label">{{ $any(item.key) | titlecase }}</span>
+          <span class="cost-value">{{ formatCost($any(item.value)) }}</span>
+        </div>
+        <div class="cost-row total">
+          <span class="cost-label">Total</span>
+          <span class="cost-value">{{ formatCost(execution.cost) }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RISK NOTES -->
+    <section class="report-section risk-notes-section"
+              *ngIf="executiveReport?.risk_notes && executiveReport.risk_notes !== 'None'">
+      <div class="risk-banner">
+        <mat-icon>warning</mat-icon>
+        <div>
+          <h3>Risk Notes</h3>
+          <p>{{ executiveReport.risk_notes }}</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+</div>
+
+<!-- Loading State -->
+<div class="loading-container" *ngIf="loading">
+  <mat-spinner diameter="50"></mat-spinner>
+  <p>Loading execution report...</p>
+</div>
+
+<!-- Error State -->
+<div class="error-container" *ngIf="error">
+  <mat-icon>error_outline</mat-icon>
+  <h2>{{ error }}</h2>
+  <button mat-raised-button (click)="goBack()">
+    <mat-icon>arrow_back</mat-icon>
+    Go Back
+  </button>
+</div>

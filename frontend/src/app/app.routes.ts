@@ -60,6 +60,11 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'monitoring/:id/report',
+    loadComponent: () => import('./features/monitoring/execution-report/execution-report.component').then(m => m.ExecutionReportComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'monitoring/:id',
     loadComponent: () => import('./features/monitoring/execution-detail/execution-detail.component').then(m => m.ExecutionDetailComponent),
     canActivate: [authGuard]

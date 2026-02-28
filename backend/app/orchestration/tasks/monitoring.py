@@ -434,6 +434,19 @@ def _handle_monitoring_complete(
     execution.result["final_pnl_percent"] = pnl_percent
     flag_modified(execution, "result")
 
+    # Add post-trade annotations to strategy chart
+    if execution.result.get("execution_artifacts", {}).get("strategy_chart"):
+        from app.services.chart_annotation_builder import ChartAnnotationBuilder
+
+        execution.result["execution_artifacts"]["strategy_chart"] = (
+            ChartAnnotationBuilder.add_post_trade_annotations(
+                chart_data=execution.result["execution_artifacts"]["strategy_chart"],
+                trade_execution=execution.result.get("trade_execution"),
+                trade_outcome=execution.result.get("trade_outcome"),
+            )
+        )
+        flag_modified(execution, "result")
+
     logger.info(
         "monitoring_completed",
         execution_id=execution_id,

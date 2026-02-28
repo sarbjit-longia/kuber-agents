@@ -8,6 +8,7 @@
 import { Component, Inject, OnInit, ElementRef, ViewChild, QueryList, ViewChildren } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { Router, RouterModule } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -27,6 +28,7 @@ import { MarkdownToHtmlPipe } from '../../../shared/pipes/markdown-to-html.pipe'
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     MatDialogModule,
     MatButtonModule,
     MatIconModule,
@@ -51,7 +53,8 @@ export class ExecutionReportModalComponent implements OnInit {
     public dialogRef: MatDialogRef<ExecutionReportModalComponent>,
     @Inject(MAT_DIALOG_DATA) public data: any,
     private apiService: ApiService,
-    private http: HttpClient
+    private http: HttpClient,
+    private router: Router
   ) {
     this.execution = data.execution;
   }
@@ -120,6 +123,11 @@ export class ExecutionReportModalComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  openFullReport(): void {
+    this.dialogRef.close();
+    this.router.navigate(['/monitoring', this.execution.id, 'report']);
   }
 
   downloadReport(): void {
