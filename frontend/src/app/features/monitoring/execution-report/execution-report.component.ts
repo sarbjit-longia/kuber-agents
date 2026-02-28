@@ -483,6 +483,116 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
     return colors[status] || '#9e9e9e';
   }
 
+  /**
+   * Build a unified timeline combining agent execution states + trade lifecycle events.
+   */
+  buildTimelineEvents(): any[] {
+    const events: any[] = [];
+
+    // Pipeline start
+    if (this.execution?.started_at) {
+      events.push({
+        type: 'lifecycle',
+        icon: 'rocket_launch',
+        label: 'Pipeline Started',
+        timestamp: this.execution.started_at,
+        color: '#2196f3',
+      });
+    }
+
+    // Agent execution events
+    for (const agent of this.execution?.agent_states || []) {
+      events.push({
+        type: 'agent',
+        icon: this.getAgentIcon(agent.agent_type),
+        label: this.formatAgentName(agent.agent_type),
+        status: agent.status,
+        timestamp: agent.started_at,
+        endTimestamp: agent.completed_at,
+        duration: this.getAgentDuration(agent),
+        cost: agent.cost,
+        error: agent.error,
+        color: this.getAgentStateColor(agent.status),
+      });
+    }
+
+    // Trade placed / filled
+    const tradeExec = this.getTradeExecution();
+    if (tradeExec?.execution_time) {
+      events.push({
+        type: 'lifecycle',
+        icon: 'gavel',
+        label: `Order Filled @ $${tradeExec.filled_price}`,
+        detail: tradeExec.order_id ? `Order #${tradeExec.order_id}` : undefined,
+        timestamp: tradeExec.execution_time,
+        color: '#ff9800',
+      });
+    }
+
+    // Monitoring phase start (if trade was monitored)
+    if (this.execution?.execution_phase === 'monitoring' || this.getTradeOutcome()?.closed_at) {
+      const monitorStart = tradeExec?.execution_time || this.execution?.started_at;
+      if (monitorStart && this.getTradeOutcome()?.closed_at) {
+        events.push({
+          type: 'lifecycle',
+          icon: 'monitor_heart',
+          label: 'Position Monitoring',
+          timestamp: monitorStart,
+          endTimestamp: this.getTradeOutcome().closed_at,
+          duration: this.computeDuration(monitorStart, this.getTradeOutcome().closed_at),
+          color: '#9c27b0',
+        });
+      }
+    }
+
+    // Trade closed
+    const outcome = this.getTradeOutcome();
+    if (outcome?.closed_at) {
+      const pnlStr = outcome.pnl !== null && outcome.pnl !== undefined
+        ? ` (${outcome.pnl >= 0 ? '+' : ''}$${outcome.pnl.toFixed(2)})`
+        : '';
+      events.push({
+        type: 'lifecycle',
+        icon: outcome.pnl >= 0 ? 'trending_up' : 'trending_down',
+        label: `Position Closed${pnlStr}`,
+        detail: outcome.exit_reason || undefined,
+        timestamp: outcome.closed_at,
+        color: outcome.pnl >= 0 ? '#4caf50' : '#f44336',
+      });
+    }
+
+    // Pipeline completed
+    if (this.execution?.completed_at) {
+      events.push({
+        type: 'lifecycle',
+        icon: 'flag',
+        label: 'Pipeline Completed',
+        timestamp: this.execution.completed_at,
+        color: this.execution.status === 'COMPLETED' ? '#4caf50' : '#f44336',
+      });
+    }
+
+    // Sort by timestamp
+    events.sort((a, b) => {
+      const tA = this.parseTimestamp(a.timestamp);
+      const tB = this.parseTimestamp(b.timestamp);
+      return tA - tB;
+    });
+
+    return events;
+  }
+
+  private parseTimestamp(ts: string | null | undefined): number {
+    if (!ts) return 0;
+    let s = ts;
+    if (!s.endsWith('Z') && !s.match(/[+-]\d{2}:\d{2}$/)) s += 'Z';
+    return new Date(s).getTime();
+  }
+
+  computeDuration(start: string, end: string): number {
+    return (this.parseTimestamp(end) - this.parseTimestamp(start)) / 1000;
+  }
+
   getAgentInstructions(agentType: string): string | null {
     const nodes = this.execution?.pipeline_config?.nodes;
     if (!nodes || !Array.isArray(nodes)) return null;

@@ -1029,6 +1029,31 @@ $navbar-height: 64px;
       mat-icon { color: var(--color-error); }
     }
   }
+
+  // Lifecycle events (trade open/close, pipeline start/end)
+  .lifecycle-event {
+    .timeline-dot {
+      width: 10px;
+      height: 10px;
+      border: 2px solid;
+      border-color: inherit;
+      background: var(--bg-card) !important;
+      box-shadow: 0 0 0 2px var(--bg-card);
+    }
+
+    .lifecycle-header {
+      strong {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+    }
+
+    .timeline-detail {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+  }
 }
 
 // ========================================

@@ -463,43 +463,71 @@
         </span>
       </div>
       <div class="timeline">
-        <div class="timeline-item" *ngFor="let agent of execution.agent_states; let last = last">
-          <div class="timeline-dot" [style.background-color]="getAgentStateColor(agent.status)"></div>
-          <div class="timeline-connector" *ngIf="!last"></div>
-          <div class="timeline-content">
-            <div class="timeline-header">
-              <mat-icon>{{ getAgentIcon(agent.agent_type) }}</mat-icon>
-              <strong>{{ formatAgentName(agent.agent_type) }}</strong>
-              <mat-chip [style.background-color]="getAgentStateColor(agent.status)" class="timeline-status">
-                {{ agent.status }}
-              </mat-chip>
-            </div>
-            <div class="timeline-timestamps" *ngIf="agent.started_at">
-              <span class="timestamp-start">
-                <mat-icon>play_arrow</mat-icon>
-                {{ formatTime(agent.started_at) }}
-              </span>
-              <span class="timestamp-arrow" *ngIf="agent.completed_at">&rarr;</span>
-              <span class="timestamp-end" *ngIf="agent.completed_at">
-                <mat-icon>stop</mat-icon>
-                {{ formatTime(agent.completed_at) }}
-              </span>
-              <span class="timestamp-duration" *ngIf="agent.started_at && agent.completed_at">
-                ({{ formatDuration(getAgentDuration(agent)) }})
-              </span>
-            </div>
-            <div class="timeline-meta">
-              <span *ngIf="agent.cost" class="cost">
-                <mat-icon>payments</mat-icon>
-                {{ formatCost(agent.cost) }}
-              </span>
-              <span *ngIf="agent.error && agent.status !== 'skipped'" class="timeline-error">
-                <mat-icon>error_outline</mat-icon>
-                {{ agent.error }}
-              </span>
+        <ng-container *ngFor="let event of buildTimelineEvents(); let last = last">
+          <div class="timeline-item" [class.lifecycle-event]="event.type === 'lifecycle'">
+            <div class="timeline-dot" [style.background-color]="event.color"></div>
+            <div class="timeline-connector" *ngIf="!last"></div>
+            <div class="timeline-content">
+
+              <!-- Agent event -->
+              <ng-container *ngIf="event.type === 'agent'">
+                <div class="timeline-header">
+                  <mat-icon>{{ event.icon }}</mat-icon>
+                  <strong>{{ event.label }}</strong>
+                  <mat-chip [style.background-color]="event.color" class="timeline-status">
+                    {{ event.status }}
+                  </mat-chip>
+                </div>
+                <div class="timeline-timestamps" *ngIf="event.timestamp">
+                  <span class="timestamp-start">
+                    {{ formatTime(event.timestamp) }}
+                  </span>
+                  <span class="timestamp-arrow" *ngIf="event.endTimestamp">&rarr;</span>
+                  <span class="timestamp-end" *ngIf="event.endTimestamp">
+                    {{ formatTime(event.endTimestamp) }}
+                  </span>
+                  <span class="timestamp-duration" *ngIf="event.duration">
+                    ({{ formatDuration(event.duration) }})
+                  </span>
+                </div>
+                <div class="timeline-meta">
+                  <span *ngIf="event.cost" class="cost">
+                    <mat-icon>payments</mat-icon>
+                    {{ formatCost(event.cost) }}
+                  </span>
+                  <span *ngIf="event.error && event.status !== 'skipped'" class="timeline-error">
+                    <mat-icon>error_outline</mat-icon>
+                    {{ event.error }}
+                  </span>
+                </div>
+              </ng-container>
+
+              <!-- Lifecycle event (trade opened, closed, pipeline start/end) -->
+              <ng-container *ngIf="event.type === 'lifecycle'">
+                <div class="timeline-header lifecycle-header">
+                  <mat-icon [style.color]="event.color">{{ event.icon }}</mat-icon>
+                  <strong>{{ event.label }}</strong>
+                </div>
+                <div class="timeline-timestamps">
+                  <span class="timestamp-start">
+                    {{ formatTime(event.timestamp) }}
+                  </span>
+                  <span *ngIf="event.endTimestamp" class="timestamp-arrow">&rarr;</span>
+                  <span *ngIf="event.endTimestamp" class="timestamp-end">
+                    {{ formatTime(event.endTimestamp) }}
+                  </span>
+                  <span *ngIf="event.duration" class="timestamp-duration">
+                    ({{ formatDuration(event.duration) }})
+                  </span>
+                </div>
+                <div class="timeline-detail" *ngIf="event.detail">
+                  {{ event.detail }}
+                </div>
+              </ng-container>
+
             </div>
           </div>
-        </div>
+        </ng-container>
       </div>
     </section>
 
