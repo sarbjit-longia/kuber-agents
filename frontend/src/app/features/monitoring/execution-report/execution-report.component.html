@@ -392,6 +392,15 @@
       <h4 class="agent-title" *ngIf="agent.report.title">{{ agent.report.title }}</h4>
       <p class="agent-summary-text" *ngIf="agent.report.summary">{{ agent.report.summary }}</p>
 
+      <!-- Agent Instructions from pipeline config -->
+      <div class="agent-instructions" *ngIf="getAgentInstructions(agent.report.agent_type || agent.key)">
+        <div class="instructions-header">
+          <mat-icon>edit_note</mat-icon>
+          <span>Agent Instructions</span>
+        </div>
+        <div class="instructions-text" [innerHTML]="getAgentInstructions(agent.report.agent_type || agent.key) | markdownToHtml"></div>
+      </div>
+
       <!-- Agent Chart -->
       <div *ngIf="hasAgentChart(agent.report)" class="agent-chart-section">
         <app-trading-chart [chartData]="getAgentChartData(agent.report)" [height]="400"></app-trading-chart>

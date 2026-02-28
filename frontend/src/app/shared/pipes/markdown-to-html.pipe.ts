@@ -16,9 +16,12 @@ export class MarkdownToHtmlPipe implements PipeTransform {
 
     let html = value;
 
-    // Step 1: Convert **TEXT:** to bold headers with larger font
-    // Must be done before bullet point conversion to avoid conflicts
+    // Step 1: Convert **TEXT:** to bold headers with larger font (all-caps labels)
+    // Must be done before general bold conversion to avoid conflicts
     html = html.replace(/\*\*([A-Z\s&]+):\*\*/g, '<div class="section-header">$1:</div>');
+
+    // Step 1b: Convert remaining **text** to <strong>text</strong> (mixed-case bold)
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 
     // Step 2: Convert bullet points (• text) to styled list items
     // Handle bullets with leading whitespace

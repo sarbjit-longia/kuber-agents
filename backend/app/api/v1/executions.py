@@ -220,9 +220,10 @@ async def get_execution(
     
     result = await db.execute(
         select(
-            Execution, 
+            Execution,
             Pipeline.name,
             Pipeline.trigger_mode,
+            Pipeline.config,
             Scanner.name.label('scanner_name')
         )
         .join(Pipeline, Execution.pipeline_id == Pipeline.id)
@@ -230,14 +231,14 @@ async def get_execution(
         .where(Execution.id == execution_id)
     )
     row = result.first()
-    
+
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Execution not found"
         )
-    
-    execution, pipeline_name, trigger_mode, scanner_name = row
+
+    execution, pipeline_name, trigger_mode, pipeline_config, scanner_name = row
     
     if execution.user_id != current_user.id:
         raise HTTPException(
@@ -270,8 +271,9 @@ async def get_execution(
         "execution_phase": execution.execution_phase,
         "next_check_at": execution.next_check_at.isoformat() + 'Z' if execution.next_check_at else None,  # Add Z for UTC
         "monitor_interval_minutes": execution.monitor_interval_minutes,
+        "pipeline_config": pipeline_config,
     }
-    
+
     return execution_dict
 
 

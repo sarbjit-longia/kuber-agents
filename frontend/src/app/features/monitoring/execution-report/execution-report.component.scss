@@ -721,6 +721,44 @@ $navbar-height: 64px;
     border-left: 3px solid var(--accent-primary);
   }
 
+  .agent-instructions {
+    margin-bottom: 1.25rem;
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.06);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 8px;
+
+    .instructions-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent-primary);
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    .instructions-text {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      line-height: 1.7;
+      font-style: italic;
+
+      ::ng-deep strong {
+        color: var(--text-primary);
+        font-style: normal;
+      }
+    }
+  }
+
   .agent-chart-section {
     margin: 1.25rem 0;
     border-radius: 8px;

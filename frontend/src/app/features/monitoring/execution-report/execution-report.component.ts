@@ -182,13 +182,13 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
 
   /**
    * Classify a data value as short (for grid display) or long (for full-width block).
-   * Short = numbers, booleans, or strings under 80 chars without newlines.
+   * Short = numbers, booleans, or strings under 80 chars without newlines/markdown/separators.
    */
   isShortValue(value: any): boolean {
     if (value === null || value === undefined) return true;
     if (typeof value === 'number' || typeof value === 'boolean') return true;
     if (typeof value === 'string') {
-      return value.length < 80 && !value.includes('\n');
+      return value.length < 80 && !value.includes('\n') && !value.includes('**') && !value.includes(' | ');
     }
     return false;
   }
@@ -455,6 +455,13 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
       skipped: '#9e9e9e',
     };
     return colors[status] || '#9e9e9e';
+  }
+
+  getAgentInstructions(agentType: string): string | null {
+    const nodes = this.execution?.pipeline_config?.nodes;
+    if (!nodes || !Array.isArray(nodes)) return null;
+    const node = nodes.find((n: any) => n.agent_type === agentType);
+    return node?.config?.instructions || null;
   }
 
   isArray(value: any): boolean {
