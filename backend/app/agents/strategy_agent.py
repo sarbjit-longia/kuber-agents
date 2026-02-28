@@ -7,7 +7,7 @@ to generate trading strategies.
 import structlog
 import json
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from crewai import Agent, Task, Crew
 from openai import OpenAI
 
@@ -219,7 +219,7 @@ class StrategyAgent(BaseAgent):
             self.log(state, f"Available tools: {[t.name for t in tools]}")
             
             # STAGE 1: Call tools directly to get analysis data
-            tool_results_text = self._call_tools_and_format(tools, state, candle_dicts, price_precision)
+            tool_results_text, tool_results_data = self._call_tools_and_format(tools, state, candle_dicts, price_precision)
             
             # STAGE 2: Create agent WITHOUT tools, but WITH tool results in prompt
             # System prompt defines behavior, user instructions define the task
@@ -438,10 +438,10 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                 )
                 
                 if candle_dicts:
-                    # Build chart from tool results (if any tools were used)
+                    # Build chart from tool results
                     chart_data = chart_builder.build_chart_data(
                         candles=candle_dicts,
-                        tool_results={},  # Tools are called internally by LLM
+                        tool_results=tool_results_data,
                         strategy_result=strategy_result,
                         instructions=instructions
                     )
@@ -510,58 +510,176 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             logger.exception("strategy_agent_failed", error=str(e))
             raise AgentProcessingError(error_msg) from e
     
-    def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict], price_precision: int = 2) -> str:
-        """Call tools directly and format their results as text for the LLM prompt."""
+    def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict], price_precision: int = 2) -> Tuple[str, Dict[str, Any]]:
+        """Call tools directly and format their results as text for the LLM prompt.
+
+        Returns:
+            Tuple of (formatted_text_for_llm, structured_tool_results_for_chart)
+        """
+        collected_results: Dict[str, Any] = {}
+
         if not tools or not candles:
-            return self._compute_technical_analysis(state, candles, price_precision)
-        
+            text = self._compute_technical_analysis(state, candles, price_precision)
+            # Still compute indicators even without tools
+            collected_results.update(
+                self._compute_indicator_results(candles, self.config.get("instructions", ""))
+            )
+            return text, collected_results
+
         results_lines = []
-        
+
         # Call each tool and format results
         for tool in tools:
             tool_name = tool.name
             try:
                 self.log(state, f"Calling tool: {tool_name}")
-                
+
                 # Call the tool function directly with appropriate params
                 if tool_name == "fvg_detector":
                     result = tool.func(timeframe="5m", lookback_candles=20)
                     if result and isinstance(result, dict):
+                        fvgs = result.get("fvgs", [])
+                        bullish_fvgs = [f for f in fvgs if f.get("type") == "bullish"]
+                        bearish_fvgs = [f for f in fvgs if f.get("type") == "bearish"]
+
                         results_lines.append(f"\n**FVG ANALYSIS:**")
-                        if result.get("bullish_fvgs"):
-                            for fvg in result["bullish_fvgs"][:3]:  # Top 3
+                        if bullish_fvgs:
+                            for fvg in bullish_fvgs[:3]:  # Top 3
                                 results_lines.append(f"  • Bullish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
-                        if result.get("bearish_fvgs"):
-                            for fvg in result["bearish_fvgs"][:3]:
+                        if bearish_fvgs:
+                            for fvg in bearish_fvgs[:3]:
                                 results_lines.append(f"  • Bearish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
-                        if not result.get("bullish_fvgs") and not result.get("bearish_fvgs"):
+                        if not bullish_fvgs and not bearish_fvgs:
                             results_lines.append(f"  • No significant FVGs detected")
-                
+
+                        # Tool already returns "fvgs" list with type set — pass through directly
+                        collected_results["fvg_detector"] = result
+
                 elif tool_name == "premium_discount_zone":
                     result = tool.func()
                     if result and isinstance(result, dict):
                         results_lines.append(f"\n**PREMIUM/DISCOUNT ZONES:**")
-                        results_lines.append(f"  • Current Zone: {result.get('current_zone', 'N/A')}")
-                        results_lines.append(f"  • Zone Level: {result.get('zone_percentage', 0):.1f}%")
-                        if result.get('eq_level'):
-                            results_lines.append(f"  • Equilibrium: ${result['eq_level']:.2f}")
-                
+                        results_lines.append(f"  • Current Zone: {result.get('zone', 'N/A')}")
+                        results_lines.append(f"  • Zone Level: {result.get('price_level_percent', 0):.1f}%")
+                        eq_zone = result.get("zones", {}).get("equilibrium", {})
+                        if eq_zone:
+                            eq_mid = (eq_zone.get("low", 0) + eq_zone.get("high", 0)) / 2
+                            results_lines.append(f"  • Equilibrium: ${eq_mid:.2f}")
+
+                        # Store structured result for chart builder
+                        collected_results["premium_discount"] = result
+
+                elif tool_name == "liquidity_analyzer":
+                    result = tool.func()
+                    if result and isinstance(result, dict):
+                        collected_results["liquidity_analyzer"] = result
+
+                elif tool_name == "market_structure":
+                    result = tool.func()
+                    if result and isinstance(result, dict):
+                        collected_results["market_structure"] = result
+
                 elif tool_name in ["rsi_calculator", "macd_calculator"]:
-                    # For indicator tools, we already have the data in state
+                    # Indicators computed separately below
                     continue
-                
+
             except Exception as e:
                 self.log(state, f"Tool {tool_name} failed: {str(e)}")
                 continue
-        
+
+        # Compute RSI/MACD if instructions mention them
+        collected_results.update(
+            self._compute_indicator_results(candles, self.config.get("instructions", ""))
+        )
+
         # If no tool results, use basic technical analysis
         if not results_lines:
-            return self._compute_technical_analysis(state, candles, price_precision)
-        
+            text = self._compute_technical_analysis(state, candles, price_precision)
+            return text, collected_results
+
         # Add basic price action at the top
         basic_analysis = self._compute_technical_analysis(state, candles, price_precision)
-        return basic_analysis + "\n\n" + "\n".join(results_lines)
+        return basic_analysis + "\n\n" + "\n".join(results_lines), collected_results
     
+    def _compute_indicator_results(self, candles: List[Dict], instructions: str) -> Dict[str, Any]:
+        """Compute RSI-14 and MACD(12,26,9) from candle close prices when instructions mention them.
+
+        Returns dict with "rsi" and/or "macd" keys matching ChartAnnotationBuilder format.
+        """
+        if not candles or len(candles) < 26:
+            return {}
+
+        results: Dict[str, Any] = {}
+        instructions_lower = instructions.lower() if instructions else ""
+        closes = [float(c["close"]) for c in candles]
+
+        # --- RSI-14 (Wilder's smoothing) ---
+        if "rsi" in instructions_lower:
+            period = 14
+            if len(closes) > period:
+                deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+                gains = [max(d, 0) for d in deltas]
+                losses = [abs(min(d, 0)) for d in deltas]
+
+                # Seed with SMA
+                avg_gain = sum(gains[:period]) / period
+                avg_loss = sum(losses[:period]) / period
+
+                rsi_values: List[float] = []
+                for i in range(period, len(deltas)):
+                    avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+                    avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+                    rs = avg_gain / avg_loss if avg_loss != 0 else 100.0
+                    rsi_values.append(100.0 - (100.0 / (1.0 + rs)))
+
+                current_rsi = rsi_values[-1] if rsi_values else 50.0
+                results["rsi"] = {
+                    "values": rsi_values,
+                    "current_rsi": current_rsi,
+                    "is_oversold": current_rsi < 30,
+                    "is_overbought": current_rsi > 70,
+                }
+
+        # --- MACD (12, 26, 9) ---
+        if "macd" in instructions_lower:
+            fast, slow, signal_period = 12, 26, 9
+            if len(closes) >= slow + signal_period:
+                def _ema(data: List[float], span: int) -> List[float]:
+                    k = 2.0 / (span + 1)
+                    ema_vals = [data[0]]
+                    for val in data[1:]:
+                        ema_vals.append(val * k + ema_vals[-1] * (1 - k))
+                    return ema_vals
+
+                ema_fast = _ema(closes, fast)
+                ema_slow = _ema(closes, slow)
+                macd_line = [f - s for f, s in zip(ema_fast, ema_slow)]
+                signal_line = _ema(macd_line, signal_period)
+                histogram = [m - s for m, s in zip(macd_line, signal_line)]
+
+                is_bullish = (
+                    len(macd_line) >= 2
+                    and macd_line[-1] > signal_line[-1]
+                    and macd_line[-2] <= signal_line[-2]
+                )
+                is_bearish = (
+                    len(macd_line) >= 2
+                    and macd_line[-1] < signal_line[-1]
+                    and macd_line[-2] >= signal_line[-2]
+                )
+
+                results["macd"] = {
+                    "values": {
+                        "macd": macd_line,
+                        "signal": signal_line,
+                        "histogram": histogram,
+                    },
+                    "is_bullish_crossover": is_bullish,
+                    "is_bearish_crossover": is_bearish,
+                }
+
+        return results
+
     def _compute_technical_analysis(self, state: PipelineState, candles: List[Dict], price_precision: int = 2) -> str:
         """Pre-compute technical indicators and return as formatted text with appropriate precision."""
         if not candles or len(candles) < 20:

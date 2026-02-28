@@ -35,6 +35,10 @@ export interface ChartData {
     zones?: any[];
     text?: any[];
   };
+  indicators?: {
+    rsi?: any;
+    macd?: any;
+  };
   metadata?: {
     strategy?: string;
     action?: string;
@@ -56,6 +60,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('chartContainer') chartContainer!: ElementRef;
 
   private widget: any;
+  private currentInterval: string = 'D';
   loading = true;
   error: string | null = null;
 
@@ -112,7 +117,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
       // Get symbol and timeframe with fallbacks
       const symbol = this.chartData.meta?.symbol || this.chartData.symbol || 'UNKNOWN';
       const timeframe = this.chartData.meta?.timeframe || this.chartData.timeframe || '5m';
-      
+
       // Validate chart data
       if (!symbol || symbol === 'UNKNOWN' || !this.chartData.candles || this.chartData.candles.length === 0) {
         this.error = 'Invalid chart data: missing symbol or candles';
@@ -120,6 +125,9 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         console.error('Chart data validation failed:', { symbol, candlesCount: this.chartData.candles?.length });
         return;
       }
+
+      // Lock to the data's timeframe — we only have candles for this resolution
+      this.currentInterval = this.timeframeToInterval(timeframe);
 
       const datafeed = this.createDatafeed();
       
@@ -181,7 +189,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     return {
       onReady: (callback: any) => {
         setTimeout(() => callback({
-          supported_resolutions: ['1', '5', '15', '30', '60', '240', 'D', 'W', 'M'],
+          supported_resolutions: [this.currentInterval],
           supports_marks: false,
           supports_timescale_marks: false,
           supports_time: true,
@@ -202,7 +210,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           has_intraday: true,
           has_no_volume: false,
           has_weekly_and_monthly: false,
-          supported_resolutions: ['1', '5', '15', '30', '60', '240', 'D'],
+          supported_resolutions: [this.currentInterval],
           volume_precision: 2,
           data_status: 'endofday',
         };
@@ -440,6 +448,24 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
             console.warn('Failed to add text:', err);
           }
         });
+      }
+
+      // 6. Add indicator studies (RSI, MACD) using TradingView built-in studies
+      if (this.chartData.indicators?.rsi) {
+        try {
+          chart.createStudy('Relative Strength Index', false, false, { length: 14 });
+          console.log('RSI study added');
+        } catch (err) {
+          console.warn('Failed to add RSI study:', err);
+        }
+      }
+      if (this.chartData.indicators?.macd) {
+        try {
+          chart.createStudy('MACD', false, false, { fast_length: 12, slow_length: 26, signal_length: 9 });
+          console.log('MACD study added');
+        } catch (err) {
+          console.warn('Failed to add MACD study:', err);
+        }
       }
 
       console.log('✅ Annotations added successfully');
