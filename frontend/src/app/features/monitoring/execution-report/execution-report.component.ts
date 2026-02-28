@@ -130,7 +130,7 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
     // Build per-agent report entries and nav links
     this.buildAgentReports();
     for (const agent of this.agentReports) {
-      sections.push({ id: agent.sectionId, label: agent.label, icon: agent.icon, visible: true, indent: true });
+      sections.push({ id: agent.sectionId, label: agent.label, icon: agent.icon, visible: true });
     }
 
     sections.push(
