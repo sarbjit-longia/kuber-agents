@@ -124,6 +124,18 @@ class Settings(BaseSettings):
             return origins[0].rstrip("/")
         return "http://localhost:4200"
 
+    # Apple Push Notification Service (APNs)
+    APNS_KEY_ID: str = Field(default="", description="APNs auth key ID from Apple Developer portal")
+    APNS_TEAM_ID: str = Field(default="", description="Apple Developer Team ID")
+    APNS_BUNDLE_ID: str = Field(
+        default="com.kubertrading.app",
+        description="iOS app bundle identifier"
+    )
+    APNS_AUTH_KEY_PATH: str = Field(
+        default="./AuthKey.p8",
+        description="Path to APNs auth key (.p8 file)"
+    )
+
     # Subscription & Billing
     ENFORCE_SUBSCRIPTION_LIMITS: bool = Field(
         default=False,

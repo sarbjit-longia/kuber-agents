@@ -3,6 +3,7 @@ User API endpoints.
 
 Handles user profile and subscription information.
 """
+from datetime import datetime
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from sqlalchemy import select, func
 from app.database import get_db
 from app.models.user import User as UserModel
 from app.models.pipeline import Pipeline
+from app.models.user_device import UserDevice
 from app.schemas.user import (
     UserSubscriptionInfo,
     User as UserSchema,
@@ -19,6 +21,7 @@ from app.schemas.user import (
     TelegramConfigResponse,
     TelegramTestRequest
 )
+from app.schemas.device import DeviceRegistrationRequest, DeviceRegistrationResponse
 from app.core.deps import get_current_active_user
 from app.core.security import hash_password
 from app.subscriptions.signal_buckets import get_pipeline_limit, get_available_signals
@@ -277,4 +280,118 @@ async def delete_telegram_config(
         "status": "success",
         "message": "Telegram configuration deleted successfully"
     }
+
+
+@router.post("/me/devices", response_model=DeviceRegistrationResponse, status_code=status.HTTP_201_CREATED)
+async def register_device(
+    request: DeviceRegistrationRequest,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Register a device for push notifications.
+
+    Performs an upsert: if a device with the same token already exists,
+    it is reassigned to the current user and reactivated. Otherwise a
+    new device record is created.
+
+    Args:
+        request: Device token and platform
+        current_user: Authenticated user
+        db: Async database session
+
+    Returns:
+        Registered device information
+    """
+    # Check if device_token already exists
+    existing_query = select(UserDevice).where(UserDevice.device_token == request.device_token)
+    result = await db.execute(existing_query)
+    existing_device = result.scalar_one_or_none()
+
+    if existing_device:
+        # Upsert: reassign to current user, reactivate, refresh timestamp
+        existing_device.user_id = current_user.id
+        existing_device.platform = request.platform
+        existing_device.is_active = True
+        existing_device.last_used_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(existing_device)
+        logger.info(
+            "device_re_registered",
+            user_id=str(current_user.id),
+            device_id=str(existing_device.id),
+            platform=request.platform,
+        )
+        return existing_device
+
+    # Create new device
+    device = UserDevice(
+        user_id=current_user.id,
+        device_token=request.device_token,
+        platform=request.platform,
+    )
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+
+    logger.info(
+        "device_registered",
+        user_id=str(current_user.id),
+        device_id=str(device.id),
+        platform=request.platform,
+    )
+    return device
+
+
+@router.delete("/me/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unregister_device(
+    device_id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Unregister a device from push notifications.
+
+    Finds the device by ID, verifies it belongs to the current user,
+    and deletes it.
+
+    Args:
+        device_id: UUID of the device to unregister
+        current_user: Authenticated user
+        db: Async database session
+
+    Raises:
+        HTTPException 404: If device not found or doesn't belong to user
+    """
+    from uuid import UUID as PyUUID
+
+    try:
+        parsed_id = PyUUID(device_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found",
+        )
+
+    query = select(UserDevice).where(
+        UserDevice.id == parsed_id,
+        UserDevice.user_id == current_user.id,
+    )
+    result = await db.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found",
+        )
+
+    await db.delete(device)
+    await db.commit()
+
+    logger.info(
+        "device_unregistered",
+        user_id=str(current_user.id),
+        device_id=device_id,
+    )
 

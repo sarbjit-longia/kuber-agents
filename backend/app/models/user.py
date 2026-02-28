@@ -77,6 +77,7 @@ class User(Base):
     executions = relationship("Execution", back_populates="user", cascade="all, delete-orphan")
     cost_tracking = relationship("CostTracking", back_populates="user", cascade="all, delete-orphan")
     budget = relationship("UserBudget", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

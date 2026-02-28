@@ -13,6 +13,7 @@ from app.models.pipeline import Pipeline
 from app.models.execution import Execution, ExecutionStatus
 from app.models.cost_tracking import CostTracking, UserBudget
 from app.models.llm_model import LLMModel
+from app.models.user_device import UserDevice
 
 __all__ = [
     "Base",
@@ -24,6 +25,7 @@ __all__ = [
     "ExecutionStatus",
     "CostTracking",
     "UserBudget",
-    "LLMModel"
+    "LLMModel",
+    "UserDevice",
 ]
 
