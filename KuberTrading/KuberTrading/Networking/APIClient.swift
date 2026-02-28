@@ -168,7 +168,10 @@ actor APIClient {
         case 200...299:
             return
         case 401:
-            logger.warning("Unauthorized response received")
+            logger.warning("Unauthorized response received — triggering logout")
+            Task { @MainActor in
+                await AppState.shared.handleLogout()
+            }
             throw APIError.unauthorized
         case 403:
             throw APIError.forbidden

@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         description="JWT secret key"
     )
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
-    JWT_EXPIRATION_MINUTES: int = Field(default=60, description="JWT token expiration in minutes")
+    JWT_EXPIRATION_MINUTES: int = Field(default=1440, description="JWT token expiration in minutes (24h)")
     
     # OpenAI
     OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
