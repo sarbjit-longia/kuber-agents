@@ -120,11 +120,11 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
   buildNavSections(): void {
     const sections: NavSection[] = [
       { id: 'summary', label: 'Executive Summary', icon: 'stars', visible: true },
+      { id: 'analysis', label: 'AI Trade Analysis', icon: 'school', visible: true },
       { id: 'strategy', label: 'Strategy Analysis', icon: 'psychology', visible: !!this.getStrategy() },
       { id: 'risk', label: 'Risk Assessment', icon: 'security', visible: !!this.getRiskAssessment() },
       { id: 'execution', label: 'Trade Execution', icon: 'swap_horiz', visible: !!this.getTradeExecution() },
       { id: 'pnl', label: 'P&L Summary', icon: 'account_balance', visible: !!(this.getTradeOutcome()?.pnl !== null && this.getTradeOutcome()?.pnl !== undefined) },
-      { id: 'analysis', label: 'AI Trade Analysis', icon: 'school', visible: true },
     ];
 
     // Build per-agent report entries and nav links
@@ -379,6 +379,32 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
     if (pnl === null || pnl === undefined) return '-';
     const sign = pnl >= 0 ? '+' : '';
     return `${sign}$${pnl.toFixed(2)}`;
+  }
+
+  formatTime(date: string | null | undefined): string {
+    if (!date) return '';
+    try {
+      let isoString = date;
+      if (!date.endsWith('Z') && !date.match(/[+-]\d{2}:\d{2}$/)) {
+        isoString = date + 'Z';
+      }
+      return new Date(isoString).toLocaleString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    } catch {
+      return date;
+    }
+  }
+
+  getAgentDuration(agent: any): number {
+    if (!agent.started_at || !agent.completed_at) return 0;
+    let startStr = agent.started_at;
+    let endStr = agent.completed_at;
+    if (!startStr.endsWith('Z') && !startStr.match(/[+-]\d{2}:\d{2}$/)) startStr += 'Z';
+    if (!endStr.endsWith('Z') && !endStr.match(/[+-]\d{2}:\d{2}$/)) endStr += 'Z';
+    return (new Date(endStr).getTime() - new Date(startStr).getTime()) / 1000;
   }
 
   formatCost(cost: number | null | undefined): string {

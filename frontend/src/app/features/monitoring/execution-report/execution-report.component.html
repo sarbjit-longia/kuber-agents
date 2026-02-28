@@ -123,7 +123,61 @@
       </div>
     </section>
 
-    <!-- 2. STRATEGY ANALYSIS -->
+    <!-- 2. AI TRADE ANALYSIS (moved up after summary) -->
+    <section id="analysis" class="report-section" *ngIf="analysisLoading || (tradeAnalysis && tradeAnalysis.available)">
+      <div class="section-header">
+        <mat-icon>school</mat-icon>
+        <h2>AI Trade Analysis</h2>
+      </div>
+      <div *ngIf="analysisLoading" class="section-loading">
+        <mat-spinner diameter="32"></mat-spinner>
+        <span>Generating trade analysis...</span>
+      </div>
+      <div *ngIf="!analysisLoading && tradeAnalysis?.available">
+        <div class="trade-grade-row">
+          <div class="trade-grade" [style.background-color]="getGradeColor(tradeAnalysis.trade_grade)">
+            {{ tradeAnalysis.trade_grade }}
+          </div>
+          <p class="analysis-summary">{{ tradeAnalysis.analysis_summary }}</p>
+        </div>
+
+        <div class="analysis-columns">
+          <div class="analysis-col" *ngIf="tradeAnalysis.what_went_well?.length">
+            <h3>
+              <mat-icon class="success-icon">thumb_up</mat-icon>
+              What Went Well
+            </h3>
+            <ul>
+              <li *ngFor="let item of tradeAnalysis.what_went_well">{{ item }}</li>
+            </ul>
+          </div>
+          <div class="analysis-col" *ngIf="tradeAnalysis.areas_for_improvement?.length">
+            <h3>
+              <mat-icon class="warning-icon">trending_up</mat-icon>
+              Areas for Improvement
+            </h3>
+            <ul>
+              <li *ngFor="let item of tradeAnalysis.areas_for_improvement">{{ item }}</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lessons-section" *ngIf="tradeAnalysis.lessons_learned?.length">
+          <h3>
+            <mat-icon>lightbulb</mat-icon>
+            Lessons Learned
+          </h3>
+          <ul class="lessons-list">
+            <li *ngFor="let lesson of tradeAnalysis.lessons_learned">
+              <mat-icon>school</mat-icon>
+              <span>{{ lesson }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. STRATEGY ANALYSIS -->
     <section id="strategy" class="report-section" *ngIf="getStrategy()">
       <div class="section-header">
         <mat-icon>psychology</mat-icon>
@@ -321,60 +375,6 @@
       </div>
     </section>
 
-    <!-- 6. AI TRADE ANALYSIS -->
-    <section id="analysis" class="report-section" *ngIf="analysisLoading || (tradeAnalysis && tradeAnalysis.available)">
-      <div class="section-header">
-        <mat-icon>school</mat-icon>
-        <h2>AI Trade Analysis</h2>
-      </div>
-      <div *ngIf="analysisLoading" class="section-loading">
-        <mat-spinner diameter="32"></mat-spinner>
-        <span>Generating trade analysis...</span>
-      </div>
-      <div *ngIf="!analysisLoading && tradeAnalysis?.available">
-        <div class="trade-grade-row">
-          <div class="trade-grade" [style.background-color]="getGradeColor(tradeAnalysis.trade_grade)">
-            {{ tradeAnalysis.trade_grade }}
-          </div>
-          <p class="analysis-summary">{{ tradeAnalysis.analysis_summary }}</p>
-        </div>
-
-        <div class="analysis-columns">
-          <div class="analysis-col" *ngIf="tradeAnalysis.what_went_well?.length">
-            <h3>
-              <mat-icon class="success-icon">thumb_up</mat-icon>
-              What Went Well
-            </h3>
-            <ul>
-              <li *ngFor="let item of tradeAnalysis.what_went_well">{{ item }}</li>
-            </ul>
-          </div>
-          <div class="analysis-col" *ngIf="tradeAnalysis.areas_for_improvement?.length">
-            <h3>
-              <mat-icon class="warning-icon">trending_up</mat-icon>
-              Areas for Improvement
-            </h3>
-            <ul>
-              <li *ngFor="let item of tradeAnalysis.areas_for_improvement">{{ item }}</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="lessons-section" *ngIf="tradeAnalysis.lessons_learned?.length">
-          <h3>
-            <mat-icon>lightbulb</mat-icon>
-            Lessons Learned
-          </h3>
-          <ul class="lessons-list">
-            <li *ngFor="let lesson of tradeAnalysis.lessons_learned">
-              <mat-icon>school</mat-icon>
-              <span>{{ lesson }}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
     <!-- 7. INDIVIDUAL AGENT REPORTS (one section per agent) -->
     <section *ngFor="let agent of agentReports"
              [id]="agent.sectionId"
@@ -454,6 +454,14 @@
         <mat-icon>timeline</mat-icon>
         <h2>Execution Timeline</h2>
       </div>
+      <!-- Total execution duration -->
+      <div class="timeline-overview" *ngIf="getDurationSeconds()">
+        <span class="timeline-total-label">Total Duration</span>
+        <span class="timeline-total-value">{{ formatDuration(getDurationSeconds()!) }}</span>
+        <span class="timeline-date-range">
+          {{ formatDate(execution.started_at) }} &mdash; {{ formatDate(execution.completed_at) }}
+        </span>
+      </div>
       <div class="timeline">
         <div class="timeline-item" *ngFor="let agent of execution.agent_states; let last = last">
           <div class="timeline-dot" [style.background-color]="getAgentStateColor(agent.status)"></div>
@@ -461,19 +469,33 @@
           <div class="timeline-content">
             <div class="timeline-header">
               <mat-icon>{{ getAgentIcon(agent.agent_type) }}</mat-icon>
-              <strong>{{ agent.agent_type | titlecase }}</strong>
+              <strong>{{ formatAgentName(agent.agent_type) }}</strong>
               <mat-chip [style.background-color]="getAgentStateColor(agent.status)" class="timeline-status">
                 {{ agent.status }}
               </mat-chip>
             </div>
-            <div class="timeline-meta">
-              <span *ngIf="agent.duration_seconds" class="timing">
-                <mat-icon>timer</mat-icon>
-                {{ formatDuration(agent.duration_seconds) }}
+            <div class="timeline-timestamps" *ngIf="agent.started_at">
+              <span class="timestamp-start">
+                <mat-icon>play_arrow</mat-icon>
+                {{ formatTime(agent.started_at) }}
               </span>
+              <span class="timestamp-arrow" *ngIf="agent.completed_at">&rarr;</span>
+              <span class="timestamp-end" *ngIf="agent.completed_at">
+                <mat-icon>stop</mat-icon>
+                {{ formatTime(agent.completed_at) }}
+              </span>
+              <span class="timestamp-duration" *ngIf="agent.started_at && agent.completed_at">
+                ({{ formatDuration(getAgentDuration(agent)) }})
+              </span>
+            </div>
+            <div class="timeline-meta">
               <span *ngIf="agent.cost" class="cost">
                 <mat-icon>payments</mat-icon>
                 {{ formatCost(agent.cost) }}
+              </span>
+              <span *ngIf="agent.error && agent.status !== 'skipped'" class="timeline-error">
+                <mat-icon>error_outline</mat-icon>
+                {{ agent.error }}
               </span>
             </div>
           </div>
