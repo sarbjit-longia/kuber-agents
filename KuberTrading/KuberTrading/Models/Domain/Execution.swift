@@ -32,6 +32,38 @@ struct Execution: Codable, Identifiable {
     let nextCheckAt: String?
     let monitorIntervalMinutes: Int?
     let pipelineConfig: AnyCodable?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        pipelineId = try container.decode(String.self, forKey: .pipelineId)
+        pipelineName = try container.decodeIfPresent(String.self, forKey: .pipelineName)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        status = (try container.decode(String.self, forKey: .status)).lowercased()
+        mode = try container.decode(String.self, forKey: .mode)
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol)
+        triggerMode = try container.decodeIfPresent(String.self, forKey: .triggerMode)
+        scannerName = try container.decodeIfPresent(String.self, forKey: .scannerName)
+        startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
+        completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        result = try container.decodeIfPresent(AnyCodable.self, forKey: .result)
+        costBreakdown = try container.decodeIfPresent(CostBreakdown.self, forKey: .costBreakdown)
+        agentStates = try container.decodeIfPresent([AgentState].self, forKey: .agentStates)
+        logs = try container.decodeIfPresent([ExecutionLog].self, forKey: .logs)
+        reports = try container.decodeIfPresent([String: AgentReport].self, forKey: .reports)
+        executionArtifacts = try container.decodeIfPresent(AnyCodable.self, forKey: .executionArtifacts)
+        approvalStatus = try container.decodeIfPresent(String.self, forKey: .approvalStatus)
+        approvalRequestedAt = try container.decodeIfPresent(String.self, forKey: .approvalRequestedAt)
+        approvalExpiresAt = try container.decodeIfPresent(String.self, forKey: .approvalExpiresAt)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        cost = try container.decodeIfPresent(Double.self, forKey: .cost)
+        executionPhase = try container.decodeIfPresent(String.self, forKey: .executionPhase)
+        nextCheckAt = try container.decodeIfPresent(String.self, forKey: .nextCheckAt)
+        monitorIntervalMinutes = try container.decodeIfPresent(Int.self, forKey: .monitorIntervalMinutes)
+        pipelineConfig = try container.decodeIfPresent(AnyCodable.self, forKey: .pipelineConfig)
+    }
 }
 
 // MARK: - Execution Summary (list endpoint)
@@ -57,6 +89,30 @@ struct ExecutionSummary: Codable, Identifiable {
     let tradeOutcome: String?
     let result: AnyCodable?
     let reports: AnyCodable?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        pipelineId = try container.decode(String.self, forKey: .pipelineId)
+        pipelineName = try container.decodeIfPresent(String.self, forKey: .pipelineName)
+        status = (try container.decode(String.self, forKey: .status)).lowercased()
+        mode = try container.decode(String.self, forKey: .mode)
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol)
+        triggerMode = try container.decodeIfPresent(String.self, forKey: .triggerMode)
+        scannerName = try container.decodeIfPresent(String.self, forKey: .scannerName)
+        startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
+        completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
+        durationSeconds = try container.decodeIfPresent(Double.self, forKey: .durationSeconds)
+        totalCost = try container.decodeIfPresent(Double.self, forKey: .totalCost)
+        agentCount = try container.decodeIfPresent(Int.self, forKey: .agentCount)
+        agentsCompleted = try container.decodeIfPresent(Int.self, forKey: .agentsCompleted)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        strategyAction = try container.decodeIfPresent(String.self, forKey: .strategyAction)
+        strategyConfidence = try container.decodeIfPresent(Double.self, forKey: .strategyConfidence)
+        tradeOutcome = try container.decodeIfPresent(String.self, forKey: .tradeOutcome)
+        result = try container.decodeIfPresent(AnyCodable.self, forKey: .result)
+        reports = try container.decodeIfPresent(AnyCodable.self, forKey: .reports)
+    }
 }
 
 // MARK: - Cost Breakdown

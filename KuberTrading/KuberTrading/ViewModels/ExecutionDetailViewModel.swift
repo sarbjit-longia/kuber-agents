@@ -80,7 +80,7 @@ final class ExecutionDetailViewModel {
                         if message.type == "status_update",
                            let data = message.data?.dictValue,
                            let newStatus = data["status"] as? String {
-                            self.execution?.status = newStatus
+                            self.execution?.status = newStatus.lowercased()
                         }
 
                         // Append log messages

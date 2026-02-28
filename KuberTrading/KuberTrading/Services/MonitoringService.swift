@@ -12,13 +12,15 @@ actor MonitoringService {
         limit: Int = 50,
         offset: Int = 0,
         pipelineId: String? = nil,
-        status: String? = nil
+        status: String? = nil,
+        tradeOutcome: String? = nil
     ) async throws -> ExecutionListResponse {
         try await ExecutionService.shared.listExecutions(
             limit: limit,
             offset: offset,
             pipelineId: pipelineId,
-            status: status
+            status: status,
+            tradeOutcome: tradeOutcome
         )
     }
 

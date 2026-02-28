@@ -6,11 +6,12 @@ struct ExecutionFilterBar: View {
 
     private let filters: [(key: String?, label: String)] = [
         (nil, "All"),
-        ("running", "Running"),
-        ("monitoring", "Monitoring"),
-        ("completed", "Completed"),
-        ("failed", "Failed"),
-        ("awaiting_approval", "Awaiting Approval"),
+        ("TRADED", "Traded"),
+        ("RUNNING", "Running"),
+        ("MONITORING", "Monitoring"),
+        ("COMPLETED", "Completed"),
+        ("FAILED", "Failed"),
+        ("AWAITING_APPROVAL", "Awaiting Approval"),
     ]
 
     var body: some View {
@@ -33,7 +34,7 @@ struct ExecutionFilterBar: View {
             HStack(spacing: 6) {
                 if let key {
                     Circle()
-                        .fill(Color.executionStatusColor(key))
+                        .fill(key == "TRADED" ? Color.statusSuccess : Color.executionStatusColor(key))
                         .frame(width: 6, height: 6)
                 }
 
@@ -45,7 +46,7 @@ struct ExecutionFilterBar: View {
             .padding(.vertical, 6)
             .background(
                 isSelected
-                    ? (key != nil ? Color.executionStatusColor(key!) : Color.brandPrimary)
+                    ? (key == "TRADED" ? Color.statusSuccess : key != nil ? Color.executionStatusColor(key!) : Color.brandPrimary)
                     : Color.surfaceElevated,
                 in: Capsule()
             )
@@ -57,8 +58,8 @@ struct ExecutionFilterBar: View {
 #Preview {
     VStack(spacing: 20) {
         ExecutionFilterBar(selectedFilter: nil, onFilterChanged: { _ in })
-        ExecutionFilterBar(selectedFilter: "running", onFilterChanged: { _ in })
-        ExecutionFilterBar(selectedFilter: "completed", onFilterChanged: { _ in })
+        ExecutionFilterBar(selectedFilter: "RUNNING", onFilterChanged: { _ in })
+        ExecutionFilterBar(selectedFilter: "COMPLETED", onFilterChanged: { _ in })
     }
     .padding(.vertical)
     .preferredColorScheme(.dark)

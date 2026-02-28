@@ -281,6 +281,7 @@ async def get_execution(
 async def list_executions(
     pipeline_id: Optional[UUID] = Query(None, description="Filter by pipeline ID"),
     status_filter: Optional[ExecutionStatus] = Query(None, alias="status", description="Filter by status"),
+    trade_outcome: Optional[str] = Query(None, description="Filter by trade outcome (e.g. 'executed', 'skipped')"),
     limit: int = Query(50, ge=1, le=500, description="Number of executions to return"),
     offset: int = Query(0, ge=0, description="Number of executions to skip"),
     include_active: bool = Query(True, description="Always include all active executions"),
@@ -355,7 +356,13 @@ async def list_executions(
     elif include_active:
         # Exclude active ones (already fetched above)
         hist_query = hist_query.where(not_(Execution.status.in_(active_statuses)))
-    
+
+    # Filter by trade_outcome (JSONB: result->'trade_outcome'->>'status')
+    if trade_outcome:
+        hist_query = hist_query.where(
+            Execution.result['trade_outcome']['status'].as_string() == trade_outcome
+        )
+
     # Get total count for pagination
     count_query = (
         select(func.count())
@@ -366,6 +373,10 @@ async def list_executions(
         count_query = count_query.where(Execution.status == status_filter)
     elif include_active:
         count_query = count_query.where(not_(Execution.status.in_(active_statuses)))
+    if trade_outcome:
+        count_query = count_query.where(
+            Execution.result['trade_outcome']['status'].as_string() == trade_outcome
+        )
     
     total_result = await db.execute(count_query)
     total_historical = total_result.scalar() or 0

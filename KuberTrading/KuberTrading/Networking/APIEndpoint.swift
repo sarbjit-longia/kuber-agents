@@ -47,7 +47,7 @@ enum APIEndpoint {
     // MARK: - Executions
 
     case createExecution(ExecutionCreate)
-    case listExecutions(limit: Int?, offset: Int?, pipelineId: String?, status: String?)
+    case listExecutions(limit: Int?, offset: Int?, pipelineId: String?, status: String?, tradeOutcome: String?)
     case getExecutionStats
     case getExecution(id: String)
     case stopExecution(id: String)
@@ -343,7 +343,7 @@ enum APIEndpoint {
             guard let timezone else { return nil }
             return [URLQueryItem(name: "timezone", value: timezone)]
 
-        case .listExecutions(let limit, let offset, let pipelineId, let status):
+        case .listExecutions(let limit, let offset, let pipelineId, let status, let tradeOutcome):
             var items: [URLQueryItem] = []
             if let limit {
                 items.append(URLQueryItem(name: "limit", value: String(limit)))
@@ -356,6 +356,9 @@ enum APIEndpoint {
             }
             if let status {
                 items.append(URLQueryItem(name: "status", value: status))
+            }
+            if let tradeOutcome {
+                items.append(URLQueryItem(name: "trade_outcome", value: tradeOutcome))
             }
             return items.isEmpty ? nil : items
 

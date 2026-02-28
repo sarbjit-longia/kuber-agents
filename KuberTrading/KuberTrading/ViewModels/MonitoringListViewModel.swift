@@ -11,6 +11,7 @@ final class MonitoringListViewModel {
 
     // Filters
     var statusFilter: String?
+    var tradeOutcomeFilter: String? // Client-side filter for trade outcome
     var pipelineIdFilter: String?
     var currentPage = 0
     var pageSize = 20
@@ -30,7 +31,8 @@ final class MonitoringListViewModel {
                 limit: pageSize,
                 offset: currentPage * pageSize,
                 pipelineId: pipelineIdFilter,
-                status: statusFilter
+                status: statusFilter,
+                tradeOutcome: tradeOutcomeFilter
             )
             executions = response.executions
             total = response.total
@@ -60,7 +62,8 @@ final class MonitoringListViewModel {
                 limit: pageSize,
                 offset: currentPage * pageSize,
                 pipelineId: pipelineIdFilter,
-                status: statusFilter
+                status: statusFilter,
+                tradeOutcome: tradeOutcomeFilter
             )
             executions.append(contentsOf: response.executions)
             total = response.total
@@ -107,7 +110,14 @@ final class MonitoringListViewModel {
 
     @MainActor
     func setStatusFilter(_ status: String?) {
-        statusFilter = status
+        if status == "TRADED" {
+            // "Traded" = completed executions with trade_outcome == "executed"
+            statusFilter = "COMPLETED"
+            tradeOutcomeFilter = "executed"
+        } else {
+            statusFilter = status
+            tradeOutcomeFilter = nil
+        }
         currentPage = 0
         executions = []
         total = 0
@@ -115,5 +125,11 @@ final class MonitoringListViewModel {
         Task {
             await loadExecutions()
         }
+    }
+
+    /// The raw filter key for the filter bar (including "TRADED")
+    var activeFilterKey: String? {
+        if tradeOutcomeFilter != nil { return "TRADED" }
+        return statusFilter
     }
 }

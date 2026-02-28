@@ -17,7 +17,7 @@ struct MonitoringListView: View {
                 ) {
                     Task { await viewModel.refresh() }
                 }
-            } else if viewModel.executions.isEmpty && viewModel.statusFilter == nil {
+            } else if viewModel.executions.isEmpty && viewModel.activeFilterKey == nil {
                 EmptyStateView(
                     icon: "eye.slash",
                     title: "No Executions",
@@ -66,7 +66,7 @@ struct MonitoringListView: View {
 
                 // Filter bar
                 ExecutionFilterBar(
-                    selectedFilter: viewModel.statusFilter,
+                    selectedFilter: viewModel.activeFilterKey,
                     onFilterChanged: { viewModel.setStatusFilter($0) }
                 )
                 .padding(.bottom, 8)

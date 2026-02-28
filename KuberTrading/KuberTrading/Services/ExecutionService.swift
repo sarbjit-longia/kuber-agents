@@ -39,10 +39,11 @@ actor ExecutionService {
         limit: Int? = 50,
         offset: Int? = 0,
         pipelineId: String? = nil,
-        status: String? = nil
+        status: String? = nil,
+        tradeOutcome: String? = nil
     ) async throws -> ExecutionListResponse {
         try await APIClient.shared.request(
-            .listExecutions(limit: limit, offset: offset, pipelineId: pipelineId, status: status)
+            .listExecutions(limit: limit, offset: offset, pipelineId: pipelineId, status: status, tradeOutcome: tradeOutcome)
         )
     }
 
