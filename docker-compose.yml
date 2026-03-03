@@ -164,6 +164,12 @@ services:
       - LOG_LEVEL=INFO
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'celery' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -183,6 +189,12 @@ services:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5555/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       - redis
       - postgres
