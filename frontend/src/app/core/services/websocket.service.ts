@@ -35,12 +35,11 @@ export class WebSocketService {
       return;
     }
 
-    // Convert HTTP URL to WebSocket URL
-    const wsUrl = environment.apiUrl
-      .replace('http://', 'ws://')
-      .replace('https://', 'wss://');
+    // Derive WebSocket URL from current origin (works with relative apiUrl)
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsBase = environment.wsUrl || `${protocol}//${location.host}`;
 
-    const url = `${wsUrl}/api/v1/ws/executions?token=${token}`;
+    const url = `${wsBase}/api/v1/ws/executions?token=${token}`;
 
     this.ws = new WebSocket(url);
 

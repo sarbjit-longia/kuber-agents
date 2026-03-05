@@ -9,6 +9,7 @@ Deploy Kuber Trading to a personal Ubuntu server with Nginx reverse proxy, Let's
 - 4-core CPU
 - 100GB SSD
 - Public IP (static or dynamic with No-IP DUC)
+- **PostgreSQL 17+ with TimescaleDB** installed natively on the host
 
 ## Architecture
 
@@ -18,7 +19,9 @@ Internet → Router (ports 80,443) → Ubuntu Server
     → kubertrading.com        → /opt/kubertrading/frontend/ (static)
     → api.kubertrading.com    → 127.0.0.1:8000 (Docker: backend)
     → grafana.kubertrading.com → 127.0.0.1:3000 (Docker: grafana)
-  → Docker Compose (14 containers, all ports on 127.0.0.1)
+  → PostgreSQL + TimescaleDB (host-native, port 5432)
+  → Docker Compose (12 containers, all ports on 127.0.0.1)
+    → Containers connect to host DB via host.docker.internal:5432
 ```
 
 ## Initial Setup
@@ -28,9 +31,9 @@ Internet → Router (ports 80,443) → Ubuntu Server
 Add to `~/.ssh/config` on your Mac:
 
 ```
-Host kuber-server
-    HostName <server-ip>
-    User kuber
+Host quantum
+    HostName 192.168.1.188
+    User sarbjit
     IdentityFile ~/.ssh/id_ed25519
 ```
 
@@ -40,8 +43,8 @@ Edit `deploy/local/config.env` with your domain and server details:
 
 ```bash
 DOMAIN=kubertrading.com
-SERVER_HOST=kuber-server
-SERVER_USER=kuber
+SERVER_HOST=quantum
+SERVER_USER=sarbjit
 REMOTE_DIR=/opt/kubertrading
 ```
 
@@ -50,11 +53,11 @@ REMOTE_DIR=/opt/kubertrading
 Copy the `deploy/local/` directory to the server and run:
 
 ```bash
-scp -r deploy/local/ kuber-server:/tmp/kuber-setup/
-ssh kuber-server 'sudo bash /tmp/kuber-setup/server-setup.sh'
+scp -r deploy/local/ quantum:/tmp/kuber-setup/
+ssh quantum 'sudo bash /tmp/kuber-setup/server-setup.sh'
 ```
 
-This installs Docker, Nginx, Certbot, fail2ban, UFW, and creates the directory structure.
+This installs Docker, Nginx, Certbot, fail2ban, UFW, provisions the PostgreSQL databases (`trading_platform` and `trading_data_plane`), enables TimescaleDB, configures `pg_hba.conf` for Docker access, and sets up native backup cron.
 
 ### 4. DNS configuration
 
@@ -109,13 +112,13 @@ Forward these ports to the Ubuntu server's LAN IP:
 
 ```bash
 # Copy template and fill in real values
-scp deploy/local/.env.prod.template kuber-server:/opt/kubertrading/.env.prod
-ssh kuber-server 'nano /opt/kubertrading/.env.prod'  # Edit with real secrets
-ssh kuber-server 'chmod 600 /opt/kubertrading/.env.prod'
+scp deploy/local/.env.prod.template quantum:/opt/kubertrading/.env.prod
+ssh quantum 'nano /opt/kubertrading/.env.prod'  # Edit with real secrets
+ssh quantum 'chmod 600 /opt/kubertrading/.env.prod'
 ```
 
 **Critical secrets to set:**
-- `POSTGRES_PASSWORD` / `TIMESCALE_PASSWORD` — strong random passwords
+- `POSTGRES_PASSWORD` — strong random password for the `kuber` PostgreSQL role
 - `JWT_SECRET` — generate with `openssl rand -hex 64`
 - `OPENAI_API_KEY` — your OpenAI key
 - `FINNHUB_API_KEY` — your Finnhub key
@@ -126,7 +129,7 @@ ssh kuber-server 'chmod 600 /opt/kubertrading/.env.prod'
 ### 7. SSL certificates
 
 ```bash
-ssh kuber-server
+ssh quantum
 sudo certbot --nginx -d kubertrading.com -d www.kubertrading.com -d api.kubertrading.com -d grafana.kubertrading.com
 ```
 
@@ -169,7 +172,7 @@ This reverts all 4 custom images to their `:previous` tags and restarts containe
 ### View logs
 
 ```bash
-ssh kuber-server
+ssh quantum
 cd /opt/kubertrading
 docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs -f celery-worker
@@ -179,7 +182,7 @@ docker compose -f docker-compose.prod.yml logs --tail=100 signal-generator
 ### Restart a service
 
 ```bash
-ssh kuber-server 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml restart backend'
+ssh quantum 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml restart backend'
 ```
 
 ## Accessing Internal Tools
@@ -189,44 +192,64 @@ Flower and Prometheus are NOT exposed publicly. Access via SSH tunnel:
 ### Flower (Celery monitoring)
 
 ```bash
-ssh -L 5555:localhost:5555 kuber-server
+ssh -L 5555:localhost:5555 quantum
 # Then open http://localhost:5555
 ```
 
 ### Prometheus
 
 ```bash
-ssh -L 9090:localhost:9090 kuber-server
+ssh -L 9090:localhost:9090 quantum
 # Then open http://localhost:9090
+```
+
+## Database Access
+
+PostgreSQL runs natively on the host (not in Docker). Connect directly:
+
+```bash
+# From the server
+psql -U kuber -d trading_platform
+
+# From your Mac
+PGPASSWORD=<pw> psql -U kuber -h 192.168.1.188 -d trading_platform
+```
+
+### Verify TimescaleDB
+
+```bash
+psql -U kuber -d trading_data_plane -c "SELECT * FROM timescaledb_information.hypertables;"
 ```
 
 ## Backups
 
-Daily automated backups run at 3:00 AM via cron:
-- PostgreSQL and TimescaleDB dumps in `/opt/kubertrading/backups/`
+Daily automated backups run at 3:00 AM via cron using native `pg_dump`:
+- `trading_platform` and `trading_data_plane` dumps in `/opt/kubertrading/backups/`
 - 14-day retention (older backups auto-deleted)
 - Logs: `/opt/kubertrading/backups/backup.log`
 
 ### Manual backup
 
 ```bash
-ssh kuber-server '/opt/kubertrading/backup-databases.sh'
+ssh quantum '/opt/kubertrading/backup-databases.sh'
 ```
 
 ### Restore from backup
 
 ```bash
-ssh kuber-server
+ssh quantum
 gunzip -c /opt/kubertrading/backups/postgres_20260301_030000.sql.gz | \
-    docker exec -i trading-postgres psql -U kuber trading_platform
+    psql -U kuber trading_platform
+
+gunzip -c /opt/kubertrading/backups/timescaledb_20260301_030000.sql.gz | \
+    psql -U kuber trading_data_plane
 ```
 
-## Estimated Memory Usage (~6.2GB)
+## Estimated Memory Usage (~5.2GB containers + host PostgreSQL)
 
 | Service | Memory Limit |
 |---------|-------------|
-| PostgreSQL | 512M |
-| TimescaleDB | 512M |
+| PostgreSQL (host-native) | ~3.9GB shared_buffers (not Docker) |
 | Redis | 300M |
 | Kafka + Zookeeper | 1024M |
 | Backend (2 workers) | 512M |
@@ -240,33 +263,47 @@ gunzip -c /opt/kubertrading/backups/postgres_20260301_030000.sql.gz | \
 | Data Plane Beat | 256M |
 | Prometheus | 512M |
 | Grafana | 256M |
-| **Total** | **~6.2GB** |
+| **Docker Total** | **~5.2GB** |
+
+> Compared to the previous setup, removing PostgreSQL (512M) and TimescaleDB (512M) Docker containers saves ~1GB of container memory.
 
 ## Troubleshooting
 
 ### Backend not starting
 ```bash
-ssh kuber-server 'docker logs trading-backend --tail=50'
+ssh quantum 'docker logs trading-backend --tail=50'
+```
+
+### Backend can't connect to PostgreSQL
+```bash
+# Verify PostgreSQL is listening
+ssh quantum 'ss -tlnp | grep 5432'
+
+# Verify pg_hba.conf allows Docker subnet
+ssh quantum 'sudo grep docker /etc/postgresql/*/main/pg_hba.conf'
+
+# Test from inside a container
+ssh quantum 'docker exec trading-backend python -c "import sqlalchemy; print(sqlalchemy.create_engine(\"postgresql://kuber:pw@host.docker.internal:5432/trading_platform\").connect())"'
 ```
 
 ### Nginx errors
 ```bash
-ssh kuber-server 'sudo nginx -t'
-ssh kuber-server 'sudo tail -50 /var/log/nginx/error.log'
+ssh quantum 'sudo nginx -t'
+ssh quantum 'sudo tail -50 /var/log/nginx/error.log'
 ```
 
 ### SSL certificate issues
 ```bash
-ssh kuber-server 'sudo certbot certificates'
-ssh kuber-server 'sudo certbot renew --force-renewal'
+ssh quantum 'sudo certbot certificates'
+ssh quantum 'sudo certbot renew --force-renewal'
 ```
 
 ### Check all container status
 ```bash
-ssh kuber-server 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml ps'
+ssh quantum 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml ps'
 ```
 
 ### Disk usage
 ```bash
-ssh kuber-server 'df -h && docker system df'
+ssh quantum 'df -h && docker system df'
 ```

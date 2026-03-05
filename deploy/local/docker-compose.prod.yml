@@ -1,53 +1,9 @@
 # Production Docker Compose — Self-Hosted Ubuntu Server
+# PostgreSQL + TimescaleDB run natively on the host (not in Docker).
+# All DB-connecting services use extra_hosts to reach host via host.docker.internal.
 # All ports bound to 127.0.0.1 (Nginx handles public traffic)
 
 services:
-  # --- Databases ---
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: trading-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    container_name: trading-timescaledb
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${TIMESCALE_USER}
-      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
-      POSTGRES_DB: ${TIMESCALE_DB}
-    ports:
-      - "127.0.0.1:5434:5432"
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # --- Message Broker ---
 
   redis:
@@ -125,11 +81,11 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - file_storage:/app/storage
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     deploy:
@@ -154,11 +110,11 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - file_storage:/app/storage
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     deploy:
@@ -183,9 +139,9 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     deploy:
@@ -203,13 +159,15 @@ services:
     image: kubertrading/backend:latest
     container_name: trading-flower
     restart: unless-stopped
-    command: celery -A app.orchestration.celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH}
+    command: celery -A app.orchestration.celery_app flower --port=5555 --url_prefix=flower --basic-auth=${FLOWER_BASIC_AUTH}
     ports:
       - "127.0.0.1:5555:5555"
     env_file: .env.prod
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - celery-worker
@@ -238,8 +196,10 @@ services:
       - ENABLE_MARKET_HOURS_CHECK=${ENABLE_MARKET_HOURS_CHECK:-true}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_SIGNAL_TOPIC=${KAFKA_SIGNAL_TOPIC:-trading-signals}
-      - BACKEND_DB_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - BACKEND_DB_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
       - LOG_LEVEL=WARNING
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8007:8007"
       - "127.0.0.1:8003:8001"
@@ -247,8 +207,6 @@ services:
       - ./config/signal-generator:/app/config
     depends_on:
       kafka:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
     deploy:
       resources:
@@ -267,16 +225,16 @@ services:
       - KAFKA_AUTO_OFFSET_RESET=latest
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=host.docker.internal
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - LOG_LEVEL=WARNING
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       kafka:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -299,19 +257,17 @@ services:
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=${DP_REDIS_URL:-redis://redis:6379/1}
-      - TIMESCALE_URL=postgresql+asyncpg://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
-      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TIMESCALE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${TIMESCALE_DB}
+      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=${DP_CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${DP_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       - LOG_LEVEL=WARNING
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8005:8000"
       - "127.0.0.1:8006:8001"
     depends_on:
-      timescaledb:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     deploy:
@@ -337,15 +293,15 @@ services:
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=${DP_REDIS_URL:-redis://redis:6379/1}
-      - TIMESCALE_URL=postgresql+asyncpg://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
-      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TIMESCALE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${TIMESCALE_DB}
+      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=${DP_CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${DP_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       - LOG_LEVEL=WARNING
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
-      - timescaledb
-      - postgres
     deploy:
       resources:
         limits:
@@ -364,19 +320,37 @@ services:
       - OANDA_ACCOUNT_TYPE=${OANDA_ACCOUNT_TYPE:-practice}
       - OANDA_ACCOUNT_ID=${OANDA_ACCOUNT_ID}
       - REDIS_URL=${DP_REDIS_URL:-redis://redis:6379/1}
-      - TIMESCALE_URL=postgresql+asyncpg://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
-      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TIMESCALE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${TIMESCALE_DB}
+      - BACKEND_DB_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=${DP_CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${DP_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       - LOG_LEVEL=WARNING
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
-      - timescaledb
-      - postgres
     deploy:
       resources:
         limits:
           memory: 256M
+
+  # --- Frontend ---
+
+  frontend:
+    image: kubertrading/frontend:latest
+    container_name: trading-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4200:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/", "-o", "/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # --- Monitoring ---
 
@@ -408,7 +382,8 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=https://grafana.${DOMAIN:-kubertrading.com}
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
     volumes:
       - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -422,8 +397,6 @@ services:
           memory: 256M
 
 volumes:
-  postgres_data:
-  timescaledb_data:
   redis_data:
   zookeeper_data:
   zookeeper_log:

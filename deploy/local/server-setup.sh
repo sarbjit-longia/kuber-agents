@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-time Ubuntu server provisioning for Kuber Trading
+# Assumes PostgreSQL 17 + TimescaleDB are already installed natively.
 # Run as root or with sudo on the target Ubuntu server:
-#   curl -sL <url>/server-setup.sh | sudo bash
-# Or: sudo bash server-setup.sh
+#   sudo bash server-setup.sh
 set -euo pipefail
 
 # --- Load config (if available locally, otherwise use defaults) ---
@@ -12,11 +12,19 @@ if [[ -f "$SCRIPT_DIR/config.env" ]]; then
 fi
 DOMAIN="${DOMAIN:-kubertrading.com}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/kubertrading}"
-SERVER_USER="${SERVER_USER:-kuber}"
+SERVER_USER="${SERVER_USER:-sarbjit}"
+
+# DB provisioning settings (override via environment if needed)
+DB_ROLE="${DB_ROLE:-kuber}"
+DB_PASSWORD="${DB_PASSWORD:-CHANGE_ME_STRONG_DB_PASSWORD}"
+MAIN_DB="${MAIN_DB:-trading_platform}"
+TSDB_DB="${TSDB_DB:-trading_data_plane}"
+DOCKER_SUBNET="${DOCKER_SUBNET:-172.17.0.0/16}"
 
 echo "=== Kuber Trading Server Setup ==="
 echo "Domain: $DOMAIN"
 echo "Install dir: $REMOTE_DIR"
+echo "Server user: $SERVER_USER"
 echo ""
 
 # --- Must be root ---
@@ -26,12 +34,12 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # --- System updates ---
-echo "[1/8] Updating system packages..."
+echo "[1/9] Updating system packages..."
 apt-get update -qq
 apt-get upgrade -y -qq
 
 # --- Install essentials ---
-echo "[2/8] Installing Docker, Nginx, Certbot, fail2ban..."
+echo "[2/9] Installing Docker, Nginx, Certbot, fail2ban..."
 apt-get install -y -qq \
     ca-certificates curl gnupg lsb-release \
     nginx certbot python3-certbot-nginx \
@@ -55,24 +63,34 @@ else
     echo "Docker already installed, skipping."
 fi
 
-# --- Create service user ---
-echo "[3/8] Creating user '$SERVER_USER'..."
-if ! id "$SERVER_USER" &>/dev/null; then
-    useradd -m -s /bin/bash "$SERVER_USER"
+# --- Ensure server user is in docker group ---
+echo "[3/9] Ensuring '$SERVER_USER' is in docker group..."
+if id "$SERVER_USER" &>/dev/null; then
     usermod -aG docker "$SERVER_USER"
-    echo "User '$SERVER_USER' created and added to docker group."
+    echo "User '$SERVER_USER' added to docker group (re-login required for effect)."
 else
-    usermod -aG docker "$SERVER_USER"
-    echo "User '$SERVER_USER' already exists, ensured docker group membership."
+    echo "WARNING: User '$SERVER_USER' does not exist. Create the user first."
 fi
 
 # --- Directory structure ---
-echo "[4/8] Creating directory structure..."
+echo "[4/9] Creating directory structure..."
 mkdir -p "$REMOTE_DIR"/{config/signal-generator,config/grafana/dashboards,config/grafana/datasources,backups,frontend}
 chown -R "$SERVER_USER":"$SERVER_USER" "$REMOTE_DIR"
 
+# --- Provision PostgreSQL databases (delegates to provision-db.sh) ---
+echo "[5/9] Provisioning PostgreSQL databases..."
+if [[ -f "$SCRIPT_DIR/provision-db.sh" ]]; then
+    DB_ROLE="$DB_ROLE" DB_PASSWORD="$DB_PASSWORD" MAIN_DB="$MAIN_DB" TSDB_DB="$TSDB_DB" \
+        DOCKER_SUBNET="$DOCKER_SUBNET" DEPLOY_USER="$SERVER_USER" REMOTE_DIR="$REMOTE_DIR" \
+        bash "$SCRIPT_DIR/provision-db.sh"
+else
+    echo "WARNING: provision-db.sh not found. Run it separately:"
+    echo "  sudo bash provision-db.sh"
+fi
+echo "[6/9] (handled by provision-db.sh)"
+
 # --- Docker log rotation ---
-echo "[5/8] Configuring Docker log rotation..."
+echo "[7/9] Configuring Docker log rotation..."
 cat > /etc/docker/daemon.json <<'DAEMON_JSON'
 {
   "log-driver": "json-file",
@@ -85,7 +103,7 @@ DAEMON_JSON
 systemctl restart docker
 
 # --- UFW Firewall ---
-echo "[6/8] Configuring firewall (UFW)..."
+echo "[8/9] Configuring firewall (UFW)..."
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
@@ -95,7 +113,6 @@ ufw --force enable
 echo "UFW enabled: allowing 22, 80, 443 only."
 
 # --- fail2ban ---
-echo "[7/8] Configuring fail2ban..."
 cat > /etc/fail2ban/jail.local <<'JAIL'
 [DEFAULT]
 bantime = 3600
@@ -109,35 +126,8 @@ JAIL
 systemctl enable fail2ban
 systemctl restart fail2ban
 
-# --- Daily DB backup cron ---
-echo "[8/8] Setting up daily database backup cron..."
-BACKUP_SCRIPT="$REMOTE_DIR/backup-databases.sh"
-cat > "$BACKUP_SCRIPT" <<BACKUP
-#!/usr/bin/env bash
-# Daily database backup — called by cron
-set -euo pipefail
-BACKUP_DIR="$REMOTE_DIR/backups"
-DATE=\$(date +%Y%m%d_%H%M%S)
-RETENTION_DAYS=14
-
-# PostgreSQL (main)
-docker exec trading-postgres pg_dump -U "\$(docker exec trading-postgres printenv POSTGRES_USER)" "\$(docker exec trading-postgres printenv POSTGRES_DB)" | gzip > "\$BACKUP_DIR/postgres_\$DATE.sql.gz"
-
-# TimescaleDB
-docker exec trading-timescaledb pg_dump -U "\$(docker exec trading-timescaledb printenv POSTGRES_USER)" "\$(docker exec trading-timescaledb printenv POSTGRES_DB)" | gzip > "\$BACKUP_DIR/timescaledb_\$DATE.sql.gz"
-
-# Prune old backups
-find "\$BACKUP_DIR" -name "*.sql.gz" -mtime +\$RETENTION_DAYS -delete
-
-echo "[\$DATE] Backup complete. Retained last \$RETENTION_DAYS days."
-BACKUP
-
-chmod +x "$BACKUP_SCRIPT"
-chown "$SERVER_USER":"$SERVER_USER" "$BACKUP_SCRIPT"
-
-# Add cron job (runs daily at 3:00 AM)
-CRON_LINE="0 3 * * * $BACKUP_SCRIPT >> $REMOTE_DIR/backups/backup.log 2>&1"
-(crontab -u "$SERVER_USER" -l 2>/dev/null | grep -v "$BACKUP_SCRIPT"; echo "$CRON_LINE") | crontab -u "$SERVER_USER" -
+# --- Daily DB backup cron (handled by provision-db.sh) ---
+echo "[9/9] Backup cron handled by provision-db.sh."
 
 # --- Nginx: create ACME webroot ---
 mkdir -p /var/www/certbot
@@ -155,24 +145,20 @@ else
     echo "  sudo sed 's/__DOMAIN__/$DOMAIN/g' $REMOTE_DIR/nginx/kubertrading.conf > /etc/nginx/sites-available/kubertrading.conf"
 fi
 
-# --- No-IP DUC (Dynamic DNS) ---
+# --- Summary ---
 echo ""
 echo "=== MANUAL STEPS REMAINING ==="
 echo ""
-echo "1. Install No-IP DUC (Dynamic DNS):"
-echo "   cd /usr/local/src && wget https://dmej8g5cpdyqd.cloudfront.net/downloads/noip-duc_3.3.0.tar.gz"
-echo "   tar xzf noip-duc_3.3.0.tar.gz && cd noip-duc_3.3.0 && sudo apt install -y make gcc"
-echo "   make && sudo make install"
-echo "   noip-duc --username YOUR_EMAIL --password YOUR_PASS -g $DOMAIN,api.$DOMAIN,grafana.$DOMAIN,www.$DOMAIN --check-interval 5m -d"
-echo "   (Or set up as systemd service — see README.md)"
+echo "1. Update the DB password in the backup script and .env.prod:"
+echo "   Edit $BACKUP_SCRIPT and set the real password"
+echo "   Copy .env.prod.template to $REMOTE_DIR/.env.prod and fill in secrets"
 echo ""
 echo "2. SSL certificates:"
 echo "   sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN -d api.$DOMAIN -d grafana.$DOMAIN"
 echo ""
-echo "3. Copy .env.prod to server:"
-echo "   scp .env.prod $SERVER_USER@<server-ip>:$REMOTE_DIR/.env.prod"
-echo "   ssh $SERVER_USER@<server-ip> 'chmod 600 $REMOTE_DIR/.env.prod'"
+echo "3. Re-login as '$SERVER_USER' for docker group to take effect:"
+echo "   su - $SERVER_USER"
 echo ""
-echo "4. Configure router port forwarding (80, 443 → this server)"
+echo "4. Configure router port forwarding (80, 443 -> this server)"
 echo ""
 echo "=== Setup complete! ==="
