@@ -14,7 +14,7 @@ final class WebSocketManager: @unchecked Sendable {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private var subscribedExecutionIds: Set<String> = []
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "WebSocket")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "WebSocket")
 
     // MARK: - Message Stream
 

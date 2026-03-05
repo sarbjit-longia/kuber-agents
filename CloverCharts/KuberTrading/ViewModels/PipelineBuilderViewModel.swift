@@ -89,7 +89,7 @@ final class PipelineBuilderViewModel {
     var currentPipelineId: String?
     var isEditing: Bool { currentPipelineId != nil }
 
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "PipelineBuilderVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "PipelineBuilderVM")
 
     // MARK: - Readiness
 

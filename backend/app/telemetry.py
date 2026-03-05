@@ -101,7 +101,7 @@ for _model in _LLM_MODELS:
 
 def setup_telemetry(
     app,
-    service_name: str = "trading-backend",
+    service_name: str = "clovercharts-backend",
     service_version: str = "1.0.0",
     metrics_port: int = 8001
 ) -> metrics.Meter:
@@ -124,7 +124,7 @@ def setup_telemetry(
         SERVICE_NAME: service_name,
         SERVICE_VERSION: service_version,
         DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "development"),
-        "service.namespace": "trading-platform",
+        "service.namespace": "clovercharts",
     })
     
     logger.info(f"Setting up OpenTelemetry for {service_name}")
@@ -164,7 +164,7 @@ def setup_telemetry(
     _meter = meter_provider.get_meter(service_name)
     
     # Setup system metrics collection (for backend only)
-    if service_name == "trading-backend" and app is not None:
+    if service_name == "clovercharts-backend" and app is not None:
         setup_system_metrics(_meter)
     
     # Start process metrics collection thread
@@ -191,7 +191,7 @@ def get_meter() -> metrics.Meter:
 
 
 def setup_telemetry_minimal(
-    service_name: str = "trading-worker",
+    service_name: str = "clovercharts-worker",
     service_version: str = "1.0.0",
     metrics_port: int = 8001
 ) -> metrics.Meter:
@@ -215,7 +215,7 @@ def setup_telemetry_minimal(
         SERVICE_NAME: service_name,
         SERVICE_VERSION: service_version,
         DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "development"),
-        "service.namespace": "trading-platform",
+        "service.namespace": "clovercharts",
     })
     
     logger.info(f"Setting up OpenTelemetry for {service_name} on port {metrics_port}")

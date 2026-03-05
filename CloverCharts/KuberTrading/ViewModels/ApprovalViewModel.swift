@@ -17,7 +17,7 @@ final class ApprovalViewModel {
     let token: String
     let executionId: String?
 
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "ApprovalVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "ApprovalVM")
 
     init(token: String, executionId: String? = nil) {
         self.token = token

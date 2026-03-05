@@ -8,7 +8,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: trading-redis
+    container_name: clovercharts-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
@@ -26,7 +26,7 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: trading-zookeeper
+    container_name: clovercharts-zookeeper
     restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -41,7 +41,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: trading-kafka
+    container_name: clovercharts-kafka
     restart: unless-stopped
     depends_on:
       - zookeeper
@@ -68,8 +68,8 @@ services:
   # --- Backend Services ---
 
   backend:
-    image: kubertrading/backend:latest
-    container_name: trading-backend
+    image: clovercharts/backend:latest
+    container_name: clovercharts-backend
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     ports:
@@ -100,8 +100,8 @@ services:
       start_period: 40s
 
   celery-worker:
-    image: kubertrading/backend:latest
-    container_name: trading-celery-worker
+    image: clovercharts/backend:latest
+    container_name: clovercharts-celery-worker
     restart: unless-stopped
     command: celery -A app.orchestration.celery_app worker --loglevel=warning --concurrency=2
     env_file: .env.prod
@@ -129,8 +129,8 @@ services:
       start_period: 40s
 
   celery-beat:
-    image: kubertrading/backend:latest
-    container_name: trading-celery-beat
+    image: clovercharts/backend:latest
+    container_name: clovercharts-celery-beat
     restart: unless-stopped
     command: celery -A app.orchestration.celery_app beat --loglevel=warning
     env_file: .env.prod
@@ -156,8 +156,8 @@ services:
       start_period: 30s
 
   flower:
-    image: kubertrading/backend:latest
-    container_name: trading-flower
+    image: clovercharts/backend:latest
+    container_name: clovercharts-flower
     restart: unless-stopped
     command: celery -A app.orchestration.celery_app flower --port=5555 --url_prefix=flower --basic-auth=${FLOWER_BASIC_AUTH}
     ports:
@@ -185,8 +185,8 @@ services:
   # --- Microservices ---
 
   signal-generator:
-    image: kubertrading/signal-generator:latest
-    container_name: trading-signal-generator
+    image: clovercharts/signal-generator:latest
+    container_name: clovercharts-signal-generator
     restart: unless-stopped
     env_file: .env.prod
     environment:
@@ -214,8 +214,8 @@ services:
           memory: 256M
 
   trigger-dispatcher:
-    image: kubertrading/trigger-dispatcher:latest
-    container_name: trading-trigger-dispatcher
+    image: clovercharts/trigger-dispatcher:latest
+    container_name: clovercharts-trigger-dispatcher
     restart: unless-stopped
     env_file: .env.prod
     environment:
@@ -244,8 +244,8 @@ services:
           memory: 256M
 
   data-plane:
-    image: kubertrading/data-plane:latest
-    container_name: trading-data-plane
+    image: clovercharts/data-plane:latest
+    container_name: clovercharts-data-plane
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     env_file: .env.prod
@@ -281,8 +281,8 @@ services:
       retries: 3
 
   data-plane-worker:
-    image: kubertrading/data-plane:latest
-    container_name: trading-data-plane-worker
+    image: clovercharts/data-plane:latest
+    container_name: clovercharts-data-plane-worker
     restart: unless-stopped
     command: celery -A app.tasks.celery_tasks worker --loglevel=WARNING --pool=solo -n data-plane-worker
     env_file: .env.prod
@@ -308,8 +308,8 @@ services:
           memory: 384M
 
   data-plane-beat:
-    image: kubertrading/data-plane:latest
-    container_name: trading-data-plane-beat
+    image: clovercharts/data-plane:latest
+    container_name: clovercharts-data-plane-beat
     restart: unless-stopped
     command: celery -A app.tasks.celery_tasks beat --loglevel=WARNING --schedule=/tmp/celerybeat-schedule
     env_file: .env.prod
@@ -337,8 +337,8 @@ services:
   # --- Frontend ---
 
   frontend:
-    image: kubertrading/frontend:latest
-    container_name: trading-frontend
+    image: clovercharts/frontend:latest
+    container_name: clovercharts-frontend
     restart: unless-stopped
     ports:
       - "127.0.0.1:4200:80"
@@ -356,7 +356,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.48.0
-    container_name: trading-prometheus
+    container_name: clovercharts-prometheus
     restart: unless-stopped
     ports:
       - "127.0.0.1:9090:9090"
@@ -374,7 +374,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.2.0
-    container_name: trading-grafana
+    container_name: clovercharts-grafana
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"

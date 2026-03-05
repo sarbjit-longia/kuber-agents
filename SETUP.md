@@ -57,13 +57,13 @@ docker-compose logs -f backend
 
 ```bash
 # Run database migrations
-docker exec -it trading-backend alembic upgrade head
+docker exec -it clovercharts-backend alembic upgrade head
 
 # Seed the database with default data (LLM models, etc.)
-docker exec trading-backend python seed_database.py
+docker exec clovercharts-backend python seed_database.py
 
 # Verify migrations
-docker exec -it trading-backend alembic current
+docker exec -it clovercharts-backend alembic current
 ```
 
 **Note**: The seed script populates the database with:
@@ -100,7 +100,7 @@ Open http://localhost:4200 - you should see the dashboard with backend connectio
 
 ```bash
 # Connect to PostgreSQL
-docker exec -it trading-postgres psql -U dev -d trading_platform
+docker exec -it clovercharts-postgres psql -U dev -d trading_platform
 
 # List tables
 \dt
@@ -113,7 +113,7 @@ docker exec -it trading-postgres psql -U dev -d trading_platform
 
 ```bash
 # Connect to Redis
-docker exec -it trading-redis redis-cli
+docker exec -it clovercharts-redis redis-cli
 
 # Test connection
 ping
@@ -134,13 +134,13 @@ exit
 docker-compose logs -f backend
 
 # Run tests
-docker exec -it trading-backend pytest
+docker exec -it clovercharts-backend pytest
 
 # Run tests with coverage
-docker exec -it trading-backend pytest --cov=app
+docker exec -it clovercharts-backend pytest --cov=app
 
 # Access backend shell
-docker exec -it trading-backend bash
+docker exec -it clovercharts-backend bash
 ```
 
 ### Frontend Development
@@ -162,16 +162,16 @@ npm start
 
 ```bash
 # Create a new migration
-docker exec -it trading-backend alembic revision --autogenerate -m "Description"
+docker exec -it clovercharts-backend alembic revision --autogenerate -m "Description"
 
 # Apply migrations
-docker exec -it trading-backend alembic upgrade head
+docker exec -it clovercharts-backend alembic upgrade head
 
 # Rollback last migration
-docker exec -it trading-backend alembic downgrade -1
+docker exec -it clovercharts-backend alembic downgrade -1
 
 # View migration history
-docker exec -it trading-backend alembic history
+docker exec -it clovercharts-backend alembic history
 ```
 
 ## Stopping Services

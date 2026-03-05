@@ -7,7 +7,7 @@ final class PipelineListViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "PipelineListVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "PipelineListVM")
 
     // MARK: - Load Pipelines
 

@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     try:
         meter = setup_telemetry(
             app,
-            service_name="trading-backend",
+            service_name="clovercharts-backend",
             service_version="1.0.0",
             metrics_port=8001
         )
@@ -100,7 +100,7 @@ async def health_check():
     """Health check endpoint for container orchestration."""
     return {
         "status": "healthy",
-        "service": "trading-platform-api",
+        "service": "clovercharts-api",
         "version": "0.1.0"
     }
 

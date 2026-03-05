@@ -21,8 +21,8 @@ final class AppConfiguration {
         self.wsBaseURL = URL(string: "ws://localhost:8000")!
         #else
         self.environment = .production
-        self.baseURL = URL(string: "https://api.kubertrading.com")!
-        self.wsBaseURL = URL(string: "wss://api.kubertrading.com")!
+        self.baseURL = URL(string: "https://api.clovercharts.com")!
+        self.wsBaseURL = URL(string: "wss://api.clovercharts.com")!
         #endif
     }
 

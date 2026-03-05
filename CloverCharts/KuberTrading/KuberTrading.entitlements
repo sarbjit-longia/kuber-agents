@@ -6,7 +6,7 @@
     <string>development</string>
     <key>com.apple.developer.associated-domains</key>
     <array>
-        <string>applinks:app.kubertrading.com</string>
+        <string>applinks:app.clovercharts.com</string>
     </array>
 </dict>
 </plist>

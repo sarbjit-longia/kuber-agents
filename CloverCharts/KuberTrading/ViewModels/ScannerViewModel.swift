@@ -16,7 +16,7 @@ final class ScannerViewModel {
     var tickers: [String] = []
     var tickerInput = ""
 
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "ScannerVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "ScannerVM")
 
     // MARK: - Load Scanners
 

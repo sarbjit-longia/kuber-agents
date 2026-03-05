@@ -13,7 +13,7 @@ final class DashboardViewModel {
     var costChartDays = 7
 
     private var autoRefreshTask: Task<Void, Never>?
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "DashboardVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "DashboardVM")
 
     // MARK: - Load Dashboard
 

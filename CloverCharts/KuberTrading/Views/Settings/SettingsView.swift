@@ -160,15 +160,15 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Link(destination: URL(string: "https://kubertrading.com/support")!) {
+                Link(destination: URL(string: "https://clovercharts.com/support")!) {
                     Label("Support", systemImage: "questionmark.circle")
                 }
 
-                Link(destination: URL(string: "https://kubertrading.com/privacy")!) {
+                Link(destination: URL(string: "https://clovercharts.com/privacy")!) {
                     Label("Privacy Policy", systemImage: "hand.raised")
                 }
 
-                Link(destination: URL(string: "https://kubertrading.com/terms")!) {
+                Link(destination: URL(string: "https://clovercharts.com/terms")!) {
                     Label("Terms of Service", systemImage: "doc.plaintext")
                 }
             } header: {

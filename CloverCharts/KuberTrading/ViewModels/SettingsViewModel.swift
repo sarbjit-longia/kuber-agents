@@ -22,7 +22,7 @@ final class SettingsViewModel {
     var biometricEnabled = false
     var biometricType: BiometricService.BiometricType = .none
 
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "SettingsVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "SettingsVM")
 
     // MARK: - Load Settings
 

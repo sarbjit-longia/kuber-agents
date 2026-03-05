@@ -98,7 +98,7 @@ def init_worker_telemetry(**kwargs):
     try:
         from app.telemetry import setup_telemetry_minimal
         setup_telemetry_minimal(
-            service_name="trading-celery-worker",
+            service_name="clovercharts-celery-worker",
             service_version="1.0.0",
             metrics_port=8001  # Internal container port
         )

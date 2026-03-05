@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     APNS_KEY_ID: str = Field(default="", description="APNs auth key ID from Apple Developer portal")
     APNS_TEAM_ID: str = Field(default="", description="Apple Developer Team ID")
     APNS_BUNDLE_ID: str = Field(
-        default="com.kubertrading.app",
+        default="com.clovercharts.app",
         description="iOS app bundle identifier"
     )
     APNS_AUTH_KEY_PATH: str = Field(

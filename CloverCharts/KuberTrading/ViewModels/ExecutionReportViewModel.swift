@@ -10,7 +10,7 @@ final class ExecutionReportViewModel {
     var errorMessage: String?
 
     let executionId: String
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "ExecutionReportVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "ExecutionReportVM")
 
     init(executionId: String) {
         self.executionId = executionId

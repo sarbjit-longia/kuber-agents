@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time Ubuntu server provisioning for Kuber Trading
+# One-time Ubuntu server provisioning for Clover Charts
 # Assumes PostgreSQL 17 + TimescaleDB are already installed natively.
 # Run as root or with sudo on the target Ubuntu server:
 #   sudo bash server-setup.sh
@@ -10,8 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/config.env" ]]; then
     source "$SCRIPT_DIR/config.env"
 fi
-DOMAIN="${DOMAIN:-kubertrading.com}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/kubertrading}"
+DOMAIN="${DOMAIN:-clovercharts.com}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/clovercharts}"
 SERVER_USER="${SERVER_USER:-sarbjit}"
 
 # DB provisioning settings (override via environment if needed)
@@ -21,7 +21,7 @@ MAIN_DB="${MAIN_DB:-trading_platform}"
 TSDB_DB="${TSDB_DB:-trading_data_plane}"
 DOCKER_SUBNET="${DOCKER_SUBNET:-172.17.0.0/16}"
 
-echo "=== Kuber Trading Server Setup ==="
+echo "=== Clover Charts Server Setup ==="
 echo "Domain: $DOMAIN"
 echo "Install dir: $REMOTE_DIR"
 echo "Server user: $SERVER_USER"
@@ -133,16 +133,16 @@ echo "[9/9] Backup cron handled by provision-db.sh."
 mkdir -p /var/www/certbot
 
 # --- Nginx: install config with domain substitution ---
-if [[ -f "$SCRIPT_DIR/nginx/kubertrading.conf" ]]; then
+if [[ -f "$SCRIPT_DIR/nginx/clovercharts.conf" ]]; then
     echo "Installing Nginx config with domain=$DOMAIN..."
-    sed "s/__DOMAIN__/$DOMAIN/g" "$SCRIPT_DIR/nginx/kubertrading.conf" > /etc/nginx/sites-available/kubertrading.conf
-    ln -sf /etc/nginx/sites-available/kubertrading.conf /etc/nginx/sites-enabled/kubertrading.conf
+    sed "s/__DOMAIN__/$DOMAIN/g" "$SCRIPT_DIR/nginx/clovercharts.conf" > /etc/nginx/sites-available/clovercharts.conf
+    ln -sf /etc/nginx/sites-available/clovercharts.conf /etc/nginx/sites-enabled/clovercharts.conf
     rm -f /etc/nginx/sites-enabled/default
     echo "Nginx config installed. Run certbot before enabling HTTPS:"
     echo "  sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN -d api.$DOMAIN -d grafana.$DOMAIN"
 else
     echo "NOTE: Nginx config not found locally. Deploy it with deploy.sh first, then run:"
-    echo "  sudo sed 's/__DOMAIN__/$DOMAIN/g' $REMOTE_DIR/nginx/kubertrading.conf > /etc/nginx/sites-available/kubertrading.conf"
+    echo "  sudo sed 's/__DOMAIN__/$DOMAIN/g' $REMOTE_DIR/nginx/clovercharts.conf > /etc/nginx/sites-available/clovercharts.conf"
 fi
 
 # --- Summary ---

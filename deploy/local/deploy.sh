@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kuber Trading — Interactive Deploy Console
+# Clover Charts — Interactive Deploy Console
 # Run from the dev Mac at the project root:
 #   ./deploy/local/deploy.sh              # interactive menu
 #   ./deploy/local/deploy.sh status       # direct status check
@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/config.env"
 DOMAIN="${DOMAIN:?DOMAIN not set in config.env}"
 SERVER="${SERVER_HOST:?SERVER_HOST not set in config.env}"
 USER="${SERVER_USER:-kuber}"
-REMOTE="${REMOTE_DIR:-/opt/kubertrading}"
+REMOTE="${REMOTE_DIR:-/opt/clovercharts}"
 GIT_SHA=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_PLATFORM="${BUILD_PLATFORM:-linux/amd64}"
 
@@ -191,7 +191,7 @@ deploy_images() {
             echo ""
             info "[$img] Building..."
             if ! docker build --platform "$BUILD_PLATFORM" \
-                -t "kubertrading/$img:latest" -t "kubertrading/$img:$GIT_SHA" \
+                -t "clovercharts/$img:latest" -t "clovercharts/$img:$GIT_SHA" \
                 -f "$PROJECT_ROOT/$dockerfile" "$PROJECT_ROOT/$context"; then
                 err "[$img] Build failed — skipping."
                 continue
@@ -202,17 +202,17 @@ deploy_images() {
         # --- Push ---
         if [[ "$do_push" == "true" ]]; then
             # Verify image exists locally before pushing
-            if ! docker image inspect "kubertrading/$img:latest" &>/dev/null; then
-                err "[$img] Image kubertrading/$img:latest not found locally — skipping."
+            if ! docker image inspect "clovercharts/$img:latest" &>/dev/null; then
+                err "[$img] Image clovercharts/$img:latest not found locally — skipping."
                 continue
             fi
 
             info "[$img] Tagging :previous on server..."
-            remote "docker tag kubertrading/$img:latest kubertrading/$img:previous 2>/dev/null || true"
+            remote "docker tag clovercharts/$img:latest clovercharts/$img:previous 2>/dev/null || true"
 
             start_time=$(date +%s)
             info "[$img] Transferring to $SERVER..."
-            if ! docker save "kubertrading/$img:latest" | ssh "$USER@$SERVER" 'docker load'; then
+            if ! docker save "clovercharts/$img:latest" | ssh "$USER@$SERVER" 'docker load'; then
                 err "[$img] Transfer failed — skipping."
                 continue
             fi
@@ -249,7 +249,7 @@ deploy_images() {
                     sleep 1
                 done
                 if [[ "$healthy" != "true" ]]; then
-                    warn "Backend not healthy after 30s. Check: docker logs trading-backend"
+                    warn "Backend not healthy after 30s. Check: docker logs clovercharts-backend"
                 fi
                 break
             fi
@@ -328,9 +328,9 @@ sync_config() {
 
     info "Syncing Nginx config..."
     remote "mkdir -p $REMOTE/nginx"
-    sed "s/__DOMAIN__/$DOMAIN/g" "$SCRIPT_DIR/nginx/kubertrading.conf" 2>/dev/null \
-        | ssh "$USER@$SERVER" "cat > $REMOTE/nginx/kubertrading.conf" \
-        || warn "No nginx/kubertrading.conf template found — skipped."
+    sed "s/__DOMAIN__/$DOMAIN/g" "$SCRIPT_DIR/nginx/clovercharts.conf" 2>/dev/null \
+        | ssh "$USER@$SERVER" "cat > $REMOTE/nginx/clovercharts.conf" \
+        || warn "No nginx/clovercharts.conf template found — skipped."
 
     info "Syncing Prometheus config..."
     scp -q "$PROJECT_ROOT/monitoring/prometheus.yml" "$USER@$SERVER:$REMOTE/config/prometheus.yml" 2>/dev/null \
@@ -353,8 +353,8 @@ sync_config() {
     info "Checking Nginx config on server..."
     remote_bash <<'EOF'
         if command -v nginx &>/dev/null; then
-            if ! diff -q /opt/kubertrading/nginx/kubertrading.conf /etc/nginx/sites-available/kubertrading.conf &>/dev/null 2>&1; then
-                sudo cp /opt/kubertrading/nginx/kubertrading.conf /etc/nginx/sites-available/kubertrading.conf
+            if ! diff -q /opt/clovercharts/nginx/clovercharts.conf /etc/nginx/sites-available/clovercharts.conf &>/dev/null 2>&1; then
+                sudo cp /opt/clovercharts/nginx/clovercharts.conf /etc/nginx/sites-available/clovercharts.conf
                 sudo nginx -t && sudo systemctl reload nginx
                 echo "  Nginx config updated and reloaded."
             else
@@ -421,11 +421,11 @@ run_migrations() {
     header "Run Migrations"
 
     info "Running alembic upgrade head..."
-    remote "docker exec trading-backend alembic upgrade head"
+    remote "docker exec clovercharts-backend alembic upgrade head"
     success "Migrations complete."
 
     info "Running seed_database.py (idempotent)..."
-    remote "docker exec trading-backend python seed_database.py"
+    remote "docker exec clovercharts-backend python seed_database.py"
     success "Database seeded."
 }
 
@@ -487,9 +487,9 @@ rollback() {
     echo ""
     remote_bash <<'EOF'
         for svc in backend signal-generator trigger-dispatcher data-plane frontend; do
-            if docker image inspect "kubertrading/$svc:previous" &>/dev/null; then
-                prev_id=$(docker image inspect "kubertrading/$svc:previous" --format '{{.Id}}' | cut -c8-19)
-                curr_id=$(docker image inspect "kubertrading/$svc:latest" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo "none")
+            if docker image inspect "clovercharts/$svc:previous" &>/dev/null; then
+                prev_id=$(docker image inspect "clovercharts/$svc:previous" --format '{{.Id}}' | cut -c8-19)
+                curr_id=$(docker image inspect "clovercharts/$svc:latest" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo "none")
                 if [[ "$prev_id" == "$curr_id" ]]; then
                     echo "  $svc: :previous == :latest (same image)"
                 else
@@ -511,9 +511,9 @@ EOF
         cd "$REMOTE"
         rolled=0
         for svc in backend signal-generator trigger-dispatcher data-plane frontend; do
-            if docker image inspect "kubertrading/\$svc:previous" &>/dev/null; then
-                docker tag "kubertrading/\$svc:previous" "kubertrading/\$svc:latest"
-                echo "  Rolled back kubertrading/\$svc"
+            if docker image inspect "clovercharts/\$svc:previous" &>/dev/null; then
+                docker tag "clovercharts/\$svc:previous" "clovercharts/\$svc:latest"
+                echo "  Rolled back clovercharts/\$svc"
                 rolled=1
             fi
         done
@@ -597,11 +597,11 @@ health_check() {
 
         echo ""
         echo "--- Docker Health Status ---"
-        docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | grep trading || echo "  (no trading containers)"
+        docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | grep clovercharts || echo "  (no clovercharts containers)"
 
         echo ""
         echo "--- Database ---"
-        if docker exec trading-backend python -c "
+        if docker exec clovercharts-backend python -c "
 from app.config import settings
 from sqlalchemy import create_engine, text
 e = create_engine(settings.DATABASE_URL.replace('+asyncpg',''))
@@ -616,7 +616,7 @@ with e.connect() as c:
 
         echo ""
         echo "--- Redis ---"
-        if docker exec trading-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+        if docker exec clovercharts-redis redis-cli ping 2>/dev/null | grep -q PONG; then
             pass "Redis               (PONG)"
         else
             fail "Redis"
@@ -624,7 +624,7 @@ with e.connect() as c:
 
         echo ""
         echo "--- Kafka ---"
-        if docker exec trading-kafka kafka-broker-api-versions --bootstrap-server localhost:9092 &>/dev/null; then
+        if docker exec clovercharts-kafka kafka-broker-api-versions --bootstrap-server localhost:9092 &>/dev/null; then
             pass "Kafka               (broker responsive)"
         else
             fail "Kafka"
@@ -632,7 +632,7 @@ with e.connect() as c:
 
         echo ""
         echo "--- Celery Workers ---"
-        if docker exec trading-celery-worker celery -A app.orchestration.celery_app inspect ping --timeout 5 2>/dev/null | grep -q "pong"; then
+        if docker exec clovercharts-celery-worker celery -A app.orchestration.celery_app inspect ping --timeout 5 2>/dev/null | grep -q "pong"; then
             pass "Celery Worker       (pong)"
         else
             fail "Celery Worker"
@@ -667,7 +667,7 @@ get_status() {
         cd "$REMOTE" 2>/dev/null && $COMPOSE ps 2>/dev/null || echo "(compose not available)"
         echo ""
         echo "--- Container Resources ---"
-        docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>/dev/null | grep trading || echo "(no trading containers)"
+        docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>/dev/null | grep clovercharts || echo "(no clovercharts containers)"
 STATUS
 }
 
@@ -676,7 +676,7 @@ STATUS
 # ============================================================
 show_menu() {
     echo ""
-    echo -e "${CYAN}${BOLD}=== Kuber Trading Deploy Console ===${NC}"
+    echo -e "${CYAN}${BOLD}=== Clover Charts Deploy Console ===${NC}"
     echo -e "Server: ${BOLD}$USER@$SERVER${NC} | Dir: $REMOTE | Git: $GIT_SHA"
     echo ""
     echo "  1) Deploy Images          6) Run Migrations"

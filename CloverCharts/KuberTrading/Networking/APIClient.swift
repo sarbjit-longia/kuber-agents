@@ -8,7 +8,7 @@ actor APIClient {
     private let baseURL: URL
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "APIClient")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "APIClient")
 
     init() {
         let config = URLSessionConfiguration.default

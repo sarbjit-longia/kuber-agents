@@ -85,7 +85,7 @@ vim .env
 docker-compose up -d
 
 # 5. Run database migrations
-docker exec -it trading-backend alembic upgrade head
+docker exec -it clovercharts-backend alembic upgrade head
 
 # 6. Access the application
 # API: http://localhost:8000
@@ -98,14 +98,14 @@ docker exec -it trading-backend alembic upgrade head
 
 ```bash
 # Backend tests
-docker exec -it trading-backend pytest -v
+docker exec -it clovercharts-backend pytest -v
 
 # Frontend tests
 cd frontend
 npm test
 
 # Coverage
-docker exec -it trading-backend pytest --cov=app
+docker exec -it clovercharts-backend pytest --cov=app
 ```
 
 ## 📚 Documentation

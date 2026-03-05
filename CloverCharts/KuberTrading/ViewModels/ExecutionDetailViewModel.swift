@@ -18,7 +18,7 @@ final class ExecutionDetailViewModel {
     private var wsManager = WebSocketManager.shared
 
     let executionId: String
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "ExecutionDetailVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "ExecutionDetailVM")
 
     init(executionId: String) {
         self.executionId = executionId

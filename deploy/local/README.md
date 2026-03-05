@@ -1,6 +1,6 @@
 # Self-Hosted Deployment Guide
 
-Deploy Kuber Trading to a personal Ubuntu server with Nginx reverse proxy, Let's Encrypt SSL, and No-IP dynamic DNS.
+Deploy Clover Charts to a personal Ubuntu server with Nginx reverse proxy, Let's Encrypt SSL, and No-IP dynamic DNS.
 
 ## Server Requirements
 
@@ -16,9 +16,9 @@ Deploy Kuber Trading to a personal Ubuntu server with Nginx reverse proxy, Let's
 ```
 Internet → Router (ports 80,443) → Ubuntu Server
   → Nginx (host, SSL termination)
-    → kubertrading.com        → /opt/kubertrading/frontend/ (static)
-    → api.kubertrading.com    → 127.0.0.1:8000 (Docker: backend)
-    → grafana.kubertrading.com → 127.0.0.1:3000 (Docker: grafana)
+    → clovercharts.com        → /opt/clovercharts/frontend/ (static)
+    → api.clovercharts.com    → 127.0.0.1:8000 (Docker: backend)
+    → grafana.clovercharts.com → 127.0.0.1:3000 (Docker: grafana)
   → PostgreSQL + TimescaleDB (host-native, port 5432)
   → Docker Compose (12 containers, all ports on 127.0.0.1)
     → Containers connect to host DB via host.docker.internal:5432
@@ -42,10 +42,10 @@ Host quantum
 Edit `deploy/local/config.env` with your domain and server details:
 
 ```bash
-DOMAIN=kubertrading.com
+DOMAIN=clovercharts.com
 SERVER_HOST=quantum
 SERVER_USER=sarbjit
-REMOTE_DIR=/opt/kubertrading
+REMOTE_DIR=/opt/clovercharts
 ```
 
 ### 3. Run server setup (once)
@@ -53,8 +53,8 @@ REMOTE_DIR=/opt/kubertrading
 Copy the `deploy/local/` directory to the server and run:
 
 ```bash
-scp -r deploy/local/ quantum:/tmp/kuber-setup/
-ssh quantum 'sudo bash /tmp/kuber-setup/server-setup.sh'
+scp -r deploy/local/ quantum:/tmp/clovercharts-setup/
+ssh quantum 'sudo bash /tmp/clovercharts-setup/server-setup.sh'
 ```
 
 This installs Docker, Nginx, Certbot, fail2ban, UFW, provisions the PostgreSQL databases (`trading_platform` and `trading_data_plane`), enables TimescaleDB, configures `pg_hba.conf` for Docker access, and sets up native backup cron.
@@ -64,7 +64,7 @@ This installs Docker, Nginx, Certbot, fail2ban, UFW, provisions the PostgreSQL d
 **Option A: No-IP (Dynamic IP)**
 
 1. Create a free account at [noip.com](https://www.noip.com)
-2. Create hostnames: `kubertrading.com`, `api.kubertrading.com`, `grafana.kubertrading.com`, `www.kubertrading.com`
+2. Create hostnames: `clovercharts.com`, `api.clovercharts.com`, `grafana.clovercharts.com`, `www.clovercharts.com`
 3. Install No-IP DUC on the server:
 
 ```bash
@@ -85,7 +85,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/noip-duc --username YOUR_EMAIL --password YOUR_PASS -g kubertrading.com,api.kubertrading.com,grafana.kubertrading.com,www.kubertrading.com --check-interval 5m
+ExecStart=/usr/local/bin/noip-duc --username YOUR_EMAIL --password YOUR_PASS -g clovercharts.com,api.clovercharts.com,grafana.clovercharts.com,www.clovercharts.com --check-interval 5m
 Restart=on-failure
 RestartSec=10
 
@@ -112,9 +112,9 @@ Forward these ports to the Ubuntu server's LAN IP:
 
 ```bash
 # Copy template and fill in real values
-scp deploy/local/.env.prod.template quantum:/opt/kubertrading/.env.prod
-ssh quantum 'nano /opt/kubertrading/.env.prod'  # Edit with real secrets
-ssh quantum 'chmod 600 /opt/kubertrading/.env.prod'
+scp deploy/local/.env.prod.template quantum:/opt/clovercharts/.env.prod
+ssh quantum 'nano /opt/clovercharts/.env.prod'  # Edit with real secrets
+ssh quantum 'chmod 600 /opt/clovercharts/.env.prod'
 ```
 
 **Critical secrets to set:**
@@ -130,7 +130,7 @@ ssh quantum 'chmod 600 /opt/kubertrading/.env.prod'
 
 ```bash
 ssh quantum
-sudo certbot --nginx -d kubertrading.com -d www.kubertrading.com -d api.kubertrading.com -d grafana.kubertrading.com
+sudo certbot --nginx -d clovercharts.com -d www.clovercharts.com -d api.clovercharts.com -d grafana.clovercharts.com
 ```
 
 Certbot auto-renews via systemd timer. Verify: `sudo certbot renew --dry-run`
@@ -173,7 +173,7 @@ This reverts all 4 custom images to their `:previous` tags and restarts containe
 
 ```bash
 ssh quantum
-cd /opt/kubertrading
+cd /opt/clovercharts
 docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs -f celery-worker
 docker compose -f docker-compose.prod.yml logs --tail=100 signal-generator
@@ -182,7 +182,7 @@ docker compose -f docker-compose.prod.yml logs --tail=100 signal-generator
 ### Restart a service
 
 ```bash
-ssh quantum 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml restart backend'
+ssh quantum 'cd /opt/clovercharts && docker compose -f docker-compose.prod.yml restart backend'
 ```
 
 ## Accessing Internal Tools
@@ -224,24 +224,24 @@ psql -U kuber -d trading_data_plane -c "SELECT * FROM timescaledb_information.hy
 ## Backups
 
 Daily automated backups run at 3:00 AM via cron using native `pg_dump`:
-- `trading_platform` and `trading_data_plane` dumps in `/opt/kubertrading/backups/`
+- `trading_platform` and `trading_data_plane` dumps in `/opt/clovercharts/backups/`
 - 14-day retention (older backups auto-deleted)
-- Logs: `/opt/kubertrading/backups/backup.log`
+- Logs: `/opt/clovercharts/backups/backup.log`
 
 ### Manual backup
 
 ```bash
-ssh quantum '/opt/kubertrading/backup-databases.sh'
+ssh quantum '/opt/clovercharts/backup-databases.sh'
 ```
 
 ### Restore from backup
 
 ```bash
 ssh quantum
-gunzip -c /opt/kubertrading/backups/postgres_20260301_030000.sql.gz | \
+gunzip -c /opt/clovercharts/backups/postgres_20260301_030000.sql.gz | \
     psql -U kuber trading_platform
 
-gunzip -c /opt/kubertrading/backups/timescaledb_20260301_030000.sql.gz | \
+gunzip -c /opt/clovercharts/backups/timescaledb_20260301_030000.sql.gz | \
     psql -U kuber trading_data_plane
 ```
 
@@ -271,7 +271,7 @@ gunzip -c /opt/kubertrading/backups/timescaledb_20260301_030000.sql.gz | \
 
 ### Backend not starting
 ```bash
-ssh quantum 'docker logs trading-backend --tail=50'
+ssh quantum 'docker logs clovercharts-backend --tail=50'
 ```
 
 ### Backend can't connect to PostgreSQL
@@ -283,7 +283,7 @@ ssh quantum 'ss -tlnp | grep 5432'
 ssh quantum 'sudo grep docker /etc/postgresql/*/main/pg_hba.conf'
 
 # Test from inside a container
-ssh quantum 'docker exec trading-backend python -c "import sqlalchemy; print(sqlalchemy.create_engine(\"postgresql://kuber:pw@host.docker.internal:5432/trading_platform\").connect())"'
+ssh quantum 'docker exec clovercharts-backend python -c "import sqlalchemy; print(sqlalchemy.create_engine(\"postgresql://kuber:pw@host.docker.internal:5432/trading_platform\").connect())"'
 ```
 
 ### Nginx errors
@@ -300,7 +300,7 @@ ssh quantum 'sudo certbot renew --force-renewal'
 
 ### Check all container status
 ```bash
-ssh quantum 'cd /opt/kubertrading && docker compose -f docker-compose.prod.yml ps'
+ssh quantum 'cd /opt/clovercharts && docker compose -f docker-compose.prod.yml ps'
 ```
 
 ### Disk usage

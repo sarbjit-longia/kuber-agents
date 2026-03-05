@@ -17,7 +17,7 @@ final class MonitoringListViewModel {
     var pageSize = 20
 
     private var isLoadingMore = false
-    private let logger = Logger(subsystem: "com.kubertrading.app", category: "MonitoringListVM")
+    private let logger = Logger(subsystem: "com.clovercharts.app", category: "MonitoringListVM")
 
     // MARK: - Load Executions
 

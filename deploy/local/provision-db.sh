@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provision PostgreSQL databases for Kuber Trading on a host with native PG + TimescaleDB.
+# Provision PostgreSQL databases for Clover Charts on a host with native PG + TimescaleDB.
 # Run once on the server:
 #   sudo bash provision-db.sh
 # Or with a custom password:
@@ -13,9 +13,9 @@ MAIN_DB="${MAIN_DB:-trading_platform}"
 TSDB_DB="${TSDB_DB:-trading_data_plane}"
 DOCKER_SUBNET="${DOCKER_SUBNET:-172.17.0.0/16}"
 DEPLOY_USER="${DEPLOY_USER:-sarbjit}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/kubertrading}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/clovercharts}"
 
-echo "=== Kuber Trading — Database Provisioning ==="
+echo "=== Clover Charts — Database Provisioning ==="
 echo "Role:     $DB_ROLE"
 echo "Main DB:  $MAIN_DB"
 echo "TSDB DB:  $TSDB_DB"

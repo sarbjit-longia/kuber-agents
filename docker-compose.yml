@@ -6,7 +6,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: trading-postgres
+    container_name: clovercharts-postgres
     environment:
       POSTGRES_DB: trading_platform
       POSTGRES_USER: dev
@@ -24,7 +24,7 @@ services:
   # Redis Cache & Queue
   redis:
     image: redis:7-alpine
-    container_name: trading-redis
+    container_name: clovercharts-redis
     ports:
       - "6380:6379"
     volumes:
@@ -38,7 +38,7 @@ services:
   # TimescaleDB (Data Plane Database)
   timescaledb:
     image: timescale/timescaledb:latest-pg15
-    container_name: trading-timescaledb
+    container_name: clovercharts-timescaledb
     environment:
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: devpass
@@ -58,7 +58,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: trading-backend
+    container_name: clovercharts-backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
@@ -111,7 +111,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: trading-celery-worker
+    container_name: clovercharts-celery-worker
     command: celery -A app.orchestration.celery_app worker --loglevel=info --concurrency=2
     ports:
       - "8002:8001"  # Prometheus metrics endpoint (different host port)
@@ -153,7 +153,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: trading-celery-beat
+    container_name: clovercharts-celery-beat
     command: celery -A app.orchestration.celery_app beat --loglevel=info
     environment:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/trading_platform
@@ -181,7 +181,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: trading-flower
+    container_name: clovercharts-flower
     command: celery -A app.orchestration.celery_app flower --port=5555
     ports:
       - "5555:5555"
@@ -203,7 +203,7 @@ services:
   # Zookeeper (required for Kafka)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: trading-zookeeper
+    container_name: clovercharts-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -216,7 +216,7 @@ services:
   # Kafka Message Broker
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: trading-kafka
+    container_name: clovercharts-kafka
     depends_on:
       - zookeeper
     ports:
@@ -243,7 +243,7 @@ services:
     build:
       context: ./signal-generator
       dockerfile: Dockerfile
-    container_name: trading-signal-generator
+    container_name: clovercharts-signal-generator
     depends_on:
       kafka:
         condition: service_healthy
@@ -280,7 +280,7 @@ services:
     build:
       context: ./trigger-dispatcher
       dockerfile: Dockerfile
-    container_name: trading-trigger-dispatcher
+    container_name: clovercharts-trigger-dispatcher
     depends_on:
       kafka:
         condition: service_healthy
@@ -313,7 +313,7 @@ services:
     build:
       context: ./data-plane
       dockerfile: Dockerfile
-    container_name: trading-data-plane
+    container_name: clovercharts-data-plane
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
       - SERVICE_NAME=data-plane
@@ -354,7 +354,7 @@ services:
     build:
       context: ./data-plane
       dockerfile: Dockerfile
-    container_name: trading-data-plane-worker
+    container_name: clovercharts-data-plane-worker
     command: celery -A app.tasks.celery_tasks worker --loglevel=INFO --pool=solo -n data-plane-worker
     environment:
       - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
@@ -382,7 +382,7 @@ services:
     build:
       context: ./data-plane
       dockerfile: Dockerfile
-    container_name: trading-data-plane-beat
+    container_name: clovercharts-data-plane-beat
     command: celery -A app.tasks.celery_tasks beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
     environment:
       - STOCK_PROVIDER=${STOCK_PROVIDER:-finnhub}
@@ -410,7 +410,7 @@ services:
   # Prometheus - Metrics Storage & Aggregation
   prometheus:
     image: prom/prometheus:v2.48.0
-    container_name: trading-prometheus
+    container_name: clovercharts-prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -429,7 +429,7 @@ services:
   # Grafana - Metrics Visualization
   grafana:
     image: grafana/grafana:10.2.0
-    container_name: trading-grafana
+    container_name: clovercharts-grafana
     ports:
       - "3000:3000"
     environment:

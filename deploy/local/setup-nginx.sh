@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install and configure Nginx reverse proxy for Kuber Trading
+# Install and configure Nginx reverse proxy for Clover Charts
 # Run on the server with sudo:
 #   sudo bash setup-nginx.sh              # LAN-only (HTTP)
 #   sudo bash setup-nginx.sh --ssl        # LAN + Internet (HTTP + HTTPS via Let's Encrypt)
@@ -10,8 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/config.env" ]]; then
     source "$SCRIPT_DIR/config.env"
 fi
-DOMAIN="${DOMAIN:-kubertrading.com}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/kubertrading}"
+DOMAIN="${DOMAIN:-clovercharts.com}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/clovercharts}"
 
 # --- Parse flags ---
 SETUP_SSL=false
@@ -36,7 +36,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-echo "=== Kuber Trading — Nginx Setup ==="
+echo "=== Clover Charts — Nginx Setup ==="
 echo "Domain: $DOMAIN"
 echo "SSL:    $SETUP_SSL"
 echo ""
@@ -66,8 +66,8 @@ echo "[2/4] Writing Nginx config..."
 
 mkdir -p /var/www/certbot
 
-cat > /etc/nginx/sites-available/kubertrading.conf <<'NGINX_HTTP'
-# Kuber Trading — Nginx Reverse Proxy
+cat > /etc/nginx/sites-available/clovercharts.conf <<'NGINX_HTTP'
+# Clover Charts — Nginx Reverse Proxy
 # HTTP config for LAN access. Certbot will modify this for HTTPS.
 
 # Rate limiting
@@ -164,11 +164,11 @@ server {
 NGINX_HTTP
 
 # Substitute domain and paths
-sed -i "s|__DOMAIN__|$DOMAIN|g" /etc/nginx/sites-available/kubertrading.conf
-sed -i "s|__REMOTE_DIR__|$REMOTE_DIR|g" /etc/nginx/sites-available/kubertrading.conf
+sed -i "s|__DOMAIN__|$DOMAIN|g" /etc/nginx/sites-available/clovercharts.conf
+sed -i "s|__REMOTE_DIR__|$REMOTE_DIR|g" /etc/nginx/sites-available/clovercharts.conf
 
 # Enable site, disable default
-ln -sf /etc/nginx/sites-available/kubertrading.conf /etc/nginx/sites-enabled/kubertrading.conf
+ln -sf /etc/nginx/sites-available/clovercharts.conf /etc/nginx/sites-enabled/clovercharts.conf
 rm -f /etc/nginx/sites-enabled/default
 
 # --- 3. Test and reload ---

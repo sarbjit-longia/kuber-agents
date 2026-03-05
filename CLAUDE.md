@@ -15,22 +15,22 @@ AI agent-based trading pipeline platform where retail traders visually connect a
 docker-compose up -d
 
 # Run database migrations
-docker exec -it trading-backend alembic upgrade head
+docker exec -it clovercharts-backend alembic upgrade head
 
 # Seed database (LLM models, idempotent)
-docker exec trading-backend python seed_database.py
+docker exec clovercharts-backend python seed_database.py
 
 # Create a new migration
-docker exec -it trading-backend alembic revision --autogenerate -m "description"
+docker exec -it clovercharts-backend alembic revision --autogenerate -m "description"
 
 # Run backend tests
-docker exec -it trading-backend pytest -v
+docker exec -it clovercharts-backend pytest -v
 
 # Run single test file
-docker exec -it trading-backend pytest tests/test_strategy_agent.py -v
+docker exec -it clovercharts-backend pytest tests/test_strategy_agent.py -v
 
 # Run tests with coverage
-docker exec -it trading-backend pytest --cov=app
+docker exec -it clovercharts-backend pytest --cov=app
 
 # View logs
 docker-compose logs -f backend
@@ -86,19 +86,19 @@ Data Plane API (TimescaleDB) ← market data caching & historical storage
 
 | Service | Container | Port | Purpose |
 |---------|-----------|------|---------|
-| Backend (FastAPI) | trading-backend | 8000 | REST API, WebSocket |
-| Celery Worker | trading-celery-worker | — | Pipeline execution |
-| Celery Beat | trading-celery-beat | — | Scheduled tasks |
-| Flower | trading-flower | 5555 | Celery monitoring UI |
-| Signal Generator | trading-signal-generator | 8007 | Market signal detection via Kafka |
-| Trigger Dispatcher | trading-trigger-dispatcher | — | Matches signals to pipeline triggers |
-| Data Plane | trading-data-plane | 8005 | Market data API + TimescaleDB storage |
-| PostgreSQL | trading-postgres | 5433 | Main database |
-| TimescaleDB | trading-timescaledb | 5434 | Time-series market data |
-| Redis | trading-redis | 6380 | Celery broker + caching |
-| Kafka | trading-kafka | 9092/9093 | Signal event streaming |
-| Prometheus | trading-prometheus | 9090 | Metrics |
-| Grafana | trading-grafana | 3000 | Dashboards |
+| Backend (FastAPI) | clovercharts-backend | 8000 | REST API, WebSocket |
+| Celery Worker | clovercharts-celery-worker | — | Pipeline execution |
+| Celery Beat | clovercharts-celery-beat | — | Scheduled tasks |
+| Flower | clovercharts-flower | 5555 | Celery monitoring UI |
+| Signal Generator | clovercharts-signal-generator | 8007 | Market signal detection via Kafka |
+| Trigger Dispatcher | clovercharts-trigger-dispatcher | — | Matches signals to pipeline triggers |
+| Data Plane | clovercharts-data-plane | 8005 | Market data API + TimescaleDB storage |
+| PostgreSQL | clovercharts-postgres | 5433 | Main database |
+| TimescaleDB | clovercharts-timescaledb | 5434 | Time-series market data |
+| Redis | clovercharts-redis | 6380 | Celery broker + caching |
+| Kafka | clovercharts-kafka | 9092/9093 | Signal event streaming |
+| Prometheus | clovercharts-prometheus | 9090 | Metrics |
+| Grafana | clovercharts-grafana | 3000 | Dashboards |
 
 ### Backend Structure (`backend/app/`)
 

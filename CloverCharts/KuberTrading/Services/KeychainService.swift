@@ -4,7 +4,7 @@ import Security
 actor KeychainService {
     static let shared = KeychainService()
 
-    private let serviceName = "com.kubertrading.app"
+    private let serviceName = "com.clovercharts.app"
 
     enum Key: String {
         case accessToken = "access_token"
