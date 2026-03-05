@@ -4,6 +4,6 @@
 
 export const environment = {
   production: true,
-  apiUrl: 'https://api.your-domain.com',
-  wsUrl: 'wss://api.your-domain.com'
+  apiUrl: 'https://api.kubertrading.com',
+  wsUrl: 'wss://api.kubertrading.com'
 };

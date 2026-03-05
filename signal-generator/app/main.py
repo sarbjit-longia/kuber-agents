@@ -184,30 +184,46 @@ class SignalGeneratorService:
                     tfs.append(tf)
         return tfs or ["D"]
     
-    def _initialize_kafka(self):
-        """Initialize Kafka producer for signal publishing."""
-        try:
-            self.kafka_producer = KafkaProducer(
-                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                key_serializer=lambda k: k.encode('utf-8') if k else None,
-                acks='all',  # Wait for all replicas to acknowledge
-                retries=3,
-                max_in_flight_requests_per_connection=1  # Ensure ordering
-            )
-            logger.info(
-                "kafka_producer_initialized",
-                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-                topic=settings.KAFKA_SIGNAL_TOPIC
-            )
-        except Exception as e:
-            logger.error(
-                "kafka_producer_initialization_failed",
-                error=str(e),
-                exc_info=True
-            )
-            self.kafka_producer = None
-            logger.warning("signals_will_only_log", message="Kafka unavailable, falling back to logs only")
+    def _initialize_kafka(self, max_retries: int = 10, retry_delay: int = 5):
+        """Initialize Kafka producer for signal publishing with retry logic.
+
+        Retries connection to Kafka on startup to handle cases where the
+        signal-generator starts before Kafka is fully ready.
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.kafka_producer = KafkaProducer(
+                    bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    key_serializer=lambda k: k.encode('utf-8') if k else None,
+                    acks='all',  # Wait for all replicas to acknowledge
+                    retries=3,
+                    max_in_flight_requests_per_connection=1  # Ensure ordering
+                )
+                logger.info(
+                    "kafka_producer_initialized",
+                    bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                    topic=settings.KAFKA_SIGNAL_TOPIC,
+                    attempt=attempt
+                )
+                return
+            except Exception as e:
+                logger.warning(
+                    "kafka_producer_init_retry",
+                    attempt=attempt,
+                    max_retries=max_retries,
+                    error=str(e),
+                    retry_in_seconds=retry_delay
+                )
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+
+        logger.error(
+            "kafka_producer_initialization_failed",
+            max_retries=max_retries,
+            message="Exhausted all retries. Signals will only be logged, not published to Kafka."
+        )
+        self.kafka_producer = None
     
     def _get_interval_for_timeframe(self, base_interval: int, timeframe: str) -> int:
         """
