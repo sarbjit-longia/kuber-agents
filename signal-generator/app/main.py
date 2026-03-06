@@ -103,12 +103,23 @@ class SignalGeneratorService:
         
         # Initialize telemetry
         try:
-            self.meter = setup_telemetry(service_name="signal-generator")
-            self._setup_metrics()
+            self.metrics = setup_telemetry(service_name="signal-generator")
+            self.meter = self.metrics  # backward compat for `if self.meter:` checks
+            # Expose metric instruments directly (replaces _setup_metrics)
+            self.signals_generated = self.metrics.signals_generated
+            self.signal_generation_duration = self.metrics.signal_generation_duration
+            self.generator_scans_total = self.metrics.generator_scans_total
+            self.generator_scan_errors = self.metrics.generator_scan_errors
+            self.kafka_publish_duration = self.metrics.kafka_publish_duration
+            self.kafka_publish_success = self.metrics.kafka_publish_success
+            self.kafka_publish_failure = self.metrics.kafka_publish_failure
+            self.finnhub_api_calls = self.metrics.finnhub_api_calls
+            self.finnhub_api_errors = self.metrics.finnhub_api_errors
             logger.info("telemetry_initialized")
         except Exception as e:
             logger.error("telemetry_initialization_failed", error=str(e))
             self.meter = None
+            self.metrics = None
         
         # Initialize Kafka producer
         self._initialize_kafka()

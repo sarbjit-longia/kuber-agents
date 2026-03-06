@@ -2517,7 +2517,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "batch_size",
+          "expr": "batch_size_sum / batch_size_count",
           "refId": "A"
         }
       ],

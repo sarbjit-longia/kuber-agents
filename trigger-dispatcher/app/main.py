@@ -86,65 +86,27 @@ class TriggerDispatcher:
         
         # Initialize telemetry
         try:
-            self.meter = setup_telemetry(service_name="trigger-dispatcher")
-            self._setup_metrics()
+            self.metrics = setup_telemetry(service_name="trigger-dispatcher")
+            self.meter = self.metrics  # backward compat for `if self.meter:` checks
+            # Expose metric instruments directly (replaces _setup_metrics)
+            self.signals_consumed = self.metrics.signals_consumed
+            self.pipelines_matched = self.metrics.pipelines_matched
+            self.pipelines_enqueued = self.metrics.pipelines_enqueued
+            self.pipelines_skipped = self.metrics.pipelines_skipped
+            self.batch_size_histogram = self.metrics.batch_size_histogram
+            self.batch_processing_duration = self.metrics.batch_processing_duration
+            self.cache_size = self.metrics.cache_size
             logger.info("telemetry_initialized")
         except Exception as e:
             logger.error("telemetry_initialization_failed", error=str(e))
             self.meter = None
+            self.metrics = None
         
         logger.info(
             "trigger_dispatcher_initialized",
             batch_size=settings.BATCH_SIZE,
             batch_timeout=settings.BATCH_TIMEOUT_SECONDS,
             cache_refresh_interval=settings.CACHE_REFRESH_INTERVAL_SECONDS
-        )
-    
-    def _setup_metrics(self):
-        """Setup custom metrics."""
-        if not self.meter:
-            return
-        
-        self.signals_consumed = self.meter.create_counter(
-            "signals_consumed_total",
-            description="Total signals consumed from Kafka",
-            unit="1"
-        )
-        
-        self.pipelines_matched = self.meter.create_counter(
-            "pipelines_matched_total",
-            description="Total pipelines matched to signals",
-            unit="1"
-        )
-        
-        self.pipelines_enqueued = self.meter.create_counter(
-            "pipelines_enqueued_total",
-            description="Total pipelines enqueued for execution",
-            unit="1"
-        )
-        
-        self.pipelines_skipped = self.meter.create_counter(
-            "pipelines_skipped_running_total",
-            description="Total pipelines skipped (already running)",
-            unit="1"
-        )
-        
-        self.batch_size_histogram = self.meter.create_histogram(
-            "batch_size",
-            description="Signal batch size",
-            unit="1"
-        )
-        
-        self.batch_processing_duration = self.meter.create_histogram(
-            "batch_processing_duration_seconds",
-            description="Time to process a batch of signals",
-            unit="s"
-        )
-        
-        self.cache_size = self.meter.create_up_down_counter(
-            "pipeline_cache_size",
-            description="Number of pipelines in cache",
-            unit="1"
         )
     
     def _initialize_kafka_consumer(self):
@@ -255,12 +217,9 @@ class TriggerDispatcher:
                 self.pipeline_cache = new_cache
                 self.last_cache_refresh = time.time()
                 
-                # Track cache size with delta (UpDownCounter accumulates)
-                new_cache_size = len(new_cache)
+                # Track cache size
                 if self.meter:
-                    delta = new_cache_size - self.last_cache_size
-                    self.cache_size.add(delta)
-                    self.last_cache_size = new_cache_size
+                    self.cache_size.set(len(new_cache))
                 
                 logger.info(
                     "pipeline_cache_refreshed",

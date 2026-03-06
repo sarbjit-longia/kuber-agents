@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     # Add MONITORING status to execution_status enum
     op.execute("""
-        ALTER TYPE executionstatus ADD VALUE IF NOT EXISTS 'monitoring';
+        ALTER TYPE executionstatus ADD VALUE IF NOT EXISTS 'MONITORING';
     """)
     
     # Add position monitoring fields to executions table

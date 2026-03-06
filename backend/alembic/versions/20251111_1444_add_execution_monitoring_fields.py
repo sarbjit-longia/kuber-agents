@@ -26,7 +26,7 @@ def upgrade() -> None:
     
     # Add PAUSED status to enum (if not already there)
     # Note: Adding enum values in PostgreSQL requires special handling
-    op.execute("ALTER TYPE executionstatus ADD VALUE IF NOT EXISTS 'paused'")
+    op.execute("ALTER TYPE executionstatus ADD VALUE IF NOT EXISTS 'PAUSED'")
 
 
 def downgrade() -> None:
