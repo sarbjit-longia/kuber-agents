@@ -283,6 +283,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return name.length > 12 ? name.substring(0, 10) + '…' : name;
   }
 
+  // ── Compare helpers ───────────────────────────────────────
+
+  /** Returns 0–100 width% for a value relative to the max of two values. */
+  compareBarPct(value: number, other: number): number {
+    const max = Math.max(Math.abs(value), Math.abs(other), 0.01);
+    return (Math.abs(value) / max) * 100;
+  }
+
   // ── Style helpers ──────────────────────────────────────────
 
   getPnLClass(value: number | null | undefined): string {

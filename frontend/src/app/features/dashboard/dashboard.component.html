@@ -204,118 +204,104 @@
         </mat-card-content>
       </mat-card>
 
-      <!-- ─── Section 4: Today's Performance (tile grid) ─────── -->
-      <mat-card class="section-card full-width today-performance-card">
-        <mat-card-header>
-          <mat-card-title>
-            <div class="section-title">
-              <mat-icon>today</mat-icon>
-              Today's Performance
-            </div>
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <div class="today-tiles">
-            <!-- Row 1: Always shown -->
-            <div class="today-tile today-tile-large" [ngClass]="data.today.pnl >= 0 ? 'tile-tint-success' : 'tile-tint-danger'">
-              <div class="today-tile-value" [ngClass]="getPnLClass(data.today.pnl)">
-                {{ formatPnL(data.today.pnl) }}
-              </div>
-              <div class="today-tile-label">Today's P&L</div>
-            </div>
-            <div class="today-tile tile-tint-info">
-              <div class="today-tile-value">{{ data.today.executions }}</div>
-              <div class="today-tile-label">Executions</div>
-            </div>
-            <div class="today-tile tile-tint-accent">
-              <div class="today-tile-value">{{ formatCost(data.today.cost) }}</div>
-              <div class="today-tile-label">Cost</div>
-            </div>
-            <!-- Row 2: Shown when trades > 0 -->
-            <ng-container *ngIf="data.today.total_trades > 0">
-              <div class="today-tile tile-tint-info">
-                <div class="today-tile-value">{{ data.today.total_trades }}</div>
-                <div class="today-tile-label">Trades</div>
-              </div>
-              <div class="today-tile tile-tint-success">
-                <div class="today-tile-value pnl-positive">{{ data.today.wins }}</div>
-                <div class="today-tile-label">Wins</div>
-              </div>
-              <div class="today-tile tile-tint-danger">
-                <div class="today-tile-value pnl-negative">{{ data.today.losses }}</div>
-                <div class="today-tile-label">Losses</div>
-              </div>
-              <div class="today-tile tile-tint-accent">
-                <div class="today-tile-value win-rate-value">
-                  {{ formatPercent(data.today.win_rate * 100) }}
-                </div>
-                <div class="today-tile-label">Win Rate</div>
-                <div class="win-loss-bar compact">
-                  <div class="win-portion" [style.width.%]="data.today.win_rate * 100"></div>
-                </div>
-              </div>
-              <div class="today-tile tile-tint-success">
-                <div class="today-tile-value pnl-positive">{{ formatPnL(data.today.avg_win) }}</div>
-                <div class="today-tile-label">Avg Win</div>
-              </div>
-              <div class="today-tile tile-tint-danger">
-                <div class="today-tile-value pnl-negative">{{ formatPnL(data.today.avg_loss) }}</div>
-                <div class="today-tile-label">Avg Loss</div>
-              </div>
-            </ng-container>
-          </div>
-        </mat-card-content>
-      </mat-card>
-
-      <!-- Overall Trade Performance -->
-      <mat-card class="section-card full-width trade-stats-card" *ngIf="data.trade_stats && data.trade_stats.total_trades > 0">
+      <!-- ─── Trade Performance ──────────────────────────────────── -->
+      <mat-card class="section-card full-width perf-combined-card">
         <mat-card-header>
           <mat-card-title>
             <div class="section-title">
               <mat-icon>analytics</mat-icon>
-              Overall Trade Performance
+              Trade Performance
             </div>
           </mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          <div class="trade-stats-grid">
-            <div class="trade-stat-item tile-tint-info">
-              <div class="trade-stat-value">{{ data.trade_stats.total_trades }}</div>
-              <div class="trade-stat-label">Total Trades</div>
-            </div>
-            <div class="trade-stat-item tile-tint-accent">
-              <div class="win-rate-ring" [style.--win-deg]="(data.trade_stats.win_rate * 360) + 'deg'">
-                <span class="ring-inner">{{ formatPercent(data.trade_stats.win_rate * 100) }}</span>
+          <!-- Column headers -->
+          <div class="perf-grid perf-grid-header">
+            <div class="perf-col-label"></div>
+            <div class="perf-col-label">P&L</div>
+            <div class="perf-col-label">Trades</div>
+            <div class="perf-col-label">Wins</div>
+            <div class="perf-col-label">Losses</div>
+            <div class="perf-col-label">Win Rate</div>
+            <div class="perf-col-label">Avg Win</div>
+            <div class="perf-col-label">Avg Loss</div>
+            <div class="perf-col-label">Best</div>
+            <div class="perf-col-label">Worst</div>
+          </div>
+
+          <!-- Today row -->
+          <div class="perf-grid perf-grid-row">
+            <div class="perf-row-label">Today</div>
+            <div class="perf-tile perf-tile-hero" [ngClass]="data.today.pnl >= 0 ? 'tile-tint-success' : 'tile-tint-danger'">
+              <div class="perf-tile-value" [ngClass]="getPnLClass(data.today.pnl)">{{ formatPnL(data.today.pnl) }}</div>
+              <div class="perf-tile-sub">
+                {{ data.today.executions }} exec · {{ formatCost(data.today.cost) }}
               </div>
-              <div class="trade-stat-label">Win Rate</div>
             </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ data.trade_stats.winning_trades }}</div>
-              <div class="trade-stat-label">Wins</div>
+            <div class="perf-tile tile-tint-info">
+              <div class="perf-tile-value">{{ data.today.total_trades }}</div>
             </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ data.trade_stats.losing_trades }}</div>
-              <div class="trade-stat-label">Losses</div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ data.today.wins }}</div>
             </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.avg_win) }}</div>
-              <div class="trade-stat-label">Avg Win</div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ data.today.losses }}</div>
             </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.avg_loss) }}</div>
-              <div class="trade-stat-label">Avg Loss</div>
+            <div class="perf-tile tile-tint-accent">
+              <div class="perf-tile-value">{{ formatPercent(data.today.win_rate * 100) }}</div>
+              <div class="perf-winbar" *ngIf="data.today.total_trades > 0">
+                <div class="perf-winbar-fill" [style.width.%]="data.today.win_rate * 100"></div>
+              </div>
             </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.best_trade) }}</div>
-              <div class="trade-stat-label">Best Trade</div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ data.today.total_trades > 0 ? formatPnL(data.today.avg_win) : '-' }}</div>
             </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.worst_trade) }}</div>
-              <div class="trade-stat-label">Worst Trade</div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ data.today.total_trades > 0 ? formatPnL(data.today.avg_loss) : '-' }}</div>
             </div>
-            <div class="trade-stat-item tile-tint-accent">
-              <div class="trade-stat-value">{{ data.trade_stats.profit_factor || '-' }}</div>
-              <div class="trade-stat-label">Profit Factor</div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ data.today.total_trades > 0 ? formatPnL(data.today.best_trade) : '-' }}</div>
+            </div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ data.today.total_trades > 0 ? formatPnL(data.today.worst_trade) : '-' }}</div>
+            </div>
+          </div>
+
+          <!-- Overall row -->
+          <div class="perf-grid perf-grid-row" *ngIf="data.trade_stats.total_trades > 0">
+            <div class="perf-row-label">Overall</div>
+            <div class="perf-tile tile-tint-accent">
+              <div class="perf-tile-value">{{ formatPnL(data.pnl.total_realized) }}</div>
+              <div class="perf-tile-sub">
+                PF {{ data.trade_stats.profit_factor || '-' }}
+              </div>
+            </div>
+            <div class="perf-tile tile-tint-info">
+              <div class="perf-tile-value">{{ data.trade_stats.total_trades }}</div>
+            </div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ data.trade_stats.winning_trades }}</div>
+            </div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ data.trade_stats.losing_trades }}</div>
+            </div>
+            <div class="perf-tile tile-tint-accent">
+              <div class="perf-tile-value">{{ formatPercent(data.trade_stats.win_rate * 100) }}</div>
+              <div class="perf-winbar">
+                <div class="perf-winbar-fill" [style.width.%]="data.trade_stats.win_rate * 100"></div>
+              </div>
+            </div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ formatPnL(data.trade_stats.avg_win) }}</div>
+            </div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ formatPnL(data.trade_stats.avg_loss) }}</div>
+            </div>
+            <div class="perf-tile tile-tint-success">
+              <div class="perf-tile-value pnl-positive">{{ formatPnL(data.trade_stats.best_trade) }}</div>
+            </div>
+            <div class="perf-tile tile-tint-danger">
+              <div class="perf-tile-value pnl-negative">{{ formatPnL(data.trade_stats.worst_trade) }}</div>
             </div>
           </div>
         </mat-card-content>
