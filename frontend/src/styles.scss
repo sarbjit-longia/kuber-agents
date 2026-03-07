@@ -78,7 +78,7 @@ $custom-theme: mat.define-dark-theme((
 html, body {
   height: 100%;
   margin: 0;
-  font-family: Roboto, "Helvetica Neue", sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 body {
@@ -386,7 +386,7 @@ mat-spinner {
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
       }
 
       .preview-category {
@@ -395,7 +395,7 @@ mat-spinner {
         text-transform: uppercase !important;
         font-weight: 600 !important;
         letter-spacing: 0.5px !important;
-        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
       }
 
       .preview-price {
@@ -403,7 +403,7 @@ mat-spinner {
         color: var(--accent-secondary) !important;
         font-weight: 700 !important;
         margin-top: 0.15rem !important;
-        font-family: Roboto, "Helvetica Neue", sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
 
         &.free {
           color: var(--color-success) !important;
