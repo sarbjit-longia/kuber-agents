@@ -21,20 +21,27 @@
     </button>
   </div>
 
+  <div class="info-banner">
+    <mat-icon class="info-icon">info_outline</mat-icon>
+    <p>Scanners define watchlists of tickers that feed into your signal-based pipelines. When a scanner is active, the signal generator monitors its tickers for trading signals (e.g., golden cross, RSI divergence) and automatically triggers connected pipelines.</p>
+  </div>
+
   <div class="filters">
-    <mat-form-field appearance="outline" class="search-field" subscriptSizing="dynamic">
-      <mat-icon matPrefix>search</mat-icon>
-      <input matInput placeholder="Search scanners..." [value]="searchQuery" (input)="onSearchChange($event)">
-      <button *ngIf="searchQuery" matSuffix mat-icon-button (click)="clearSearch()">
-        <mat-icon>close</mat-icon>
-      </button>
-    </mat-form-field>
-    <mat-button-toggle-group [value]="filterActive === undefined ? 'all' : (filterActive ? 'active' : 'inactive')"
-                              (change)="applyFilter($event.value)">
-      <mat-button-toggle value="all">All</mat-button-toggle>
-      <mat-button-toggle value="active">Active</mat-button-toggle>
-      <mat-button-toggle value="inactive">Inactive</mat-button-toggle>
-    </mat-button-toggle-group>
+    <div class="filters-right">
+      <mat-form-field appearance="outline" class="search-field" subscriptSizing="dynamic">
+        <mat-icon matPrefix>search</mat-icon>
+        <input matInput placeholder="Search scanners..." [value]="searchQuery" (input)="onSearchChange($event)">
+        <button *ngIf="searchQuery" matSuffix mat-icon-button (click)="clearSearch()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </mat-form-field>
+      <mat-button-toggle-group [value]="filterActive === undefined ? 'all' : (filterActive ? 'active' : 'inactive')"
+                                (change)="applyFilter($event.value)">
+        <mat-button-toggle value="all">All</mat-button-toggle>
+        <mat-button-toggle value="active">Active</mat-button-toggle>
+        <mat-button-toggle value="inactive">Inactive</mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
   </div>
 
   <div class="scanner-list" *ngIf="!loading && filteredScanners.length > 0">

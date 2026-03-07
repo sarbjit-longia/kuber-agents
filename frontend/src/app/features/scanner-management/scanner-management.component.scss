@@ -1,9 +1,13 @@
 .scanners-page {
   min-height: 100vh;
   background-color: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
 }
 
 .scanners-container {
+  flex: 1;
+  min-width: 0;
   padding: 2rem;
 
   .page-header {
@@ -92,12 +96,46 @@
     }
   }
 
+  .info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    border-radius: 12px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+
+    .info-icon {
+      color: var(--accent-primary);
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+  }
+
   .filters {
     display: flex;
+    justify-content: flex-end;
     align-items: center;
     gap: 1rem;
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
+
+    .filters-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
 
     .search-field {
       max-width: 320px;
@@ -116,7 +154,7 @@
 
   .scanner-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     gap: 1.5rem;
 
     .scanner-card {
@@ -239,8 +277,8 @@
             }
 
             &.icon-pipelines {
-              background: linear-gradient(135deg, #f59e0b, #fbbf24);
-              box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+              background: linear-gradient(135deg, #3b82f6, #60a5fa);
+              box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
             }
 
             &.icon-type {
@@ -409,11 +447,16 @@
     }
 
     .filters {
-      flex-direction: column;
-      align-items: stretch;
+      justify-content: stretch;
 
-      .search-field {
-        max-width: 100%;
+      .filters-right {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+
+        .search-field {
+          max-width: 100%;
+        }
       }
     }
 
