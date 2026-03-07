@@ -4,7 +4,7 @@
  * Main dashboard view showing pipeline overview, P&L per account,
  * active positions, broker accounts, and recent activity.
  */
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -83,6 +83,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   calendarMonth = new Date().getMonth();
   calendarYear = new Date().getFullYear();
   selectedCalendarDay: CalendarDayData | null = null;
+  calendarPopoverTop = 0;
+  calendarPopoverLeft = 0;
 
   constructor(
     private dashboardService: DashboardService,
@@ -236,11 +238,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const data = this.getPnLChartData();
     if (!data.length) return 0;
     return Math.max(...data.map(d => Math.abs(d.pnl)), 0.01);
-  }
-
-  formatChartDate(dateStr: string): string {
-    const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
   formatShortDate(dateStr: string): string {
@@ -399,19 +396,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
       .join(' ');
   }
 
-  /** Builds a closed SVG path for area fill under a line (fades to bottom of chart). */
-  private buildSvgAreaPath(
+  /** Builds SVG area paths split at zero baseline: greenPath (above zero) and redPath (below zero). */
+  private buildSvgSplitAreaPaths(
     data: { date: string; equity: number }[],
     allSeries: { date: string; equity: number }[][]
-  ): string {
-    if (data.length < 2) return '';
+  ): { greenPath: string; redPath: string } {
+    if (data.length < 2) return { greenPath: '', redPath: '' };
     const allVals = allSeries.flat().map(d => d.equity);
     const minY = Math.min(...allVals, 0);
     const maxY = Math.max(...allVals, 0);
     const range = maxY - minY || 1;
     const usableW = this.svgW - this.svgPadLeft;
     const usableH = this.svgH - this.svgPadTop - this.svgPadBot;
-    const bottomY = this.svgPadTop + usableH;
+    // Zero baseline in SVG coordinates
+    const zeroY = this.svgPadTop + usableH - ((0 - minY) / range) * usableH;
 
     const points = data.map((d, i) => {
       const x = this.svgPadLeft + (data.length > 1 ? (i / (data.length - 1)) * usableW : usableW / 2);
@@ -419,14 +417,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return { x, y };
     });
 
-    let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    // Green area: line clamped at zero baseline (above zero region)
+    let greenPath = `M${points[0].x.toFixed(1)},${Math.min(points[0].y, zeroY).toFixed(1)}`;
     for (let i = 1; i < points.length; i++) {
-      path += ` L${points[i].x.toFixed(1)},${points[i].y.toFixed(1)}`;
+      greenPath += ` L${points[i].x.toFixed(1)},${Math.min(points[i].y, zeroY).toFixed(1)}`;
     }
-    // Close down to bottom-right, across to bottom-left
-    path += ` L${points[points.length - 1].x.toFixed(1)},${bottomY.toFixed(1)}`;
-    path += ` L${points[0].x.toFixed(1)},${bottomY.toFixed(1)} Z`;
-    return path;
+    greenPath += ` L${points[points.length - 1].x.toFixed(1)},${zeroY.toFixed(1)}`;
+    greenPath += ` L${points[0].x.toFixed(1)},${zeroY.toFixed(1)} Z`;
+
+    // Red area: line clamped at zero baseline (below zero region)
+    let redPath = `M${points[0].x.toFixed(1)},${Math.max(points[0].y, zeroY).toFixed(1)}`;
+    for (let i = 1; i < points.length; i++) {
+      redPath += ` L${points[i].x.toFixed(1)},${Math.max(points[i].y, zeroY).toFixed(1)}`;
+    }
+    redPath += ` L${points[points.length - 1].x.toFixed(1)},${zeroY.toFixed(1)}`;
+    redPath += ` L${points[0].x.toFixed(1)},${zeroY.toFixed(1)} Z`;
+
+    return { greenPath, redPath };
   }
 
   private getEquityYAxisInfo(allSeries: { date: string; equity: number }[][]): { min: number; max: number; mid: number; minPct: number; maxPct: number; midPct: number } {
@@ -457,17 +464,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return seriesArray.map(s => s.slice(firstActive));
   }
 
-  getEquityBrokerSvgPaths(): { broker_name: string; points: string; areaPath: string; color: string; lastValue: number; gradientId: string }[] {
+  getEquityBrokerSvgPaths(): { broker_name: string; points: string; greenPath: string; redPath: string; color: string; lastValue: number; gradientId: string }[] {
     if (!this.data?.equity_by_broker?.length) return [];
     const trimmed = this.trimLeadingZeros(this.data.equity_by_broker.map(b => b.data));
-    return this.data.equity_by_broker.map((b, i) => ({
-      broker_name: b.broker_name,
-      points: this.buildSvgPolyline(trimmed[i], trimmed),
-      areaPath: this.buildSvgAreaPath(trimmed[i], trimmed),
-      color: this.chartColors[i % this.chartColors.length],
-      lastValue: b.data.length ? b.data[b.data.length - 1].equity : 0,
-      gradientId: `broker-grad-${i}`,
-    }));
+    return this.data.equity_by_broker.map((b, i) => {
+      const { greenPath, redPath } = this.buildSvgSplitAreaPaths(trimmed[i], trimmed);
+      return {
+        broker_name: b.broker_name,
+        points: this.buildSvgPolyline(trimmed[i], trimmed),
+        greenPath,
+        redPath,
+        color: this.chartColors[i % this.chartColors.length],
+        lastValue: b.data.length ? b.data[b.data.length - 1].equity : 0,
+        gradientId: `broker-grad-${i}`,
+      };
+    });
   }
 
   getEquityBrokerYAxis(): { label: string; topPct: number }[] {
@@ -479,7 +490,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (Math.abs(info.mid) > 0.01 && Math.abs(info.mid - info.max) > (info.max - info.min) * 0.15) {
       labels.push({ label: this.formatCompactValue(info.mid), topPct: info.midPct });
     }
-    labels.push({ label: this.formatCompactValue(info.min), topPct: info.minPct });
+    // Skip bottom label — X-axis dates occupy that space
     return labels;
   }
 
@@ -492,17 +503,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return [{ y: pctToY(info.maxPct) }, { y: pctToY(info.midPct) }, { y: pctToY(info.minPct) }];
   }
 
-  getEquityPipelineSvgPaths(): { pipeline_name: string; points: string; areaPath: string; color: string; lastValue: number; gradientId: string }[] {
+  getEquityPipelineSvgPaths(): { pipeline_name: string; points: string; greenPath: string; redPath: string; color: string; lastValue: number; gradientId: string }[] {
     if (!this.data?.equity_by_pipeline?.length) return [];
     const trimmed = this.trimLeadingZeros(this.data.equity_by_pipeline.map(p => p.data));
-    return this.data.equity_by_pipeline.map((p, i) => ({
-      pipeline_name: p.pipeline_name,
-      points: this.buildSvgPolyline(trimmed[i], trimmed),
-      areaPath: this.buildSvgAreaPath(trimmed[i], trimmed),
-      color: this.chartColors[i % this.chartColors.length],
-      lastValue: p.data.length ? p.data[p.data.length - 1].equity : 0,
-      gradientId: `pipeline-grad-${i}`,
-    }));
+    return this.data.equity_by_pipeline.map((p, i) => {
+      const { greenPath, redPath } = this.buildSvgSplitAreaPaths(trimmed[i], trimmed);
+      return {
+        pipeline_name: p.pipeline_name,
+        points: this.buildSvgPolyline(trimmed[i], trimmed),
+        greenPath,
+        redPath,
+        color: this.chartColors[i % this.chartColors.length],
+        lastValue: p.data.length ? p.data[p.data.length - 1].equity : 0,
+        gradientId: `pipeline-grad-${i}`,
+      };
+    });
   }
 
   getEquityPipelineYAxis(): { label: string; topPct: number }[] {
@@ -514,7 +529,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (Math.abs(info.mid) > 0.01 && Math.abs(info.mid - info.max) > (info.max - info.min) * 0.15) {
       labels.push({ label: this.formatCompactValue(info.mid), topPct: info.midPct });
     }
-    labels.push({ label: this.formatCompactValue(info.min), topPct: info.minPct });
     return labels;
   }
 
@@ -554,7 +568,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return labels;
   }
 
-  private formatChartDate(dateStr: string): string {
+  formatChartDate(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
@@ -657,7 +671,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const labels: { label: string; topPct: number }[] = [];
     labels.push({ label: this.formatCompactValue(maxV), topPct: valToPct(maxV) });
     labels.push({ label: '$0', topPct: valToPct(0) });
-    if (minV < -0.01) labels.push({ label: this.formatCompactValue(minV), topPct: valToPct(minV) });
+    // Skip bottom min label — X-axis dates occupy that space
     return labels;
   }
 
@@ -670,27 +684,40 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return vals.length ? vals[vals.length - 1] : 0;
   }
 
-  /** Full area path from profit line down to the bottom of the chart (for gradient fill). */
-  getProfitFullAreaPath(): string {
+  /** Split profit area into green (above zero) and red (below zero) paths. */
+  getProfitGreenAreaPath(): string {
     const pts = this.getProfitAreaPoints();
     if (pts.length < 2) return '';
-    const bottomY = this.svgPadTop + (this.svgH - this.svgPadTop - this.svgPadBot);
-    let path = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
-    for (let i = 1; i < pts.length; i++) {
-      path += ` L${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)}`;
+    const baseY = this.getProfitBaselineY();
+    let path = `M${pts[0].x.toFixed(1)},${Math.min(pts[0].y, baseY).toFixed(1)}`;
+    for (const p of pts) {
+      path += ` L${p.x.toFixed(1)},${Math.min(p.y, baseY).toFixed(1)}`;
     }
-    path += ` L${pts[pts.length - 1].x.toFixed(1)},${bottomY.toFixed(1)}`;
-    path += ` L${pts[0].x.toFixed(1)},${bottomY.toFixed(1)} Z`;
+    path += ` L${pts[pts.length - 1].x.toFixed(1)},${baseY.toFixed(1)}`;
+    path += ` L${pts[0].x.toFixed(1)},${baseY.toFixed(1)} Z`;
+    return path;
+  }
+
+  getProfitRedAreaPath(): string {
+    const pts = this.getProfitAreaPoints();
+    if (pts.length < 2) return '';
+    const baseY = this.getProfitBaselineY();
+    let path = `M${pts[0].x.toFixed(1)},${Math.max(pts[0].y, baseY).toFixed(1)}`;
+    for (const p of pts) {
+      path += ` L${p.x.toFixed(1)},${Math.max(p.y, baseY).toFixed(1)}`;
+    }
+    path += ` L${pts[pts.length - 1].x.toFixed(1)},${baseY.toFixed(1)}`;
+    path += ` L${pts[0].x.toFixed(1)},${baseY.toFixed(1)} Z`;
     return path;
   }
 
   // ── Radar chart helpers ───────────────────────────────────
 
-  // Radar uses a 300x300 viewBox with center at 150,150
-  radarCx = 150;
-  radarCy = 150;
-  private radarR = 90;
-  private radarLabels = ['Win Rate', 'Profit Factor', 'Win/Loss', 'Low DD', 'Consistency'];
+  // Radar uses a 400x320 viewBox with center at 200,155
+  radarCx = 200;
+  radarCy = 155;
+  private radarR = 85;
+  private radarLabels = ['Win Rate', 'Profit Fa.', 'Win/Loss', 'Low DD', 'Consistency'];
 
   getRadarAxisPoint(axisIndex: number, radius: number): { x: number; y: number } {
     const angle = (Math.PI * 2 * axisIndex) / 5 - Math.PI / 2;
@@ -734,10 +761,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getRadarLabelPos(index: number): { x: number; y: number; anchor: string } {
-    const p = this.getRadarAxisPoint(index, this.radarR + 22);
+    const p = this.getRadarAxisPoint(index, this.radarR + 28);
     let anchor = 'middle';
-    if (p.x < this.radarCx - 30) anchor = 'end';
-    else if (p.x > this.radarCx + 30) anchor = 'start';
+    if (p.x < this.radarCx - 20) anchor = 'end';
+    else if (p.x > this.radarCx + 20) anchor = 'start';
     return { x: p.x, y: p.y, anchor };
   }
 
@@ -755,11 +782,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getRadarValuePos(index: number): { x: number; y: number; anchor: string } {
-    const p = this.getRadarAxisPoint(index, this.radarR + 36);
+    const p = this.getRadarAxisPoint(index, this.radarR + 28);
     let anchor = 'middle';
-    if (p.x < this.radarCx - 30) anchor = 'end';
-    else if (p.x > this.radarCx + 30) anchor = 'start';
-    return { x: p.x, y: p.y + 12, anchor };
+    if (p.x < this.radarCx - 20) anchor = 'end';
+    else if (p.x > this.radarCx + 20) anchor = 'start';
+    return { x: p.x, y: p.y + 16, anchor };
   }
 
   // ── Calendar helpers ──────────────────────────────────────
@@ -831,6 +858,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectCalendarDay(day: CalendarDayData | null): void {
     if (day && day.trades > 0) {
       this.selectedCalendarDay = day;
+    }
+  }
+
+  onCalendarDayClick(event: MouseEvent, day: CalendarDayData | null): void {
+    event.stopPropagation();
+    if (!day || day.trades === 0) {
+      this.selectedCalendarDay = null;
+      return;
+    }
+    if (this.selectedCalendarDay?.date === day.date) {
+      this.selectedCalendarDay = null;
+      return;
+    }
+    // Position popover relative to the .pnl-calendar container
+    const cell = event.currentTarget as HTMLElement;
+    const container = cell.closest('.pnl-calendar') as HTMLElement;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const popoverW = 220;
+    let left = cellRect.left - containerRect.left + cellRect.width / 2 - popoverW / 2;
+    // Clamp within container
+    left = Math.max(0, Math.min(left, containerRect.width - popoverW));
+    const top = cellRect.top - containerRect.top + cellRect.height + 6;
+    this.calendarPopoverTop = top;
+    this.calendarPopoverLeft = left;
+    this.selectedCalendarDay = day;
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.selectedCalendarDay) return;
+    const target = event.target as HTMLElement;
+    if (!target.closest('.calendar-day') && !target.closest('.calendar-popover')) {
+      this.selectedCalendarDay = null;
     }
   }
 }

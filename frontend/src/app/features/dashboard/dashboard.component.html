@@ -335,15 +335,21 @@
                       <stop offset="60%" [attr.stop-color]="line.color" stop-opacity="0.08" />
                       <stop offset="100%" [attr.stop-color]="line.color" stop-opacity="0.01" />
                     </linearGradient>
+                    <linearGradient *ngFor="let line of getEquityBrokerSvgPaths()" [attr.id]="line.gradientId + '-red'"
+                                    gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.01" />
+                      <stop offset="40%" stop-color="#ef4444" stop-opacity="0.08" />
+                      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.35" />
+                    </linearGradient>
                   </defs>
-                  <!-- Grid lines -->
                   <line *ngFor="let gl of getEquityBrokerGridLines()"
                         x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
-                  <!-- Gradient area fills -->
                   <path *ngFor="let line of getEquityBrokerSvgPaths()"
-                        [attr.d]="line.areaPath"
+                        [attr.d]="line.greenPath"
                         [attr.fill]="'url(#' + line.gradientId + ')'" />
-                  <!-- Lines -->
+                  <path *ngFor="let line of getEquityBrokerSvgPaths()"
+                        [attr.d]="line.redPath"
+                        [attr.fill]="'url(#' + line.gradientId + '-red)'" />
                   <polyline *ngFor="let line of getEquityBrokerSvgPaths()"
                             [attr.points]="line.points"
                             [attr.stroke]="line.color"
@@ -397,12 +403,21 @@
                       <stop offset="60%" [attr.stop-color]="line.color" stop-opacity="0.08" />
                       <stop offset="100%" [attr.stop-color]="line.color" stop-opacity="0.01" />
                     </linearGradient>
+                    <linearGradient *ngFor="let line of getEquityPipelineSvgPaths()" [attr.id]="line.gradientId + '-red'"
+                                    gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.01" />
+                      <stop offset="40%" stop-color="#ef4444" stop-opacity="0.08" />
+                      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.35" />
+                    </linearGradient>
                   </defs>
                   <line *ngFor="let gl of getEquityPipelineGridLines()"
                         x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
                   <path *ngFor="let line of getEquityPipelineSvgPaths()"
-                        [attr.d]="line.areaPath"
+                        [attr.d]="line.greenPath"
                         [attr.fill]="'url(#' + line.gradientId + ')'" />
+                  <path *ngFor="let line of getEquityPipelineSvgPaths()"
+                        [attr.d]="line.redPath"
+                        [attr.fill]="'url(#' + line.gradientId + '-red)'" />
                   <polyline *ngFor="let line of getEquityPipelineSvgPaths()"
                             [attr.points]="line.points"
                             [attr.stroke]="line.color"
@@ -455,15 +470,21 @@
                 </div>
                 <svg viewBox="0 0 400 150" preserveAspectRatio="none" class="profit-area-chart">
                   <defs>
-                    <linearGradient id="profitAreaGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                    <linearGradient id="profitGreenGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
                       <stop offset="0%" stop-color="#10b981" stop-opacity="0.45" />
                       <stop offset="60%" stop-color="#10b981" stop-opacity="0.1" />
                       <stop offset="100%" stop-color="#10b981" stop-opacity="0.01" />
                     </linearGradient>
+                    <linearGradient id="profitRedGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.01" />
+                      <stop offset="40%" stop-color="#ef4444" stop-opacity="0.1" />
+                      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.4" />
+                    </linearGradient>
                   </defs>
                   <line *ngFor="let gl of getProfitGridLines()"
                         x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
-                  <path [attr.d]="getProfitFullAreaPath()" fill="url(#profitAreaGrad)" />
+                  <path [attr.d]="getProfitGreenAreaPath()" fill="url(#profitGreenGrad)" />
+                  <path [attr.d]="getProfitRedAreaPath()" fill="url(#profitRedGrad)" />
                   <path [attr.d]="getProfitLinePath()" class="profit-line" vector-effect="non-scaling-stroke" />
                 </svg>
                 <div class="chart-x-labels">
@@ -503,25 +524,25 @@
           </mat-card-header>
           <mat-card-content>
             <div class="radar-chart-container" *ngIf="data?.trading_score && data.trading_score.overall_score > 0; else noScoreData">
-              <svg viewBox="0 0 300 300" class="radar-chart">
+              <svg viewBox="0 0 400 320" class="radar-chart">
                 <!-- Grid pentagons -->
-                <polygon [attr.points]="getRadarGridPolygon(90)" class="radar-grid" />
-                <polygon [attr.points]="getRadarGridPolygon(67)" class="radar-grid" />
-                <polygon [attr.points]="getRadarGridPolygon(45)" class="radar-grid" />
-                <polygon [attr.points]="getRadarGridPolygon(22)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(85)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(64)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(42)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(21)" class="radar-grid" />
                 <!-- Axis lines -->
                 <line *ngFor="let i of [0,1,2,3,4]"
                       [attr.x1]="radarCx" [attr.y1]="radarCy"
-                      [attr.x2]="getRadarAxisPoint(i, 90).x"
-                      [attr.y2]="getRadarAxisPoint(i, 90).y"
+                      [attr.x2]="getRadarAxisPoint(i, 85).x"
+                      [attr.y2]="getRadarAxisPoint(i, 85).y"
                       class="radar-axis" />
                 <!-- Score polygon -->
                 <polygon [attr.points]="getRadarPolygon()" class="radar-score" />
                 <!-- Dots on vertices -->
                 <circle *ngFor="let i of [0,1,2,3,4]"
-                        [attr.cx]="getRadarAxisPoint(i, getRadarNormValues()[i] * 90).x"
-                        [attr.cy]="getRadarAxisPoint(i, getRadarNormValues()[i] * 90).y"
-                        r="3" fill="#818cf8" />
+                        [attr.cx]="getRadarAxisPoint(i, getRadarNormValues()[i] * 85).x"
+                        [attr.cy]="getRadarAxisPoint(i, getRadarNormValues()[i] * 85).y"
+                        r="3.5" fill="#818cf8" />
                 <!-- Axis labels -->
                 <text *ngFor="let i of [0,1,2,3,4]"
                       [attr.x]="getRadarLabelPos(i).x"
@@ -987,40 +1008,43 @@
               <div *ngFor="let day of getCalendarDays()"
                    class="calendar-day"
                    [ngClass]="getCalendarDayClass(day)"
-                   (click)="selectCalendarDay(day)">
+                   [class.cal-selected]="selectedCalendarDay && day && selectedCalendarDay.date === day.date"
+                   (click)="onCalendarDayClick($event, day)">
                 <span class="cal-date">{{ getCalendarDayNumber(day) }}</span>
                 <span class="cal-pnl" *ngIf="day && day.trades > 0" [ngClass]="getPnLClass(day.pnl)">
                   {{ formatPnL(day.pnl) }}
                 </span>
               </div>
             </div>
-            <div class="calendar-detail" *ngIf="selectedCalendarDay">
-              <div class="detail-header">
-                {{ selectedCalendarDay.date }}
-                <span class="detail-pnl" [ngClass]="getPnLClass(selectedCalendarDay.pnl)">
+            <!-- Floating popover -->
+            <div class="calendar-popover" *ngIf="selectedCalendarDay"
+                 [style.top.px]="calendarPopoverTop" [style.left.px]="calendarPopoverLeft">
+              <div class="popover-header">
+                {{ formatChartDate(selectedCalendarDay.date) }}
+                <span class="popover-pnl" [ngClass]="getPnLClass(selectedCalendarDay.pnl)">
                   {{ formatPnL(selectedCalendarDay.pnl) }}
                 </span>
               </div>
-              <div class="detail-stats">
-                <div class="detail-stat">
-                  <span class="detail-label">Trades</span>
-                  <span class="detail-value">{{ selectedCalendarDay.trades }}</span>
+              <div class="popover-stats">
+                <div class="popover-stat">
+                  <span class="popover-label">Trades</span>
+                  <span class="popover-value">{{ selectedCalendarDay.trades }}</span>
                 </div>
-                <div class="detail-stat">
-                  <span class="detail-label">Wins</span>
-                  <span class="detail-value pnl-positive">{{ selectedCalendarDay.wins }}</span>
+                <div class="popover-stat">
+                  <span class="popover-label">W / L</span>
+                  <span class="popover-value">
+                    <span class="pnl-positive">{{ selectedCalendarDay.wins }}</span>
+                    /
+                    <span class="pnl-negative">{{ selectedCalendarDay.losses }}</span>
+                  </span>
                 </div>
-                <div class="detail-stat">
-                  <span class="detail-label">Losses</span>
-                  <span class="detail-value pnl-negative">{{ selectedCalendarDay.losses }}</span>
+                <div class="popover-stat">
+                  <span class="popover-label">Best</span>
+                  <span class="popover-value pnl-positive">{{ formatPnL(selectedCalendarDay.best_trade) }}</span>
                 </div>
-                <div class="detail-stat">
-                  <span class="detail-label">Best</span>
-                  <span class="detail-value pnl-positive">{{ formatPnL(selectedCalendarDay.best_trade) }}</span>
-                </div>
-                <div class="detail-stat">
-                  <span class="detail-label">Worst</span>
-                  <span class="detail-value pnl-negative">{{ formatPnL(selectedCalendarDay.worst_trade) }}</span>
+                <div class="popover-stat">
+                  <span class="popover-label">Worst</span>
+                  <span class="popover-value pnl-negative">{{ formatPnL(selectedCalendarDay.worst_trade) }}</span>
                 </div>
               </div>
             </div>
