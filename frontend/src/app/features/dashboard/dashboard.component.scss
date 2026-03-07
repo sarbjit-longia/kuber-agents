@@ -434,7 +434,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 1.25rem 0;
+    padding: 0.75rem 1rem 0;
 
     .section-actions {
       button {
@@ -1448,6 +1448,387 @@
 
   p {
     font-size: 0.85rem;
+  }
+}
+
+// ── Analytics Charts Row ──────────────────────────────────────
+
+.analytics-charts-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  @media (max-width: 1400px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ── SVG Chart Containers ─────────────────────────────────────
+
+.svg-chart-container {
+  padding: 0.5rem 0 0;
+}
+
+// Chart area with full-bleed SVG and HTML Y-axis labels
+.chart-area {
+  position: relative;
+  width: 100%;
+  height: 180px;
+}
+
+.equity-chart,
+.profit-area-chart {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart-grid-line {
+  stroke: var(--text-disabled);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.2;
+  vector-effect: non-scaling-stroke;
+}
+
+// HTML Y-axis labels overlaid on chart
+.chart-y-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chart-y-label {
+  position: absolute;
+  left: 4px;
+  transform: translateY(-50%);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-shadow: 0 0 4px var(--bg-primary), 0 0 8px var(--bg-primary);
+  white-space: nowrap;
+}
+
+// X-axis date labels at bottom of chart area
+.chart-x-labels {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chart-x-label {
+  position: absolute;
+  bottom: 1px;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-shadow: 0 0 4px var(--bg-primary), 0 0 8px var(--bg-primary);
+
+  &:first-child {
+    transform: translateX(0);
+  }
+
+  &:last-child {
+    transform: translateX(-100%);
+  }
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.4rem 0 0;
+}
+
+// Make analytics chart cards fill their grid cell without wasted space
+.analytics-charts-row .chart-card {
+  // Card is already display:flex column from mat-card
+  &.mat-mdc-card {
+    padding-bottom: 0.25rem !important;
+  }
+
+  mat-card-content {
+    padding: 0 1rem !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .svg-chart-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-area {
+    flex: 1;
+    height: auto;
+    min-height: 140px;
+  }
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  font-weight: 500;
+}
+
+.legend-value {
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin-left: 2px;
+}
+
+// ── Profit Area Chart ────────────────────────────────────────
+
+.profit-line {
+  fill: none;
+  stroke: #10b981;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+// ── Radar Chart ──────────────────────────────────────────────
+
+.radar-chart-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0;
+}
+
+.radar-chart {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+}
+
+.radar-grid {
+  fill: none;
+  stroke: var(--text-disabled);
+  stroke-width: 0.5;
+  opacity: 0.3;
+}
+
+.radar-axis {
+  stroke: var(--text-disabled);
+  stroke-width: 0.5;
+  opacity: 0.2;
+}
+
+.radar-score {
+  fill: rgba(99, 102, 241, 0.2);
+  stroke: #818cf8;
+  stroke-width: 1.5;
+}
+
+.radar-label {
+  font-size: 11px;
+  fill: var(--text-secondary);
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.radar-value {
+  font-size: 10px;
+  fill: var(--accent-primary);
+  font-weight: 700;
+  font-family: inherit;
+}
+
+// ── P&L Calendar ─────────────────────────────────────────────
+
+.pnl-calendar {
+  padding: 0.5rem 0;
+}
+
+.calendar-month-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 140px;
+  text-align: center;
+  display: inline-block;
+}
+
+.calendar-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+
+  span {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 0;
+  }
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-day {
+  aspect-ratio: 1.4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 2px;
+  min-height: 48px;
+
+  &.cal-empty {
+    cursor: default;
+    background: transparent;
+  }
+
+  &.cal-no-trades {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    opacity: 0.5;
+  }
+
+  &.cal-profit {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+
+    &:hover {
+      background: rgba(16, 185, 129, 0.2);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+    }
+  }
+
+  &.cal-loss {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+    }
+  }
+
+  .cal-date {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1;
+  }
+
+  .cal-pnl {
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-top: 2px;
+  }
+}
+
+.calendar-detail {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+
+    .detail-pnl {
+      font-size: 1.1rem;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 6px;
+
+      &.pnl-positive {
+        background: rgba(16, 185, 129, 0.12);
+      }
+
+      &.pnl-negative {
+        background: rgba(239, 68, 68, 0.12);
+      }
+    }
+  }
+
+  .detail-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.5rem;
+
+    @media (max-width: 768px) {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .detail-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0.5rem 0.25rem;
+    background: var(--bg-elevated);
+    border-radius: 8px;
+
+    .detail-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .detail-value {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
   }
 }
 

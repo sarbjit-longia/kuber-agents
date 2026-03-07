@@ -543,7 +543,7 @@ async def get_dashboard(
     # ── 9. Trade stats (win/loss analysis) ────────────────────
     winning_trades: List[float] = []
     losing_trades: List[float] = []
-    
+
     for e in all_executions:
         if e.status != ExecutionStatus.COMPLETED:
             continue
@@ -561,12 +561,12 @@ async def get_dashboard(
                 continue
         elif pnl_val == 0:
             continue
-        
+
         if pnl_val > 0:
             winning_trades.append(pnl_val)
         elif pnl_val < 0:
             losing_trades.append(pnl_val)
-    
+
     total_trades_counted = len(winning_trades) + len(losing_trades)
     trade_stats = {
         "total_trades": total_trades_counted,
@@ -581,7 +581,175 @@ async def get_dashboard(
             abs(sum(winning_trades) / sum(losing_trades)), 2
         ) if losing_trades and sum(losing_trades) != 0 else 0.0,
     }
-    
+
+    # ── 10. Equity by Broker (cumulative P&L per broker, 30 days) ──
+    broker_equity_buckets: Dict[str, Dict[str, float]] = {}
+    for e in all_executions:
+        if not e.created_at or e.created_at < history_start:
+            continue
+        broker = pipeline_broker_map.get(str(e.pipeline_id))
+        if not broker:
+            continue
+        pnl = _extract_pnl(e)
+        if not pnl or pnl["value"] is None:
+            continue
+        bname = broker["broker_name"]
+        day_key = e.created_at.strftime("%Y-%m-%d")
+        if bname not in broker_equity_buckets:
+            broker_equity_buckets[bname] = {}
+        broker_equity_buckets[bname][day_key] = (
+            broker_equity_buckets[bname].get(day_key, 0.0) + (pnl["value"] or 0)
+        )
+
+    equity_by_broker = []
+    for bname, daily in broker_equity_buckets.items():
+        cumulative = 0.0
+        series = []
+        for i in range(history_days):
+            day = (history_start + timedelta(days=i)).strftime("%Y-%m-%d")
+            cumulative += daily.get(day, 0.0)
+            series.append({"date": day, "equity": round(cumulative, 2)})
+        equity_by_broker.append({"broker_name": bname, "data": series})
+
+    # ── 11. Equity by Pipeline (cumulative P&L per pipeline, 30 days) ──
+    pipeline_name_map = {str(p.id): p.name for p in pipelines}
+    pipeline_equity_buckets: Dict[str, Dict[str, float]] = {}
+    for e in all_executions:
+        if not e.created_at or e.created_at < history_start:
+            continue
+        pnl = _extract_pnl(e)
+        if not pnl or pnl["value"] is None:
+            continue
+        pid = str(e.pipeline_id)
+        day_key = e.created_at.strftime("%Y-%m-%d")
+        if pid not in pipeline_equity_buckets:
+            pipeline_equity_buckets[pid] = {}
+        pipeline_equity_buckets[pid][day_key] = (
+            pipeline_equity_buckets[pid].get(day_key, 0.0) + (pnl["value"] or 0)
+        )
+
+    equity_by_pipeline = []
+    for pid, daily in pipeline_equity_buckets.items():
+        cumulative = 0.0
+        series = []
+        for i in range(history_days):
+            day = (history_start + timedelta(days=i)).strftime("%Y-%m-%d")
+            cumulative += daily.get(day, 0.0)
+            series.append({"date": day, "equity": round(cumulative, 2)})
+        equity_by_pipeline.append({
+            "pipeline_name": pipeline_name_map.get(pid, "Unknown"),
+            "pipeline_id": pid,
+            "data": series,
+        })
+
+    # ── 12. Calendar data (90 days of daily trade breakdown) ──────
+    calendar_days = 90
+    calendar_start = datetime.utcnow().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ) - timedelta(days=calendar_days - 1)
+
+    cal_buckets: Dict[str, Dict[str, Any]] = {}
+    for i in range(calendar_days):
+        day = (calendar_start + timedelta(days=i)).strftime("%Y-%m-%d")
+        cal_buckets[day] = {
+            "date": day, "pnl": 0.0, "trades": 0,
+            "wins": 0, "losses": 0, "best_trade": 0.0, "worst_trade": 0.0,
+        }
+
+    for e in all_executions:
+        if e.status != ExecutionStatus.COMPLETED:
+            continue
+        if not e.created_at or e.created_at < calendar_start:
+            continue
+        pnl = _extract_pnl(e)
+        if not pnl or pnl["value"] is None:
+            continue
+        pnl_val = pnl["value"]
+        result_data = e.result or {}
+        trade_outcome = result_data.get("trade_outcome")
+        is_real = False
+        if trade_outcome and isinstance(trade_outcome, dict):
+            if trade_outcome.get("status") in ("executed", "cancelled"):
+                is_real = True
+        elif pnl_val != 0:
+            is_real = True
+        if not is_real:
+            continue
+
+        day_key = e.created_at.strftime("%Y-%m-%d")
+        if day_key not in cal_buckets:
+            continue
+        bucket = cal_buckets[day_key]
+        bucket["pnl"] += pnl_val
+        bucket["trades"] += 1
+        if pnl_val > 0:
+            bucket["wins"] += 1
+        elif pnl_val < 0:
+            bucket["losses"] += 1
+        if pnl_val > bucket["best_trade"]:
+            bucket["best_trade"] = pnl_val
+        if pnl_val < bucket["worst_trade"]:
+            bucket["worst_trade"] = pnl_val
+
+    calendar_data = []
+    for day_key in sorted(cal_buckets.keys()):
+        b = cal_buckets[day_key]
+        calendar_data.append({
+            "date": b["date"],
+            "pnl": round(b["pnl"], 2),
+            "trades": b["trades"],
+            "wins": b["wins"],
+            "losses": b["losses"],
+            "best_trade": round(b["best_trade"], 2),
+            "worst_trade": round(b["worst_trade"], 2),
+        })
+
+    # ── 13. Trading score (radar chart metrics) ───────────────────
+    win_rate = trade_stats["win_rate"]
+    profit_factor = trade_stats["profit_factor"]
+    avg_win_val = abs(trade_stats["avg_win"]) if trade_stats["avg_win"] else 0.0
+    avg_loss_val = abs(trade_stats["avg_loss"]) if trade_stats["avg_loss"] else 1.0
+    avg_win_loss_ratio = round(avg_win_val / avg_loss_val, 2) if avg_loss_val != 0 else 0.0
+
+    # Compute max drawdown from pnl_history cumulative
+    cumulative = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for entry in pnl_history_list:
+        cumulative += entry["pnl"]
+        if cumulative > peak:
+            peak = cumulative
+        dd = (peak - cumulative) / max(peak, 1.0) if peak > 0 else 0.0
+        if dd > max_dd:
+            max_dd = dd
+    max_drawdown = round(max_dd, 4)
+
+    # Consistency: % of profitable days out of trading days
+    trading_days = [d for d in pnl_history_list if d["pnl"] != 0]
+    profitable_days = [d for d in trading_days if d["pnl"] > 0]
+    consistency = round(len(profitable_days) / len(trading_days), 4) if trading_days else 0.0
+
+    # Overall score: weighted average (0-100)
+    # Normalize: win_rate (0-1), profit_factor (cap 5 → /5), avg_win_loss (cap 5 → /5),
+    #            max_drawdown (invert: 1-val), consistency (0-1)
+    norm_wr = min(win_rate, 1.0)
+    norm_pf = min(profit_factor / 5.0, 1.0)
+    norm_awl = min(avg_win_loss_ratio / 5.0, 1.0)
+    norm_dd = max(1.0 - max_drawdown, 0.0)
+    norm_con = min(consistency, 1.0)
+    overall_score = round(
+        (norm_wr * 25 + norm_pf * 25 + norm_awl * 20 + norm_dd * 15 + norm_con * 15), 1
+    )
+
+    trading_score = {
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "avg_win_loss_ratio": avg_win_loss_ratio,
+        "max_drawdown": max_drawdown,
+        "consistency": consistency,
+        "overall_score": overall_score,
+    }
+
     return {
         "pipelines": {
             "total": total_pipelines,
@@ -625,4 +793,8 @@ async def get_dashboard(
         "cost_history": cost_history_list,
         "pnl_history": pnl_history_list,
         "trade_stats": trade_stats,
+        "equity_by_broker": equity_by_broker,
+        "equity_by_pipeline": equity_by_pipeline,
+        "calendar_data": calendar_data,
+        "trading_score": trading_score,
     }

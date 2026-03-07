@@ -307,6 +307,249 @@
         </mat-card-content>
       </mat-card>
 
+      <!-- ─── Analytics Charts Row ──────────────────────────────── -->
+      <div class="analytics-charts-row">
+        <!-- Equity by Broker -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>account_balance</mat-icon>
+                Equity by Broker
+              </div>
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="svg-chart-container" *ngIf="getEquityBrokerSvgPaths().length > 0; else noBrokerEquity">
+              <div class="chart-area">
+                <!-- HTML Y-axis labels -->
+                <div class="chart-y-labels">
+                  <span *ngFor="let yl of getEquityBrokerYAxis()"
+                        class="chart-y-label" [style.top.%]="yl.topPct">{{ yl.label }}</span>
+                </div>
+                <svg viewBox="0 0 400 150" preserveAspectRatio="none" class="equity-chart">
+                  <defs>
+                    <linearGradient *ngFor="let line of getEquityBrokerSvgPaths()" [attr.id]="line.gradientId"
+                                    gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" [attr.stop-color]="line.color" stop-opacity="0.4" />
+                      <stop offset="60%" [attr.stop-color]="line.color" stop-opacity="0.08" />
+                      <stop offset="100%" [attr.stop-color]="line.color" stop-opacity="0.01" />
+                    </linearGradient>
+                  </defs>
+                  <!-- Grid lines -->
+                  <line *ngFor="let gl of getEquityBrokerGridLines()"
+                        x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
+                  <!-- Gradient area fills -->
+                  <path *ngFor="let line of getEquityBrokerSvgPaths()"
+                        [attr.d]="line.areaPath"
+                        [attr.fill]="'url(#' + line.gradientId + ')'" />
+                  <!-- Lines -->
+                  <polyline *ngFor="let line of getEquityBrokerSvgPaths()"
+                            [attr.points]="line.points"
+                            [attr.stroke]="line.color"
+                            fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                            vector-effect="non-scaling-stroke" />
+                </svg>
+                <div class="chart-x-labels">
+                  <span *ngFor="let xl of getEquityBrokerXAxis()"
+                        class="chart-x-label" [style.left.%]="xl.leftPct">{{ xl.label }}</span>
+                </div>
+              </div>
+              <div class="chart-legend">
+                <div class="legend-item" *ngFor="let line of getEquityBrokerSvgPaths()">
+                  <span class="legend-dot" [style.background]="line.color"></span>
+                  <span class="legend-label">{{ line.broker_name }}</span>
+                  <span class="legend-value" [ngClass]="getPnLClass(line.lastValue)">{{ formatPnL(line.lastValue) }}</span>
+                </div>
+              </div>
+            </div>
+            <ng-template #noBrokerEquity>
+              <div class="empty-section compact">
+                <mat-icon>show_chart</mat-icon>
+                <p>No broker equity data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Equity by Pipeline -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>account_tree</mat-icon>
+                Equity by Pipeline
+              </div>
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="svg-chart-container" *ngIf="getEquityPipelineSvgPaths().length > 0; else noPipelineEquity">
+              <div class="chart-area">
+                <div class="chart-y-labels">
+                  <span *ngFor="let yl of getEquityPipelineYAxis()"
+                        class="chart-y-label" [style.top.%]="yl.topPct">{{ yl.label }}</span>
+                </div>
+                <svg viewBox="0 0 400 150" preserveAspectRatio="none" class="equity-chart">
+                  <defs>
+                    <linearGradient *ngFor="let line of getEquityPipelineSvgPaths()" [attr.id]="line.gradientId"
+                                    gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" [attr.stop-color]="line.color" stop-opacity="0.4" />
+                      <stop offset="60%" [attr.stop-color]="line.color" stop-opacity="0.08" />
+                      <stop offset="100%" [attr.stop-color]="line.color" stop-opacity="0.01" />
+                    </linearGradient>
+                  </defs>
+                  <line *ngFor="let gl of getEquityPipelineGridLines()"
+                        x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
+                  <path *ngFor="let line of getEquityPipelineSvgPaths()"
+                        [attr.d]="line.areaPath"
+                        [attr.fill]="'url(#' + line.gradientId + ')'" />
+                  <polyline *ngFor="let line of getEquityPipelineSvgPaths()"
+                            [attr.points]="line.points"
+                            [attr.stroke]="line.color"
+                            fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                            vector-effect="non-scaling-stroke" />
+                </svg>
+                <div class="chart-x-labels">
+                  <span *ngFor="let xl of getEquityPipelineXAxis()"
+                        class="chart-x-label" [style.left.%]="xl.leftPct">{{ xl.label }}</span>
+                </div>
+              </div>
+              <div class="chart-legend">
+                <div class="legend-item" *ngFor="let line of getEquityPipelineSvgPaths()">
+                  <span class="legend-dot" [style.background]="line.color"></span>
+                  <span class="legend-label">{{ line.pipeline_name }}</span>
+                  <span class="legend-value" [ngClass]="getPnLClass(line.lastValue)">{{ formatPnL(line.lastValue) }}</span>
+                </div>
+              </div>
+            </div>
+            <ng-template #noPipelineEquity>
+              <div class="empty-section compact">
+                <mat-icon>show_chart</mat-icon>
+                <p>No pipeline equity data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Overall Profit Area Chart -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>area_chart</mat-icon>
+                Overall Profit
+              </div>
+            </mat-card-title>
+            <div class="section-actions">
+              <span class="chart-period-total" [ngClass]="getPnLClass(getProfitCurrentValue())">
+                {{ formatPnL(getProfitCurrentValue()) }}
+              </span>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="svg-chart-container" *ngIf="getProfitLinePath(); else noProfitData">
+              <div class="chart-area">
+                <div class="chart-y-labels">
+                  <span *ngFor="let yl of getProfitYAxis()"
+                        class="chart-y-label" [style.top.%]="yl.topPct">{{ yl.label }}</span>
+                </div>
+                <svg viewBox="0 0 400 150" preserveAspectRatio="none" class="profit-area-chart">
+                  <defs>
+                    <linearGradient id="profitAreaGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="150">
+                      <stop offset="0%" stop-color="#10b981" stop-opacity="0.45" />
+                      <stop offset="60%" stop-color="#10b981" stop-opacity="0.1" />
+                      <stop offset="100%" stop-color="#10b981" stop-opacity="0.01" />
+                    </linearGradient>
+                  </defs>
+                  <line *ngFor="let gl of getProfitGridLines()"
+                        x1="0" [attr.y1]="gl.y" x2="400" [attr.y2]="gl.y" class="chart-grid-line" />
+                  <path [attr.d]="getProfitFullAreaPath()" fill="url(#profitAreaGrad)" />
+                  <path [attr.d]="getProfitLinePath()" class="profit-line" vector-effect="non-scaling-stroke" />
+                </svg>
+                <div class="chart-x-labels">
+                  <span *ngFor="let xl of getProfitXAxis()"
+                        class="chart-x-label" [style.left.%]="xl.leftPct">{{ xl.label }}</span>
+                </div>
+              </div>
+              <div class="chart-legend">
+                <span class="legend-item">
+                  <span class="legend-dot" style="background:#10b981"></span>
+                  <span class="legend-label">Profit</span>
+                  <span class="legend-value" [ngClass]="getPnLClass(getProfitCurrentValue())">{{ formatPnL(getProfitCurrentValue()) }}</span>
+                </span>
+              </div>
+            </div>
+            <ng-template #noProfitData>
+              <div class="empty-section compact">
+                <mat-icon>show_chart</mat-icon>
+                <p>No profit data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Trading Score Radar Chart -->
+        <mat-card class="section-card chart-card">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>speed</mat-icon>
+                Trading Score
+              </div>
+            </mat-card-title>
+            <div class="section-actions" *ngIf="data?.trading_score">
+              <span class="chart-period-total">{{ data.trading_score.overall_score }}/100</span>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="radar-chart-container" *ngIf="data?.trading_score && data.trading_score.overall_score > 0; else noScoreData">
+              <svg viewBox="0 0 300 300" class="radar-chart">
+                <!-- Grid pentagons -->
+                <polygon [attr.points]="getRadarGridPolygon(90)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(67)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(45)" class="radar-grid" />
+                <polygon [attr.points]="getRadarGridPolygon(22)" class="radar-grid" />
+                <!-- Axis lines -->
+                <line *ngFor="let i of [0,1,2,3,4]"
+                      [attr.x1]="radarCx" [attr.y1]="radarCy"
+                      [attr.x2]="getRadarAxisPoint(i, 90).x"
+                      [attr.y2]="getRadarAxisPoint(i, 90).y"
+                      class="radar-axis" />
+                <!-- Score polygon -->
+                <polygon [attr.points]="getRadarPolygon()" class="radar-score" />
+                <!-- Dots on vertices -->
+                <circle *ngFor="let i of [0,1,2,3,4]"
+                        [attr.cx]="getRadarAxisPoint(i, getRadarNormValues()[i] * 90).x"
+                        [attr.cy]="getRadarAxisPoint(i, getRadarNormValues()[i] * 90).y"
+                        r="3" fill="#818cf8" />
+                <!-- Axis labels -->
+                <text *ngFor="let i of [0,1,2,3,4]"
+                      [attr.x]="getRadarLabelPos(i).x"
+                      [attr.y]="getRadarLabelPos(i).y"
+                      [attr.text-anchor]="getRadarLabelPos(i).anchor"
+                      class="radar-label">
+                  {{ getRadarAxisLabel(i) }}
+                </text>
+                <!-- Value labels -->
+                <text *ngFor="let i of [0,1,2,3,4]"
+                      [attr.x]="getRadarValuePos(i).x"
+                      [attr.y]="getRadarValuePos(i).y"
+                      [attr.text-anchor]="getRadarValuePos(i).anchor"
+                      class="radar-value">
+                  {{ getRadarValueLabel(i) }}
+                </text>
+              </svg>
+            </div>
+            <ng-template #noScoreData>
+              <div class="empty-section compact">
+                <mat-icon>speed</mat-icon>
+                <p>No trading score yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
       <!-- ─── Section 5: Performance Overview ────────────────── -->
 
       <!-- Charts Row: P&L by Pipeline + P&L History + Cost History -->
@@ -717,6 +960,71 @@
               <p class="empty-hint">Execute a pipeline to see activity here</p>
             </div>
           </ng-template>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- ─── P&L Calendar ──────────────────────────────────────── -->
+      <mat-card class="section-card full-width">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>calendar_month</mat-icon>
+              P&L Calendar
+            </div>
+          </mat-card-title>
+          <div class="section-actions">
+            <button mat-icon-button (click)="prevMonth()"><mat-icon>chevron_left</mat-icon></button>
+            <span class="calendar-month-label">{{ calendarMonthLabel }}</span>
+            <button mat-icon-button (click)="nextMonth()"><mat-icon>chevron_right</mat-icon></button>
+          </div>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="pnl-calendar">
+            <div class="calendar-header">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+            <div class="calendar-grid">
+              <div *ngFor="let day of getCalendarDays()"
+                   class="calendar-day"
+                   [ngClass]="getCalendarDayClass(day)"
+                   (click)="selectCalendarDay(day)">
+                <span class="cal-date">{{ getCalendarDayNumber(day) }}</span>
+                <span class="cal-pnl" *ngIf="day && day.trades > 0" [ngClass]="getPnLClass(day.pnl)">
+                  {{ formatPnL(day.pnl) }}
+                </span>
+              </div>
+            </div>
+            <div class="calendar-detail" *ngIf="selectedCalendarDay">
+              <div class="detail-header">
+                {{ selectedCalendarDay.date }}
+                <span class="detail-pnl" [ngClass]="getPnLClass(selectedCalendarDay.pnl)">
+                  {{ formatPnL(selectedCalendarDay.pnl) }}
+                </span>
+              </div>
+              <div class="detail-stats">
+                <div class="detail-stat">
+                  <span class="detail-label">Trades</span>
+                  <span class="detail-value">{{ selectedCalendarDay.trades }}</span>
+                </div>
+                <div class="detail-stat">
+                  <span class="detail-label">Wins</span>
+                  <span class="detail-value pnl-positive">{{ selectedCalendarDay.wins }}</span>
+                </div>
+                <div class="detail-stat">
+                  <span class="detail-label">Losses</span>
+                  <span class="detail-value pnl-negative">{{ selectedCalendarDay.losses }}</span>
+                </div>
+                <div class="detail-stat">
+                  <span class="detail-label">Best</span>
+                  <span class="detail-value pnl-positive">{{ formatPnL(selectedCalendarDay.best_trade) }}</span>
+                </div>
+                <div class="detail-stat">
+                  <span class="detail-label">Worst</span>
+                  <span class="detail-value pnl-negative">{{ formatPnL(selectedCalendarDay.worst_trade) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </mat-card-content>
       </mat-card>
 

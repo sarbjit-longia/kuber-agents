@@ -149,6 +149,41 @@ export interface TradeStats {
   profit_factor: number;
 }
 
+export interface EquityCurvePoint {
+  date: string;
+  equity: number;
+}
+
+export interface EquityByBroker {
+  broker_name: string;
+  data: EquityCurvePoint[];
+}
+
+export interface EquityByPipeline {
+  pipeline_name: string;
+  pipeline_id: string;
+  data: EquityCurvePoint[];
+}
+
+export interface CalendarDayData {
+  date: string;
+  pnl: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  best_trade: number;
+  worst_trade: number;
+}
+
+export interface TradingScore {
+  win_rate: number;
+  profit_factor: number;
+  avg_win_loss_ratio: number;
+  max_drawdown: number;
+  consistency: number;
+  overall_score: number;
+}
+
 export interface DashboardData {
   pipelines: DashboardPipelineStats;
   executions: DashboardExecutionStats;
@@ -161,6 +196,10 @@ export interface DashboardData {
   cost_history: CostHistoryEntry[];
   pnl_history: PnLHistoryEntry[];
   trade_stats: TradeStats;
+  equity_by_broker: EquityByBroker[];
+  equity_by_pipeline: EquityByPipeline[];
+  calendar_data: CalendarDayData[];
+  trading_score: TradingScore;
 }
 
 @Injectable({
