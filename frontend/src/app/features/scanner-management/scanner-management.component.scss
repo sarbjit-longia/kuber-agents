@@ -183,12 +183,9 @@
         box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
       }
 
-      &.card-tint-active {
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(52, 211, 153, 0.03));
-      }
-
+      &.card-tint-active,
       &.card-tint-inactive {
-        background: linear-gradient(135deg, rgba(107, 108, 126, 0.06), rgba(74, 75, 92, 0.03));
+        background: var(--bg-card);
       }
 
       .scanner-card-header {
