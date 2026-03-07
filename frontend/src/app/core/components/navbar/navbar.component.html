@@ -10,12 +10,14 @@
 
     <!-- Navigation Links -->
     <div class="navbar-links">
-      <a routerLink="/" class="nav-link" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
-        Home
-      </a>
-      <a routerLink="/how-it-works" class="nav-link" routerLinkActive="active">
-        How It Works
-      </a>
+      <ng-container *ngIf="!isAuthenticated">
+        <a routerLink="/" class="nav-link" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
+          Home
+        </a>
+        <a routerLink="/how-it-works" class="nav-link" routerLinkActive="active">
+          How It Works
+        </a>
+      </ng-container>
 
       <ng-container *ngIf="isAuthenticated">
         <a routerLink="/dashboard" class="nav-link" routerLinkActive="active">
@@ -26,9 +28,6 @@
         </a>
         <a routerLink="/scanners" class="nav-link" routerLinkActive="active">
           Scanners
-        </a>
-        <a routerLink="/pipeline-builder" class="nav-link" routerLinkActive="active">
-          Builder
         </a>
         <a routerLink="/monitoring" class="nav-link" routerLinkActive="active">
           Monitoring
