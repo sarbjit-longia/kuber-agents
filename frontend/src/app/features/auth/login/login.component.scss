@@ -102,11 +102,9 @@
     font-weight: 700;
     color: var(--text-primary);
 
-    mat-icon {
-      font-size: 1.5rem;
-      width: 1.5rem;
-      height: 1.5rem;
-      color: var(--accent-primary);
+    .branding-logo-svg {
+      width: 32px;
+      height: 36px;
     }
   }
 
@@ -354,12 +352,7 @@
         align-items: center;
         gap: 0.5rem;
 
-        mat-icon {
-          font-size: 1.3rem;
-          width: 1.3rem;
-          height: 1.3rem;
-          color: var(--accent-primary);
-        }
+        .footer-logo { width: 22px; height: 25px; }
       }
 
       p {

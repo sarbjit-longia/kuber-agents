@@ -35,17 +35,16 @@
         transform: scale(1.05);
       }
 
-      .brand-icon {
-        font-size: 2rem;
-        width: 2rem;
-        height: 2rem;
-        color: var(--accent-primary);
+      .brand-logo {
+        width: 28px;
+        height: 32px;
+        flex-shrink: 0;
       }
 
       .brand-name {
         font-size: 1.5rem;
         font-weight: 700;
-        background: var(--accent-gradient);
+        background: linear-gradient(135deg, #10b981, #06b6d4);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;

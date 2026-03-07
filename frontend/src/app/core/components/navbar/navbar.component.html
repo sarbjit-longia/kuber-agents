@@ -3,7 +3,18 @@
     <!-- Logo/Brand -->
     <div class="navbar-brand">
       <a routerLink="/" class="brand-link">
-        <mat-icon class="brand-icon">show_chart</mat-icon>
+        <svg class="brand-logo" viewBox="0 0 60 68" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="nav-clover" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#06b6d4"/>
+            </linearGradient>
+          </defs>
+          <circle cx="22" cy="19" r="12" fill="none" stroke="url(#nav-clover)" stroke-width="2.4"/>
+          <circle cx="38" cy="19" r="12" fill="none" stroke="url(#nav-clover)" stroke-width="2.4"/>
+          <circle cx="22" cy="35" r="12" fill="none" stroke="url(#nav-clover)" stroke-width="2.4"/>
+          <circle cx="38" cy="35" r="12" fill="none" stroke="url(#nav-clover)" stroke-width="2.4"/>
+          <line x1="30" y1="42" x2="30" y2="64" stroke="url(#nav-clover)" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
         <span class="brand-name">CloverCharts</span>
       </a>
     </div>
