@@ -14,10 +14,6 @@
         </span>
       </div>
       <div class="header-actions">
-        <button mat-raised-button (click)="goToPipelineBuilder()">
-          <mat-icon>add</mat-icon>
-          New Pipeline
-        </button>
         <button mat-raised-button color="primary" (click)="refresh()">
           <mat-icon>refresh</mat-icon>
           Refresh
@@ -271,10 +267,105 @@
         </mat-card-content>
       </mat-card>
 
+      <!-- Overall Trade Performance -->
+      <mat-card class="section-card full-width trade-stats-card" *ngIf="data.trade_stats && data.trade_stats.total_trades > 0">
+        <mat-card-header>
+          <mat-card-title>
+            <div class="section-title">
+              <mat-icon>analytics</mat-icon>
+              Overall Trade Performance
+            </div>
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="trade-stats-grid">
+            <div class="trade-stat-item tile-tint-info">
+              <div class="trade-stat-value">{{ data.trade_stats.total_trades }}</div>
+              <div class="trade-stat-label">Total Trades</div>
+            </div>
+            <div class="trade-stat-item tile-tint-accent">
+              <div class="win-rate-ring" [style.--win-deg]="(data.trade_stats.win_rate * 360) + 'deg'">
+                <span class="ring-inner">{{ formatPercent(data.trade_stats.win_rate * 100) }}</span>
+              </div>
+              <div class="trade-stat-label">Win Rate</div>
+            </div>
+            <div class="trade-stat-item tile-tint-success">
+              <div class="trade-stat-value pnl-positive">{{ data.trade_stats.winning_trades }}</div>
+              <div class="trade-stat-label">Wins</div>
+            </div>
+            <div class="trade-stat-item tile-tint-danger">
+              <div class="trade-stat-value pnl-negative">{{ data.trade_stats.losing_trades }}</div>
+              <div class="trade-stat-label">Losses</div>
+            </div>
+            <div class="trade-stat-item tile-tint-success">
+              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.avg_win) }}</div>
+              <div class="trade-stat-label">Avg Win</div>
+            </div>
+            <div class="trade-stat-item tile-tint-danger">
+              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.avg_loss) }}</div>
+              <div class="trade-stat-label">Avg Loss</div>
+            </div>
+            <div class="trade-stat-item tile-tint-success">
+              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.best_trade) }}</div>
+              <div class="trade-stat-label">Best Trade</div>
+            </div>
+            <div class="trade-stat-item tile-tint-danger">
+              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.worst_trade) }}</div>
+              <div class="trade-stat-label">Worst Trade</div>
+            </div>
+            <div class="trade-stat-item tile-tint-accent">
+              <div class="trade-stat-value">{{ data.trade_stats.profit_factor || '-' }}</div>
+              <div class="trade-stat-label">Profit Factor</div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- ─── Section 5: Performance Overview ────────────────── -->
 
-      <!-- Charts Row: Cost + P&L History -->
+      <!-- Charts Row: P&L by Pipeline + P&L History + Cost History -->
       <div class="charts-row">
+        <!-- P&L by Pipeline -->
+        <mat-card class="section-card chart-card" *ngIf="data.pipeline_list.length > 0">
+          <mat-card-header>
+            <mat-card-title>
+              <div class="section-title">
+                <mat-icon>leaderboard</mat-icon>
+                P&L by Pipeline
+              </div>
+            </mat-card-title>
+            <div class="section-actions">
+              <span class="chart-period-total" [ngClass]="getPnLClass(data.pnl.total_realized)">
+                Total: {{ formatPnL(data.pnl.total_realized) }}
+              </span>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="pipeline-pnl-horizontal" *ngIf="getPipelinePnLData().length > 0; else noPipelinePnl">
+              <div class="pipeline-h-row" *ngFor="let p of getPipelinePnLData()"
+                   [matTooltip]="p.name + ': ' + formatPnL(p.total_pnl)"
+                   (click)="viewPipeline(p)">
+                <div class="pipeline-h-name">{{ getPipelineBarLabel(p.name) }}</div>
+                <div class="pipeline-h-track">
+                  <div class="pipeline-h-bar"
+                       [ngClass]="p.total_pnl >= 0 ? 'pipeline-h-bar-profit' : 'pipeline-h-bar-loss'"
+                       [style.width.%]="getPipelineBarHeight(p.total_pnl)">
+                  </div>
+                </div>
+                <div class="pipeline-h-value" [ngClass]="getPnLClass(p.total_pnl)">
+                  {{ formatPnL(p.total_pnl) }}
+                </div>
+              </div>
+            </div>
+            <ng-template #noPipelinePnl>
+              <div class="empty-section compact">
+                <mat-icon>bar_chart</mat-icon>
+                <p>No pipeline P&L data yet</p>
+              </div>
+            </ng-template>
+          </mat-card-content>
+        </mat-card>
+
         <!-- P&L History Chart -->
         <mat-card class="section-card chart-card">
           <mat-card-header>
@@ -368,123 +459,6 @@
           </mat-card-content>
         </mat-card>
       </div>
-
-      <!-- Overall Trade Performance -->
-      <mat-card class="section-card full-width trade-stats-card" *ngIf="data.trade_stats && data.trade_stats.total_trades > 0">
-        <mat-card-header>
-          <mat-card-title>
-            <div class="section-title">
-              <mat-icon>analytics</mat-icon>
-              Overall Trade Performance
-            </div>
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <div class="trade-stats-grid">
-            <div class="trade-stat-item tile-tint-info">
-              <div class="trade-stat-value">{{ data.trade_stats.total_trades }}</div>
-              <div class="trade-stat-label">Total Trades</div>
-            </div>
-            <div class="trade-stat-item tile-tint-accent">
-              <div class="win-rate-ring" [style.--win-deg]="(data.trade_stats.win_rate * 360) + 'deg'">
-                <span class="ring-inner">{{ formatPercent(data.trade_stats.win_rate * 100) }}</span>
-              </div>
-              <div class="trade-stat-label">Win Rate</div>
-            </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ data.trade_stats.winning_trades }}</div>
-              <div class="trade-stat-label">Wins</div>
-            </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ data.trade_stats.losing_trades }}</div>
-              <div class="trade-stat-label">Losses</div>
-            </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.avg_win) }}</div>
-              <div class="trade-stat-label">Avg Win</div>
-            </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.avg_loss) }}</div>
-              <div class="trade-stat-label">Avg Loss</div>
-            </div>
-            <div class="trade-stat-item tile-tint-success">
-              <div class="trade-stat-value pnl-positive">{{ formatPnL(data.trade_stats.best_trade) }}</div>
-              <div class="trade-stat-label">Best Trade</div>
-            </div>
-            <div class="trade-stat-item tile-tint-danger">
-              <div class="trade-stat-value pnl-negative">{{ formatPnL(data.trade_stats.worst_trade) }}</div>
-              <div class="trade-stat-label">Worst Trade</div>
-            </div>
-            <div class="trade-stat-item tile-tint-accent">
-              <div class="trade-stat-value">{{ data.trade_stats.profit_factor || '-' }}</div>
-              <div class="trade-stat-label">Profit Factor</div>
-            </div>
-          </div>
-        </mat-card-content>
-      </mat-card>
-
-      <!-- P&L by Pipeline -->
-      <mat-card class="section-card full-width" *ngIf="data.pipeline_list.length > 0">
-        <mat-card-header>
-          <mat-card-title>
-            <div class="section-title">
-              <mat-icon>leaderboard</mat-icon>
-              P&L by Pipeline
-            </div>
-          </mat-card-title>
-          <div class="section-actions">
-            <span class="chart-period-total" [ngClass]="getPnLClass(data.pnl.total_realized)">
-              Total: {{ formatPnL(data.pnl.total_realized) }}
-            </span>
-          </div>
-        </mat-card-header>
-        <mat-card-content>
-          <div class="pipeline-pnl-chart" *ngIf="getPipelinePnLData().length > 0; else noPipelinePnl">
-            <!-- Zero baseline label -->
-            <div class="baseline-label">$0</div>
-            <div class="pipeline-bars-container">
-              <!-- Upper half: profit bars grow upward -->
-              <div class="pipeline-bars-upper">
-                <div class="pipeline-bar-col" *ngFor="let p of getPipelinePnLData()"
-                     [matTooltip]="p.name + ': ' + formatPnL(p.total_pnl)"
-                     (click)="viewPipeline(p)">
-                  <div class="pipeline-bar pipeline-bar-profit"
-                       *ngIf="p.total_pnl > 0"
-                       [style.height.%]="getPipelineBarHeight(p.total_pnl)">
-                    <span class="pipeline-bar-value">{{ formatPnL(p.total_pnl) }}</span>
-                  </div>
-                </div>
-              </div>
-              <!-- Baseline -->
-              <div class="pipeline-baseline"></div>
-              <!-- Lower half: loss bars grow downward -->
-              <div class="pipeline-bars-lower">
-                <div class="pipeline-bar-col" *ngFor="let p of getPipelinePnLData()"
-                     [matTooltip]="p.name + ': ' + formatPnL(p.total_pnl)"
-                     (click)="viewPipeline(p)">
-                  <div class="pipeline-bar pipeline-bar-loss"
-                       *ngIf="p.total_pnl < 0"
-                       [style.height.%]="getPipelineBarHeight(p.total_pnl)">
-                    <span class="pipeline-bar-value">{{ formatPnL(p.total_pnl) }}</span>
-                  </div>
-                </div>
-              </div>
-              <!-- Labels -->
-              <div class="pipeline-bar-labels">
-                <div class="pipeline-bar-label-col" *ngFor="let p of getPipelinePnLData()">
-                  <span class="pipeline-bar-name">{{ getPipelineBarLabel(p.name) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <ng-template #noPipelinePnl>
-            <div class="empty-section compact">
-              <mat-icon>bar_chart</mat-icon>
-              <p>No pipeline P&L data yet</p>
-            </div>
-          </ng-template>
-        </mat-card-content>
-      </mat-card>
 
       <!-- ─── Section 6: Pipelines & Brokers (side-by-side) ──── -->
       <div class="pipelines-brokers-grid">
