@@ -1,0 +1,100 @@
+<div class="consent-page">
+  <div class="consent-container">
+
+    <!-- Header -->
+    <div class="consent-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <mat-icon>show_chart</mat-icon>
+        </div>
+        <span class="brand-name">CloverCharts</span>
+      </div>
+      <h1>SMS Notification Consent</h1>
+    </div>
+
+    <!-- Success State -->
+    <div *ngIf="submitted" class="state-card success-state">
+      <div class="state-icon-wrapper">
+        <mat-icon>check_circle</mat-icon>
+      </div>
+      <h2>Consent Recorded</h2>
+      <p>Thank you! Your consent has been recorded. You may now receive SMS trade approval notifications from CloverCharts.</p>
+      <p class="opt-out-note">You can opt out at any time by replying <strong>STOP</strong> to any message or through your account settings.</p>
+    </div>
+
+    <!-- Consent Form -->
+    <ng-container *ngIf="!submitted">
+      <div class="consent-card">
+        <p class="description">
+          CloverCharts, operated by <strong>Longia LLC</strong>, uses SMS to send real-time trade
+          approval requests when your automated trading pipelines generate trades requiring your
+          confirmation.
+        </p>
+
+        <!-- Phone Input -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Phone Number</mat-label>
+          <input matInput
+                 [(ngModel)]="phoneNumber"
+                 placeholder="+14155551234"
+                 [disabled]="submitting">
+          <mat-icon matPrefix>phone</mat-icon>
+          <mat-hint>Enter your phone in E.164 format (e.g., +1 followed by your number)</mat-hint>
+        </mat-form-field>
+
+        <div *ngIf="phoneNumber && !phoneValid" class="field-error">
+          Please enter a valid phone number starting with + followed by country code and number.
+        </div>
+
+        <!-- Consent Checkbox -->
+        <div class="consent-checkbox-wrapper">
+          <mat-checkbox [(ngModel)]="consentChecked" [disabled]="submitting" color="primary">
+            I consent to receive SMS notifications from CloverCharts (operated by Longia LLC)
+            regarding trade approval requests. Message and data rates may apply. Reply STOP to
+            opt out at any time. Reply HELP for help. Message frequency varies based on pipeline
+            activity.
+          </mat-checkbox>
+        </div>
+
+        <!-- Error -->
+        <div *ngIf="error" class="error-banner">
+          <mat-icon>error_outline</mat-icon>
+          <span>{{ error }}</span>
+        </div>
+
+        <!-- Submit -->
+        <button mat-raised-button
+                class="submit-btn"
+                (click)="submit()"
+                [disabled]="!canSubmit">
+          <mat-spinner *ngIf="submitting" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!submitting">verified_user</mat-icon>
+          <span>{{ submitting ? 'Submitting...' : 'Give Consent' }}</span>
+        </button>
+      </div>
+
+      <!-- Info Section -->
+      <div class="info-section">
+        <h3><mat-icon>info</mat-icon> What you're consenting to</h3>
+        <ul>
+          <li>SMS notifications for trade approval requests only</li>
+          <li>Message frequency varies based on your pipeline activity</li>
+          <li>Standard message and data rates may apply</li>
+          <li>Reply <strong>STOP</strong> to opt out at any time</li>
+          <li>Reply <strong>HELP</strong> for support information</li>
+        </ul>
+      </div>
+    </ng-container>
+
+    <!-- Footer -->
+    <div class="consent-footer">
+      <div class="footer-links">
+        <a routerLink="/privacy">Privacy Policy</a>
+        <span class="divider">|</span>
+        <a routerLink="/terms">Terms of Service</a>
+      </div>
+      <p class="legal-entity">Service provided by Longia LLC</p>
+    </div>
+
+  </div>
+</div>

@@ -18,6 +18,7 @@ from app.api.v1.files import router as files_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.approvals import router as approvals_router
 from app.api.v1.approvals import token_router as approvals_token_router
+from app.api.v1.sms_consent import router as sms_consent_router
 
 router = APIRouter()
 
@@ -34,4 +35,5 @@ router.include_router(approvals_token_router)
 router.include_router(websocket_router)
 router.include_router(tools_router)
 router.include_router(files_router)
+router.include_router(sms_consent_router)
 router.include_router(dashboard_router)

@@ -68,7 +68,13 @@ class User(Base):
     telegram_bot_token = Column(String(200), nullable=True)
     telegram_chat_id = Column(String(50), nullable=True)
     telegram_enabled = Column(Boolean, default=False, nullable=False)
-    
+
+    # SMS consent fields
+    sms_consent = Column(Boolean, default=False, nullable=False)
+    sms_consent_at = Column(DateTime, nullable=True)
+    sms_phone = Column(String(20), nullable=True)
+    sms_consent_method = Column(String(50), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

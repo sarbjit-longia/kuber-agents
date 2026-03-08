@@ -19,7 +19,9 @@ from app.schemas.user import (
     UserUpdate,
     TelegramConfigUpdate,
     TelegramConfigResponse,
-    TelegramTestRequest
+    TelegramTestRequest,
+    SmsConsentSettingsRequest,
+    SmsConsentResponse,
 )
 from app.schemas.device import DeviceRegistrationRequest, DeviceRegistrationResponse
 from app.core.deps import get_current_active_user
@@ -280,6 +282,70 @@ async def delete_telegram_config(
         "status": "success",
         "message": "Telegram configuration deleted successfully"
     }
+
+
+@router.get("/me/sms-consent", response_model=SmsConsentResponse)
+async def get_sms_consent(
+    current_user: Annotated[UserModel, Depends(get_current_active_user)]
+):
+    """Get current user's SMS consent status."""
+    return SmsConsentResponse(
+        sms_consent=current_user.sms_consent,
+        sms_consent_at=current_user.sms_consent_at,
+        sms_phone=current_user.sms_phone,
+        sms_consent_method=current_user.sms_consent_method,
+    )
+
+
+@router.put("/me/sms-consent", response_model=SmsConsentResponse)
+async def update_sms_consent(
+    body: SmsConsentSettingsRequest,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Update SMS consent for the current user.
+
+    consent=True: opt-in, records phone and timestamp.
+    consent=False: revoke, clears consent fields.
+    """
+    from app.models.sms_consent_log import SmsConsentLog
+
+    if body.consent:
+        current_user.sms_consent = True
+        current_user.sms_consent_at = datetime.utcnow()
+        current_user.sms_phone = body.phone_number
+        current_user.sms_consent_method = "settings_page"
+    else:
+        current_user.sms_consent = False
+        current_user.sms_consent_at = None
+        current_user.sms_phone = None
+        current_user.sms_consent_method = None
+
+    # Write audit log
+    log_entry = SmsConsentLog(
+        phone_number=body.phone_number,
+        user_id=current_user.id,
+        consent_given=body.consent,
+        consent_method="settings_page",
+    )
+    db.add(log_entry)
+    await db.commit()
+    await db.refresh(current_user)
+
+    action = "granted" if body.consent else "revoked"
+    logger.info(
+        f"sms_consent_{action}",
+        user_id=str(current_user.id),
+        phone=body.phone_number[:6] + "****",
+    )
+
+    return SmsConsentResponse(
+        sms_consent=current_user.sms_consent,
+        sms_consent_at=current_user.sms_consent_at,
+        sms_phone=current_user.sms_phone,
+        sms_consent_method=current_user.sms_consent_method,
+    )
 
 
 @router.post("/me/devices", response_model=DeviceRegistrationResponse, status_code=status.HTTP_201_CREATED)

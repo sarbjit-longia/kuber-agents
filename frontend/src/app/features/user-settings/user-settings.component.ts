@@ -14,8 +14,9 @@ import { MatDividerModule } from '@angular/material/divider';
 import { Subject, takeUntil } from 'rxjs';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { FooterComponent } from '../../shared/components/footer/footer.component';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { AuthService } from '../../core/services/auth.service';
-import { UserService, TelegramConfig } from '../../core/services/user.service';
+import { UserService, TelegramConfig, SmsConsentStatus } from '../../core/services/user.service';
 import { User, SubscriptionInfo } from '../../core/models/user.model';
 
 interface NavSection {
@@ -39,6 +40,7 @@ interface NavSection {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatDividerModule,
+    MatCheckboxModule,
     NavbarComponent,
     FooterComponent
   ],
@@ -80,6 +82,13 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
   isDeleting = false;
   showTokenInput = false;
 
+  // SMS consent state
+  smsConsent: SmsConsentStatus | null = null;
+  smsPhone = '';
+  smsConsentChecked = false;
+  isLoadingSms = false;
+  isSavingSms = false;
+
   constructor(
     private route: ActivatedRoute,
     private authService: AuthService,
@@ -107,6 +116,7 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
       });
     this.loadSubscriptionInfo();
     this.loadTelegramConfig();
+    this.loadSmsConsent();
   }
 
   ngOnDestroy(): void {
@@ -334,5 +344,72 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
     if (!this.showTokenInput) {
       this.botToken = '';
     }
+  }
+
+  // ── SMS Consent methods ─────────────────────────────────────
+  get smsPhoneValid(): boolean {
+    return /^\+[1-9]\d{6,14}$/.test(this.smsPhone);
+  }
+
+  loadSmsConsent(): void {
+    this.isLoadingSms = true;
+    this.userService.getSmsConsent().subscribe({
+      next: (status) => {
+        this.smsConsent = status;
+        this.isLoadingSms = false;
+      },
+      error: () => {
+        this.isLoadingSms = false;
+      }
+    });
+  }
+
+  saveSmsConsent(): void {
+    if (!this.smsPhoneValid || !this.smsConsentChecked) return;
+    this.isSavingSms = true;
+    this.userService.updateSmsConsent(this.smsPhone, true).subscribe({
+      next: (status) => {
+        this.smsConsent = status;
+        this.smsPhone = '';
+        this.smsConsentChecked = false;
+        this.isSavingSms = false;
+        this.snackBar.open('SMS consent recorded successfully', 'Close', {
+          duration: 3000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (err) => {
+        this.isSavingSms = false;
+        const msg = err.error?.detail || 'Failed to save SMS consent';
+        this.snackBar.open(msg, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  revokeSmsConsent(): void {
+    if (!this.smsConsent?.sms_phone) return;
+    if (!confirm('Are you sure you want to revoke SMS consent? You will no longer receive SMS trade approval requests.')) {
+      return;
+    }
+    this.isSavingSms = true;
+    this.userService.updateSmsConsent(this.smsConsent.sms_phone, false).subscribe({
+      next: (status) => {
+        this.smsConsent = status;
+        this.isSavingSms = false;
+        this.snackBar.open('SMS consent revoked', 'Close', {
+          duration: 3000
+        });
+      },
+      error: () => {
+        this.isSavingSms = false;
+        this.snackBar.open('Failed to revoke SMS consent', 'Close', {
+          duration: 3000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
   }
 }

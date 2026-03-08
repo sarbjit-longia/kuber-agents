@@ -13,6 +13,9 @@ export interface User {
   subscription_expires_at: string | null;
   telegram_enabled: boolean;
   telegram_chat_id: string | null;
+  sms_consent: boolean;
+  sms_consent_at: string | null;
+  sms_phone: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -664,6 +664,47 @@ mat-divider {
   }
 }
 
+// ── SMS Consent ──────────────────────────────────────────────────────
+.sms-consent-checkbox {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+
+  ::ng-deep {
+    .mdc-form-field {
+      align-items: flex-start !important;
+    }
+
+    .mdc-checkbox {
+      margin-top: 2px;
+    }
+
+    .mdc-label {
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      line-height: 1.6;
+      cursor: pointer;
+    }
+  }
+}
+
+.consent-date {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.sms-info-banner {
+  background: var(--color-info-bg);
+  border-left-color: var(--accent-primary);
+
+  h4 {
+    color: var(--accent-primary);
+  }
+}
+
 // ── Responsive ────────────────────────────────────────────────────────
 @media (max-width: 768px) {
   .settings-layout {

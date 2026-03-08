@@ -27,6 +27,13 @@ export interface TelegramTestResponse {
   message_id?: number;
 }
 
+export interface SmsConsentStatus {
+  sms_consent: boolean;
+  sms_consent_at: string | null;
+  sms_phone: string | null;
+  sms_consent_method: string | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -84,5 +91,22 @@ export class UserService {
    */
   deleteTelegramConfig(): Observable<any> {
     return this.http.delete(`${this.apiUrl}/me/telegram`);
+  }
+
+  /**
+   * Get current user's SMS consent status
+   */
+  getSmsConsent(): Observable<SmsConsentStatus> {
+    return this.http.get<SmsConsentStatus>(`${this.apiUrl}/me/sms-consent`);
+  }
+
+  /**
+   * Update SMS consent (opt-in or revoke)
+   */
+  updateSmsConsent(phoneNumber: string, consent: boolean): Observable<SmsConsentStatus> {
+    return this.http.put<SmsConsentStatus>(`${this.apiUrl}/me/sms-consent`, {
+      phone_number: phoneNumber,
+      consent
+    });
   }
 }

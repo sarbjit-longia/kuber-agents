@@ -102,25 +102,42 @@ class ApprovalService:
         except Exception as e:
             logger.error("failed_to_schedule_timeout_task", error=str(e))
 
-        # Send SMS notification if configured
+        # Send SMS notification if configured and user has given consent
         channels = pipeline.approval_channels or []
         if "sms" in channels and pipeline.approval_phone:
-            try:
-                from app.services.sms_notifier import TwilioSmsNotifier
-                report = ApprovalService.build_pre_trade_report(state, pipeline)
-                approval_url = f"{settings.APPROVAL_BASE_URL}/approve/{token}"
-                TwilioSmsNotifier.send_approval_request(
-                    to_phone=pipeline.approval_phone,
-                    symbol=execution.symbol or "N/A",
-                    action=report.get("action", "TRADE"),
-                    confidence=report.get("confidence"),
-                    position_size=report.get("position_size"),
-                    entry_price=report.get("entry_price"),
-                    approval_url=approval_url,
-                    timeout_minutes=timeout_minutes,
+            # Check SMS consent before sending
+            from sqlalchemy import select
+            from app.models.user import User as UserModel
+
+            user_row = db_session.execute(
+                select(UserModel).where(UserModel.id == pipeline.user_id)
+            ).scalar_one_or_none()
+
+            if not user_row or not user_row.sms_consent:
+                logger.warning(
+                    "sms_blocked_no_consent",
+                    execution_id=str(execution.id),
+                    pipeline_id=str(pipeline.id),
+                    user_id=str(pipeline.user_id),
+                    reason="User has not given SMS consent",
                 )
-            except Exception as e:
-                logger.error("sms_notification_failed", error=str(e))
+            else:
+                try:
+                    from app.services.sms_notifier import TwilioSmsNotifier
+                    report = ApprovalService.build_pre_trade_report(state, pipeline)
+                    approval_url = f"{settings.APPROVAL_BASE_URL}/approve/{token}"
+                    TwilioSmsNotifier.send_approval_request(
+                        to_phone=pipeline.approval_phone,
+                        symbol=execution.symbol or "N/A",
+                        action=report.get("action", "TRADE"),
+                        confidence=report.get("confidence"),
+                        position_size=report.get("position_size"),
+                        entry_price=report.get("entry_price"),
+                        approval_url=approval_url,
+                        timeout_minutes=timeout_minutes,
+                    )
+                except Exception as e:
+                    logger.error("sms_notification_failed", error=str(e))
 
     @staticmethod
     def build_pre_trade_report(state: PipelineState, pipeline: Pipeline) -> Dict[str, Any]:

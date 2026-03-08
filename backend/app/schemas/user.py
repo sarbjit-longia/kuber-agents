@@ -34,6 +34,9 @@ class UserInDB(UserBase):
     subscription_expires_at: Optional[datetime] = None
     telegram_enabled: bool = False
     telegram_chat_id: Optional[str] = None
+    sms_consent: bool = False
+    sms_consent_at: Optional[datetime] = None
+    sms_phone: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -94,5 +97,25 @@ class TelegramTestRequest(BaseModel):
     """Schema for testing Telegram connection."""
     bot_token: str
     chat_id: str
+
+
+class SmsConsentPublicRequest(BaseModel):
+    """Schema for public SMS consent form submission."""
+    phone_number: str = Field(..., pattern=r'^\+[1-9]\d{6,14}$')
+    consent: bool = Field(...)
+
+
+class SmsConsentSettingsRequest(BaseModel):
+    """Schema for authenticated SMS consent update."""
+    phone_number: str = Field(..., pattern=r'^\+[1-9]\d{6,14}$')
+    consent: bool
+
+
+class SmsConsentResponse(BaseModel):
+    """Schema for SMS consent status response."""
+    sms_consent: bool
+    sms_consent_at: Optional[datetime] = None
+    sms_phone: Optional[str] = None
+    sms_consent_method: Optional[str] = None
 
 

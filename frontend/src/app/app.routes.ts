@@ -80,6 +80,10 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'sms-consent',
+    loadComponent: () => import('./features/sms-consent/sms-consent.component').then(m => m.SmsConsentComponent)
+  },
+  {
     path: 'approve/:token',
     loadComponent: () => import('./features/approval/approval.component').then(m => m.ApprovalComponent)
   },

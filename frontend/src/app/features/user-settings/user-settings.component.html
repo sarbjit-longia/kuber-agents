@@ -334,6 +334,92 @@
           </div>
         </div>
       </div>
+
+      <!-- SMS Consent Card -->
+      <div class="settings-card">
+        <div class="card-title-row">
+          <h3 class="card-title">
+            <mat-icon class="title-icon">sms</mat-icon>
+            SMS Trade Approvals
+          </h3>
+        </div>
+
+        <!-- Loading -->
+        <div *ngIf="isLoadingSms" class="loading-container">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading SMS consent status...</p>
+        </div>
+
+        <ng-container *ngIf="!isLoadingSms">
+          <!-- Status Badge -->
+          <div class="config-status">
+            <div class="status-badge" [class.configured]="smsConsent?.sms_consent">
+              <mat-icon>{{ smsConsent?.sms_consent ? 'check_circle' : 'info' }}</mat-icon>
+              <span>{{ smsConsent?.sms_consent ? 'Consent Given' : 'Not Consented' }}</span>
+            </div>
+
+            <div *ngIf="smsConsent?.sms_consent" class="chat-id-display">
+              <strong>Phone:</strong> {{ smsConsent!.sms_phone }}
+              <span *ngIf="smsConsent!.sms_consent_at" class="consent-date">
+                &mdash; Consented {{ smsConsent!.sms_consent_at | date:'mediumDate' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Consent Form (not yet consented) -->
+          <div *ngIf="!smsConsent?.sms_consent" class="config-form">
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Phone Number</mat-label>
+              <input matInput
+                     [(ngModel)]="smsPhone"
+                     placeholder="+14155551234"
+                     [disabled]="isSavingSms">
+              <mat-icon matPrefix>phone</mat-icon>
+              <mat-hint>E.164 format (e.g., +1 followed by your number)</mat-hint>
+            </mat-form-field>
+
+            <div class="sms-consent-checkbox">
+              <mat-checkbox [(ngModel)]="smsConsentChecked" [disabled]="isSavingSms" color="primary">
+                I consent to receive SMS notifications from CloverCharts (operated by Longia LLC) regarding
+                trade approval requests. Message and data rates may apply. Reply STOP to opt out. Reply HELP
+                for help. Message frequency varies based on pipeline activity.
+              </mat-checkbox>
+            </div>
+
+            <div class="button-group">
+              <button mat-raised-button
+                      color="primary"
+                      (click)="saveSmsConsent()"
+                      [disabled]="isSavingSms || !smsPhoneValid || !smsConsentChecked">
+                <mat-icon *ngIf="!isSavingSms">verified_user</mat-icon>
+                <mat-spinner *ngIf="isSavingSms" diameter="20"></mat-spinner>
+                {{ isSavingSms ? 'Saving...' : 'Give Consent' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Revoke (already consented) -->
+          <div *ngIf="smsConsent?.sms_consent" class="configured-actions">
+            <button mat-raised-button
+                    color="warn"
+                    (click)="revokeSmsConsent()"
+                    [disabled]="isSavingSms">
+              <mat-icon *ngIf="!isSavingSms">cancel</mat-icon>
+              <mat-spinner *ngIf="isSavingSms" diameter="20"></mat-spinner>
+              {{ isSavingSms ? 'Revoking...' : 'Revoke SMS Consent' }}
+            </button>
+          </div>
+
+          <!-- Info Banner -->
+          <div class="info-banner sms-info-banner">
+            <mat-icon>info</mat-icon>
+            <div>
+              <h4>About SMS Approvals</h4>
+              <p>SMS notifications are used exclusively for trade approval requests when your pipelines generate trades requiring confirmation. Standard message and data rates may apply.</p>
+            </div>
+          </div>
+        </ng-container>
+      </div>
     </section>
 
   </main>
