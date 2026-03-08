@@ -43,6 +43,16 @@
                   <div class="pipeline-meta">
                     <span>{{ getAgentCount(pipeline) }} agents</span>
                   </div>
+                  <span
+                    *ngIf="pipeline.config?.mode"
+                    class="mode-badge"
+                    [ngClass]="{
+                      'mode-paper': pipeline.config.mode === 'paper',
+                      'mode-live': pipeline.config.mode === 'live',
+                      'mode-simulation': pipeline.config.mode === 'simulation'
+                    }">
+                    {{ pipeline.config.mode }}
+                  </span>
                 </div>
               </div>
             </td>
@@ -52,16 +62,40 @@
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef>Status</th>
             <td mat-cell *matCellDef="let pipeline">
-              <mat-chip [color]="pipeline.is_active ? 'accent' : 'default'" selected>
-                {{ pipeline.is_active ? 'ACTIVE' : 'INACTIVE' }}
-              </mat-chip>
+              <span class="status-chip" [ngClass]="pipeline.is_active ? 'status-chip-active' : 'status-chip-inactive'">
+                <mat-icon>{{ pipeline.is_active ? 'check_circle' : 'pause_circle' }}</mat-icon>
+                {{ pipeline.is_active ? 'Active' : 'Inactive' }}
+              </span>
             </td>
           </ng-container>
 
-          <!-- Created Column -->
-          <ng-container matColumnDef="created">
-            <th mat-header-cell *matHeaderCellDef>Created</th>
-            <td mat-cell *matCellDef="let pipeline">{{ formatDate(pipeline.created_at) }}</td>
+          <!-- Trigger Column -->
+          <ng-container matColumnDef="trigger">
+            <th mat-header-cell *matHeaderCellDef>Trigger</th>
+            <td mat-cell *matCellDef="let pipeline">
+              <div class="trigger-cell">
+                <span
+                  class="trigger-chip"
+                  [ngClass]="pipeline.trigger_mode === 'signal' ? 'trigger-signal' : 'trigger-periodic'">
+                  <mat-icon>{{ pipeline.trigger_mode === 'signal' ? 'sensors' : 'schedule' }}</mat-icon>
+                  {{ pipeline.trigger_mode === 'signal' ? 'Signal' : 'Periodic' }}
+                </span>
+                <div class="feature-badges">
+                  <span *ngIf="pipeline.notification_enabled" class="feature-icon" matTooltip="Notifications enabled">
+                    <mat-icon>notifications_active</mat-icon>
+                  </span>
+                  <span *ngIf="pipeline.require_approval" class="feature-icon" matTooltip="Approval required">
+                    <mat-icon>verified_user</mat-icon>
+                  </span>
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Updated Column -->
+          <ng-container matColumnDef="updated">
+            <th mat-header-cell *matHeaderCellDef>Updated</th>
+            <td mat-cell *matCellDef="let pipeline">{{ pipeline.updated_at | localDate:'short' }}</td>
           </ng-container>
 
           <!-- Actions Column -->

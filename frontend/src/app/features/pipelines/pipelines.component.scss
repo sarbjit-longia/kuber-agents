@@ -1,4 +1,11 @@
+.pipelines-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .pipelines-container {
+  flex: 1;
   padding: 2rem;
 }
 
@@ -161,6 +168,115 @@
   }
 }
 
+// Status chips
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  &.status-chip-active {
+    background: rgba(76, 175, 80, 0.12);
+    color: #66bb6a;
+  }
+
+  &.status-chip-inactive {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+  }
+}
+
+// Mode badges
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+
+  &.mode-paper {
+    background: rgba(66, 165, 245, 0.12);
+    color: #42a5f5;
+  }
+
+  &.mode-live {
+    background: rgba(239, 83, 80, 0.12);
+    color: #ef5350;
+  }
+
+  &.mode-simulation {
+    background: rgba(255, 183, 77, 0.12);
+    color: #ffb74d;
+  }
+}
+
+// Trigger column
+.trigger-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.trigger-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  width: fit-content;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  &.trigger-signal {
+    background: rgba(171, 71, 188, 0.12);
+    color: #ce93d8;
+  }
+
+  &.trigger-periodic {
+    background: rgba(66, 165, 245, 0.12);
+    color: #42a5f5;
+  }
+}
+
+.feature-badges {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
 // Responsive
 @media (max-width: 768px) {
   .pipelines-container {
@@ -184,5 +300,9 @@
   .pipelines-table {
     display: block;
     overflow-x: auto;
+  }
+
+  .mat-column-trigger {
+    display: none;
   }
 }
