@@ -295,6 +295,13 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     };
   }
 
+  private getLabelText(label: any): string {
+    if (!label) return '';
+    if (typeof label === 'string') return label;
+    if (typeof label === 'object' && label.text) return label.text;
+    return String(label);
+  }
+
   private addAnnotations(): void {
     if (!this.chartData.annotations || !this.widget) {
       return;
@@ -327,7 +334,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
                 borderWidth: 0,
                 transparency: 85,
               },
-              text: zone.label || '',
+              text: this.getLabelText(zone.label),
             });
           } catch (err) {
             console.warn('Failed to add zone:', err);
@@ -341,8 +348,11 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           try {
             // For LLM-extracted shapes that only have price1/price2, not time
             if (shape.price1 && shape.price2 && !shape.points) {
+              const shapeStartTime = shape.time1
+                ? new Date(shape.time1).getTime() / 1000
+                : firstTime;
               chart.createMultipointShape([
-                { time: firstTime, price: shape.price1 },
+                { time: shapeStartTime, price: shape.price1 },
                 { time: lastTime, price: shape.price2 }
               ], {
                 shape: shape.type || 'rectangle',
@@ -352,7 +362,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
                   borderWidth: shape.border_width || 1,
                   transparency: (1 - (shape.opacity || 0.2)) * 100,
                 },
-                text: shape.label || '',
+                text: this.getLabelText(shape.label),
               });
             } else if (shape.points) {
               // For shapes with explicit points (from tools)
@@ -380,9 +390,9 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
                 overrides: {
                   linecolor: line.color || '#000',
                   linewidth: line.width || 1,
-                  linestyle: line.style === 'dashed' ? 1 : 0, // 0=solid, 1=dotted, 2=dashed
+                  linestyle: line.style === 'dashed' ? 2 : line.style === 'dotted' ? 1 : 0,
                 },
-                text: line.label || '',
+                text: this.getLabelText(line.label),
               });
             }
           } catch (err) {
@@ -414,7 +424,31 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         });
       }
       
-      // 5. Add text labels (overlays)
+      // 5. Add arrows (BOS/CHoCH structure events)
+      if (this.chartData.annotations.arrows && this.chartData.annotations.arrows.length > 0) {
+        this.chartData.annotations.arrows.forEach((arrow: any) => {
+          try {
+            const time = arrow.time ? new Date(arrow.time).getTime() / 1000 : lastTime;
+            const price = arrow.price || 0;
+            const isUp = arrow.direction === 'up' || arrow.direction === 'bullish';
+
+            chart.createExecutionShape({
+              time: time,
+              price: price,
+              direction: isUp ? 'buy' : 'sell',
+              text: this.getLabelText(arrow.label) || (isUp ? 'BOS' : 'CHoCH'),
+              arrowHeight: 10,
+              font: 'bold 11px Arial',
+              arrowColor: arrow.color || (isUp ? '#22c55e' : '#ef4444'),
+              textColor: arrow.color || (isUp ? '#22c55e' : '#ef4444'),
+            });
+          } catch (err) {
+            console.warn('Failed to add arrow:', err);
+          }
+        });
+      }
+
+      // 6. Add text labels (overlays)
       if (this.chartData.annotations.text && this.chartData.annotations.text.length > 0) {
         this.chartData.annotations.text.forEach((text: any, index: number) => {
           try {
@@ -450,7 +484,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         });
       }
 
-      // 6. Add indicator studies (RSI, MACD) using TradingView built-in studies
+      // 7. Add indicator studies (RSI, MACD) using TradingView built-in studies
       if (this.chartData.indicators?.rsi) {
         try {
           chart.createStudy('Relative Strength Index', false, false, { length: 14 });

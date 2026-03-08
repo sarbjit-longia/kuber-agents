@@ -555,7 +555,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                         # Tool already returns "fvgs" list with type set — pass through directly
                         collected_results["fvg_detector"] = result
 
-                elif tool_name == "premium_discount_zone":
+                elif tool_name == "premium_discount_analyzer":
                     result = tool.func()
                     if result and isinstance(result, dict):
                         results_lines.append(f"\n**PREMIUM/DISCOUNT ZONES:**")
@@ -574,7 +574,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                     if result and isinstance(result, dict):
                         collected_results["liquidity_analyzer"] = result
 
-                elif tool_name == "market_structure":
+                elif tool_name == "market_structure_analyzer":
                     result = tool.func()
                     if result and isinstance(result, dict):
                         collected_results["market_structure"] = result
