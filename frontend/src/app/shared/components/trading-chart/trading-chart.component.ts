@@ -613,41 +613,10 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     const entryPrice = position.entry_price;
     const sl = position.stop_loss;
     const tp = position.take_profit;
-    const shapeName = isBuy ? 'long_position' : 'short_position';
 
-    // Try TradingView's built-in position tool first
-    try {
-      const posShape = chart.createMultipointShape(
-        [{ time: entryTime, price: entryPrice }],
-        {
-          shape: shapeName,
-          lock: true,
-          disableSelection: true,
-          disableSave: true,
-          overrides: {
-            ...(tp != null ? { profitLevel: tp } : {}),
-            ...(sl != null ? { stopLevel: sl } : {}),
-            // Green profit zone, red loss zone
-            profitBackground: isBuy ? 'rgba(34, 197, 94, 0.40)' : 'rgba(239, 68, 68, 0.40)',
-            stopBackground: isBuy ? 'rgba(239, 68, 68, 0.40)' : 'rgba(34, 197, 94, 0.40)',
-            profitColor: '#22c55e',
-            stopColor: '#ef4444',
-          },
-        }
-      );
-      if (posShape) {
-        this.createdShapes.push(posShape);
-        console.log(`Position tool (${shapeName}) rendered via built-in shape`);
-        return; // Built-in shape worked — no need for manual rectangles
-      }
-    } catch (err) {
-      console.warn(`Built-in ${shapeName} shape failed, falling back to rectangles:`, err);
-    }
-
-    // ── Fallback: manual rectangles ──
+    // Use rectangles to mimic position tool — reliable across all price ranges
     const rectStart = entryTime;
     const rectEnd = entryTime + candleInterval * 14;
-    const labelTime = rectEnd + candleInterval * 1;
 
     try {
       // Green rectangle: entry → take profit (profit zone)
@@ -671,21 +640,6 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           },
         });
         if (s) this.createdShapes.push(s);
-
-        // "Target" label
-        const tl = chart.createMultipointShape([{ time: labelTime, price: tp }], {
-          shape: 'text',
-          lock: true,
-          disableSelection: true,
-          disableSave: true,
-          overrides: {
-            color: '#22c55e',
-            fontsize: 12,
-            bold: true,
-            text: `Target ${tp.toFixed(2)}`,
-          },
-        });
-        if (tl) this.createdShapes.push(tl);
       }
 
       // Red rectangle: entry → stop loss (risk zone)
@@ -709,38 +663,25 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           },
         });
         if (s) this.createdShapes.push(s);
-
-        // "Stoploss" label
-        const sll = chart.createMultipointShape([{ time: labelTime, price: sl }], {
-          shape: 'text',
-          lock: true,
-          disableSelection: true,
-          disableSave: true,
-          overrides: {
-            color: '#ef4444',
-            fontsize: 12,
-            bold: true,
-            text: `Stoploss ${sl.toFixed(2)}`,
-          },
-        });
-        if (sll) this.createdShapes.push(sll);
       }
 
-      // "Entry" label
+      // Dashed entry line
       if (entryPrice) {
-        const el = chart.createMultipointShape([{ time: labelTime, price: entryPrice }], {
-          shape: 'text',
+        const s = chart.createMultipointShape([
+          { time: rectStart, price: entryPrice },
+          { time: rectEnd, price: entryPrice }
+        ], {
+          shape: 'trend_line',
           lock: true,
           disableSelection: true,
           disableSave: true,
           overrides: {
-            color: isBuy ? '#22c55e' : '#ef4444',
-            fontsize: 12,
-            bold: true,
-            text: `Entry ${entryPrice.toFixed(2)}`,
+            linecolor: isBuy ? '#22c55e' : '#ef4444',
+            linewidth: 2,
+            linestyle: 2, // dashed
           },
         });
-        if (el) this.createdShapes.push(el);
+        if (s) this.createdShapes.push(s);
       }
     } catch (err) {
       console.warn('Failed to add position annotations:', err);
