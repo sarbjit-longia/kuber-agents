@@ -206,6 +206,7 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
       execution_time: te.execution_time,
       filled_price: te.filled_price,
       filled_quantity: te.filled_quantity,
+      closed_at: this.execution?.result?.closed_at || this.execution?.completed_at,
     };
   }
 

@@ -85,6 +85,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     execution_time?: string;  // When order was queued/placed
     filled_price?: number;
     filled_quantity?: number;
+    closed_at?: string;       // When position was closed
   };
   @ViewChild('chartContainer') chartContainer!: ElementRef;
 
@@ -216,7 +217,8 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           'volume_force_overlay',
           'header_symbol_search',
           'symbol_search_hot_key',
-          'create_volume_indicator_by_default', // Disable volume by default
+          'create_volume_indicator_by_default',
+          'popup_hints',
         ],
         enabled_features: ['study_templates'],
         charts_storage_api_version: '1.1',
@@ -411,9 +413,10 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         const candleInterval = candles.length > 1
           ? (lastTime - firstTime) / (candles.length - 1)
           : 300;
-        // Find entry time: look for ENTRY marker timestamp, else use last candle
+        // Find entry/exit times for position annotations
         const entryTime = this.findEntryTime(annotations.markers || [], lastTime);
-        this.addPositionAnnotations(chart, position!, entryTime, candleInterval);
+        const exitTime = this.findExitTime(annotations.markers || [], lastTime);
+        this.addPositionAnnotations(chart, position!, entryTime, candleInterval, exitTime);
       }
 
       // 5. Markers (swing highs/lows, execution marks)
@@ -591,6 +594,28 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     return lastTime;
   }
 
+  /** Find exit timestamp: tradeContext.closed_at > EXIT marker > last candle */
+  private findExitTime(markers: any[], lastTime: number): number {
+    // 1. Trade close time from context
+    if (this.tradeContext?.closed_at) {
+      const t = this.parseUtcTime(this.tradeContext.closed_at);
+      if (!isNaN(t) && t > 0) return t;
+    }
+
+    // 2. EXIT marker timestamp
+    for (const m of markers) {
+      const text = (m.text || m.label || '').toUpperCase();
+      if (text.includes('EXIT')) {
+        const rawTime = m.timestamp || m.time;
+        if (rawTime) {
+          const t = this.parseUtcTime(rawTime);
+          if (!isNaN(t) && t > 0) return t;
+        }
+      }
+    }
+    return lastTime;
+  }
+
   /** Build position data from chartData.decision when annotations.position is missing */
   private buildPositionFromDecision(): any | null {
     const d = this.chartData?.decision;
@@ -606,7 +631,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     };
   }
 
-  private addPositionAnnotations(chart: any, position: any, entryTime: number, candleInterval: number): void {
+  private addPositionAnnotations(chart: any, position: any, entryTime: number, candleInterval: number, exitTime: number): void {
     if (!position) return;
 
     const isBuy = position.action === 'BUY';
@@ -665,7 +690,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         if (s) this.createdShapes.push(s);
       }
 
-      // Dashed entry line
+      // Dashed entry line (horizontal)
       if (entryPrice) {
         const s = chart.createMultipointShape([
           { time: rectStart, price: entryPrice },
@@ -682,6 +707,50 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
           },
         });
         if (s) this.createdShapes.push(s);
+      }
+
+      // Vertical line at entry time
+      const vLineEntry = chart.createMultipointShape([
+        { time: entryTime, price: entryPrice }
+      ], {
+        shape: 'vertical_line',
+        lock: true,
+        disableSelection: true,
+        disableSave: true,
+        overrides: {
+          linecolor: '#9ca3af',
+          linewidth: 1,
+          linestyle: 2, // dashed
+          showLabel: true,
+          textcolor: '#9ca3af',
+          fontsize: 11,
+          bold: true,
+          text: 'Entry',
+        },
+      });
+      if (vLineEntry) this.createdShapes.push(vLineEntry);
+
+      // Vertical line at exit time
+      if (exitTime && exitTime !== entryTime) {
+        const vLineExit = chart.createMultipointShape([
+          { time: exitTime, price: entryPrice }
+        ], {
+          shape: 'vertical_line',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            linecolor: '#9ca3af',
+            linewidth: 1,
+            linestyle: 2, // dashed
+            showLabel: true,
+            textcolor: '#9ca3af',
+            fontsize: 11,
+            bold: true,
+            text: 'Exit',
+          },
+        });
+        if (vLineExit) this.createdShapes.push(vLineExit);
       }
     } catch (err) {
       console.warn('Failed to add position annotations:', err);

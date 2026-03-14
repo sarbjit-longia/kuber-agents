@@ -195,6 +195,7 @@ export class ExecutionReportModalComponent implements OnInit {
       execution_time: te.execution_time,
       filled_price: te.filled_price,
       filled_quantity: te.filled_quantity,
+      closed_at: this.executiveReport?.closed_at,
     };
   }
 

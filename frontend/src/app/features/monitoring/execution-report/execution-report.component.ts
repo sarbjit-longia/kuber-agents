@@ -338,10 +338,12 @@ export class ExecutionReportComponent implements OnInit, OnDestroy {
   getTradeContext(): any {
     const te = this.execution?.result?.trade_execution;
     if (!te) return undefined;
+    const outcome = this.getTradeOutcome();
     return {
       execution_time: te.execution_time,
       filled_price: te.filled_price,
       filled_quantity: te.filled_quantity,
+      closed_at: outcome?.closed_at,
     };
   }
 
