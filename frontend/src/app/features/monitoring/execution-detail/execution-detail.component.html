@@ -363,7 +363,7 @@
                       <!-- Show Chart if this is Strategy Agent -->
                       <div *ngIf="hasChart(agent)" class="chart-section">
                         <h4>Strategy Visualization</h4>
-                        <app-trading-chart [chartData]="getChartData()" [height]="500"></app-trading-chart>
+                        <app-trading-chart [chartData]="getChartData()" [tradeContext]="getTradeContext()" [height]="500"></app-trading-chart>
                       </div>
 
                       <!-- Report Metrics -->

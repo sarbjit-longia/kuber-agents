@@ -23,6 +23,8 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { finalize, timeout } from 'rxjs/operators';
+
 import { MonitoringService } from '../../../core/services/monitoring.service';
 import { ExecutionSummary } from '../../../core/models/execution.model';
 
@@ -206,14 +208,17 @@ export class ReconciliationDialogComponent implements OnInit {
       reconciliationData.closed_at = this.reconciliationForm.closed_at.toISOString();
     }
 
-    this.monitoringService.reconcileExecution(this.execution.id, reconciliationData).subscribe({
+    this.monitoringService.reconcileExecution(this.execution.id, reconciliationData).pipe(
+      timeout(30000),
+      finalize(() => this.loading = false)
+    ).subscribe({
       next: (result) => {
-        this.loading = false;
         this.dialogRef.close({ success: true, action: 'auto', result });
       },
       error: (error) => {
-        this.loading = false;
-        this.error = error.error?.detail || error.message || 'Auto-reconciliation failed. Try closing manually.';
+        this.error = error.name === 'TimeoutError'
+          ? 'Request timed out. The backend may be down — check docker-compose logs.'
+          : (error.error?.detail || error.message || 'Auto-reconciliation failed. Try closing manually.');
       }
     });
   }
@@ -242,14 +247,17 @@ export class ReconciliationDialogComponent implements OnInit {
       reconciliationData.closed_at = this.reconciliationForm.closed_at.toISOString();
     }
 
-    this.monitoringService.reconcileExecution(this.execution.id, reconciliationData).subscribe({
+    this.monitoringService.reconcileExecution(this.execution.id, reconciliationData).pipe(
+      timeout(30000),
+      finalize(() => this.loading = false)
+    ).subscribe({
       next: (result) => {
-        this.loading = false;
         this.dialogRef.close({ success: true, action: 'close', result });
       },
       error: (error) => {
-        this.loading = false;
-        this.error = error.error?.detail || error.message || 'Failed to reconcile execution';
+        this.error = error.name === 'TimeoutError'
+          ? 'Request timed out. The backend may be down — check docker-compose logs.'
+          : (error.error?.detail || error.message || 'Failed to reconcile execution');
       }
     });
   }
@@ -257,14 +265,17 @@ export class ReconciliationDialogComponent implements OnInit {
   private submitResumeMonitoring(): void {
     this.loading = true;
 
-    this.monitoringService.resumeMonitoring(this.execution.id).subscribe({
+    this.monitoringService.resumeMonitoring(this.execution.id).pipe(
+      timeout(30000),
+      finalize(() => this.loading = false)
+    ).subscribe({
       next: (result) => {
-        this.loading = false;
         this.dialogRef.close({ success: true, action: 'resume', result });
       },
       error: (error) => {
-        this.loading = false;
-        this.error = error.error?.detail || error.message || 'Failed to resume monitoring';
+        this.error = error.name === 'TimeoutError'
+          ? 'Request timed out. The backend may be down — check docker-compose logs.'
+          : (error.error?.detail || error.message || 'Failed to resume monitoring');
       }
     });
   }

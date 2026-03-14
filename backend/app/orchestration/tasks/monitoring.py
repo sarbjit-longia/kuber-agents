@@ -36,6 +36,69 @@ logger = structlog.get_logger()
 MAX_COMM_ERROR_RETRIES = 60  # Max communication error retries (~1 hour at 1min intervals)
 
 
+def _extend_chart_candles(chart_data: dict, symbol: str) -> None:
+    """
+    Fetch fresh candles from the Data Plane and extend the strategy chart
+    so candle data covers the full trade duration (entry → close → now).
+
+    The strategy agent's chart only has candles up to when it ran.  After
+    the trade manager monitors the position (often 10-60 min), the chart
+    is missing all candles from entry through close.  This fills the gap.
+    """
+    import requests
+    from app.config import settings
+
+    try:
+        existing = chart_data.get("candles", [])
+        if not existing:
+            return
+
+        timeframe = chart_data.get("meta", {}).get("timeframe", "5m")
+        data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
+
+        # Fetch latest candles (enough to cover monitoring period + buffer)
+        resp = requests.get(
+            f"{data_plane_url}/api/v1/data/candles/{symbol}",
+            params={"timeframe": timeframe, "limit": 200},
+            timeout=(5, 15),
+        )
+        resp.raise_for_status()
+        fresh_candles = resp.json().get("candles") or []
+        if not fresh_candles:
+            return
+
+        # Find the last existing candle time to deduplicate
+        last_existing_time = existing[-1].get("time") or existing[-1].get("timestamp")
+        if not last_existing_time:
+            return
+
+        from dateutil.parser import parse as parse_dt
+
+        last_ts = parse_dt(str(last_existing_time)) if isinstance(last_existing_time, str) else last_existing_time
+
+        new_candles = []
+        for c in fresh_candles:
+            c_time = c.get("time") or c.get("timestamp")
+            if not c_time:
+                continue
+            c_ts = parse_dt(str(c_time)) if isinstance(c_time, str) else c_time
+            if c_ts > last_ts:
+                new_candles.append(c)
+
+        if new_candles:
+            chart_data["candles"] = existing + new_candles
+            chart_data.setdefault("meta", {})["candle_count"] = len(chart_data["candles"])
+            logger.info(
+                "chart_candles_extended",
+                symbol=symbol,
+                new_candles=len(new_candles),
+                total_candles=len(chart_data["candles"]),
+            )
+    except Exception as e:
+        # Non-critical — don't fail execution completion if candle fetch fails
+        logger.warning("chart_candle_extension_failed", symbol=symbol, error=str(e))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Low-level DB helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -445,6 +508,14 @@ def _handle_monitoring_complete(
                 trade_outcome=execution.result.get("trade_outcome"),
             )
         )
+
+        # Extend chart candles through trade close so the position tool
+        # and exit marker align with actual candle data.
+        _extend_chart_candles(
+            execution.result["execution_artifacts"]["strategy_chart"],
+            execution.symbol,
+        )
+
         flag_modified(execution, "result")
 
     logger.info(

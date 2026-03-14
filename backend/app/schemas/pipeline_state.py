@@ -13,13 +13,16 @@ from pydantic import BaseModel, Field
 
 class TimeframeData(BaseModel):
     """Data for a specific timeframe."""
-    timeframe: str  # e.g., "5m", "1h", "4h", "1d"
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    timestamp: datetime
+    model_config = {"populate_by_name": True}
+
+    timeframe: str = ""  # e.g., "5m", "1h", "4h", "1d"
+    open: float = 0.0
+    high: float = 0.0
+    low: float = 0.0
+    close: float = 0.0
+    volume: int = 0
+    # Data plane returns "time", agents use "timestamp" — accept both
+    timestamp: datetime = Field(default_factory=datetime.utcnow, validation_alias="time")
     
     # Technical indicators (calculated by Market Data Agent)
     sma_20: Optional[float] = None

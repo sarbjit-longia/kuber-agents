@@ -774,7 +774,8 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   isNeedsReconciliation(execution: ExecutionSummary): boolean {
-    return execution.status.toUpperCase() === 'NEEDS_RECONCILIATION';
+    const s = execution.status.toUpperCase();
+    return s === 'NEEDS_RECONCILIATION' || s === 'COMMUNICATION_ERROR';
   }
 
   isAwaitingApproval(execution: ExecutionSummary): boolean {

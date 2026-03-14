@@ -40,12 +40,46 @@
   }
 }
 
-.chart-container {
+.chart-container-wrapper {
+  position: relative;
   width: 100%;
-  background: #131722;
 
   &.hidden {
     display: none;
+  }
+}
+
+.chart-container {
+  width: 100%;
+  background: #131722;
+}
+
+.info-panel {
+  position: absolute;
+  top: 48px; // Below the TradingView top toolbar
+  right: 80px; // Clear the price axis on the right
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 12px;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+
+  .info-entry {
+    font-size: 12px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.5;
+    white-space: nowrap;
+
+    &.bold {
+      font-weight: 700;
+      font-size: 13px;
+    }
   }
 }
 

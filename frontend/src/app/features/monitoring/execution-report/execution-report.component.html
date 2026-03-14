@@ -236,7 +236,7 @@
 
       <!-- ENRICHED CHART -->
       <div class="chart-container-full" *ngIf="hasChart()">
-        <app-trading-chart [chartData]="getChartData()" [height]="600"></app-trading-chart>
+        <app-trading-chart [chartData]="getChartData()" [tradeContext]="getTradeContext()" [height]="600"></app-trading-chart>
       </div>
     </section>
 

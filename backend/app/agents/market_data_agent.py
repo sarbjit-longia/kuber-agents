@@ -109,11 +109,11 @@ class MarketDataAgent(BaseAgent):
                     bid = last_close
                     ask = last_close
 
-                timeframe_data[tf] = TimeframeData(
-                    timeframe=tf,
-                    candles=candles,
-                    last_updated=datetime.utcnow(),
-                )
+                timeframe_data[tf] = [
+                    TimeframeData(timeframe=tf, **c)
+                    for c in candles
+                    if c.get("open") is not None
+                ]
 
             if current_price is None:
                 raise AgentProcessingError(f"No candles returned from Data Plane for {symbol}")

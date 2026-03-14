@@ -188,6 +188,16 @@ export class ExecutionReportModalComponent implements OnInit {
     return this.executiveReport?.execution_artifacts?.strategy_chart;
   }
 
+  getTradeContext(): any {
+    const te = this.executiveReport?.trade_execution;
+    if (!te) return undefined;
+    return {
+      execution_time: te.execution_time,
+      filled_price: te.filled_price,
+      filled_quantity: te.filled_quantity,
+    };
+  }
+
   isArray(value: any): boolean {
     return Array.isArray(value);
   }

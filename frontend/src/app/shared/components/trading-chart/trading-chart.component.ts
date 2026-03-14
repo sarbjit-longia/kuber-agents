@@ -4,10 +4,12 @@
  * Renders candlestick charts with annotations using TradingView Charting Library
  */
 
-import { Component, Input, OnInit, OnDestroy, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, AfterViewInit, ElementRef, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
+import { environment } from '../../../../environments/environment';
 
 export interface ChartData {
   meta?: {
@@ -34,10 +36,31 @@ export interface ChartData {
     arrows?: any[];
     zones?: any[];
     text?: any[];
+    position?: {
+      action: string;
+      entry_price: number;
+      stop_loss?: number;
+      take_profit?: number;
+      confidence?: number;
+      pattern?: string;
+      risk?: number;
+      reward?: number;
+      rr_ratio?: number;
+      position_size?: number;
+    };
   };
   indicators?: {
     rsi?: any;
     macd?: any;
+  };
+  decision?: {
+    action?: string;
+    entry_price?: number;
+    stop_loss?: number;
+    take_profit?: number;
+    confidence?: number;
+    pattern?: string;
+    position_size?: number;
   };
   metadata?: {
     strategy?: string;
@@ -57,12 +80,23 @@ export interface ChartData {
 export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
   @Input() chartData!: ChartData;
   @Input() height: number = 500;
+  /** Trade execution context — provides actual execution/fill timestamps for position tool alignment */
+  @Input() tradeContext?: {
+    execution_time?: string;  // When order was queued/placed
+    filled_price?: number;
+    filled_quantity?: number;
+  };
   @ViewChild('chartContainer') chartContainer!: ElementRef;
 
+  private http = inject(HttpClient);
   private widget: any;
   private currentInterval: string = 'D';
+  private createdShapes: any[] = [];
+  /** Candles to render — fresh from data plane when available, else stored in chartData */
+  private resolvedCandles: any[] = [];
   loading = true;
   error: string | null = null;
+  infoPanelEntries: { text: string; color: string; bold?: boolean }[] = [];
 
   ngOnInit(): void {
     if (!this.chartData) {
@@ -73,14 +107,13 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     if (this.chartData && this.chartData.candles && this.chartData.candles.length > 0) {
-      console.log('Chart data received:', {
-        symbol: this.chartData.meta?.symbol || this.chartData.symbol,
-        timeframe: this.chartData.meta?.timeframe || this.chartData.timeframe,
-        candlesCount: this.chartData.candles.length,
-        firstCandle: this.chartData.candles[0],
-        lastCandle: this.chartData.candles[this.chartData.candles.length - 1]
+      // Try to fetch fresh candles from data plane (covers full trade lifecycle)
+      this.fetchFreshCandles().then(fresh => {
+        this.resolvedCandles = fresh || this.chartData.candles;
+        console.log('Chart rendering with', this.resolvedCandles.length, 'candles',
+          fresh ? '(fresh from data plane)' : '(stored in execution)');
+        this.loadTradingViewLibrary();
       });
-      this.loadTradingViewLibrary();
     } else {
       this.error = 'Invalid or empty chart data';
       this.loading = false;
@@ -88,7 +121,46 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /** Fetch fresh candles from data plane and merge with stored candles for full trade lifecycle */
+  private async fetchFreshCandles(): Promise<any[] | null> {
+    const symbol = this.chartData.meta?.symbol || this.chartData.symbol;
+    const timeframe = this.chartData.meta?.timeframe || this.chartData.timeframe || '5m';
+    if (!symbol) return null;
+
+    try {
+      const url = `${environment.apiUrl}/api/v1/executions/candles/${symbol}?timeframe=${timeframe}&limit=500`;
+      const data: any = await this.http.get(url).toPromise();
+      const freshCandles = data?.candles;
+      if (!freshCandles || freshCandles.length === 0) return null;
+
+      // Merge stored + fresh candles, deduplicate by timestamp
+      const stored = this.chartData.candles || [];
+      const allCandles = [...stored, ...freshCandles];
+      const seen = new Set<string>();
+      const merged = allCandles.filter(c => {
+        const key = String(c.time || c.timestamp);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      merged.sort((a, b) => {
+        const ta = new Date(a.time || a.timestamp).getTime();
+        const tb = new Date(b.time || b.timestamp).getTime();
+        return ta - tb;
+      });
+      console.log(`Candle merge: ${stored.length} stored + ${freshCandles.length} fresh → ${merged.length} merged`);
+      return merged;
+    } catch (err) {
+      console.warn('Could not fetch fresh candles, using stored data:', err);
+      return null;
+    }
+  }
+
   ngOnDestroy(): void {
+    this.createdShapes.forEach(shape => {
+      try { shape.remove(); } catch (_) {}
+    });
+    this.createdShapes = [];
     if (this.widget) {
       this.widget.remove();
     }
@@ -119,10 +191,10 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
       const timeframe = this.chartData.meta?.timeframe || this.chartData.timeframe || '5m';
 
       // Validate chart data
-      if (!symbol || symbol === 'UNKNOWN' || !this.chartData.candles || this.chartData.candles.length === 0) {
+      if (!symbol || symbol === 'UNKNOWN' || !this.resolvedCandles || this.resolvedCandles.length === 0) {
         this.error = 'Invalid chart data: missing symbol or candles';
         this.loading = false;
-        console.error('Chart data validation failed:', { symbol, candlesCount: this.chartData.candles?.length });
+        console.error('Chart data validation failed:', { symbol, candlesCount: this.resolvedCandles?.length });
         return;
       }
 
@@ -138,6 +210,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         interval: this.timeframeToInterval(timeframe),
         library_path: '/libs/charting_library-master/charting_library/',
         locale: 'en',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone as any,
         disabled_features: [
           'use_localstorage_for_settings',
           'volume_force_overlay',
@@ -183,7 +256,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private createDatafeed(): any {
-    const candles = this.chartData.candles;
+    const candles = this.resolvedCandles;
     let isFirstCall = true; // Track first call to prevent infinite loops
     
     return {
@@ -309,204 +382,512 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const chart = this.widget.activeChart();
-      const candles = this.chartData.candles || [];
-      
+      const candles = this.resolvedCandles || this.chartData.candles || [];
+
       if (candles.length === 0) {
         console.warn('No candles available for annotations');
         return;
       }
-      
+
       const firstTime = new Date(candles[0].time || candles[0].timestamp || Date.now()).getTime() / 1000;
       const lastTime = new Date(candles[candles.length - 1].time || candles[candles.length - 1].timestamp || Date.now()).getTime() / 1000;
-      
-      // 1. Add zones (shaded rectangular areas)
-      if (this.chartData.annotations.zones && this.chartData.annotations.zones.length > 0) {
-        this.chartData.annotations.zones.forEach((zone: any) => {
-          try {
-            chart.createMultipointShape([
-              { time: firstTime, price: zone.price1 },
-              { time: lastTime, price: zone.price2 }
-            ], {
-              shape: 'rectangle',
-              overrides: {
-                backgroundColor: zone.color || 'rgba(0, 0, 0, 0.1)',
-                borderColor: 'transparent',
-                borderWidth: 0,
-                transparency: 85,
-              },
-              text: this.getLabelText(zone.label),
-            });
-          } catch (err) {
-            console.warn('Failed to add zone:', err);
-          }
-        });
-      }
-      
-      // 2. Add shapes (rectangles from LLM - FVGs, flags, etc.)
-      if (this.chartData.annotations.shapes && this.chartData.annotations.shapes.length > 0) {
-        this.chartData.annotations.shapes.forEach((shape: any) => {
-          try {
-            // For LLM-extracted shapes that only have price1/price2, not time
-            if (shape.price1 && shape.price2 && !shape.points) {
-              const shapeStartTime = shape.time1
-                ? new Date(shape.time1).getTime() / 1000
-                : firstTime;
-              chart.createMultipointShape([
-                { time: shapeStartTime, price: shape.price1 },
-                { time: lastTime, price: shape.price2 }
-              ], {
-                shape: shape.type || 'rectangle',
-                overrides: {
-                  backgroundColor: shape.color || 'rgba(0, 0, 0, 0.1)',
-                  borderColor: shape.border_color || shape.color || '#000',
-                  borderWidth: shape.border_width || 1,
-                  transparency: (1 - (shape.opacity || 0.2)) * 100,
-                },
-                text: this.getLabelText(shape.label),
-              });
-            } else if (shape.points) {
-              // For shapes with explicit points (from tools)
-              chart.createMultipointShape(shape.points, {
-                shape: shape.type || 'rectangle',
-                overrides: shape.style || {},
-              });
-            }
-          } catch (err) {
-            console.warn('Failed to add shape:', err);
-          }
-        });
-      }
-      
-      // 3. Add lines (support/resistance levels)
-      if (this.chartData.annotations.lines && this.chartData.annotations.lines.length > 0) {
-        this.chartData.annotations.lines.forEach((line: any) => {
-          try {
-            if (line.type === 'horizontal' && line.price) {
-              chart.createMultipointShape([
-                { time: firstTime, price: line.price },
-                { time: lastTime, price: line.price }
-              ], {
-                shape: 'trend_line',
-                overrides: {
-                  linecolor: line.color || '#000',
-                  linewidth: line.width || 1,
-                  linestyle: line.style === 'dashed' ? 2 : line.style === 'dotted' ? 1 : 0,
-                },
-                text: this.getLabelText(line.label),
-              });
-            }
-          } catch (err) {
-            console.warn('Failed to add line:', err);
-          }
-        });
+      const annotations = this.chartData.annotations;
+
+      // Resolve position: prefer annotations.position, fall back to decision
+      const position = annotations.position || this.buildPositionFromDecision();
+      const hasPosition = !!(position && position.entry_price && position.action && position.action !== 'HOLD');
+
+      // 1. Zones (premium/discount background shading)
+      this.addZoneAnnotations(chart, annotations.zones || [], firstTime, lastTime);
+
+      // 2. Shapes (FVG rectangles)
+      this.addShapeAnnotations(chart, annotations.shapes || [], firstTime, lastTime);
+
+      // 3. Lines (liquidity levels — skip SL/TP if position exists)
+      this.addLineAnnotations(chart, annotations.lines || [], firstTime, lastTime, hasPosition);
+
+      // 4. Position (entry + SL + TP using TradingView position tool)
+      if (hasPosition) {
+        const candleInterval = candles.length > 1
+          ? (lastTime - firstTime) / (candles.length - 1)
+          : 300;
+        // Find entry time: look for ENTRY marker timestamp, else use last candle
+        const entryTime = this.findEntryTime(annotations.markers || [], lastTime);
+        this.addPositionAnnotations(chart, position!, entryTime, candleInterval);
       }
 
-      // 4. Add markers/points using createExecutionShape
-      if (this.chartData.annotations.markers && this.chartData.annotations.markers.length > 0) {
-        this.chartData.annotations.markers.forEach((marker: any) => {
-          try {
-            const time = marker.timestamp 
-              ? new Date(marker.timestamp).getTime() / 1000 
-              : marker.time || lastTime;
-            const price = marker.price || 0;
-            
-            chart.createExecutionShape({
-              time: time,
-              price: price,
-              direction: marker.direction || 'buy',
-              text: marker.text || marker.label || '',
-              arrowHeight: 10,
-              font: 'bold 12px Arial',
-            });
-          } catch (err) {
-            console.warn('Failed to add marker:', err);
-          }
-        });
-      }
-      
-      // 5. Add arrows (BOS/CHoCH structure events)
-      if (this.chartData.annotations.arrows && this.chartData.annotations.arrows.length > 0) {
-        this.chartData.annotations.arrows.forEach((arrow: any) => {
-          try {
-            const time = arrow.time ? new Date(arrow.time).getTime() / 1000 : lastTime;
-            const price = arrow.price || 0;
-            const isUp = arrow.direction === 'up' || arrow.direction === 'bullish';
+      // 5. Markers (swing highs/lows, execution marks)
+      this.addMarkerAnnotations(chart, annotations.markers || [], lastTime);
 
-            chart.createExecutionShape({
-              time: time,
-              price: price,
-              direction: isUp ? 'buy' : 'sell',
-              text: this.getLabelText(arrow.label) || (isUp ? 'BOS' : 'CHoCH'),
-              arrowHeight: 10,
-              font: 'bold 11px Arial',
-              arrowColor: arrow.color || (isUp ? '#22c55e' : '#ef4444'),
-              textColor: arrow.color || (isUp ? '#22c55e' : '#ef4444'),
-            });
-          } catch (err) {
-            console.warn('Failed to add arrow:', err);
-          }
-        });
-      }
+      // 6. Arrows (BOS/CHoCH)
+      this.addArrowAnnotations(chart, annotations.arrows || [], lastTime);
 
-      // 6. Add text labels (overlays)
-      if (this.chartData.annotations.text && this.chartData.annotations.text.length > 0) {
-        this.chartData.annotations.text.forEach((text: any, index: number) => {
-          try {
-            // Position text labels at specific points or at the latest bar
-            const time = text.time === 'latest' ? lastTime : (new Date(text.time).getTime() / 1000);
-            
-            // Get a price level for positioning (top, middle, or bottom of visible range)
-            const prices = candles.map((c: any) => c.high);
-            const maxPrice = Math.max(...prices);
-            const minPrice = Math.min(...prices);
-            const range = maxPrice - minPrice;
-            
-            let yPosition = maxPrice - (range * 0.1); // Default: near top
-            if (text.position === 'bottom_left' || text.position === 'bottom_right') {
-              yPosition = minPrice + (range * 0.1) + (text.offset_y || 0) * range / 100;
-            } else if (text.position === 'middle') {
-              yPosition = minPrice + range * 0.5;
-            }
-            
-            chart.createMultipointShape([{ time: time, price: yPosition }], {
-              shape: 'text',
-              overrides: {
-                color: text.color || '#fff',
-                fontSize: text.font_size || 12,
-                bold: text.bold || false,
-                backgroundColor: text.background || 'transparent',
-              },
-              text: text.text || '',
-            });
-          } catch (err) {
-            console.warn('Failed to add text:', err);
-          }
-        });
-      }
+      // 7. Info panel (consolidated text labels)
+      this.addTextAnnotations(chart, annotations.text || [], candles, firstTime, lastTime, position);
 
-      // 7. Add indicator studies (RSI, MACD) using TradingView built-in studies
-      if (this.chartData.indicators?.rsi) {
-        try {
-          chart.createStudy('Relative Strength Index', false, false, { length: 14 });
-          console.log('RSI study added');
-        } catch (err) {
-          console.warn('Failed to add RSI study:', err);
-        }
-      }
-      if (this.chartData.indicators?.macd) {
-        try {
-          chart.createStudy('MACD', false, false, { fast_length: 12, slow_length: 26, signal_length: 9 });
-          console.log('MACD study added');
-        } catch (err) {
-          console.warn('Failed to add MACD study:', err);
-        }
-      }
+      // 8. Indicator studies (RSI, MACD)
+      this.addIndicatorStudies(chart);
 
-      console.log('✅ Annotations added successfully');
+      console.log('Annotations added successfully');
 
     } catch (error) {
       console.error('Error adding annotations:', error);
-      // Don't fail the whole chart if annotations fail
+    }
+  }
+
+  private addZoneAnnotations(chart: any, zones: any[], firstTime: number, lastTime: number): void {
+    zones.forEach((zone: any) => {
+      try {
+        const shape = chart.createMultipointShape([
+          { time: firstTime, price: zone.price1 },
+          { time: lastTime, price: zone.price2 }
+        ], {
+          shape: 'rectangle',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          zOrder: 'bottom',
+          overrides: {
+            backgroundColor: zone.color || 'rgba(0, 0, 0, 0.1)',
+            borderColor: 'transparent',
+            borderWidth: 0,
+            transparency: 85,
+          },
+        });
+        if (shape) this.createdShapes.push(shape);
+      } catch (err) {
+        console.warn('Failed to add zone:', err);
+      }
+    });
+  }
+
+  private addShapeAnnotations(chart: any, shapes: any[], firstTime: number, lastTime: number): void {
+    shapes.forEach((shape: any) => {
+      try {
+        if (shape.price1 && shape.price2 && !shape.points) {
+          const shapeStartTime = shape.time1
+            ? new Date(shape.time1).getTime() / 1000
+            : firstTime;
+          const s = chart.createMultipointShape([
+            { time: shapeStartTime, price: shape.price1 },
+            { time: lastTime, price: shape.price2 }
+          ], {
+            shape: shape.type || 'rectangle',
+            lock: true,
+            disableSelection: true,
+            disableSave: true,
+            zOrder: 'bottom',
+            overrides: {
+              backgroundColor: shape.color || 'rgba(0, 0, 0, 0.1)',
+              borderColor: shape.border_color || shape.color || '#000',
+              borderWidth: shape.border_width || 1,
+              transparency: Math.round((1 - (shape.opacity || 0.2)) * 100),
+            },
+          });
+          if (s) this.createdShapes.push(s);
+
+          // Add FVG/shape label text at the left edge
+          if (shape.label) {
+            const labelText = this.getLabelText(shape.label);
+            const midPrice = (shape.price1 + shape.price2) / 2;
+            const tl = chart.createMultipointShape([{ time: shapeStartTime, price: midPrice }], {
+              shape: 'text',
+              lock: true,
+              disableSelection: true,
+              disableSave: true,
+              overrides: {
+                color: shape.label?.color || shape.color || '#000',
+                fontsize: shape.label?.font_size || 10,
+                bold: false,
+                text: labelText,
+              },
+            });
+            if (tl) this.createdShapes.push(tl);
+          }
+        } else if (shape.points) {
+          const s = chart.createMultipointShape(shape.points, {
+            shape: shape.type || 'rectangle',
+            lock: true,
+            disableSelection: true,
+            disableSave: true,
+            zOrder: 'bottom',
+            overrides: shape.style || {},
+          });
+          if (s) this.createdShapes.push(s);
+        }
+      } catch (err) {
+        console.warn('Failed to add shape:', err);
+      }
+    });
+  }
+
+  private addLineAnnotations(chart: any, lines: any[], firstTime: number, lastTime: number, skipTradeLines: boolean): void {
+    lines.forEach((line: any) => {
+      try {
+        if (line.type === 'horizontal' && line.price) {
+          // Skip SL/TP/Fill lines when position tool handles them
+          if (skipTradeLines) {
+            const labelText = this.getLabelText(line.label).toUpperCase();
+            if (labelText.includes('SL:') || labelText.includes('TP:') || labelText.includes('ENTRY') || labelText.includes('FILL')) {
+              return;
+            }
+          }
+          const s = chart.createMultipointShape([
+            { time: firstTime, price: line.price },
+            { time: lastTime, price: line.price }
+          ], {
+            shape: 'trend_line',
+            lock: true,
+            disableSelection: true,
+            disableSave: true,
+            overrides: {
+              linecolor: line.color || '#000',
+              linewidth: line.width || 1,
+              linestyle: line.style === 'dashed' ? 2 : line.style === 'dotted' ? 1 : 0,
+              showLabel: true,
+              textcolor: line.color || '#000',
+            },
+          });
+          if (s) this.createdShapes.push(s);
+        }
+      } catch (err) {
+        console.warn('Failed to add line:', err);
+      }
+    });
+  }
+
+  /** Parse a timestamp string as UTC (backend timestamps have no 'Z' suffix) */
+  private parseUtcTime(raw: string | number): number {
+    if (typeof raw === 'number') return raw;
+    let s = raw;
+    // Append 'Z' if no timezone indicator so JS parses as UTC, not local time
+    if (s && !s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+      s += 'Z';
+    }
+    return new Date(s).getTime() / 1000;
+  }
+
+  /** Find entry timestamp: tradeContext.execution_time > ENTRY marker > last candle */
+  private findEntryTime(markers: any[], lastTime: number): number {
+    // 1. Trade execution time (when trade manager queued the order)
+    if (this.tradeContext?.execution_time) {
+      const t = this.parseUtcTime(this.tradeContext.execution_time);
+      if (!isNaN(t) && t > 0) return t;
+    }
+
+    // 2. ENTRY marker timestamp from annotations
+    for (const m of markers) {
+      const text = (m.text || m.label || '').toUpperCase();
+      if (text === 'ENTRY' || text.includes('ENTRY')) {
+        const rawTime = m.timestamp || m.time;
+        if (rawTime) {
+          const t = this.parseUtcTime(rawTime);
+          if (!isNaN(t) && t > 0) return t;
+        }
+      }
+    }
+
+    // 3. Fall back to last candle (when strategy made its decision)
+    return lastTime;
+  }
+
+  /** Build position data from chartData.decision when annotations.position is missing */
+  private buildPositionFromDecision(): any | null {
+    const d = this.chartData?.decision;
+    if (!d || !d.action || !d.entry_price) return null;
+    return {
+      action: d.action,
+      entry_price: d.entry_price,
+      stop_loss: d.stop_loss,
+      take_profit: d.take_profit,
+      confidence: d.confidence,
+      pattern: d.pattern,
+      position_size: d.position_size,
+    };
+  }
+
+  private addPositionAnnotations(chart: any, position: any, entryTime: number, candleInterval: number): void {
+    if (!position) return;
+
+    const isBuy = position.action === 'BUY';
+    const entryPrice = position.entry_price;
+    const sl = position.stop_loss;
+    const tp = position.take_profit;
+    const shapeName = isBuy ? 'long_position' : 'short_position';
+
+    // Try TradingView's built-in position tool first
+    try {
+      const posShape = chart.createMultipointShape(
+        [{ time: entryTime, price: entryPrice }],
+        {
+          shape: shapeName,
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            ...(tp != null ? { profitLevel: tp } : {}),
+            ...(sl != null ? { stopLevel: sl } : {}),
+            // Green profit zone, red loss zone
+            profitBackground: isBuy ? 'rgba(34, 197, 94, 0.40)' : 'rgba(239, 68, 68, 0.40)',
+            stopBackground: isBuy ? 'rgba(239, 68, 68, 0.40)' : 'rgba(34, 197, 94, 0.40)',
+            profitColor: '#22c55e',
+            stopColor: '#ef4444',
+          },
+        }
+      );
+      if (posShape) {
+        this.createdShapes.push(posShape);
+        console.log(`Position tool (${shapeName}) rendered via built-in shape`);
+        return; // Built-in shape worked — no need for manual rectangles
+      }
+    } catch (err) {
+      console.warn(`Built-in ${shapeName} shape failed, falling back to rectangles:`, err);
+    }
+
+    // ── Fallback: manual rectangles ──
+    const rectStart = entryTime;
+    const rectEnd = entryTime + candleInterval * 14;
+    const labelTime = rectEnd + candleInterval * 1;
+
+    try {
+      // Green rectangle: entry → take profit (profit zone)
+      if (tp && entryPrice) {
+        const topPrice = isBuy ? tp : entryPrice;
+        const bottomPrice = isBuy ? entryPrice : tp;
+        const s = chart.createMultipointShape([
+          { time: rectStart, price: bottomPrice },
+          { time: rectEnd, price: topPrice }
+        ], {
+          shape: 'rectangle',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          zOrder: 'bottom',
+          overrides: {
+            backgroundColor: 'rgba(34, 197, 94, 0.35)',
+            borderColor: '#22c55e',
+            borderWidth: 1,
+            transparency: 65,
+          },
+        });
+        if (s) this.createdShapes.push(s);
+
+        // "Target" label
+        const tl = chart.createMultipointShape([{ time: labelTime, price: tp }], {
+          shape: 'text',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            color: '#22c55e',
+            fontsize: 12,
+            bold: true,
+            text: `Target ${tp.toFixed(2)}`,
+          },
+        });
+        if (tl) this.createdShapes.push(tl);
+      }
+
+      // Red rectangle: entry → stop loss (risk zone)
+      if (sl && entryPrice) {
+        const topPrice = isBuy ? entryPrice : sl;
+        const bottomPrice = isBuy ? sl : entryPrice;
+        const s = chart.createMultipointShape([
+          { time: rectStart, price: bottomPrice },
+          { time: rectEnd, price: topPrice }
+        ], {
+          shape: 'rectangle',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          zOrder: 'bottom',
+          overrides: {
+            backgroundColor: 'rgba(239, 68, 68, 0.35)',
+            borderColor: '#ef4444',
+            borderWidth: 1,
+            transparency: 65,
+          },
+        });
+        if (s) this.createdShapes.push(s);
+
+        // "Stoploss" label
+        const sll = chart.createMultipointShape([{ time: labelTime, price: sl }], {
+          shape: 'text',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            color: '#ef4444',
+            fontsize: 12,
+            bold: true,
+            text: `Stoploss ${sl.toFixed(2)}`,
+          },
+        });
+        if (sll) this.createdShapes.push(sll);
+      }
+
+      // "Entry" label
+      if (entryPrice) {
+        const el = chart.createMultipointShape([{ time: labelTime, price: entryPrice }], {
+          shape: 'text',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            color: isBuy ? '#22c55e' : '#ef4444',
+            fontsize: 12,
+            bold: true,
+            text: `Entry ${entryPrice.toFixed(2)}`,
+          },
+        });
+        if (el) this.createdShapes.push(el);
+      }
+    } catch (err) {
+      console.warn('Failed to add position annotations:', err);
+    }
+  }
+
+  private addMarkerAnnotations(chart: any, markers: any[], lastTime: number): void {
+    markers.forEach((marker: any) => {
+      try {
+        const rawText = (marker.text || marker.label || '').toUpperCase();
+
+        // Skip ENTRY, FILL, EXIT markers — position tool already shows these
+        if (rawText.includes('ENTRY') || rawText.includes('FILL') || rawText.includes('EXIT')) {
+          return;
+        }
+
+        const rawTime = marker.timestamp || marker.time;
+        const time = rawTime
+          ? (typeof rawTime === 'number' ? rawTime : new Date(rawTime).getTime() / 1000)
+          : lastTime;
+        const price = marker.price || 0;
+        const direction = marker.direction || 'buy';
+        const color = marker.color || (direction === 'buy' ? '#22c55e' : '#ef4444');
+        const text = marker.text || marker.label || '';
+
+        const exec = chart.createExecutionShape()
+          .setTime(time)
+          .setPrice(price)
+          .setDirection(direction)
+          .setText(text)
+          .setArrowColor(color)
+          .setTextColor(color)
+          .setArrowHeight(10)
+          .setFont('bold 11px Arial');
+        this.createdShapes.push(exec);
+      } catch (err) {
+        console.warn('Failed to add marker:', err);
+      }
+    });
+  }
+
+  private addArrowAnnotations(chart: any, arrows: any[], lastTime: number): void {
+    arrows.forEach((arrow: any) => {
+      try {
+        const time = arrow.time ? new Date(arrow.time).getTime() / 1000 : lastTime;
+        const price = arrow.price || 0;
+        const isUp = arrow.direction === 'up' || arrow.direction === 'bullish';
+        const direction = isUp ? 'buy' : 'sell';
+        const color = arrow.color || (isUp ? '#22c55e' : '#ef4444');
+        const text = this.getLabelText(arrow.label) || (isUp ? 'BOS' : 'CHoCH');
+
+        const exec = chart.createExecutionShape()
+          .setTime(time)
+          .setPrice(price)
+          .setDirection(direction)
+          .setText(text)
+          .setArrowColor(color)
+          .setTextColor(color)
+          .setArrowHeight(10)
+          .setFont('bold 11px Arial');
+        this.createdShapes.push(exec);
+      } catch (err) {
+        console.warn('Failed to add arrow:', err);
+      }
+    });
+  }
+
+  /**
+   * Builds the consolidated info panel (rendered as HTML overlay, not TradingView shapes).
+   * Collects: Bias, Entry, SL, TP, R:R, Fill, Exit into infoPanelEntries.
+   */
+  private addTextAnnotations(chart: any, texts: any[], candles: any[], firstTime: number, lastTime: number, position?: any): void {
+    const entries: { text: string; color: string; bold?: boolean }[] = [];
+
+    // 1. Bias — from backend trend text or position action
+    const trendText = texts.find((t: any) => (t.text || '').includes('Trend:'));
+    if (trendText) {
+      const trend = (trendText.text || '').replace(/.*Trend:\s*/i, '').trim();
+      const biasColor = trend.toUpperCase().includes('BULL') ? '#22c55e' : trend.toUpperCase().includes('BEAR') ? '#ef4444' : '#94a3b8';
+      entries.push({ text: `Bias: ${trend}`, color: biasColor, bold: true });
+    } else if (position?.action && position.action !== 'HOLD') {
+      const isBuy = position.action === 'BUY';
+      entries.push({ text: `Bias: ${isBuy ? 'Bullish' : 'Bearish'}`, color: isBuy ? '#22c55e' : '#ef4444', bold: true });
+    }
+
+    // 2. Entry price
+    if (position?.entry_price) {
+      entries.push({ text: `Entry: $${position.entry_price.toFixed(2)}`, color: '#e2e8f0' });
+    }
+
+    // 3. SL / TP
+    if (position?.stop_loss) {
+      entries.push({ text: `SL: $${position.stop_loss.toFixed(2)}`, color: '#ef4444' });
+    }
+    if (position?.take_profit) {
+      entries.push({ text: `TP: $${position.take_profit.toFixed(2)}`, color: '#22c55e' });
+    }
+
+    // 4. R:R — from backend text or position data
+    const rrText = texts.find((t: any) => (t.text || '').includes('R:R'));
+    if (rrText) {
+      entries.push({ text: (rrText.text || '').trim(), color: '#e2e8f0' });
+    } else if (position?.rr_ratio) {
+      entries.push({ text: `R:R = 1:${position.rr_ratio.toFixed(2)}`, color: '#e2e8f0' });
+    }
+
+    // 5. Fill — from markers
+    const markers = this.chartData.annotations?.markers || [];
+    const fillMarker = markers.find((m: any) => (m.text || '').toUpperCase().includes('FILL'));
+    if (fillMarker) {
+      const raw = fillMarker.text || '';
+      const priceMatch = raw.match(/\$[\d.]+/);
+      entries.push({ text: `Fill: ${priceMatch ? priceMatch[0] : raw}`, color: '#eab308' });
+    }
+
+    // 6. Exit — from markers
+    const exitMarker = markers.find((m: any) => (m.text || '').toUpperCase().includes('EXIT'));
+    if (exitMarker) {
+      const raw = exitMarker.text || '';
+      const priceMatch = raw.match(/\$[\d.]+/);
+      const reasonMatch = raw.match(/\(([^)]+)\)/);
+      let exitLine = 'Exit:';
+      if (priceMatch) exitLine += ` ${priceMatch[0]}`;
+      if (reasonMatch) {
+        let reason = reasonMatch[1].replace('Position closed by broker', 'Broker close').replace(/\s*\([^)]*\)/g, '');
+        exitLine += ` (${reason.trim()})`;
+      }
+      entries.push({ text: exitLine, color: '#e2e8f0' });
+    }
+
+    this.infoPanelEntries = entries;
+  }
+
+  private addIndicatorStudies(chart: any): void {
+    if (this.chartData.indicators?.rsi) {
+      try {
+        chart.createStudy('Relative Strength Index', false, false, { length: 14 });
+      } catch (err) {
+        console.warn('Failed to add RSI study:', err);
+      }
+    }
+    if (this.chartData.indicators?.macd) {
+      try {
+        chart.createStudy('MACD', false, false, { fast_length: 12, slow_length: 26, signal_length: 9 });
+      } catch (err) {
+        console.warn('Failed to add MACD study:', err);
+      }
     }
   }
 

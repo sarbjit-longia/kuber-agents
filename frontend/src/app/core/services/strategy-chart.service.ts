@@ -10,6 +10,18 @@ export interface ChartAnnotation {
   markers: any[];
   zones: any[];
   text: any[];
+  position?: {
+    action: string;
+    entry_price: number;
+    stop_loss?: number;
+    take_profit?: number;
+    confidence?: number;
+    pattern?: string;
+    risk?: number;
+    reward?: number;
+    rr_ratio?: number;
+    position_size?: number;
+  };
 }
 
 export interface ChartData {

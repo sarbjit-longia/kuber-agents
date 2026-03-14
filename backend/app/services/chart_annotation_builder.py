@@ -64,7 +64,8 @@ class ChartAnnotationBuilder:
             "arrows": [],      # Directional arrows
             "markers": [],     # Point markers (entry, exit)
             "zones": [],       # Shaded areas (premium/discount)
-            "text": []         # Text labels
+            "text": [],        # Text labels
+            "position": None   # Structured trade position (entry/SL/TP)
         }
         
         # Add FVG annotations
@@ -246,6 +247,24 @@ class ChartAnnotationBuilder:
                 )
             })
         
+        # Add swing high/low markers (^ for peaks, V for valleys)
+        for sh in structure_result.get("swing_highs", [])[-8:]:
+            annotations["markers"].append({
+                "time": sh.get("timestamp"),
+                "price": sh["price"],
+                "direction": "sell",
+                "text": "^",
+                "color": "#ef4444",
+            })
+        for sl_pt in structure_result.get("swing_lows", [])[-8:]:
+            annotations["markers"].append({
+                "time": sl_pt.get("timestamp"),
+                "price": sl_pt["price"],
+                "direction": "buy",
+                "text": "V",
+                "color": "#22c55e",
+            })
+
         # Add trend label
         trend = structure_result.get("trend", "ranging")
         trend_emoji = {"bullish": "📈", "bearish": "📉", "ranging": "↔️"}.get(trend, "")
@@ -402,6 +421,20 @@ class ChartAnnotationBuilder:
                 "background": "rgba(0, 0, 0, 0.8)",
                 "padding": 8
             })
+
+            # Structured position object for TradingView position/order lines
+            annotations["position"] = {
+                "action": strategy_result.action,
+                "entry_price": strategy_result.entry_price,
+                "stop_loss": strategy_result.stop_loss,
+                "take_profit": strategy_result.take_profit,
+                "confidence": strategy_result.confidence,
+                "pattern": strategy_result.pattern_detected,
+                "risk": round(risk, 5),
+                "reward": round(reward, 5),
+                "rr_ratio": round(rr_ratio, 2),
+                "position_size": strategy_result.position_size,
+            }
     
     def _build_indicator_data(self, tool_results: Dict[str, Any]) -> Dict[str, Any]:
         """Build indicator subplot data."""

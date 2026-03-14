@@ -70,7 +70,7 @@
         <mat-icon>show_chart</mat-icon>
         Strategy Visualization
       </h3>
-      <app-trading-chart [chartData]="getChartData()" [height]="400"></app-trading-chart>
+      <app-trading-chart [chartData]="getChartData()" [tradeContext]="getTradeContext()" [height]="400"></app-trading-chart>
     </div>
 
     <mat-divider *ngIf="hasChart()"></mat-divider>

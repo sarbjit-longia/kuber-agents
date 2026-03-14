@@ -9,11 +9,21 @@
     <p>{{ error }}</p>
   </div>
 
-  <div 
-    #chartContainer 
-    class="chart-container"
-    [style.height.px]="height"
-    [class.hidden]="loading || error">
+  <div class="chart-container-wrapper" [class.hidden]="loading || error">
+    <div
+      #chartContainer
+      class="chart-container"
+      [style.height.px]="height">
+    </div>
+    <!-- Trade info panel overlay -->
+    <div *ngIf="infoPanelEntries.length > 0" class="info-panel">
+      <div *ngFor="let entry of infoPanelEntries"
+           class="info-entry"
+           [class.bold]="entry.bold"
+           [style.color]="entry.color">
+        {{ entry.text }}
+      </div>
+    </div>
   </div>
 
   <div *ngIf="chartData?.metadata" class="chart-metadata">

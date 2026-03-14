@@ -198,6 +198,18 @@ class StrategyAgent(BaseAgent):
             
             # Get candle data for tools that need it
             candles = state.get_timeframe_data(strategy_tf)
+
+            # Fallback: if exact timeframe not found, try all available timeframes
+            if not candles and state.market_data and state.market_data.timeframes:
+                available_tfs = list(state.market_data.timeframes.keys())
+                self.log(state, f"No candles for '{strategy_tf}', available timeframes: {available_tfs}")
+                for tf_key in available_tfs:
+                    tf_data = state.market_data.timeframes[tf_key]
+                    if tf_data and len(tf_data) > 0:
+                        candles = tf_data
+                        self.log(state, f"Using fallback timeframe '{tf_key}' with {len(candles)} candles")
+                        break
+
             candle_dicts = [
                 {
                     "timestamp": c.timestamp,
@@ -209,14 +221,14 @@ class StrategyAgent(BaseAgent):
                 }
                 for c in candles
             ] if candles else []
-            
+
             # Get all available tools
             tools = get_available_tools(
                 ticker=state.symbol,
                 candles=candle_dicts if candle_dicts else None
             )
-            
-            self.log(state, f"Available tools: {[t.name for t in tools]}")
+
+            self.log(state, f"Available tools ({len(tools)}): {[t.name for t in tools]}, candles: {len(candle_dicts)}")
             
             # STAGE 1: Call tools directly to get analysis data
             tool_results_text, tool_results_data = self._call_tools_and_format(tools, state, candle_dicts, price_precision)

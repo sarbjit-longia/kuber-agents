@@ -199,6 +199,16 @@ export class ExecutionDetailComponent implements OnInit, OnDestroy {
     return this.execution?.result?.execution_artifacts?.strategy_chart;
   }
 
+  getTradeContext(): any {
+    const te = this.execution?.result?.trade_execution;
+    if (!te) return undefined;
+    return {
+      execution_time: te.execution_time,
+      filled_price: te.filled_price,
+      filled_quantity: te.filled_quantity,
+    };
+  }
+
   isArray(value: any): boolean {
     return Array.isArray(value);
   }

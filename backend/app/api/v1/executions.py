@@ -899,13 +899,17 @@ async def reconcile_execution_endpoint(
             detail="You don't have permission to reconcile this execution",
         )
 
-    # Verify execution is in NEEDS_RECONCILIATION status
-    if execution.status != ExecutionStatus.NEEDS_RECONCILIATION:
+    # Verify execution is in a reconcilable status
+    reconcilable_statuses = {
+        ExecutionStatus.NEEDS_RECONCILIATION,
+        ExecutionStatus.COMMUNICATION_ERROR,
+    }
+    if execution.status not in reconcilable_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Cannot reconcile execution with status: {execution.status.value}. "
-                "Only NEEDS_RECONCILIATION executions can be reconciled."
+                "Only NEEDS_RECONCILIATION or COMMUNICATION_ERROR executions can be reconciled."
             ),
         )
 
@@ -972,10 +976,15 @@ async def reconcile_execution_endpoint(
             broker_tool = _extract_broker_tool(pipeline.config or {})
             if broker_tool:
                 broker = broker_factory.from_tool_config(broker_tool)
-                # Pass both IDs — each broker decides which one to use
-                trade_details = broker.get_trade_details(
-                    trade_id=str(trade_id) if trade_id else None,
-                    order_id=str(order_id) if order_id else None,
+                # Run sync broker call in thread to avoid blocking the async event loop
+                import asyncio
+                loop = asyncio.get_event_loop()
+                trade_details = await loop.run_in_executor(
+                    None,
+                    lambda: broker.get_trade_details(
+                        trade_id=str(trade_id) if trade_id else None,
+                        order_id=str(order_id) if order_id else None,
+                    ),
                 )
 
                 if trade_details and trade_details.get("found"):
@@ -1296,11 +1305,15 @@ async def resume_monitoring_endpoint(
             detail="You don't have permission to resume monitoring for this execution"
         )
     
-    # Verify execution is in NEEDS_RECONCILIATION status
-    if execution.status != ExecutionStatus.NEEDS_RECONCILIATION:
+    # Verify execution is in a resumable status
+    resumable_statuses = {
+        ExecutionStatus.NEEDS_RECONCILIATION,
+        ExecutionStatus.COMMUNICATION_ERROR,
+    }
+    if execution.status not in resumable_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot resume monitoring for execution with status: {execution.status.value}. Only NEEDS_RECONCILIATION executions can resume monitoring."
+            detail=f"Cannot resume monitoring for execution with status: {execution.status.value}. Only NEEDS_RECONCILIATION or COMMUNICATION_ERROR executions can resume monitoring."
         )
     
     # Update execution status back to MONITORING
@@ -1833,4 +1846,41 @@ async def download_execution_report_pdf(
         }
     )
 
+
+@router.get("/candles/{symbol}")
+async def get_candles(
+    symbol: str,
+    timeframe: str = Query("5m"),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Proxy candle data from the Data Plane.
+
+    Used by the frontend chart to extend candles beyond what the strategy
+    agent captured (e.g. through position close).
+    """
+    import asyncio
+    import requests as sync_requests
+    from app.config import settings
+
+    data_plane_url = getattr(settings, "DATA_PLANE_URL", "http://data-plane:8000")
+    loop = asyncio.get_event_loop()
+
+    try:
+        resp = await loop.run_in_executor(
+            None,
+            lambda: sync_requests.get(
+                f"{data_plane_url}/api/v1/data/candles/{symbol}",
+                params={"timeframe": timeframe, "limit": limit},
+                timeout=(5, 15),
+            ),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch candles from data plane: {str(e)}",
+        )
 
