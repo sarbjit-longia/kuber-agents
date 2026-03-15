@@ -75,6 +75,9 @@ class User(Base):
     sms_phone = Column(String(20), nullable=True)
     sms_consent_method = Column(String(50), nullable=True)
 
+    # Timezone for schedule features
+    timezone = Column(String(50), default="America/New_York", nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

@@ -94,6 +94,13 @@ export class UserService {
   }
 
   /**
+   * Get available timezones
+   */
+  getTimezones(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.apiUrl}/timezones`);
+  }
+
+  /**
    * Get current user's SMS consent status
    */
   getSmsConsent(): Observable<SmsConsentStatus> {

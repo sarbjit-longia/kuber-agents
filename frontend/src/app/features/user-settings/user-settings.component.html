@@ -138,6 +138,31 @@
           </button>
         </div>
       </div>
+
+      <!-- Timezone Card -->
+      <div class="settings-card card-tint-profile">
+        <h3 class="card-title">
+          <div class="info-icon-pill icon-calendar">
+            <mat-icon>schedule</mat-icon>
+          </div>
+          Timezone
+        </h3>
+        <p class="security-description">
+          Used for pipeline active-hours scheduling. All schedule times are interpreted in this timezone.
+        </p>
+        <div class="timezone-row">
+          <mat-form-field appearance="outline" class="timezone-select">
+            <mat-label>Timezone</mat-label>
+            <mat-select [(ngModel)]="selectedTimezone">
+              <mat-option *ngFor="let tz of timezones" [value]="tz">{{ tz }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <button mat-flat-button class="btn-accent" (click)="saveTimezone()" [disabled]="isSavingTimezone">
+            <mat-spinner *ngIf="isSavingTimezone" diameter="18"></mat-spinner>
+            <span *ngIf="!isSavingTimezone">Save</span>
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Subscription Section -->

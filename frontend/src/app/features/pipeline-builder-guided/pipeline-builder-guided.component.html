@@ -290,6 +290,105 @@
           </ng-container>
         </div>
 
+        <!-- Schedule Settings -->
+        <div class="section" *ngIf="selectedItemKey === 'schedule_settings'">
+          <div class="section-title">
+            <mat-icon>schedule</mat-icon>
+            Active Hours Schedule
+          </div>
+
+          <div class="approval-info-banner">
+            <div class="approval-info-icon">
+              <mat-icon>info</mat-icon>
+            </div>
+            <div class="approval-info-text">
+              <strong>Auto activate/deactivate</strong>
+              <span>Pipeline will automatically activate at start time and deactivate at end time each trading day. When schedule is enabled, manual activation will be overridden within ~60 seconds.</span>
+            </div>
+          </div>
+
+          <div class="approval-toggle-card">
+            <div class="approval-toggle-left">
+              <div class="approval-toggle-icon" [class.active]="scheduleEnabled">
+                <mat-icon>{{ scheduleEnabled ? 'schedule' : 'schedule' }}</mat-icon>
+              </div>
+              <div class="approval-toggle-text">
+                <div class="approval-toggle-title">Enable Schedule</div>
+                <div class="approval-toggle-desc">{{ scheduleEnabled ? 'Pipeline follows the schedule below' : 'Pipeline is manually activated' }}</div>
+              </div>
+            </div>
+            <mat-slide-toggle [(ngModel)]="scheduleEnabled"></mat-slide-toggle>
+          </div>
+
+          <ng-container *ngIf="scheduleEnabled">
+            <!-- Time Range -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>access_time</mat-icon>
+                <span>Active Window</span>
+              </div>
+              <div class="approval-section-desc">Pipeline will be active between these times (in your timezone)</div>
+              <div class="schedule-time-row">
+                <mat-form-field appearance="outline" class="time-field">
+                  <mat-label>Start Time</mat-label>
+                  <input matInput type="time" [(ngModel)]="scheduleStartTime" />
+                </mat-form-field>
+                <span class="time-separator">to</span>
+                <mat-form-field appearance="outline" class="time-field">
+                  <mat-label>End Time</mat-label>
+                  <input matInput type="time" [(ngModel)]="scheduleEndTime" />
+                </mat-form-field>
+              </div>
+            </div>
+
+            <!-- Day Selection -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>date_range</mat-icon>
+                <span>Active Days</span>
+              </div>
+              <div class="approval-section-desc">Select which days of the week the schedule is active</div>
+              <div class="schedule-day-chips">
+                <button
+                  *ngFor="let day of DAY_OPTIONS"
+                  mat-stroked-button
+                  type="button"
+                  class="day-chip"
+                  [class.selected]="scheduleDays.includes(day.value)"
+                  (click)="toggleScheduleDay(day.value)"
+                >
+                  {{ day.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Liquidation Toggle -->
+            <div class="approval-section-card">
+              <div class="approval-section-header">
+                <mat-icon>warning</mat-icon>
+                <span>End-of-Day Liquidation</span>
+              </div>
+              <div class="approval-section-desc">Automatically close all open positions when schedule deactivates</div>
+              <div class="approval-toggle-card" style="margin-top: 8px;">
+                <div class="approval-toggle-left">
+                  <div class="approval-toggle-icon" [class.active]="liquidateOnDeactivation" style="background: rgba(244,67,54,0.15);">
+                    <mat-icon style="color: #f44336;">sell</mat-icon>
+                  </div>
+                  <div class="approval-toggle-text">
+                    <div class="approval-toggle-title">Liquidate on Deactivation</div>
+                    <div class="approval-toggle-desc">{{ liquidateOnDeactivation ? 'All positions will be closed via market order' : 'Positions will remain open when schedule ends' }}</div>
+                  </div>
+                </div>
+                <mat-slide-toggle [(ngModel)]="liquidateOnDeactivation" color="warn"></mat-slide-toggle>
+              </div>
+              <div class="schedule-liquidation-warning" *ngIf="liquidateOnDeactivation">
+                <mat-icon>warning</mat-icon>
+                <span>All monitoring positions will be closed with market orders when the active window ends. This may result in slippage.</span>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+
         <!-- Notification Settings -->
         <div class="section" *ngIf="selectedItemKey === 'notification_settings'">
           <div class="section-title">

@@ -761,3 +761,15 @@ mat-divider {
     }
   }
 }
+
+// ── Timezone ──────────────────────────────────────────────────────
+.timezone-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.timezone-select {
+  flex: 1;
+}

@@ -62,17 +62,32 @@ async def update_current_user_profile(
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    """Update current user's profile (name and/or password)."""
+    """Update current user's profile (name, password, and/or timezone)."""
     if update_data.full_name is not None:
         current_user.full_name = update_data.full_name
     if update_data.password is not None:
         current_user.hashed_password = hash_password(update_data.password)
+    if update_data.timezone is not None:
+        from zoneinfo import ZoneInfo, available_timezones
+        if update_data.timezone not in available_timezones():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid timezone: {update_data.timezone}"
+            )
+        current_user.timezone = update_data.timezone
 
     await db.commit()
     await db.refresh(current_user)
 
     logger.info("user_profile_updated", user_id=str(current_user.id))
     return current_user
+
+
+@router.get("/timezones")
+async def list_timezones():
+    """Return all available IANA timezone names, sorted."""
+    from zoneinfo import available_timezones
+    return sorted(available_timezones())
 
 
 @router.get("/me/subscription", response_model=UserSubscriptionInfo)

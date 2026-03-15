@@ -30,6 +30,10 @@ from app.orchestration.tasks.approval import (
     resume_approved_execution,
     check_approval_timeout,
 )
+from app.orchestration.tasks.liquidate_positions import liquidate_pipeline_positions
+from app.orchestration.tasks.check_pipeline_schedules_active_hours import (
+    check_pipeline_schedules_active_hours,
+)
 
 __all__ = [
     "execute_pipeline",
@@ -43,4 +47,6 @@ __all__ = [
     "stop_execution",
     "resume_approved_execution",
     "check_approval_timeout",
+    "liquidate_pipeline_positions",
+    "check_pipeline_schedules_active_hours",
 ]

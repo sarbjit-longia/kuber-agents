@@ -16,6 +16,7 @@ export interface User {
   sms_consent: boolean;
   sms_consent_at: string | null;
   sms_phone: string | null;
+  timezone: string;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +30,7 @@ export interface UserCreate {
 export interface UserUpdate {
   full_name?: string;
   password?: string;
+  timezone?: string;
 }
 
 export interface UserLogin {

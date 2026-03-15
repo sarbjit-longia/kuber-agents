@@ -102,6 +102,7 @@ async def update_existing_pipeline(
     pipeline_update: PipelineUpdate,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    liquidate_positions: bool = Query(False, description="Close all open positions when deactivating"),
 ):
     """
     Update a pipeline.
@@ -158,6 +159,16 @@ async def update_existing_pipeline(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pipeline not found",
         )
+
+    # If deactivating with liquidation requested, enqueue position closure
+    if pipeline_update.is_active is False and liquidate_positions:
+        from app.orchestration.tasks.liquidate_positions import liquidate_pipeline_positions
+        liquidate_pipeline_positions.delay(
+            pipeline_id=str(pipeline_id),
+            user_id=str(current_user.id),
+            reason="manual_deactivation",
+        )
+
     return pipeline
 
 

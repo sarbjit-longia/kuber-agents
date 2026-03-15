@@ -80,6 +80,11 @@ export interface Pipeline {
   approval_timeout_minutes: number;
   approval_channels?: string[];
   approval_phone?: string;
+  schedule_enabled: boolean;
+  schedule_start_time?: string;
+  schedule_end_time?: string;
+  schedule_days?: number[];
+  liquidate_on_deactivation: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +103,11 @@ export interface PipelineCreate {
   approval_timeout_minutes?: number;
   approval_channels?: string[];
   approval_phone?: string;
+  schedule_enabled?: boolean;
+  schedule_start_time?: string;
+  schedule_end_time?: string;
+  schedule_days?: number[];
+  liquidate_on_deactivation?: boolean;
 }
 
 export interface PipelineUpdate {
@@ -116,6 +126,11 @@ export interface PipelineUpdate {
   approval_timeout_minutes?: number;
   approval_channels?: string[];
   approval_phone?: string;
+  schedule_enabled?: boolean;
+  schedule_start_time?: string;
+  schedule_end_time?: string;
+  schedule_days?: number[];
+  liquidate_on_deactivation?: boolean;
 }
 
 export enum ExecutionStatus {

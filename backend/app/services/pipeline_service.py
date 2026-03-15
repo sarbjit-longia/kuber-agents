@@ -109,7 +109,7 @@ async def update_pipeline(
     for field, value in update_data.items():
         setattr(pipeline, field, value)
         # Flag JSONB columns as modified so SQLAlchemy persists the changes
-        if field in ['config', 'signal_subscriptions', 'scanner_tickers']:
+        if field in ['config', 'signal_subscriptions', 'scanner_tickers', 'schedule_days']:
             jsonb_fields.append(field)
     
     # Explicitly mark JSONB columns as modified

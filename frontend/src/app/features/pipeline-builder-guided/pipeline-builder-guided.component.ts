@@ -98,6 +98,23 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     { value: 'risk_rejected', label: 'Risk Rejected', icon: 'block' }
   ];
 
+  // Schedule settings
+  scheduleEnabled = false;
+  scheduleStartTime = '09:30';
+  scheduleEndTime = '16:00';
+  scheduleDays: number[] = [1, 2, 3, 4, 5]; // Mon-Fri
+  liquidateOnDeactivation = false;
+
+  readonly DAY_OPTIONS = [
+    { value: 1, label: 'Mon' },
+    { value: 2, label: 'Tue' },
+    { value: 3, label: 'Wed' },
+    { value: 4, label: 'Thu' },
+    { value: 5, label: 'Fri' },
+    { value: 6, label: 'Sat' },
+    { value: 7, label: 'Sun' },
+  ];
+
   // Trade approval settings
   requireApproval = false;
   approvalModes: string[] = ['live'];
@@ -186,7 +203,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   ];
 
-  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings'; title: string; subtitle: string; icon: string }> = [
+  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'; title: string; subtitle: string; icon: string }> = [
     {
       key: 'pipeline_settings',
       title: 'Pipeline settings',
@@ -204,6 +221,12 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       title: 'Signal filters',
       subtitle: 'Choose which signal types to accept',
       icon: 'tune'
+    },
+    {
+      key: 'schedule_settings',
+      title: 'Active Hours',
+      subtitle: 'Daily schedule for auto activate/deactivate',
+      icon: 'schedule'
     },
     {
       key: 'notification_settings',
@@ -324,6 +347,13 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         // Load notification settings
         this.notificationEnabled = pipeline.notification_enabled || false;
         this.notificationEvents = pipeline.notification_events || [];
+
+        // Load schedule settings
+        this.scheduleEnabled = pipeline.schedule_enabled || false;
+        this.scheduleStartTime = pipeline.schedule_start_time || '09:30';
+        this.scheduleEndTime = pipeline.schedule_end_time || '16:00';
+        this.scheduleDays = pipeline.schedule_days || [1, 2, 3, 4, 5];
+        this.liquidateOnDeactivation = pipeline.liquidate_on_deactivation || false;
 
         // Load approval settings
         this.requireApproval = pipeline.require_approval || false;
@@ -642,6 +672,11 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       if (this.currentPipelineId) this.savePipeline(false);
       return;
     }
+    if (this.selectedItemKey === 'schedule_settings') {
+      this.showNotification('Schedule settings applied', 'success');
+      if (this.currentPipelineId) this.savePipeline(false);
+      return;
+    }
     if (this.selectedItemKey === 'approval_settings') {
       this.showNotification('Approval settings applied', 'success');
       if (this.currentPipelineId) this.savePipeline(false);
@@ -711,6 +746,12 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       notification_events: this.notificationEvents,
       // Scanner can be used for both periodic and signal pipelines; for SIGNAL it is required.
       scanner_id: this.scannerId,
+      // Schedule settings
+      schedule_enabled: this.scheduleEnabled,
+      schedule_start_time: this.scheduleStartTime,
+      schedule_end_time: this.scheduleEndTime,
+      schedule_days: this.scheduleDays,
+      liquidate_on_deactivation: this.liquidateOnDeactivation,
       // Approval settings
       require_approval: this.requireApproval,
       approval_modes: this.approvalModes,
@@ -828,7 +869,16 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   }
 
-  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings'): 'READY' | 'SETUP' | 'TODO' {
+  toggleScheduleDay(day: number): void {
+    const idx = this.scheduleDays.indexOf(day);
+    if (idx >= 0) {
+      this.scheduleDays = this.scheduleDays.filter(d => d !== day);
+    } else {
+      this.scheduleDays = [...this.scheduleDays, day].sort();
+    }
+  }
+
+  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'): 'READY' | 'SETUP' | 'TODO' {
     if (key === 'pipeline_settings') {
       if (this.triggerMode === TriggerMode.SIGNAL && !this.scannerId) return 'SETUP';
       return 'READY';
@@ -839,6 +889,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     if (key === 'signal_filters') {
       if (this.triggerMode !== TriggerMode.SIGNAL) return 'TODO';
       return (this.signalSubscriptions && this.signalSubscriptions.length > 0) ? 'READY' : 'SETUP';
+    }
+    if (key === 'schedule_settings') {
+      return this.scheduleEnabled ? 'READY' : 'SETUP';
     }
     if (key === 'notification_settings') {
       // Notification settings are optional, so always return READY if enabled or SETUP if disabled

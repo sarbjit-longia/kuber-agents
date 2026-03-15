@@ -98,6 +98,24 @@ export class PipelineService {
   }
 
   /**
+   * Deactivate a pipeline with optional position liquidation
+   */
+  deactivateWithLiquidation(id: string, liquidate: boolean): Observable<Pipeline> {
+    const params = liquidate ? '?liquidate_positions=true' : '';
+    return this.apiService.patch<Pipeline>(`/api/v1/pipelines/${id}${params}`, { is_active: false }).pipe(
+      tap(updated => {
+        const current = this.pipelinesSubject.value;
+        const index = current.findIndex(p => p.id === id);
+        if (index !== -1) {
+          current[index] = updated;
+          this.pipelinesSubject.next([...current]);
+        }
+        this.currentPipelineSubject.next(updated);
+      })
+    );
+  }
+
+  /**
    * Set current pipeline for editing
    */
   setCurrentPipeline(pipeline: Pipeline | null): void {

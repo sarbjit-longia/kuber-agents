@@ -1,10 +1,11 @@
 """
 Pydantic schemas for Pipeline model.
 """
+import re
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 from app.schemas.scanner import SignalSubscription
@@ -49,6 +50,20 @@ class PipelineBase(BaseModel):
     approval_channels: Optional[List[str]] = Field(default=None, description="Notification channels: ['web', 'sms']")
     approval_phone: Optional[str] = Field(default=None, max_length=20, description="E.164 phone number for SMS approval")
 
+    # Active hours schedule
+    schedule_enabled: bool = Field(default=False, description="Enable daily active-hours schedule")
+    schedule_start_time: Optional[str] = Field(default=None, description="Start time HH:MM e.g. 09:30")
+    schedule_end_time: Optional[str] = Field(default=None, description="End time HH:MM e.g. 16:00")
+    schedule_days: Optional[List[int]] = Field(default=None, description="Days of week 1=Mon..7=Sun")
+    liquidate_on_deactivation: bool = Field(default=False, description="Close all positions when schedule deactivates")
+
+    @field_validator("schedule_start_time", "schedule_end_time")
+    @classmethod
+    def validate_time_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.match(r"^\d{2}:\d{2}$", v):
+            raise ValueError("Time must be in HH:MM format")
+        return v
+
 
 class PipelineCreate(PipelineBase):
     """Schema for creating a new pipeline."""
@@ -72,6 +87,11 @@ class PipelineUpdate(BaseModel):
     approval_timeout_minutes: Optional[int] = None
     approval_channels: Optional[List[str]] = None
     approval_phone: Optional[str] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_start_time: Optional[str] = None
+    schedule_end_time: Optional[str] = None
+    schedule_days: Optional[List[int]] = None
+    liquidate_on_deactivation: Optional[bool] = None
 
 
 class PipelineInDB(PipelineBase):
@@ -90,6 +110,11 @@ class PipelineInDB(PipelineBase):
     approval_timeout_minutes: int
     approval_channels: Optional[List[str]]
     approval_phone: Optional[str]
+    schedule_enabled: bool
+    schedule_start_time: Optional[str]
+    schedule_end_time: Optional[str]
+    schedule_days: Optional[List[int]]
+    liquidate_on_deactivation: bool
     created_at: datetime
     updated_at: datetime
 

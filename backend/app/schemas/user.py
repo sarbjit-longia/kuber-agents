@@ -22,6 +22,7 @@ class UserUpdate(BaseModel):
     """Schema for updating a user."""
     full_name: Optional[str] = None
     password: Optional[str] = Field(None, min_length=8, max_length=72)
+    timezone: Optional[str] = None
 
 
 class UserInDB(UserBase):
@@ -37,6 +38,7 @@ class UserInDB(UserBase):
     sms_consent: bool = False
     sms_consent_at: Optional[datetime] = None
     sms_phone: Optional[str] = None
+    timezone: str = "America/New_York"
     created_at: datetime
     updated_at: datetime
 

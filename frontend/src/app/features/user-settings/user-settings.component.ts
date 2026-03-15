@@ -11,6 +11,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatSelectModule } from '@angular/material/select';
 import { Subject, takeUntil } from 'rxjs';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { FooterComponent } from '../../shared/components/footer/footer.component';
@@ -41,6 +42,7 @@ interface NavSection {
     MatSnackBarModule,
     MatDividerModule,
     MatCheckboxModule,
+    MatSelectModule,
     NavbarComponent,
     FooterComponent
   ],
@@ -82,6 +84,11 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
   isDeleting = false;
   showTokenInput = false;
 
+  // Timezone state
+  timezones: string[] = [];
+  selectedTimezone = 'America/New_York';
+  isSavingTimezone = false;
+
   // SMS consent state
   smsConsent: SmsConsentStatus | null = null;
   smsPhone = '';
@@ -113,10 +120,14 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
         if (user && !this.editingName) {
           this.editNameValue = user.full_name || '';
         }
+        if (user) {
+          this.selectedTimezone = user.timezone || 'America/New_York';
+        }
       });
     this.loadSubscriptionInfo();
     this.loadTelegramConfig();
     this.loadSmsConsent();
+    this.loadTimezones();
   }
 
   ngOnDestroy(): void {
@@ -344,6 +355,40 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
     if (!this.showTokenInput) {
       this.botToken = '';
     }
+  }
+
+  // ── Timezone methods ─────────────────────────────────────────
+  loadTimezones(): void {
+    this.userService.getTimezones().subscribe({
+      next: (tzs) => {
+        this.timezones = tzs;
+      },
+      error: () => {
+        // Fall back to a reasonable default list
+        this.timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'UTC'];
+      }
+    });
+  }
+
+  saveTimezone(): void {
+    this.isSavingTimezone = true;
+    this.userService.updateProfile({ timezone: this.selectedTimezone }).subscribe({
+      next: () => {
+        this.isSavingTimezone = false;
+        this.authService.getCurrentUser().subscribe();
+        this.snackBar.open('Timezone updated', 'Close', {
+          duration: 3000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: () => {
+        this.isSavingTimezone = false;
+        this.snackBar.open('Failed to update timezone', 'Close', {
+          duration: 3000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
   }
 
   // ── SMS Consent methods ─────────────────────────────────────

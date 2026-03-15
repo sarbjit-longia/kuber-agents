@@ -16,6 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { PipelineService } from '../../core/services/pipeline.service';
 import { ExecutionService } from '../../core/services/execution.service';
@@ -23,6 +24,10 @@ import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { FooterComponent } from '../../shared/components/footer/footer.component';
 import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 import { Pipeline } from '../../core/models/pipeline.model';
+import {
+  LiquidationConfirmDialogComponent,
+  LiquidationDialogResult
+} from '../../shared/components/liquidation-confirm-dialog/liquidation-confirm-dialog.component';
 
 @Component({
   selector: 'app-pipelines',
@@ -38,6 +43,7 @@ import { Pipeline } from '../../core/models/pipeline.model';
     MatMenuModule,
     MatDividerModule,
     MatSnackBarModule,
+    MatDialogModule,
     NavbarComponent,
     FooterComponent,
     LocalDatePipe
@@ -54,7 +60,8 @@ export class PipelinesComponent implements OnInit {
     private pipelineService: PipelineService,
     private executionService: ExecutionService,
     private router: Router,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
@@ -125,22 +132,40 @@ export class PipelinesComponent implements OnInit {
   toggleActive(pipeline: Pipeline, event: Event): void {
     event.stopPropagation();
 
-    const updatedPipeline = {
-      is_active: !pipeline.is_active
-    };
+    if (pipeline.is_active) {
+      // Deactivating — open dialog to optionally liquidate
+      const dialogRef = this.dialog.open(LiquidationConfirmDialogComponent, {
+        width: '440px',
+      });
 
-    this.pipelineService.updatePipeline(pipeline.id, updatedPipeline).subscribe({
-      next: () => {
-        this.showNotification(
-          pipeline.is_active ? 'Pipeline deactivated' : 'Pipeline activated',
-          'success'
-        );
-        this.loadPipelines();
-      },
-      error: () => {
-        this.showNotification('Failed to update pipeline', 'error');
-      }
-    });
+      dialogRef.afterClosed().subscribe((result: LiquidationDialogResult | undefined) => {
+        if (!result?.confirmed) return;
+
+        this.pipelineService.deactivateWithLiquidation(pipeline.id, result.liquidate).subscribe({
+          next: () => {
+            const msg = result.liquidate
+              ? 'Pipeline deactivated — positions being closed'
+              : 'Pipeline deactivated';
+            this.showNotification(msg, 'success');
+            this.loadPipelines();
+          },
+          error: () => {
+            this.showNotification('Failed to deactivate pipeline', 'error');
+          }
+        });
+      });
+    } else {
+      // Activating — simple update
+      this.pipelineService.updatePipeline(pipeline.id, { is_active: true }).subscribe({
+        next: () => {
+          this.showNotification('Pipeline activated', 'success');
+          this.loadPipelines();
+        },
+        error: () => {
+          this.showNotification('Failed to activate pipeline', 'error');
+        }
+      });
+    }
   }
 
   getAgentCount(pipeline: Pipeline): number {

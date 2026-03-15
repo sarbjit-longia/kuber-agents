@@ -79,6 +79,11 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute="*"),  # Every minute
         "args": (12,),  # 12 minutes stale threshold (task_time_limit is 10m)
     },
+    # Check pipeline active-hours schedules every minute
+    "check-pipeline-schedules-active-hours": {
+        "task": "app.orchestration.tasks.check_pipeline_schedules_active_hours",
+        "schedule": crontab(minute="*"),
+    },
     # Reset daily budgets
     "reset-daily-budgets": {
         "task": "app.orchestration.tasks.reset_daily_budgets",

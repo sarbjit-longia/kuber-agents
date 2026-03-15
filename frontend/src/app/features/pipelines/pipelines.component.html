@@ -81,6 +81,9 @@
                   {{ pipeline.trigger_mode === 'signal' ? 'Signal' : 'Periodic' }}
                 </span>
                 <div class="feature-badges">
+                  <span *ngIf="pipeline.schedule_enabled" class="feature-icon" matTooltip="Scheduled active hours">
+                    <mat-icon>schedule</mat-icon>
+                  </span>
                   <span *ngIf="pipeline.notification_enabled" class="feature-icon" matTooltip="Notifications enabled">
                     <mat-icon>notifications_active</mat-icon>
                   </span>

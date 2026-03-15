@@ -1078,3 +1078,63 @@
     transition: color 0.15s ease;
   }
 }
+
+// ── Schedule settings ────────────────────────────
+.schedule-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.time-field {
+  flex: 1;
+}
+
+.time-separator {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding-top: 4px;
+}
+
+.schedule-day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.day-chip {
+  min-width: 52px;
+  font-size: 13px;
+  border-radius: 20px !important;
+  transition: all 0.15s ease;
+
+  &.selected {
+    background: var(--accent-primary) !important;
+    color: #fff !important;
+    border-color: var(--accent-primary) !important;
+  }
+}
+
+.schedule-liquidation-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(244, 67, 54, 0.08);
+  border: 1px solid rgba(244, 67, 54, 0.25);
+  font-size: 13px;
+  color: #f44336;
+  line-height: 1.5;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+}

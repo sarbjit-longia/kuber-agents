@@ -83,6 +83,14 @@ class Pipeline(Base):
     approval_timeout_minutes = Column(Integer, default=15, nullable=False)
     approval_channels = Column(JSONB, nullable=True, default=list)  # e.g. ["web", "sms"]
     approval_phone = Column(String(20), nullable=True)  # E.164 phone number for SMS
+
+    # Active hours schedule
+    schedule_enabled = Column(Boolean, default=False, nullable=False)
+    schedule_start_time = Column(String(5), nullable=True)   # "HH:MM" e.g. "09:30"
+    schedule_end_time = Column(String(5), nullable=True)      # "HH:MM" e.g. "16:00"
+    schedule_days = Column(JSONB, nullable=True, default=list)  # [1..7] where 1=Mon,7=Sun
+    liquidate_on_deactivation = Column(Boolean, default=False, nullable=False)
+
     # Example notification_events:
     # ["trade_executed", "position_closed", "pipeline_failed", "risk_rejected"]
     
