@@ -720,11 +720,11 @@ class TradierBrokerService(BrokerService):
         account_id: Optional[str] = None,
         trade_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Close a position and cancel any remaining bracket (OTOCO) legs.
+        """Close a position by cancelling bracket orders first, then placing a market close.
 
-        After placing a market order to close the position, this method cancels
-        all remaining open orders for the symbol to prevent stale TP/SL legs
-        from executing and opening an unintended short position.
+        Tradier rejects a new market sell when there are pending bracket (OTOCO)
+        legs (TP limit / SL stop) for the same symbol.  We must cancel those
+        legs BEFORE placing the closing market order.
 
         Args:
             symbol: Trading symbol
@@ -744,21 +744,14 @@ class TradierBrokerService(BrokerService):
             # Determine opposite side
             close_side = OrderSide.SELL if pos.side == "long" else OrderSide.BUY
 
-            # Place closing order
-            order = self.place_order(
-                symbol, close_qty, close_side, OrderType.MARKET, time_in_force=TimeInForce.DAY, account_id=account_id
-            )
-
-            self.logger.info("Tradier position closed", symbol=symbol, qty=close_qty)
-
-            # Cancel any remaining open orders for this symbol (bracket TP/SL legs).
-            # Without this, stale limit-sell (TP) or stop-sell (SL) orders remain
-            # active on the broker and can execute later, opening a short position.
+            # ── Step 1: Cancel ALL open orders for this symbol FIRST ──
+            # This removes bracket TP/SL legs so the closing market order
+            # won't be rejected by Tradier.
             cancelled_ids = []
             try:
                 open_orders = self.get_orders(account_id)
                 for open_order in open_orders:
-                    if open_order.symbol.upper() == symbol.upper() and open_order.order_id != order.order_id:
+                    if open_order.symbol.upper() == symbol.upper():
                         cancel_result = self.cancel_order(open_order.order_id, account_id)
                         if cancel_result.get("success"):
                             cancelled_ids.append(open_order.order_id)
@@ -771,17 +764,30 @@ class TradierBrokerService(BrokerService):
                             )
                 if cancelled_ids:
                     self.logger.info(
-                        "tradier_cancelled_bracket_legs_after_close",
+                        "tradier_cancelled_bracket_legs_before_close",
                         symbol=symbol,
                         cancelled_order_ids=cancelled_ids,
                     )
             except Exception as cancel_err:
-                # Log but don't fail the close — position is already closed
                 self.logger.warning(
                     "tradier_bracket_leg_cleanup_failed",
                     symbol=symbol,
                     error=str(cancel_err),
                 )
+
+            # ── Step 2: Place closing market order ──
+            order = self.place_order(
+                symbol, close_qty, close_side, OrderType.MARKET,
+                time_in_force=TimeInForce.DAY, account_id=account_id,
+            )
+
+            self.logger.info(
+                "tradier_position_closed",
+                symbol=symbol,
+                qty=close_qty,
+                order_id=order.order_id,
+                cancelled_bracket_legs=cancelled_ids,
+            )
 
             return {
                 "success": True,
@@ -791,7 +797,12 @@ class TradierBrokerService(BrokerService):
             }
 
         except Exception as e:
-            self.logger.error("Failed to close Tradier position", symbol=symbol, error=str(e))
+            self.logger.error(
+                "tradier_close_position_failed",
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
+            )
             return {"success": False, "error": str(e)}
     
     def get_quote(self, symbol: str) -> Dict[str, Any]:
