@@ -82,6 +82,7 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
 
     // Compute initial cost estimate if model + instructions are already set
     this.recomputeLocalLLMCost();
+    this.emitChanges();
 
     // If pricing data hasn't loaded yet, recalculate when it arrives
     this.costEstimationService.pricingLoaded$

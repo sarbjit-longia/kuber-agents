@@ -6,7 +6,7 @@
  * (no backend round-trips) as the user types.
  */
 import { Injectable } from '@angular/core';
-import { Subject } from 'rxjs';
+import { ReplaySubject } from 'rxjs';
 import { ApiService } from './api.service';
 
 export interface ModelPricing {
@@ -45,8 +45,8 @@ export class CostEstimationService {
   private pricingMap = new Map<string, ModelPricing>();
   private loaded = false;
 
-  /** Emits once when pricing data has been fetched successfully. */
-  pricingLoaded$ = new Subject<void>();
+  /** Emits (and replays to late subscribers) when pricing data has been fetched. */
+  pricingLoaded$ = new ReplaySubject<void>(1);
 
   constructor(private api: ApiService) {}
 
