@@ -27,7 +27,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": False,
         "cost_per_1k_input_tokens": 0.0005,  # $0.50 per 1M tokens
         "cost_per_1k_output_tokens": 0.0015,  # $1.50 per 1M tokens
-        "typical_agent_cost": 0.01,  # ~$0.01 per agent execution
+        "cost_per_1m_cached_tokens": 0.25,  # $0.25 per 1M cached tokens
+        "typical_agent_cost": 0.01,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -47,7 +48,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": False,
         "cost_per_1k_input_tokens": 0.03,  # $30 per 1M tokens
         "cost_per_1k_output_tokens": 0.06,  # $60 per 1M tokens
-        "typical_agent_cost": 0.15,  # ~$0.15 per agent execution
+        "cost_per_1m_cached_tokens": 15.0,  # $15 per 1M cached tokens
+        "typical_agent_cost": 0.15,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -67,9 +69,10 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": True,
         "cost_per_1k_input_tokens": 0.01,  # $10 per 1M tokens
         "cost_per_1k_output_tokens": 0.03,  # $30 per 1M tokens
-        "typical_agent_cost": 0.08,  # ~$0.08 per agent execution
+        "cost_per_1m_cached_tokens": 5.0,  # $5 per 1M cached tokens
+        "typical_agent_cost": 0.08,
         "is_active": True,
-        "is_default": True,  # Default model
+        "is_default": True,
         "environment": "all",
         "model_metadata": {
             "quality": "excellent",
@@ -87,7 +90,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": True,
         "cost_per_1k_input_tokens": 0.005,  # $5 per 1M tokens
         "cost_per_1k_output_tokens": 0.015,  # $15 per 1M tokens
-        "typical_agent_cost": 0.05,  # ~$0.05 per agent execution
+        "cost_per_1m_cached_tokens": 2.50,  # $2.50 per 1M cached tokens
+        "typical_agent_cost": 0.05,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -107,7 +111,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": True,
         "cost_per_1k_input_tokens": 0.00015,  # $0.15 per 1M tokens
         "cost_per_1k_output_tokens": 0.0006,  # $0.60 per 1M tokens
-        "typical_agent_cost": 0.005,  # ~$0.005 per agent execution
+        "cost_per_1m_cached_tokens": 0.075,  # $0.075 per 1M cached tokens
+        "typical_agent_cost": 0.005,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -127,7 +132,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": False,
         "cost_per_1k_input_tokens": 0.015,  # $15 per 1M tokens
         "cost_per_1k_output_tokens": 0.06,  # $60 per 1M tokens
-        "typical_agent_cost": 0.20,  # ~$0.20 per agent execution
+        "cost_per_1m_cached_tokens": 7.50,  # $7.50 per 1M cached tokens
+        "typical_agent_cost": 0.20,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -148,7 +154,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": False,
         "cost_per_1k_input_tokens": 0.003,  # $3 per 1M tokens
         "cost_per_1k_output_tokens": 0.012,  # $12 per 1M tokens
-        "typical_agent_cost": 0.04,  # ~$0.04 per agent execution
+        "cost_per_1m_cached_tokens": 1.50,  # $1.50 per 1M cached tokens
+        "typical_agent_cost": 0.04,
         "is_active": True,
         "is_default": False,
         "environment": "all",
@@ -168,7 +175,8 @@ DEFAULT_LLM_MODELS = [
         "supports_vision": False,
         "cost_per_1k_input_tokens": 0.0,  # Free
         "cost_per_1k_output_tokens": 0.0,  # Free
-        "typical_agent_cost": 0.0,  # Free
+        "cost_per_1m_cached_tokens": 0.0,  # Free
+        "typical_agent_cost": 0.0,
         "is_active": True,
         "is_default": False,
         "environment": "development",

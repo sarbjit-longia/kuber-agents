@@ -112,14 +112,6 @@ Examples:
           <span>Tools Cost:</span>
           <span class="cost-value">${{ totalCost.toFixed(3) }}/execution</span>
         </div>
-        <div class="cost-row" *ngIf="llmCost > 0">
-          <span>LLM Cost (execution):</span>
-          <span class="cost-value">~${{ llmCost.toFixed(3) }}/execution</span>
-        </div>
-        <div class="cost-row total">
-          <span><strong>Estimated Total:</strong></span>
-          <span class="cost-value"><strong>${{ (totalCost + llmCost).toFixed(3) }}/execution</strong></span>
-        </div>
       </div>
 
       <!-- Unsupported Features Warning -->
@@ -143,6 +135,26 @@ Examples:
         <p>{{ errorMessage }}</p>
         <p class="error-hint">Try being more specific about your strategy, or check the examples above.</p>
       </div>
+    </div>
+  </div>
+
+  <!-- Cost Estimate (always shown when there's an estimate, independent of tool detection) -->
+  <div class="cost-summary standalone" *ngIf="estimatedLLMCost && estimatedLLMCost.totalLLMCost > 0">
+    <div class="cost-row" *ngIf="staticAgentCost > 0">
+      <span>Static Agent Cost:</span>
+      <span class="cost-value">${{ staticAgentCost.toFixed(4) }}/run</span>
+    </div>
+    <div class="cost-row" *ngIf="totalCost > 0">
+      <span>Tools Cost:</span>
+      <span class="cost-value">${{ totalCost.toFixed(4) }}/run</span>
+    </div>
+    <div class="cost-row">
+      <span>Est. LLM Cost ({{ estimatedLLMCost.inputTokens | number }} in / {{ estimatedLLMCost.outputTokens | number }} out tokens):</span>
+      <span class="cost-value">~${{ estimatedLLMCost.totalLLMCost.toFixed(4) }}/run</span>
+    </div>
+    <div class="cost-row total">
+      <span><strong>Estimated Total:</strong></span>
+      <span class="cost-value"><strong>~${{ totalEstimatedCost.toFixed(4) }}/run</strong></span>
     </div>
   </div>
 </div>

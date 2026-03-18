@@ -13,6 +13,7 @@ import { takeUntil } from 'rxjs/operators';
 
 import { ToolDetectionService, DetectedTool, ValidateInstructionsResponse } from '../../core/services/tool-detection.service';
 import { FileUploadService, FileUploadResponse } from '../../core/services/file-upload.service';
+import { CostEstimationService, LLMCostEstimate } from '../../core/services/cost-estimation.service';
 
 @Component({
   selector: 'app-agent-instructions',
@@ -37,6 +38,8 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
   @Input() initialDocumentUrl: string = '';
   @Input() autoDetect: boolean = true;
   @Input() showDetectButton: boolean = false;
+  @Input() selectedModel: string = '';
+  @Input() staticAgentCost: number = 0;
   
   @Output() instructionsChange = new EventEmitter<{
     instructions: string;
@@ -55,6 +58,7 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
   unsupportedFeatures: string[] = [];
   totalCost: number = 0;
   llmCost: number = 0;
+  estimatedLLMCost: LLMCostEstimate | null = null;
   summary: string = '';
   confidence: number = 0;
   detectionStatus: 'success' | 'partial' | 'error' | 'none' = 'none';
@@ -67,13 +71,25 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
 
   constructor(
     private toolDetectionService: ToolDetectionService,
-    private fileUploadService: FileUploadService
+    private fileUploadService: FileUploadService,
+    private costEstimationService: CostEstimationService
   ) {}
 
   ngOnInit(): void {
     // Initialize with existing values
     this.instructions = this.initialInstructions;
     this.documentUrl = this.initialDocumentUrl;
+
+    // Compute initial cost estimate if model + instructions are already set
+    this.recomputeLocalLLMCost();
+
+    // If pricing data hasn't loaded yet, recalculate when it arrives
+    this.costEstimationService.pricingLoaded$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.recomputeLocalLLMCost();
+        this.emitChanges();
+      });
 
     if (this.autoDetect) {
       // Debounced tool detection (wait 2 seconds after user stops typing)
@@ -96,11 +112,17 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     if (changes['initialInstructions'] && !changes['initialInstructions'].firstChange) {
       this.instructions = changes['initialInstructions'].currentValue || '';
     }
-    
+
     // Update document URL when initialDocumentUrl input changes
     if (changes['initialDocumentUrl'] && !changes['initialDocumentUrl'].firstChange) {
       this.documentUrl = changes['initialDocumentUrl'].currentValue || '';
       this.uploadedFileName = this.documentUrl ? this.documentUrl.split('/').pop() || '' : '';
+    }
+
+    // Recalculate LLM cost when model changes (including first render)
+    if (changes['selectedModel']) {
+      this.recomputeLocalLLMCost();
+      this.emitChanges();
     }
   }
 
@@ -122,6 +144,9 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     this.confidence = 0;
     this.detectionStatus = 'none';
     this.errorMessage = '';
+
+    // Compute local LLM cost estimate (pure math, no debounce needed)
+    this.recomputeLocalLLMCost();
 
     this.instructionsChanged$.next(value);
     // Always emit on input so parent builders can persist instructions even when
@@ -247,13 +272,33 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     }
   }
 
+  private recomputeLocalLLMCost(): void {
+    if (this.selectedModel && this.instructions) {
+      this.estimatedLLMCost = this.costEstimationService.estimateLLMCost(
+        this.instructions,
+        this.selectedModel,
+        this.agentType
+      );
+    } else {
+      this.estimatedLLMCost = null;
+    }
+  }
+
+  /** Total estimated cost per execution (static + tools + LLM) */
+  get totalEstimatedCost(): number {
+    const toolsCost = this.totalCost;
+    const agentCost = this.staticAgentCost || 0;
+    const llm = this.estimatedLLMCost?.totalLLMCost || 0;
+    return toolsCost + agentCost + llm;
+  }
+
   private emitChanges(): void {
     this.instructionsChange.emit({
       instructions: this.instructions,
       documentUrl: this.documentUrl,
       detectedTools: this.detectedTools,
       totalCost: this.totalCost,
-      llmCost: this.llmCost
+      llmCost: this.estimatedLLMCost?.totalLLMCost || this.llmCost
     });
   }
 

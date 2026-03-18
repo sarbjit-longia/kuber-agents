@@ -38,6 +38,7 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
    */
   @Input() rebuildKey: string | number | null = null;
   @Output() dataChange = new EventEmitter<any>();
+  @Output() modelChange = new EventEmitter<string>();
 
   form!: FormGroup;
   properties: any[] = [];
@@ -151,6 +152,16 @@ export class JsonSchemaFormComponent implements OnInit, OnChanges {
         this.dataChange.emit(value);
       }
     });
+
+    // Emit model changes for cost estimation
+    const modelCtrl = this.form.get('model');
+    if (modelCtrl) {
+      modelCtrl.valueChanges.subscribe(value => {
+        if (!this.isInitializing && value) {
+          this.modelChange.emit(value);
+        }
+      });
+    }
     
     // Clear initialization flag after a short delay to allow Angular to settle
     setTimeout(() => {

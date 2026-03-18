@@ -116,6 +116,32 @@ async def list_agents_by_category(category: str):
     return agents
 
 
+@router.get("/models/pricing")
+async def get_model_pricing():
+    """
+    Get pricing information for all available LLM models.
+
+    Returns a public (no auth) list of models with their token pricing
+    so the frontend can compute cost estimates locally.
+    """
+    db = SessionLocal()
+    try:
+        models = model_registry.list_available_models(db)
+        return [
+            {
+                "model_id": m.model_id,
+                "display_name": m.display_name,
+                "provider": m.provider,
+                "cost_per_1m_input_tokens": m.cost_per_1k_input_tokens * 1000,
+                "cost_per_1m_output_tokens": m.cost_per_1k_output_tokens * 1000,
+                "cost_per_1m_cached_tokens": m.cost_per_1m_cached_tokens,
+            }
+            for m in models
+        ]
+    finally:
+        db.close()
+
+
 @router.get("/{agent_type}", response_model=AgentMetadata)
 async def get_agent_metadata(agent_type: str):
     """

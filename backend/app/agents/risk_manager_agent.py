@@ -73,7 +73,7 @@ class RiskManagerAgent(BaseAgent):
                         "title": "AI Model",
                         "description": "LLM model for risk analysis",
                         "enum": model_choices,
-                        "default": model_choices[0] if model_choices else "gpt-4"
+                        "default": "gpt-4o" if "gpt-4o" in model_choices else (model_choices[0] if model_choices else "gpt-4o")
                     }
                 },
                 required=["instructions"]
@@ -158,7 +158,7 @@ class RiskManagerAgent(BaseAgent):
             if not instructions:
                 instructions = self.metadata.config_schema.properties["instructions"]["default"]
             
-            model_id = self.config.get("model", "gpt-4")
+            model_id = self.config.get("model", "gpt-4o")
             
             # Create Langfuse trace
             trace = trace_agent_execution(

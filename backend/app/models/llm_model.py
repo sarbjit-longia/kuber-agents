@@ -31,9 +31,10 @@ class LLMModel(Base):
     supports_functions = Column(Boolean, default=True)  # Supports function calling
     supports_vision = Column(Boolean, default=False)  # Supports image inputs
     
-    # Pricing (in USD)
-    cost_per_1k_input_tokens = Column(Float, nullable=False)  # Input token cost
-    cost_per_1k_output_tokens = Column(Float, nullable=False)  # Output token cost
+    # Pricing (in USD per 1M tokens)
+    cost_per_1k_input_tokens = Column(Float, nullable=False)  # Input token cost (per 1K — legacy name)
+    cost_per_1k_output_tokens = Column(Float, nullable=False)  # Output token cost (per 1K — legacy name)
+    cost_per_1m_cached_tokens = Column(Float, nullable=False, default=0.0)  # Cached input token cost per 1M
     
     # Typical execution costs (pre-calculated estimates)
     typical_agent_cost = Column(Float, nullable=False)  # Typical cost per agent execution
@@ -49,18 +50,22 @@ class LLMModel(Base):
     def __repr__(self):
         return f"<LLMModel {self.model_id} (${self.typical_agent_cost:.3f}/exec)>"
     
-    def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+    def calculate_cost(
+        self, input_tokens: int, output_tokens: int, cached_tokens: int = 0
+    ) -> float:
         """
         Calculate cost for a specific token usage.
-        
+
         Args:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
-            
+            cached_tokens: Number of cached input tokens (charged at reduced rate)
+
         Returns:
             Total cost in USD
         """
         input_cost = (input_tokens / 1000) * self.cost_per_1k_input_tokens
         output_cost = (output_tokens / 1000) * self.cost_per_1k_output_tokens
-        return input_cost + output_cost
+        cached_cost = (cached_tokens / 1_000_000) * self.cost_per_1m_cached_tokens
+        return input_cost + output_cost + cached_cost
 

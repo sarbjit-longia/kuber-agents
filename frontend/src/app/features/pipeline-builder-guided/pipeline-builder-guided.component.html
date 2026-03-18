@@ -627,6 +627,8 @@
             [initialDocumentUrl]="editingConfig['strategy_document_url'] || ''"
             [autoDetect]="false"
             [showDetectButton]="true"
+            [selectedModel]="getSelectedModelForAgent(at)"
+            [staticAgentCost]="getStaticAgentCost(at)"
             (instructionsChange)="onInstructionsChange($event)"
           >
           </app-agent-instructions>
@@ -645,6 +647,7 @@
             [data]="editingConfig"
             [rebuildKey]="selectedItemKey"
             (dataChange)="onConfigChange($event)"
+            (modelChange)="onModelChange($event)"
           >
           </app-json-schema-form>
         </div>

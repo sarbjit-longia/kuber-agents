@@ -127,37 +127,41 @@ class ModelRegistry:
         db: Session,
         base_cost: float = 0.0,
         estimated_input_tokens: int = 0,
-        estimated_output_tokens: int = 0
+        estimated_output_tokens: int = 0,
+        estimated_cached_tokens: int = 0,
     ) -> float:
         """
         Calculate total cost for an agent execution.
-        
+
         Args:
             model_id: Model identifier
             db: Database session
             base_cost: Base cost of agent (non-LLM costs like tool usage)
             estimated_input_tokens: Estimated input tokens (optional)
             estimated_output_tokens: Estimated output tokens (optional)
-            
+            estimated_cached_tokens: Estimated cached input tokens (optional)
+
         Returns:
             Total cost in USD
         """
         model = cls.get_model(model_id, db)
-        
+
         if not model:
             logger.error("model_not_found_for_cost_calc", model_id=model_id)
             # Fallback to a reasonable estimate
             return base_cost + 0.10
-        
+
         # If token estimates provided, calculate precise cost
         if estimated_input_tokens > 0 or estimated_output_tokens > 0:
-            llm_cost = model.calculate_cost(estimated_input_tokens, estimated_output_tokens)
+            llm_cost = model.calculate_cost(
+                estimated_input_tokens, estimated_output_tokens, estimated_cached_tokens
+            )
         else:
             # Use typical agent cost
             llm_cost = model.typical_agent_cost
-        
+
         total_cost = base_cost + llm_cost
-        
+
         logger.info(
             "agent_cost_calculated",
             model_id=model_id,
@@ -165,7 +169,7 @@ class ModelRegistry:
             llm_cost=llm_cost,
             total_cost=total_cost
         )
-        
+
         return total_cost
     
     @classmethod

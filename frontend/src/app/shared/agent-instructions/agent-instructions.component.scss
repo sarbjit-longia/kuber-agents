@@ -317,4 +317,32 @@
       }
     }
   }
+
+  // Standalone cost estimation (shown independently of tool detection)
+  .cost-summary.standalone {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+
+    .cost-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: var(--text-primary);
+
+      &.total {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-color);
+        font-size: 14px;
+      }
+
+      .cost-value {
+        color: var(--color-success);
+      }
+    }
+  }
 }

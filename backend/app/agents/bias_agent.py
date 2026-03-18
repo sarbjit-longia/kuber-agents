@@ -65,9 +65,9 @@ class BiasAgent(BaseAgent):
                     "model": {
                         "type": "string",
                         "title": "AI Model",
-                        "description": "LLM model to use. OpenAI models (gpt-3.5/gpt-4) use API credits. 'lm-studio' uses your local model (free).",
+                        "description": "LLM model to use. OpenAI models use API credits. 'lm-studio' uses your local model (free).",
                         "enum": ["lm-studio", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
-                        "default": "lm-studio"
+                        "default": "gpt-4o"
                     }
                 },
                 required=["instructions"]
@@ -75,12 +75,12 @@ class BiasAgent(BaseAgent):
             can_initiate_trades=False,
             can_close_positions=False
         )
-    
+
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
         import os
-        
-        model_name = config.get("model", "lm-studio")
+
+        model_name = config.get("model", "gpt-4o")
         
         # Route to OpenAI API for official OpenAI models, otherwise use local LM Studio
         openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-turbo"]

@@ -41,6 +41,10 @@
         This field is required
       </mat-error>
     </mat-form-field>
+    <div *ngIf="getFieldType(property) === 'select' && property.key === 'model'" class="model-cost-disclaimer">
+      <mat-icon>info_outline</mat-icon>
+      <span>Actual usage cost may differ from estimate. System prompts are added at runtime to enhance agent capabilities.</span>
+    </div>
 
     <!-- Boolean (Toggle) -->
     <div *ngIf="getFieldType(property) === 'boolean'" class="boolean-field">

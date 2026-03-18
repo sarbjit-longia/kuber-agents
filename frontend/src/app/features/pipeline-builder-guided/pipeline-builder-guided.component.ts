@@ -37,6 +37,7 @@ import { ToolSelectorComponent, ToolInstance } from '../../shared/tool-selector/
 import { JsonSchemaFormComponent } from '../../shared/json-schema-form/json-schema-form.component';
 import { ScannerService } from '../../core/services/scanner.service';
 import { Scanner, SignalType } from '../../core/models/scanner.model';
+import { CostEstimationService } from '../../core/services/cost-estimation.service';
 
 type ExecutionMode = 'paper' | 'live' | 'simulation' | 'validation';
 
@@ -151,6 +152,9 @@ export class PipelineBuilderGuidedComponent implements OnInit {
 
   estimatedPipelineCost = 0; // $/run estimate (tools + llm detection)
 
+  /** Currently selected LLM model per agent (tracked for cost estimation) */
+  agentSelectedModel: Record<string, string> = {};
+
   // Signal filter catalog
   readonly SIGNAL_TIMEFRAMES: Array<{ value: string; label: string }> = [
     { value: '1', label: '1m' },
@@ -250,11 +254,13 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     private pipelineService: PipelineService,
     private executionService: ExecutionService,
     private scannerService: ScannerService,
-    private toolService: ToolService
+    private toolService: ToolService,
+    private costEstimationService: CostEstimationService
   ) {}
 
   ngOnInit(): void {
     this.loading = true;
+    this.costEstimationService.loadPricing();
 
     this.agentService.loadAgents().subscribe({
       next: (agents) => {
@@ -418,6 +424,10 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       const agentType = itemKey.replace('agent:', '');
       const node = this.agentNodes[agentType];
       this.editingConfig = { ...(node?.config || {}) };
+      // Sync model selection for cost estimation
+      if (this.editingConfig['model']) {
+        this.agentSelectedModel[agentType] = this.editingConfig['model'];
+      }
     } else {
       // Non-agent items use direct bindings (trigger/scanner/subscriptions), so clear editing config.
       this.editingConfig = {};
@@ -610,6 +620,29 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     this.recomputeEstimatedPipelineCost();
   }
 
+  onModelChange(modelId: string): void {
+    const at = this.getSelectedAgentType();
+    if (at) {
+      this.agentSelectedModel[at] = modelId;
+      this.editingConfig['model'] = modelId;
+      this.recomputeEstimatedPipelineCost();
+    }
+  }
+
+  getSelectedModelForAgent(agentType: string): string {
+    // Check explicit selection, then config, then fall back to schema default
+    if (this.agentSelectedModel[agentType]) return this.agentSelectedModel[agentType];
+    if (this.editingConfig['model']) return this.editingConfig['model'] as string;
+    // Schema default (e.g. "gpt-4o")
+    const meta = this.agentMetaByType.get(agentType);
+    return meta?.config_schema?.properties?.['model']?.default || '';
+  }
+
+  getStaticAgentCost(agentType: string): number {
+    const meta = this.agentMetaByType.get(agentType);
+    return meta?.pricing_rate || 0;
+  }
+
   onConfigChange(data: any): void {
     // Merge additional-schema fields into existing config so that fields managed by
     // other sub-components (instructions, tools, strategy_document_url, etc.) are preserved.
@@ -688,9 +721,11 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     let total = 0;
     for (const slot of this.slots) {
       const cfg: any = this.agentNodes[slot.agent_type]?.config || {};
+      const meta = this.agentMetaByType.get(slot.agent_type);
       const toolCost = typeof cfg.estimated_tool_cost === 'number' ? cfg.estimated_tool_cost : 0;
+      const staticCost = meta?.pricing_rate || 0;
       const llmCost = typeof cfg.estimated_llm_cost === 'number' ? cfg.estimated_llm_cost : 0;
-      total += toolCost + llmCost;
+      total += toolCost + staticCost + llmCost;
     }
     this.estimatedPipelineCost = total;
   }
