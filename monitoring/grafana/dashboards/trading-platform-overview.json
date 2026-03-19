@@ -792,13 +792,14 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "mode": "thresholds"
           },
           "custom": {
             "fillOpacity": 80,
             "lineWidth": 0
           },
           "mappings": [],
+          "noValue": "No data",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -808,7 +809,7 @@
               },
               {
                 "color": "green",
-                "value": 1
+                "value": 0.5
               }
             ]
           }
@@ -838,7 +839,7 @@
       "type": "status-history",
       "targets": [
         {
-          "expr": "up{job!~\"signal-generator-api|data-plane-universe\"}",
+          "expr": "avg_over_time(up{job!~\"signal-generator-api|data-plane-universe\"}[5m])",
           "legendFormat": "{{job}}",
           "refId": "A",
           "format": "time_series",

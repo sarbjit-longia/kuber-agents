@@ -531,6 +531,12 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
         Returns:
             Tuple of (formatted_text_for_llm, structured_tool_results_for_chart)
         """
+        import asyncio
+        from app.tools.strategy_tools.fvg_detector import FVGDetector
+        from app.tools.strategy_tools.liquidity_analyzer import LiquidityAnalyzer
+        from app.tools.strategy_tools.market_structure import MarketStructureAnalyzer
+        from app.tools.strategy_tools.premium_discount import PremiumDiscountAnalyzer
+
         collected_results: Dict[str, Any] = {}
 
         if not tools or not candles:
@@ -542,65 +548,79 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             return text, collected_results
 
         results_lines = []
+        tool_names = {t.name for t in tools}
 
-        # Call each tool and format results
-        for tool in tools:
-            tool_name = tool.name
+        # Helper to run async tool functions synchronously
+        def _run_async(coro):
+            loop = asyncio.new_event_loop()
             try:
-                self.log(state, f"Calling tool: {tool_name}")
+                return loop.run_until_complete(coro)
+            finally:
+                loop.close()
 
-                # Call the tool function directly with appropriate params
-                if tool_name == "fvg_detector":
-                    result = tool.func(timeframe="5m", lookback_candles=20)
-                    if result and isinstance(result, dict):
-                        fvgs = result.get("fvgs", [])
-                        bullish_fvgs = [f for f in fvgs if f.get("type") == "bullish"]
-                        bearish_fvgs = [f for f in fvgs if f.get("type") == "bearish"]
+        # Call ICT tools directly (bypassing CrewAI wrappers for structured dict results)
+        if "fvg_detector" in tool_names:
+            try:
+                self.log(state, "Calling tool: fvg_detector")
+                detector = FVGDetector(timeframe="5m", min_gap_pips=5)
+                result = _run_async(detector.detect(candles))
+                if result and isinstance(result, dict):
+                    fvgs = result.get("fvgs", [])
+                    bullish_fvgs = [f for f in fvgs if f.get("type") == "bullish"]
+                    bearish_fvgs = [f for f in fvgs if f.get("type") == "bearish"]
 
-                        results_lines.append(f"\n**FVG ANALYSIS:**")
-                        if bullish_fvgs:
-                            for fvg in bullish_fvgs[:3]:  # Top 3
-                                results_lines.append(f"  • Bullish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
-                        if bearish_fvgs:
-                            for fvg in bearish_fvgs[:3]:
-                                results_lines.append(f"  • Bearish FVG: ${fvg['low']:.2f} - ${fvg['high']:.2f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
-                        if not bullish_fvgs and not bearish_fvgs:
-                            results_lines.append(f"  • No significant FVGs detected")
+                    results_lines.append(f"\n**FVG ANALYSIS:**")
+                    if bullish_fvgs:
+                        for fvg in bullish_fvgs[:3]:
+                            results_lines.append(f"  • Bullish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                    if bearish_fvgs:
+                        for fvg in bearish_fvgs[:3]:
+                            results_lines.append(f"  • Bearish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                    if not bullish_fvgs and not bearish_fvgs:
+                        results_lines.append(f"  • No significant FVGs detected")
 
-                        # Tool already returns "fvgs" list with type set — pass through directly
-                        collected_results["fvg_detector"] = result
-
-                elif tool_name == "premium_discount_analyzer":
-                    result = tool.func()
-                    if result and isinstance(result, dict):
-                        results_lines.append(f"\n**PREMIUM/DISCOUNT ZONES:**")
-                        results_lines.append(f"  • Current Zone: {result.get('zone', 'N/A')}")
-                        results_lines.append(f"  • Zone Level: {result.get('price_level_percent', 0):.1f}%")
-                        eq_zone = result.get("zones", {}).get("equilibrium", {})
-                        if eq_zone:
-                            eq_mid = (eq_zone.get("low", 0) + eq_zone.get("high", 0)) / 2
-                            results_lines.append(f"  • Equilibrium: ${eq_mid:.2f}")
-
-                        # Store structured result for chart builder
-                        collected_results["premium_discount"] = result
-
-                elif tool_name == "liquidity_analyzer":
-                    result = tool.func()
-                    if result and isinstance(result, dict):
-                        collected_results["liquidity_analyzer"] = result
-
-                elif tool_name == "market_structure_analyzer":
-                    result = tool.func()
-                    if result and isinstance(result, dict):
-                        collected_results["market_structure"] = result
-
-                elif tool_name in ["rsi_calculator", "macd_calculator"]:
-                    # Indicators computed separately below
-                    continue
-
+                    collected_results["fvg_detector"] = result
+                    self.log(state, f"FVG detector found {len(fvgs)} FVGs ({len(bullish_fvgs)} bullish, {len(bearish_fvgs)} bearish)")
             except Exception as e:
-                self.log(state, f"Tool {tool_name} failed: {str(e)}")
-                continue
+                self.log(state, f"Tool fvg_detector failed: {str(e)}")
+
+        if "premium_discount_analyzer" in tool_names:
+            try:
+                self.log(state, "Calling tool: premium_discount_analyzer")
+                pd_analyzer = PremiumDiscountAnalyzer(timeframe="5m")
+                result = _run_async(pd_analyzer.analyze(candles))
+                if result and isinstance(result, dict):
+                    results_lines.append(f"\n**PREMIUM/DISCOUNT ZONES:**")
+                    results_lines.append(f"  • Current Zone: {result.get('zone', 'N/A')}")
+                    results_lines.append(f"  • Zone Level: {result.get('price_level_percent', 0):.1f}%")
+                    eq_zone = result.get("zones", {}).get("equilibrium", {})
+                    if eq_zone:
+                        eq_mid = (eq_zone.get("low", 0) + eq_zone.get("high", 0)) / 2
+                        results_lines.append(f"  • Equilibrium: ${eq_mid:.{price_precision}f}")
+
+                    collected_results["premium_discount"] = result
+            except Exception as e:
+                self.log(state, f"Tool premium_discount_analyzer failed: {str(e)}")
+
+        if "liquidity_analyzer" in tool_names:
+            try:
+                self.log(state, "Calling tool: liquidity_analyzer")
+                liq_analyzer = LiquidityAnalyzer(timeframe="5m")
+                result = _run_async(liq_analyzer.analyze(candles))
+                if result and isinstance(result, dict):
+                    collected_results["liquidity_analyzer"] = result
+            except Exception as e:
+                self.log(state, f"Tool liquidity_analyzer failed: {str(e)}")
+
+        if "market_structure_analyzer" in tool_names:
+            try:
+                self.log(state, "Calling tool: market_structure_analyzer")
+                ms_analyzer = MarketStructureAnalyzer(timeframe="5m")
+                result = _run_async(ms_analyzer.analyze(candles))
+                if result and isinstance(result, dict):
+                    collected_results["market_structure"] = result
+            except Exception as e:
+                self.log(state, f"Tool market_structure_analyzer failed: {str(e)}")
 
         # Compute RSI/MACD if instructions mention them
         collected_results.update(
