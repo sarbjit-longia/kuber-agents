@@ -8,6 +8,7 @@ from typing import Dict, Any
 from datetime import datetime
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
+from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, RiskAssessment
 from app.config import settings
 
@@ -179,7 +180,7 @@ class RiskManagerAgent(BaseAgent):
             risk_analyst = Agent(
                 role="Risk Manager Executor",
                 goal="Follow the user's risk management instructions exactly and calculate position size.",
-                backstory="""You are a disciplined risk calculator who follows rules literally.
+                backstory=load_prompt("risk_manager_system") + """
 
 CORE PRINCIPLES:
 1. You follow user's risk instructions EXACTLY - if they say "1% risk", use 1% not 2%

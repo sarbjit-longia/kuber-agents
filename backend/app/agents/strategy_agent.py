@@ -12,6 +12,7 @@ from crewai import Agent, Task, Crew
 from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
+from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetadata, AgentConfigSchema
 from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import get_available_tools
@@ -238,7 +239,9 @@ class StrategyAgent(BaseAgent):
             strategist = Agent(
                 role="Trading Strategy Executor",
                 goal="Follow the user's trading instructions exactly and generate a trade signal with proper risk management.",
-                backstory=f"""You are a disciplined trading strategy executor for {state.symbol}.
+                backstory=load_prompt("strategy_agent_system") + f"""
+
+You are executing a trade strategy for {state.symbol}.
 
 CORE PRINCIPLES:
 1. You follow user instructions LITERALLY - if they say "enter anytime", you enter without complex analysis

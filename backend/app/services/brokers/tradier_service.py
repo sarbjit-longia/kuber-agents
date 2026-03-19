@@ -272,6 +272,20 @@ class TradierBrokerService(BrokerService):
             symbol = tradier_order.get("symbol", "").upper()
             qty = float(tradier_order.get("quantity", 0))
             side_str = tradier_order.get("side", "").lower()
+
+            # OTOCO / multileg orders store symbol/qty/side in nested legs, not at the top level.
+            # Extract from the first leg (entry leg) so duplicate-order checks can match by symbol.
+            order_class = (tradier_order.get("class", "") or "").lower()
+            if order_class == "otoco" and not symbol:
+                legs = tradier_order.get("leg", [])
+                if isinstance(legs, dict):
+                    legs = [legs]
+                if legs:
+                    first_leg = legs[0]
+                    symbol = first_leg.get("symbol", "").upper()
+                    qty = qty or float(first_leg.get("quantity", 0))
+                    side_str = first_leg.get("side", side_str).lower()
+
             side = OrderSide.BUY if side_str == "buy" else OrderSide.SELL
             
             # Map Tradier order type

@@ -12,6 +12,7 @@ from crewai import Agent, Task, Crew, LLM
 from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
+from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
@@ -162,10 +163,7 @@ class BiasAgent(BaseAgent):
             analyst = Agent(
                 role="Market Bias Analyst",
                 goal=instructions,  # User's natural language instructions!
-                backstory=f"""You are an expert market analyst for {state.symbol}. 
-                You have access to various technical analysis tools. 
-                Use them as needed to accomplish your goal based on the instructions provided.
-                Always provide clear reasoning for your bias determination.""",
+                backstory=load_prompt("bias_agent_system") + f"\n\nYou are analyzing {state.symbol}. Use the available tools to gather data and apply the framework above to determine bias.",
                 tools=tools,
                 llm=self.model,
                 function_calling_llm=self.function_calling_llm,  # Dedicated LLM for tool calling!
