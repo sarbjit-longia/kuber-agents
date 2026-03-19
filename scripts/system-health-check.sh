@@ -85,25 +85,16 @@ check_containers() {
 }
 
 # ── 2. TCP Port Checks ───────────────────────────────────────────────
-declare -A PORT_MAP=(
-  [5433]="PostgreSQL"
-  [6380]="Redis"
-  [5434]="TimescaleDB"
-  [8000]="Backend API"
-  [5555]="Flower"
-  [9092]="Kafka"
-  [2181]="Zookeeper"
-  [8005]="Data Plane"
-  [8007]="Signal Generator"
-  [9090]="Prometheus"
-  [3000]="Grafana"
-)
+PORTS=(5433 6380 5434 8000 5555 9092 2181 8005 8007 9090 3000)
+PORT_LABELS=("PostgreSQL" "Redis" "TimescaleDB" "Backend API" "Flower" "Kafka" "Zookeeper" "Data Plane" "Signal Generator" "Prometheus" "Grafana")
 
 check_ports() {
   header "TCP Ports"
   local json_items=()
-  for port in $(echo "${!PORT_MAP[@]}" | tr ' ' '\n' | sort -n); do
-    local label="${PORT_MAP[$port]}"
+  local i=0
+  for port in "${PORTS[@]}"; do
+    local label="${PORT_LABELS[$i]}"
+    i=$((i + 1))
     if nc -z -w 2 localhost "$port" 2>/dev/null; then
       ok "$label (localhost:$port)"
       json_items+=("{\"port\":$port,\"service\":\"$label\",\"status\":\"open\"}")
@@ -118,19 +109,16 @@ check_ports() {
 }
 
 # ── 3. HTTP Endpoints ────────────────────────────────────────────────
-declare -A ENDPOINTS=(
-  ["Backend /health"]="http://localhost:8000/health"
-  ["Backend /readiness"]="http://localhost:8000/api/v1/readiness"
-  ["Flower"]="http://localhost:5555/"
-  ["Prometheus"]="http://localhost:9090/-/healthy"
-  ["Grafana"]="http://localhost:3000/api/health"
-)
+ENDPOINT_LABELS=("Backend /health" "Backend /readiness" "Flower" "Prometheus" "Grafana")
+ENDPOINT_URLS=("http://localhost:8000/health" "http://localhost:8000/api/v1/readiness" "http://localhost:5555/" "http://localhost:9090/-/healthy" "http://localhost:3000/api/health")
 
 check_endpoints() {
   header "HTTP Endpoints"
   local json_items=()
-  for label in "Backend /health" "Backend /readiness" "Flower" "Prometheus" "Grafana"; do
-    local url="${ENDPOINTS[$label]}"
+  local i=0
+  for label in "${ENDPOINT_LABELS[@]}"; do
+    local url="${ENDPOINT_URLS[$i]}"
+    i=$((i + 1))
     local code
     code=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null) || code="000"
     if [[ "$code" =~ ^2 ]]; then
@@ -160,24 +148,27 @@ check_prometheus_targets() {
     return
   }
 
-  # Parse with python if available, else just report raw
   if command -v python3 &>/dev/null; then
-    python3 -c "
+    local target_info
+    target_info=$(python3 -c "
 import json, sys
-data = json.loads('''$response''')
+data = json.loads(sys.stdin.read())
 targets = data.get('data', {}).get('activeTargets', [])
 for t in targets:
     job = t.get('labels', {}).get('job', 'unknown')
     health = t.get('health', 'unknown')
     print(f'{job}|{health}')
-" 2>/dev/null | while IFS='|' read -r job health; do
+" <<< "$response" 2>/dev/null) || true
+
+    while IFS='|' read -r job health; do
+      [[ -z "$job" ]] && continue
       if [[ "$health" == "up" ]]; then
         ok "Prometheus target: $job — ${GREEN}UP${NC}"
       else
         warn "Prometheus target: $job — ${YELLOW}$health${NC}"
       fi
       json_items+=("{\"job\":\"$job\",\"health\":\"$health\"}")
-    done
+    done <<< "$target_info"
   else
     ok "Prometheus API reachable (install python3 for detailed target info)"
   fi
@@ -206,7 +197,7 @@ check_disk() {
   fi
   json_items+=("{\"check\":\"host_disk\",\"usage_pct\":$usage}")
 
-  # Docker volumes count and total size
+  # Docker volumes count
   local vol_count
   vol_count=$(docker volume ls -q 2>/dev/null | wc -l | tr -d ' ')
   ok "Docker volumes: $vol_count"
