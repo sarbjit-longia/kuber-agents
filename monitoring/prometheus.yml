@@ -5,6 +5,9 @@ global:
     cluster: 'clovercharts'
     environment: 'development'
 
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   # Backend API
   - job_name: 'backend'

@@ -20,6 +20,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # Redis Cache & Queue
   redis:
@@ -34,6 +35,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   # TimescaleDB (Data Plane Database)
   timescaledb:
@@ -52,6 +54,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # FastAPI Backend
   backend:
@@ -105,6 +108,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
   # Celery Worker
   celery-worker:
@@ -147,6 +151,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    restart: unless-stopped
 
   # Celery Beat (Scheduler)
   celery-beat:
@@ -170,6 +175,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,6 +201,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
     depends_on:
       - redis
       - postgres
@@ -212,6 +219,12 @@ services:
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # Kafka Message Broker
   kafka:
@@ -273,6 +286,12 @@ services:
     volumes:
       # Mount config directory so users can edit watchlist without rebuilding
       - ./signal-generator/config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8007/recent-signals"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # Trigger Dispatcher Service
@@ -306,6 +325,12 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-trading_platform}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'python' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # Data Plane API
@@ -376,6 +401,12 @@ services:
     volumes:
       - ./data-plane:/app
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks.celery_tasks inspect ping -d data-plane-worker@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Data Plane Celery Beat (Scheduler)
   data-plane-beat:
@@ -406,6 +437,12 @@ services:
     volumes:
       - ./data-plane:/app
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'celery' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Prometheus - Metrics Storage & Aggregation
   prometheus:
@@ -415,6 +452,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -438,9 +476,12 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     volumes:
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/alerting:/etc/grafana/provisioning/alerting:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus

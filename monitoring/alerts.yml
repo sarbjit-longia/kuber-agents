@@ -1,0 +1,112 @@
+groups:
+  - name: service_availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job!~"signal-generator-api|data-plane-universe"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+
+      - alert: CeleryWorkerDown
+        expr: up{job="celery-worker"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Celery worker is down"
+          description: "Celery worker has been unreachable for 30 seconds. Pipeline execution is halted."
+
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend API is down"
+          description: "Backend API has been unreachable for 30 seconds. Users cannot access the platform."
+
+      - alert: SignalGeneratorDown
+        expr: up{job="signal-generator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Signal generator is down"
+          description: "Signal generator has been unreachable for 2 minutes. No new signals being produced."
+
+      - alert: TriggerDispatcherDown
+        expr: up{job="trigger-dispatcher"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Trigger dispatcher is down"
+          description: "Trigger dispatcher has been unreachable for 2 minutes. Signal-triggered pipelines will not fire."
+
+      - alert: DataPlaneDown
+        expr: up{job="data-plane"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data plane API is down"
+          description: "Data plane has been unreachable for 2 minutes. Market data may be stale."
+
+  - name: pipeline_health
+    rules:
+      - alert: HighPipelineFailureRate
+        expr: |
+          (
+            sum(rate(pipeline_execution_total{status="failed"}[5m]))
+            /
+            sum(rate(pipeline_execution_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High pipeline failure rate"
+          description: "More than 10% of pipeline executions are failing over the last 5 minutes."
+
+      - alert: NoPipelineExecutions
+        expr: sum(increase(pipeline_execution_total[30m])) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No pipeline executions in 30 minutes"
+          description: "No pipelines have executed in the last 30 minutes. Check if Celery workers and beat are running."
+
+  - name: resource_usage
+    rules:
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} CPU usage has been above 80% for 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 500 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} is using more than 500MB RSS for 5 minutes."
+
+  - name: cost_monitoring
+    rules:
+      - alert: HighLLMCostRate
+        expr: sum(rate(llm_cost_dollars_total[15m])) * 3600 > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High LLM cost rate"
+          description: "LLM spending rate exceeds $5/hour over the last 15 minutes."
