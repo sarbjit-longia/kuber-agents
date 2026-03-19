@@ -336,6 +336,10 @@ sync_config() {
     scp -q "$PROJECT_ROOT/monitoring/prometheus.yml" "$USER@$SERVER:$REMOTE/config/prometheus.yml" 2>/dev/null \
         || warn "No monitoring/prometheus.yml found — skipped."
 
+    info "Syncing Prometheus alert rules..."
+    scp -q "$PROJECT_ROOT/monitoring/alerts.yml" "$USER@$SERVER:$REMOTE/config/alerts.yml" 2>/dev/null \
+        || warn "No monitoring/alerts.yml found — skipped."
+
     info "Syncing signal-generator config..."
     if [[ -d "$PROJECT_ROOT/signal-generator/config" ]]; then
         rsync -az "$PROJECT_ROOT/signal-generator/config/" "$USER@$SERVER:$REMOTE/config/signal-generator/"
@@ -348,6 +352,8 @@ sync_config() {
         || warn "No Grafana dashboards found — skipped."
     rsync -az "$PROJECT_ROOT/monitoring/grafana/datasources/" "$USER@$SERVER:$REMOTE/config/grafana/datasources/" 2>/dev/null \
         || warn "No Grafana datasources found — skipped."
+    rsync -az "$PROJECT_ROOT/monitoring/grafana/alerting/" "$USER@$SERVER:$REMOTE/config/grafana/alerting/" 2>/dev/null \
+        || warn "No Grafana alerting config found — skipped."
 
     # Reload Nginx if config changed
     info "Checking Nginx config on server..."
