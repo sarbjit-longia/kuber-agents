@@ -4,7 +4,7 @@
 # Usage: ./scripts/system-health-check.sh [--json] [--quiet]
 # Exit codes: 0=healthy, 1=warnings, 2=critical
 
-set -euo pipefail
+set -uo pipefail
 
 # --- Flags ---
 JSON_OUTPUT=false
@@ -61,7 +61,7 @@ check_containers() {
   local json_items=()
   for name in "${EXPECTED_CONTAINERS[@]}"; do
     local info
-    info=$(docker inspect --format '{{.State.Status}}|{{.State.Health.Status}}|{{.RestartCount}}' "$name" 2>/dev/null) || info="not_found||"
+    info=$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}|{{.RestartCount}}' "$name" 2>/dev/null) || info="not_found||"
     IFS='|' read -r state health restarts <<< "$info"
 
     local entry="{\"name\":\"$name\",\"state\":\"$state\",\"health\":\"$health\",\"restarts\":\"$restarts\"}"
@@ -71,7 +71,7 @@ check_containers() {
       crit "$name — ${RED}NOT FOUND${NC}"
     elif [[ "$state" != "running" ]]; then
       crit "$name — ${RED}$state${NC} (restarts: $restarts)"
-    elif [[ -n "$health" && "$health" != "healthy" && "$health" != "" ]]; then
+    elif [[ -n "$health" && "$health" != "healthy" && "$health" != "n/a" && "$health" != "" ]]; then
       warn "$name — running but ${YELLOW}$health${NC} (restarts: $restarts)"
     else
       local extra=""
@@ -85,7 +85,7 @@ check_containers() {
 }
 
 # ── 2. TCP Port Checks ───────────────────────────────────────────────
-PORTS=(5433 6380 5434 8000 5555 9092 2181 8005 8007 9090 3000)
+PORTS=(5433 6380 5434 8000 5555 9093 2181 8005 8007 9090 3000)
 PORT_LABELS=("PostgreSQL" "Redis" "TimescaleDB" "Backend API" "Flower" "Kafka" "Zookeeper" "Data Plane" "Signal Generator" "Prometheus" "Grafana")
 
 check_ports() {
