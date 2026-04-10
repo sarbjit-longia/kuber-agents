@@ -220,7 +220,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep Zookeeper"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -287,7 +287,7 @@ services:
       # Mount config directory so users can edit watchlist without rebuilding
       - ./signal-generator/config:/app/config
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8007/recent-signals"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8007/recent-signals')\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -402,7 +402,7 @@ services:
       - ./data-plane:/app
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.tasks.celery_tasks inspect ping -d data-plane-worker@$$HOSTNAME || exit 1"]
+      test: ["CMD-SHELL", "celery -A app.tasks.celery_tasks inspect ping -d celery@data-plane-worker || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -481,8 +481,10 @@ services:
     volumes:
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./monitoring/grafana/alerting:/etc/grafana/provisioning/alerting:ro
+      - ./monitoring/grafana/alerting:/etc/grafana/provisioning/alerting-available:ro
+      - ./monitoring/grafana/grafana-entrypoint.sh:/grafana-entrypoint.sh:ro
       - grafana_data:/var/lib/grafana
+    entrypoint: ["/bin/sh", "/grafana-entrypoint.sh"]
     depends_on:
       - prometheus
     restart: unless-stopped

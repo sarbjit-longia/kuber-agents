@@ -416,7 +416,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         // Find entry/exit times for position annotations
         const entryTime = this.findEntryTime(annotations.markers || [], lastTime);
         const exitTime = this.findExitTime(annotations.markers || [], lastTime);
-        this.addPositionAnnotations(chart, position!, entryTime, candleInterval, exitTime);
+        this.addPositionAnnotations(chart, position!, entryTime, candleInterval, exitTime, lastTime);
       }
 
       // 5. Markers (swing highs/lows, execution marks)
@@ -631,17 +631,25 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     };
   }
 
-  private addPositionAnnotations(chart: any, position: any, entryTime: number, candleInterval: number, exitTime: number): void {
+  private addPositionAnnotations(
+    chart: any,
+    position: any,
+    entryTime: number,
+    candleInterval: number,
+    exitTime: number,
+    lastTime: number
+  ): void {
     if (!position) return;
 
     const isBuy = position.action === 'BUY';
     const entryPrice = position.entry_price;
     const sl = position.stop_loss;
     const tp = position.take_profit;
-
-    // Use rectangles to mimic position tool — reliable across all price ranges
-    const rectStart = entryTime;
-    const rectEnd = entryTime + candleInterval * 14;
+    const rectStart = Math.min(entryTime, lastTime);
+    let rectEnd = exitTime && exitTime > rectStart ? exitTime : lastTime;
+    if (rectEnd <= rectStart) {
+      rectEnd = rectStart + Math.max(candleInterval * 8, 300);
+    }
 
     try {
       // Green rectangle: entry → take profit (profit zone)
@@ -709,9 +717,50 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
         if (s) this.createdShapes.push(s);
       }
 
+      // Price guide lines so entry/SL/TP stay readable even when the boxes are small.
+      const guides = [
+        { price: entryPrice, color: isBuy ? '#22c55e' : '#ef4444', label: `Entry ${entryPrice.toFixed(2)}` },
+        sl ? { price: sl, color: '#ef4444', label: `SL ${sl.toFixed(2)}` } : null,
+        tp ? { price: tp, color: '#22c55e', label: `TP ${tp.toFixed(2)}` } : null,
+      ].filter(Boolean) as Array<{ price: number; color: string; label: string }>;
+
+      guides.forEach((guide) => {
+        const line = chart.createMultipointShape([
+          { time: rectStart, price: guide.price },
+          { time: rectEnd, price: guide.price }
+        ], {
+          shape: 'trend_line',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            linecolor: guide.color,
+            linewidth: guide.label.startsWith('Entry') ? 2 : 1,
+            linestyle: guide.label.startsWith('Entry') ? 2 : 0,
+            showLabel: true,
+            textcolor: guide.color,
+          },
+        });
+        if (line) this.createdShapes.push(line);
+
+        const label = chart.createMultipointShape([{ time: rectEnd, price: guide.price }], {
+          shape: 'text',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            color: guide.color,
+            fontsize: 11,
+            bold: true,
+            text: guide.label,
+          },
+        });
+        if (label) this.createdShapes.push(label);
+      });
+
       // Vertical line at entry time
       const vLineEntry = chart.createMultipointShape([
-        { time: entryTime, price: entryPrice }
+        { time: rectStart, price: entryPrice }
       ], {
         shape: 'vertical_line',
         lock: true,
@@ -731,7 +780,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
       if (vLineEntry) this.createdShapes.push(vLineEntry);
 
       // Vertical line at exit time
-      if (exitTime && exitTime !== entryTime) {
+      if (exitTime && exitTime > rectStart) {
         const vLineExit = chart.createMultipointShape([
           { time: exitTime, price: entryPrice }
         ], {
@@ -915,4 +964,3 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     return map[timeframe] || 'D';
   }
 }
-

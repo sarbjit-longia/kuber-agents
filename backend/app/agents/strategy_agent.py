@@ -17,7 +17,6 @@ from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetad
 from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import get_available_tools
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
-from app.services.reasoning_chart_parser import reasoning_chart_parser
 from app.services.model_registry import model_registry
 
 logger = structlog.get_logger()
@@ -460,24 +459,6 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                         strategy_result=strategy_result,
                         instructions=instructions
                     )
-                    
-                    # Parse LLM reasoning to extract patterns/levels
-                    self.log(state, "Parsing LLM reasoning for chart patterns...")
-                    llm_annotations = reasoning_chart_parser.parse_reasoning_to_annotations(
-                        reasoning=strategy_result.reasoning,
-                        strategy_action=strategy_result.action,
-                        entry_price=strategy_result.entry_price,
-                        stop_loss=strategy_result.stop_loss,
-                        take_profit=strategy_result.take_profit,
-                        candles=candle_dicts
-                    )
-                    
-                    # Merge annotations
-                    for annotation_type in ['shapes', 'lines', 'markers', 'zones', 'text', 'arrows']:
-                        if annotation_type in llm_annotations:
-                            chart_data['annotations'][annotation_type].extend(
-                                llm_annotations[annotation_type]
-                            )
                     
                     state.execution_artifacts["strategy_chart"] = chart_data
                     
@@ -1142,4 +1123,3 @@ Provide ONLY the cleaned, formatted analysis. Keep all specific prices and patte
             return "Market analysis completed. Decision based on current price action and technical indicators."
         
         return cleaned
-

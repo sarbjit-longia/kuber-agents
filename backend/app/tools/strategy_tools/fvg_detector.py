@@ -1,11 +1,12 @@
 """
 FVG Detector Tool - Detects Fair Value Gaps in price action
 
-A Fair Value Gap (FVG) is a 3-candle pattern where:
-- Bullish FVG: Current candle's low > Previous candle's high (gap up)
-- Bearish FVG: Current candle's high < Previous candle's low (gap down)
+A Fair Value Gap (FVG) is treated here as a 3-candle body imbalance:
+- Bullish FVG: candle 2 body low > candle 0 body high
+- Bearish FVG: candle 2 body high < candle 0 body low
 
-These gaps represent inefficiencies in price and often act as support/resistance.
+The middle candle is the displacement candle, while the outer candles define the
+actual gap that the strategy and chart should reference.
 """
 import structlog
 from typing import List, Dict, Any, Optional
@@ -75,32 +76,36 @@ class FVGDetector:
             candle_1 = candles_to_analyze[i - 1]  # Middle candle
             candle_2 = candles_to_analyze[i]      # Current candle
             
-            # Check for Bullish FVG
-            # Condition: candle_2.low > candle_0.high (gap between candle 0 and 2)
-            if candle_2["low"] > candle_0["high"]:
-                gap_size = candle_2["low"] - candle_0["high"]
+            candle_0_body_low, candle_0_body_high = self._body_bounds(candle_0)
+            candle_2_body_low, candle_2_body_high = self._body_bounds(candle_2)
+
+            # Check for Bullish FVG using outer candle bodies.
+            if candle_2_body_low > candle_0_body_high:
+                gap_size = candle_2_body_low - candle_0_body_high
                 gap_size_pips = gap_size * 100  # Approximate pip conversion
                 
                 if gap_size_pips >= self.min_gap_pips:
                     # Check if FVG is filled (price came back into the gap)
-                    is_filled = current_price <= candle_2["low"]
+                    is_filled = current_price <= candle_2_body_low
                     fill_percentage = 0.0
                     
                     if is_filled:
                         # Calculate how much of gap is filled
-                        gap_range = candle_2["low"] - candle_0["high"]
-                        filled_amount = candle_2["low"] - current_price
+                        gap_range = candle_2_body_low - candle_0_body_high
+                        filled_amount = candle_2_body_low - current_price
                         fill_percentage = min((filled_amount / gap_range) * 100, 100.0) if gap_range > 0 else 0.0
                     
                     fvg = {
                         "type": "bullish",
-                        "high": candle_2["low"],
-                        "low": candle_0["high"],
+                        "high": candle_2_body_low,
+                        "low": candle_0_body_high,
                         "gap_size_pips": round(gap_size_pips, 2),
                         "formed_at": candle_2.get("timestamp", ""),
                         "formed_at_index": i,
+                        "middle_candle_at": candle_1.get("timestamp", ""),
                         "is_filled": is_filled,
-                        "fill_percentage": round(fill_percentage, 2)
+                        "fill_percentage": round(fill_percentage, 2),
+                        "gap_basis": "body",
                     }
                     
                     fvgs.append(fvg)
@@ -111,31 +116,32 @@ class FVGDetector:
                         is_filled=is_filled
                     )
             
-            # Check for Bearish FVG
-            # Condition: candle_2.high < candle_0.low (gap down)
-            elif candle_2["high"] < candle_0["low"]:
-                gap_size = candle_0["low"] - candle_2["high"]
+            # Check for Bearish FVG using outer candle bodies.
+            elif candle_2_body_high < candle_0_body_low:
+                gap_size = candle_0_body_low - candle_2_body_high
                 gap_size_pips = gap_size * 100
                 
                 if gap_size_pips >= self.min_gap_pips:
                     # Check if FVG is filled
-                    is_filled = current_price >= candle_2["high"]
+                    is_filled = current_price >= candle_2_body_high
                     fill_percentage = 0.0
                     
                     if is_filled:
-                        gap_range = candle_0["low"] - candle_2["high"]
-                        filled_amount = current_price - candle_2["high"]
+                        gap_range = candle_0_body_low - candle_2_body_high
+                        filled_amount = current_price - candle_2_body_high
                         fill_percentage = min((filled_amount / gap_range) * 100, 100.0) if gap_range > 0 else 0.0
                     
                     fvg = {
                         "type": "bearish",
-                        "high": candle_0["low"],
-                        "low": candle_2["high"],
+                        "high": candle_0_body_low,
+                        "low": candle_2_body_high,
                         "gap_size_pips": round(gap_size_pips, 2),
                         "formed_at": candle_2.get("timestamp", ""),
                         "formed_at_index": i,
+                        "middle_candle_at": candle_1.get("timestamp", ""),
                         "is_filled": is_filled,
-                        "fill_percentage": round(fill_percentage, 2)
+                        "fill_percentage": round(fill_percentage, 2),
+                        "gap_basis": "body",
                     }
                     
                     fvgs.append(fvg)
@@ -173,6 +179,12 @@ class FVGDetector:
         """Get the latest unfilled FVG of a specific type."""
         matching = [f for f in fvgs if f["type"] == fvg_type and not f["is_filled"]]
         return matching[-1] if matching else None
+
+    def _body_bounds(self, candle: Dict[str, Any]) -> tuple[float, float]:
+        """Return the lower and upper bounds of the candle body."""
+        open_price = float(candle["open"])
+        close_price = float(candle["close"])
+        return min(open_price, close_price), max(open_price, close_price)
     
     def _empty_result(self) -> Dict[str, Any]:
         """Return empty result structure."""
@@ -184,4 +196,3 @@ class FVGDetector:
             "unfilled_fvgs": 0,
             "timeframe": self.timeframe
         }
-

@@ -5,7 +5,7 @@ This service transforms ICT tool results (FVGs, liquidity, structure, etc.) into
 a structured format that can be rendered on TradingView charts.
 """
 import structlog
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from app.schemas.pipeline_state import StrategyResult
@@ -56,7 +56,12 @@ class ChartAnnotationBuilder:
         
         # Prepare candle data
         chart_candles = self._format_candles(candles)
-        
+        trade_relevance = self._derive_trade_relevance(
+            tool_results=tool_results,
+            strategy_result=strategy_result,
+            instructions=instructions,
+        )
+
         # Build annotations from tool results
         annotations = {
             "shapes": [],      # Rectangles, circles, etc.
@@ -68,33 +73,26 @@ class ChartAnnotationBuilder:
             "position": None   # Structured trade position (entry/SL/TP)
         }
         
-        # Add FVG annotations
-        if "fvg_detector" in tool_results:
-            self._add_fvg_annotations(annotations, tool_results["fvg_detector"])
-        
-        # Add liquidity annotations
-        if "liquidity_analyzer" in tool_results:
-            self._add_liquidity_annotations(annotations, tool_results["liquidity_analyzer"])
-        
-        # Add market structure annotations
-        if "market_structure" in tool_results:
-            self._add_structure_annotations(annotations, tool_results["market_structure"])
-        
-        # Add premium/discount zones
-        if "premium_discount" in tool_results:
-            self._add_zone_annotations(annotations, tool_results["premium_discount"])
+        # Keep only trade-relevant evidence on the chart. Broad context like
+        # liquidity maps or premium/discount zones stays in reasoning, not visuals.
+        self._add_relevant_fvg_annotations(annotations, trade_relevance["relevant_fvgs"])
+        self._add_relevant_swing_annotations(annotations, trade_relevance["relevant_swings"])
         
         # Add trade decision markers
         self._add_trade_annotations(annotations, strategy_result, candles)
         
         # Build indicator data
-        indicators = self._build_indicator_data(tool_results)
+        indicators = self._build_indicator_data(
+            tool_results,
+            trade_relevance["indicator_keys"],
+        )
         
         # Build decision summary
         decision_summary = self._build_decision_summary(
             strategy_result,
             tool_results,
-            instructions
+            instructions,
+            trade_relevance,
         )
         
         chart_data = {
@@ -102,7 +100,8 @@ class ChartAnnotationBuilder:
                 "symbol": self.symbol,
                 "timeframe": self.timeframe,
                 "generated_at": datetime.utcnow().isoformat(),
-                "candle_count": len(candles)
+                "candle_count": len(candles),
+                "trade_relevance": trade_relevance["summary"],
             },
             "candles": chart_candles,
             "annotations": annotations,
@@ -136,11 +135,9 @@ class ChartAnnotationBuilder:
         
         return formatted
     
-    def _add_fvg_annotations(self, annotations: Dict, fvg_result: Dict) -> None:
-        """Add Fair Value Gap rectangles to chart."""
-        fvgs = fvg_result.get("fvgs", [])
-        
-        for fvg in fvgs[-10:]:  # Show last 10 FVGs to avoid clutter
+    def _add_relevant_fvg_annotations(self, annotations: Dict, fvgs: List[Dict[str, Any]]) -> None:
+        """Add only the FVGs directly tied to the trade thesis."""
+        for fvg in fvgs:
             color = "#22c55e" if fvg["type"] == "bullish" else "#ef4444"
             opacity = 0.2 if fvg["is_filled"] else 0.35
             
@@ -165,180 +162,46 @@ class ChartAnnotationBuilder:
                     f"Gap: {fvg['gap_size_pips']:.1f} pips\n"
                     f"Status: {'Filled' if fvg['is_filled'] else 'Unfilled'}\n"
                     f"Fill: {fvg['fill_percentage']:.0f}%"
-                )
-            })
-    
-    def _add_liquidity_annotations(self, annotations: Dict, liq_result: Dict) -> None:
-        """Add liquidity levels and grabs to chart."""
-        # Add active liquidity pools as horizontal lines
-        pools = liq_result.get("active_liquidity_pools", {})
-        
-        # Buy-side liquidity (above current price)
-        for level in pools.get("above", [])[:5]:  # Top 5
-            annotations["lines"].append({
-                "type": "horizontal",
-                "price": level,
-                "color": "#ef4444",
-                "width": 1,
-                "style": "dashed",
-                "label": {
-                    "text": "🔴 Sell-side Liq",
-                    "position": "right"
-                },
-                "tooltip": f"Buy-side liquidity at ${level:.5f}"
-            })
-        
-        # Sell-side liquidity (below current price)
-        for level in pools.get("below", [])[:5]:  # Bottom 5
-            annotations["lines"].append({
-                "type": "horizontal",
-                "price": level,
-                "color": "#3b82f6",
-                "width": 1,
-                "style": "dashed",
-                "label": {
-                    "text": "🔵 Buy-side Liq",
-                    "position": "right"
-                },
-                "tooltip": f"Sell-side liquidity at ${level:.5f}"
-            })
-        
-        # Add liquidity grabs as markers
-        for grab in liq_result.get("liquidity_grabs", [])[-5:]:  # Last 5 grabs
-            if grab.get("reversed"):
-                annotations["markers"].append({
-                    "time": grab["grabbed_at"],
-                    "position": "aboveBar" if grab["type"] == "buy_side" else "belowBar",
-                    "color": "#f59e0b",
-                    "shape": "arrowDown" if grab["type"] == "buy_side" else "arrowUp",
-                    "text": f"Liq Grab ({grab['distance_pips']:.0f}p)",
-                    "tooltip": (
-                        f"{'Buy' if grab['type'] == 'buy_side' else 'Sell'}-side liquidity grab\n"
-                        f"Level: ${grab['level']:.5f}\n"
-                        f"Distance: {grab['distance_pips']:.1f} pips\n"
-                        f"Reversed: Yes"
-                    )
-                })
-    
-    def _add_structure_annotations(self, annotations: Dict, structure_result: Dict) -> None:
-        """Add market structure (BOS/CHoCH) arrows to chart."""
-        events = structure_result.get("structure_events", [])
-        
-        for event in events[-10:]:  # Last 10 events
-            is_bos = event["type"] == "BOS"
-            is_bullish = event["direction"] == "bullish"
-            
-            color = "#22c55e" if is_bullish else "#ef4444"
-            
-            annotations["arrows"].append({
-                "time": event["timestamp"],
-                "price": event["level"],
-                "direction": "up" if is_bullish else "down",
-                "color": color,
-                "size": "large" if is_bos else "medium",
-                "label": {
-                    "text": f"{'📈' if is_bullish else '📉'} {event['type']}",
-                    "color": color
-                },
-                "tooltip": (
-                    f"{event['type']} ({'Bullish' if is_bullish else 'Bearish'})\n"
-                    f"Level: ${event['level']:.5f}\n"
-                    f"{'Trend continuation' if is_bos else 'Potential reversal'}"
-                )
-            })
-        
-        # Add swing high/low markers (^ for peaks, V for valleys)
-        for sh in structure_result.get("swing_highs", [])[-8:]:
-            annotations["markers"].append({
-                "time": sh.get("timestamp"),
-                "price": sh["price"],
-                "direction": "sell",
-                "text": "^",
-                "color": "#ef4444",
-            })
-        for sl_pt in structure_result.get("swing_lows", [])[-8:]:
-            annotations["markers"].append({
-                "time": sl_pt.get("timestamp"),
-                "price": sl_pt["price"],
-                "direction": "buy",
-                "text": "V",
-                "color": "#22c55e",
+                ),
+                "relevance": "trade_entry_context",
             })
 
-        # Add trend label
-        trend = structure_result.get("trend", "ranging")
-        trend_emoji = {"bullish": "📈", "bearish": "📉", "ranging": "↔️"}.get(trend, "")
-        
-        annotations["text"].append({
-            "time": "latest",  # Position at latest candle
-            "position": "top_left",
-            "text": f"{trend_emoji} Trend: {trend.upper()}",
-            "color": "#22c55e" if trend == "bullish" else "#ef4444" if trend == "bearish" else "#6b7280",
-            "font_size": 14,
-            "bold": True,
-            "background": "rgba(0, 0, 0, 0.7)",
-            "padding": 8
-        })
-    
-    def _add_zone_annotations(self, annotations: Dict, pd_result: Dict) -> None:
-        """Add premium/discount zones as shaded areas."""
-        zones = pd_result.get("zones", {})
-        
-        # Discount zone (0-30%)
-        if "discount" in zones:
-            annotations["zones"].append({
-                "price1": zones["discount"]["low"],
-                "price2": zones["discount"]["high"],
-                "color": "rgba(34, 197, 94, 0.15)",
-                "label": {
-                    "text": "💚 DISCOUNT ZONE (0-30%)",
-                    "position": "left",
-                    "color": "#22c55e"
-                },
-                "tooltip": "Ideal area for BUY entries (price is cheap)"
+    def _add_relevant_swing_annotations(
+        self,
+        annotations: Dict,
+        swings: List[Dict[str, Any]],
+    ) -> None:
+        """Add only swing points used for stop placement or target placement."""
+        for swing in swings:
+            role = swing.get("role", "swing")
+            is_target = role == "target"
+            color = "#22c55e" if is_target else "#ef4444"
+            direction = "sell" if is_target else "buy"
+            label = "Target Swing" if is_target else "Stop Swing"
+            annotations["markers"].append({
+                "time": swing.get("timestamp"),
+                "price": swing["price"],
+                "direction": direction,
+                "text": label,
+                "color": color,
+                "role": role,
+                "relevance": "trade_level_anchor",
             })
-        
-        # Equilibrium zone (40-60%)
-        if "equilibrium" in zones:
-            annotations["zones"].append({
-                "price1": zones["equilibrium"]["low"],
-                "price2": zones["equilibrium"]["high"],
-                "color": "rgba(107, 114, 128, 0.10)",
+
+            annotations["lines"].append({
+                "type": "horizontal",
+                "price": swing["price"],
+                "color": color,
+                "width": 1,
+                "style": "dotted",
                 "label": {
-                    "text": "⚖️ EQUILIBRIUM (40-60%)",
-                    "position": "left",
-                    "color": "#6b7280"
+                    "text": label,
+                    "position": "right",
+                    "color": color,
                 },
-                "tooltip": "Fair value area (wait for better price)"
+                "relevance": "trade_level_anchor",
+                "tooltip": f"{label} @ ${swing['price']:.2f}",
             })
-        
-        # Premium zone (70-100%)
-        if "premium" in zones:
-            annotations["zones"].append({
-                "price1": zones["premium"]["low"],
-                "price2": zones["premium"]["high"],
-                "color": "rgba(239, 68, 68, 0.15)",
-                "label": {
-                    "text": "❤️ PREMIUM ZONE (70-100%)",
-                    "position": "left",
-                    "color": "#ef4444"
-                },
-                "tooltip": "Ideal area for SELL entries (price is expensive)"
-            })
-        
-        # Add current price level indicator
-        current_zone = pd_result.get("zone", "equilibrium")
-        price_level = pd_result.get("price_level_percent", 50)
-        
-        annotations["text"].append({
-            "time": "latest",
-            "position": "top_right",
-            "text": f"Price @ {price_level:.0f}% ({current_zone.upper()})",
-            "color": "#22c55e" if current_zone == "discount" else "#ef4444" if current_zone == "premium" else "#6b7280",
-            "font_size": 12,
-            "background": "rgba(0, 0, 0, 0.7)",
-            "padding": 6
-        })
     
     def _add_trade_annotations(
         self,
@@ -436,12 +299,16 @@ class ChartAnnotationBuilder:
                 "position_size": strategy_result.position_size,
             }
     
-    def _build_indicator_data(self, tool_results: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_indicator_data(
+        self,
+        tool_results: Dict[str, Any],
+        indicator_keys: List[str],
+    ) -> Dict[str, Any]:
         """Build indicator subplot data."""
         indicators = {}
         
         # RSI
-        if "rsi" in tool_results:
+        if "rsi" in indicator_keys and "rsi" in tool_results:
             rsi_data = tool_results["rsi"]
             indicators["rsi"] = {
                 "type": "rsi",
@@ -454,7 +321,7 @@ class ChartAnnotationBuilder:
             }
         
         # MACD
-        if "macd" in tool_results:
+        if "macd" in indicator_keys and "macd" in tool_results:
             macd_data = tool_results["macd"]
             indicators["macd"] = {
                 "type": "macd",
@@ -471,7 +338,8 @@ class ChartAnnotationBuilder:
         self,
         strategy_result: StrategyResult,
         tool_results: Dict[str, Any],
-        instructions: Optional[str]
+        instructions: Optional[str],
+        trade_relevance: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Build decision summary with reasoning steps."""
         reasoning_steps = []
@@ -571,7 +439,7 @@ class ChartAnnotationBuilder:
             "instructions": instructions,
             "summary": {
                 "title": f"{strategy_result.action} Signal - ICT Strategy",
-                "subtitle": self._generate_subtitle(tool_results),
+                "subtitle": self._generate_subtitle(trade_relevance["summary"]["tools_used"]),
                 "confidence_score": int(strategy_result.confidence * 100),
                 "conditions_met": conditions_met,
                 "conditions_total": conditions_total
@@ -659,27 +527,148 @@ class ChartAnnotationBuilder:
 
         return chart_data
 
-    def _generate_subtitle(self, tool_results: Dict[str, Any]) -> str:
-        """Generate a subtitle based on which tools were used."""
-        tools_used = []
-        
-        if "fvg_detector" in tool_results:
-            tools_used.append("FVG")
-        if "premium_discount" in tool_results:
-            tools_used.append("Zones")
-        if "liquidity_analyzer" in tool_results:
-            tools_used.append("Liquidity")
-        if "market_structure" in tool_results:
-            tools_used.append("Structure")
-        if "rsi" in tool_results:
-            tools_used.append("RSI")
-        if "macd" in tool_results:
-            tools_used.append("MACD")
-        
+    def _generate_subtitle(self, tools_used: List[str]) -> str:
+        """Generate a subtitle based on the evidence actually kept on the chart."""
         if len(tools_used) == 0:
-            return "Price Action Strategy"
+            return "Trade Levels Focus"
         elif len(tools_used) <= 3:
-            return " + ".join(tools_used) + " Confluence"
+            return " + ".join(tools_used) + " Used In Trade"
         else:
-            return f"Multi-Factor Analysis ({len(tools_used)} indicators)"
+            return f"Trade Evidence ({len(tools_used)} factors)"
 
+    def _derive_trade_relevance(
+        self,
+        tool_results: Dict[str, Any],
+        strategy_result: StrategyResult,
+        instructions: Optional[str],
+    ) -> Dict[str, Any]:
+        action = (strategy_result.action or "").upper()
+        reasoning = (strategy_result.reasoning or "").lower()
+        instructions_lower = (instructions or "").lower()
+
+        relevant_fvgs = self._select_relevant_fvgs(tool_results.get("fvg_detector", {}), strategy_result)
+        relevant_swings = self._select_relevant_swings(tool_results.get("market_structure", {}), strategy_result)
+        indicator_keys = self._select_indicator_keys(tool_results, instructions_lower, reasoning)
+
+        tools_used: List[str] = []
+        if relevant_fvgs:
+            tools_used.append("FVG")
+        if relevant_swings:
+            tools_used.append("Swing Levels")
+        if "rsi" in indicator_keys:
+            tools_used.append("RSI")
+        if "macd" in indicator_keys:
+            tools_used.append("MACD")
+
+        if action in {"BUY", "SELL"} and not tools_used:
+            tools_used.append("Trade Levels")
+
+        return {
+            "relevant_fvgs": relevant_fvgs,
+            "relevant_swings": relevant_swings,
+            "indicator_keys": indicator_keys,
+            "summary": {
+                "tools_used": tools_used,
+                "fvg_count": len(relevant_fvgs),
+                "swing_count": len(relevant_swings),
+                "indicator_count": len(indicator_keys),
+            },
+        }
+
+    def _select_indicator_keys(
+        self,
+        tool_results: Dict[str, Any],
+        instructions: str,
+        reasoning: str,
+    ) -> List[str]:
+        keys: List[str] = []
+        if "rsi" in tool_results and ("rsi" in instructions or "rsi" in reasoning):
+            keys.append("rsi")
+        if "macd" in tool_results and ("macd" in instructions or "macd" in reasoning):
+            keys.append("macd")
+        return keys
+
+    def _select_relevant_fvgs(
+        self,
+        fvg_result: Dict[str, Any],
+        strategy_result: StrategyResult,
+    ) -> List[Dict[str, Any]]:
+        action = (strategy_result.action or "").upper()
+        entry = strategy_result.entry_price
+        if action not in {"BUY", "SELL"} or not entry:
+            return []
+
+        desired_type = "bullish" if action == "BUY" else "bearish"
+        fvgs = [f for f in fvg_result.get("fvgs", []) if f.get("type") == desired_type]
+        if not fvgs:
+            return []
+
+        scored: List[Tuple[float, Dict[str, Any]]] = []
+        for fvg in fvgs:
+            low = float(fvg["low"])
+            high = float(fvg["high"])
+            midpoint = (low + high) / 2
+            distance = min(abs(entry - low), abs(entry - high), abs(entry - midpoint))
+            score = -distance
+            if low <= entry <= high:
+                score += 1000
+            if not fvg.get("is_filled"):
+                score += 25
+            score -= float(fvg.get("fill_percentage", 0)) * 0.1
+            scored.append((score, fvg))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        best = scored[0][1]
+        tolerance = self._price_tolerance(strategy_result)
+        if min(abs(entry - best["low"]), abs(entry - best["high"]), abs(entry - ((best["low"] + best["high"]) / 2))) > tolerance:
+            return []
+        return [best]
+
+    def _select_relevant_swings(
+        self,
+        structure_result: Dict[str, Any],
+        strategy_result: StrategyResult,
+    ) -> List[Dict[str, Any]]:
+        action = (strategy_result.action or "").upper()
+        if action not in {"BUY", "SELL"}:
+            return []
+
+        swings: List[Dict[str, Any]] = []
+        tolerance = self._price_tolerance(strategy_result) * 1.5
+        stop = strategy_result.stop_loss
+        target = strategy_result.take_profit
+
+        stop_candidates = structure_result.get("swing_lows" if action == "BUY" else "swing_highs", [])
+        target_candidates = structure_result.get("swing_highs" if action == "BUY" else "swing_lows", [])
+
+        stop_swing = self._closest_swing(stop_candidates, stop, tolerance)
+        if stop_swing:
+            swings.append({**stop_swing, "role": "stop"})
+
+        target_swing = self._closest_swing(target_candidates, target, tolerance)
+        if target_swing:
+            swings.append({**target_swing, "role": "target"})
+
+        return swings
+
+    def _closest_swing(
+        self,
+        swings: List[Dict[str, Any]],
+        reference_price: Optional[float],
+        tolerance: float,
+    ) -> Optional[Dict[str, Any]]:
+        if not reference_price or not swings:
+            return None
+
+        best = min(swings, key=lambda swing: abs(float(swing["price"]) - reference_price))
+        if abs(float(best["price"]) - reference_price) > tolerance:
+            return None
+        return best
+
+    def _price_tolerance(self, strategy_result: StrategyResult) -> float:
+        entry = float(strategy_result.entry_price or 0)
+        stop = float(strategy_result.stop_loss or entry)
+        target = float(strategy_result.take_profit or entry)
+        risk = abs(entry - stop)
+        reward = abs(target - entry)
+        return max(risk, reward, max(entry * 0.0025, 0.15))
