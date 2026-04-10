@@ -40,7 +40,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.01,  # $0.01 per call
-        "category": "ict"
+        "category": "ict",
+        "strategy_keywords": [
+            "fvg", "fair value gap", "imbalance", "ict", "smc", "smart money",
+            "displacement", "mitigation", "inefficiency", "order flow"
+        ],
+        "when_to_use": "Use for ICT/SMC strategies. Call when instructions mention FVGs, imbalances, or ICT entry techniques.",
+        "strategy_types": ["ict"],
     },
     
     "liquidity_analyzer": {
@@ -71,7 +77,14 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.02,
-        "category": "ict"
+        "category": "ict",
+        "strategy_keywords": [
+            "liquidity", "sweep", "stop hunt", "equal highs", "equal lows",
+            "inducement", "raid", "pool", "grab", "buy side", "sell side",
+            "bsl", "ssl", "ict"
+        ],
+        "when_to_use": "Use for ICT strategies targeting liquidity pools as entry triggers or take-profit levels.",
+        "strategy_types": ["ict"],
     },
     
     "market_structure": {
@@ -97,7 +110,14 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.015,
-        "category": "ict"
+        "category": "ict",
+        "strategy_keywords": [
+            "market structure", "bos", "choch", "mss", "break of structure",
+            "change of character", "trend", "structure", "smc", "ict",
+            "higher high", "lower low", "swing", "hh", "hl", "lh", "ll"
+        ],
+        "when_to_use": "Use whenever trend direction or structure confirmation is needed. Pairs with fvg_detector for complete ICT setups.",
+        "strategy_types": ["ict", "classical"],
     },
     
     "premium_discount": {
@@ -123,7 +143,14 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.01,
-        "category": "ict"
+        "category": "ict",
+        "strategy_keywords": [
+            "premium", "discount", "pd array", "ote", "optimal trade entry",
+            "golden pocket", "fibonacci", "equilibrium", "ict", "smc",
+            "buy in discount", "sell in premium", "50%", "retracement"
+        ],
+        "when_to_use": "Use for ICT PD array analysis or when instructions mention buying in discount / selling in premium.",
+        "strategy_types": ["ict"],
     },
     
     # ==================== Indicator Tools ====================
@@ -151,7 +178,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.005,  # Cheap - cached from Data Plane
-        "category": "indicator"
+        "category": "indicator",
+        "strategy_keywords": [
+            "rsi", "momentum", "divergence", "oversold", "overbought",
+            "mean reversion", "relative strength", "reversal confirmation"
+        ],
+        "when_to_use": "Use for momentum strategies, divergence setups, or as entry confirmation alongside structure tools.",
+        "strategy_types": ["indicator"],
     },
     
     "sma_crossover": {
@@ -182,7 +215,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.005,
-        "category": "indicator"
+        "category": "indicator",
+        "strategy_keywords": [
+            "sma", "ema", "moving average", "crossover", "golden cross",
+            "death cross", "ma cross", "trend following", "200 sma", "50 sma", "20 ema"
+        ],
+        "when_to_use": "Use for MA-based trend systems or when instructions explicitly mention SMA/EMA crossovers or pullbacks to a moving average.",
+        "strategy_types": ["indicator", "classical"],
     },
     
     "macd": {
@@ -203,7 +242,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.005,
-        "category": "indicator"
+        "category": "indicator",
+        "strategy_keywords": [
+            "macd", "histogram", "crossover", "momentum", "trend following",
+            "moving average convergence", "signal line", "bullish crossover", "bearish crossover"
+        ],
+        "when_to_use": "Use for trend-following strategies or when momentum confirmation is needed alongside structure or FVG analysis.",
+        "strategy_types": ["indicator"],
     },
     
     "bollinger_bands": {
@@ -234,7 +279,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.005,
-        "category": "indicator"
+        "category": "indicator",
+        "strategy_keywords": [
+            "bollinger", "bb", "squeeze", "volatility", "mean reversion",
+            "band", "standard deviation", "bandwidth", "upper band", "lower band"
+        ],
+        "when_to_use": "Use for volatility-based or mean-reversion strategies, or when instructions mention Bollinger Bands or a squeeze setup.",
+        "strategy_types": ["indicator"],
     },
     
     # ==================== Price Action Tools ====================
@@ -267,7 +318,13 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             }
         },
         "pricing": 0.01,
-        "category": "price_action"
+        "category": "price_action",
+        "strategy_keywords": [
+            "support", "resistance", "key level", "s/r", "horizontal level",
+            "price level", "structure level", "flip level", "demand zone", "supply zone"
+        ],
+        "when_to_use": "Use for classical price-action strategies needing confirmed horizontal support/resistance levels with multiple touches.",
+        "strategy_types": ["classical"],
     },
 }
 

@@ -101,9 +101,12 @@ class RSITool(BaseTool):
     """
     name: str = "rsi_calculator"
     description: str = (
-        "Calculate RSI (Relative Strength Index) to identify overbought/oversold conditions. "
-        "RSI > 70 indicates overbought, RSI < 30 indicates oversold. "
-        "Use this to gauge momentum and potential reversal points."
+        "Calculates RSI-14 to measure momentum and identify overbought/oversold extremes. "
+        "Call this for any strategy that mentions RSI, momentum, divergence, oversold/overbought, or mean-reversion. "
+        "RSI > 70 = overbought (caution for longs); RSI < 30 = oversold (caution for shorts). "
+        "Focus on RSI direction as trend confirmation and watch for bullish divergence "
+        "(price lower low, RSI higher low) near support as a high-probability reversal signal. "
+        "Use as confirmation alongside FVG or market structure tools."
     )
     args_schema: Type[BaseModel] = RSIInput
     
@@ -165,9 +168,11 @@ class MACDTool(BaseTool):
     """
     name: str = "macd_calculator"
     description: str = (
-        "Calculate MACD to identify trend direction and momentum. "
-        "Bullish crossover = buy signal, bearish crossover = sell signal. "
-        "Use histogram to gauge momentum strength."
+        "Calculates MACD (12/26/9) to show trend direction and momentum strength. "
+        "Call this when the user mentions MACD, momentum, histogram, crossover, or trend-following strategies. "
+        "Bullish crossover (MACD line crosses above signal) = buy bias; bearish = sell bias. "
+        "Histogram expansion confirms strengthening momentum; contraction signals fading momentum ahead of reversal. "
+        "Use as a secondary confirmation tool alongside structure or FVG analysis."
     )
     args_schema: Type[BaseModel] = MACDInput
     
@@ -226,9 +231,11 @@ class SMACrossoverTool(BaseTool):
     """
     name: str = "sma_crossover"
     description: str = (
-        "Detect SMA crossovers to identify trend changes. "
-        "Fast SMA crossing above slow SMA = bullish, below = bearish. "
-        "Common: 20/50 for short-term, 50/200 for long-term trends."
+        "Detects fast/slow SMA crossovers (default 20/50) to identify trend changes and moving average levels. "
+        "Call this for moving-average strategies, trend-following systems, golden cross / death cross setups, "
+        "or any instruction mentioning SMA, EMA, or MA crossovers. "
+        "Price above both SMAs with fast > slow = strong uptrend. "
+        "Use the 50-period SMA as a dynamic support/resistance level for pullback entries in trend."
     )
     args_schema: Type[BaseModel] = SMAInput
     
@@ -290,9 +297,11 @@ class FVGDetectorTool(BaseTool):
     """
     name: str = "fvg_detector"
     description: str = (
-        "Detect Fair Value Gaps (FVGs) - price imbalances that indicate institutional activity. "
-        "Bullish FVG = gap up (buy zone), Bearish FVG = gap down (sell zone). "
-        "Price often returns to fill these gaps."
+        "Detects Fair Value Gaps (FVGs) — 3-candle price imbalances where institutional orders were filled rapidly. "
+        "Use this for any ICT / Smart Money strategy referencing FVGs, imbalances, inefficiencies, or displacement candles. "
+        "A bullish FVG below current price is a buy zone; a bearish FVG above is a sell zone. "
+        "Unfilled FVGs with large gap sizes aligned with the trend are highest-probability entries. "
+        "Also call this when the user mentions 'mitigation block', 'return to FVG', or 'order flow imbalance'."
     )
     args_schema: Type[BaseModel] = FVGInput
     
@@ -343,8 +352,12 @@ class LiquidityAnalyzerTool(BaseTool):
     """Analyze liquidity pools and grabs for ICT trading."""
     name: str = "liquidity_analyzer"
     description: str = (
-        "Identify liquidity pools (stop loss clusters) and liquidity grabs. "
-        "Useful for ICT strategies - price often sweeps liquidity before reversing."
+        "Identifies liquidity pools (clusters of stop-losses at swing highs/lows) and detects liquidity grabs "
+        "(price sweeps through a pool then reverses sharply). "
+        "Call this for ICT strategies involving stop hunts, equal highs/lows, inducement, or 'raid the liquidity'. "
+        "After a confirmed grab, price typically displaces in the opposite direction — "
+        "use the grab level as the invalidation point for stop placement. "
+        "Also useful for strategies that target opposing liquidity as a take-profit."
     )
     args_schema: Type[BaseModel] = LiquidityInput
     
@@ -383,8 +396,11 @@ class MarketStructureTool(BaseTool):
     """Analyze market structure (BOS, CHoCH) for trend identification."""
     name: str = "market_structure_analyzer"
     description: str = (
-        "Analyze market structure to identify trend (BOS = Break of Structure, CHoCH = Change of Character). "
-        "Helps determine if trend is continuing or reversing."
+        "Reads Break of Structure (BOS) and Change of Character (CHoCH) events to determine trend direction. "
+        "Call this whenever the user's instructions reference market structure, trend direction, BOS, CHoCH, MSS, or SMC. "
+        "A BOS confirms the existing trend continuing; a CHoCH signals a potential shift in direction. "
+        "Use the trend output as a directional filter: only take longs in bullish structure, shorts in bearish. "
+        "Pair with fvg_detector for complete high-confluence ICT setups."
     )
     args_schema: Type[BaseModel] = MarketStructureInput
     
@@ -421,8 +437,12 @@ class PremiumDiscountTool(BaseTool):
     """Identify premium/discount zones for optimal entry timing."""
     name: str = "premium_discount_analyzer"
     description: str = (
-        "Determine if price is in premium (expensive), discount (cheap), or equilibrium zone. "
-        "Buy in discount, sell in premium for optimal risk/reward."
+        "Divides the current price range into premium (above 50% — expensive, favour sells), "
+        "equilibrium (40–60%), and discount (below 50% — cheap, favour buys) zones. "
+        "Also calculates Fibonacci OTE levels (62–79% retracement) for optimal entries. "
+        "Call this for any ICT strategy referencing PD arrays, OTE, 'buy in discount / sell in premium', "
+        "or golden pocket entries. "
+        "Entering a BUY in the discount zone adds confluence; entering a BUY in premium is low-probability."
     )
     args_schema: Type[BaseModel] = PremiumDiscountInput
     

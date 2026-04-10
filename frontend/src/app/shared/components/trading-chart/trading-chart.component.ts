@@ -420,7 +420,7 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       // 5. Markers (swing highs/lows, execution marks)
-      this.addMarkerAnnotations(chart, annotations.markers || [], lastTime);
+      this.addMarkerAnnotations(chart, annotations.markers || [], lastTime, hasPosition);
 
       // 6. Arrows (BOS/CHoCH)
       this.addArrowAnnotations(chart, annotations.arrows || [], lastTime);
@@ -528,10 +528,15 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     lines.forEach((line: any) => {
       try {
         if (line.type === 'horizontal' && line.price) {
-          // Skip SL/TP/Fill lines when position tool handles them
+          // Skip SL/TP/Fill lines when position tool handles them.
+          // Also skip swing-level anchor lines — the position boxes already show SL/TP.
           if (skipTradeLines) {
             const labelText = this.getLabelText(line.label).toUpperCase();
-            if (labelText.includes('SL:') || labelText.includes('TP:') || labelText.includes('ENTRY') || labelText.includes('FILL')) {
+            if (
+              labelText.includes('SL:') || labelText.includes('TP:') ||
+              labelText.includes('ENTRY') || labelText.includes('FILL') ||
+              line.relevance === 'trade_level_anchor'
+            ) {
               return;
             }
           }
@@ -806,13 +811,19 @@ export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  private addMarkerAnnotations(chart: any, markers: any[], lastTime: number): void {
+  private addMarkerAnnotations(chart: any, markers: any[], lastTime: number, hasPosition: boolean = false): void {
     markers.forEach((marker: any) => {
       try {
         const rawText = (marker.text || marker.label || '').toUpperCase();
 
         // Skip ENTRY, FILL, EXIT markers — position tool already shows these
         if (rawText.includes('ENTRY') || rawText.includes('FILL') || rawText.includes('EXIT')) {
+          return;
+        }
+
+        // Skip swing-level anchors when the position tool is active — the SL/TP boxes
+        // already show those price levels, so the swing arrows are redundant.
+        if (hasPosition && marker.relevance === 'trade_level_anchor') {
           return;
         }
 

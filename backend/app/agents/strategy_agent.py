@@ -506,6 +506,44 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             logger.exception("strategy_agent_failed", error=str(e))
             raise AgentProcessingError(error_msg) from e
     
+    def _select_relevant_tools(self, instructions: str, available_tool_names: set) -> set:
+        """
+        Match instruction keywords against each tool's strategy_keywords in the registry
+        to select only the tools relevant to the user's strategy.
+
+        Falls back to a safe default set (fvg_detector + market_structure_analyzer) when
+        no keywords match, so the agent always has something to work with.
+        """
+        from app.tools.strategy_tools_registry import STRATEGY_TOOL_REGISTRY
+
+        # Registry keys differ from CrewAI tool names for two ICT tools — map them here.
+        REGISTRY_TO_CREWAI: Dict[str, str] = {
+            "fvg_detector": "fvg_detector",
+            "liquidity_analyzer": "liquidity_analyzer",
+            "market_structure": "market_structure_analyzer",
+            "premium_discount": "premium_discount_analyzer",
+        }
+
+        instructions_lower = instructions.lower()
+        matched: set = set()
+
+        for registry_key, crewai_name in REGISTRY_TO_CREWAI.items():
+            if crewai_name not in available_tool_names:
+                continue
+            spec = STRATEGY_TOOL_REGISTRY.get(registry_key, {})
+            keywords = spec.get("strategy_keywords", [])
+            if any(kw in instructions_lower for kw in keywords):
+                matched.add(crewai_name)
+
+        if not matched:
+            # No keywords matched — use defaults to prevent empty analysis
+            defaults = {"fvg_detector", "market_structure_analyzer"} & available_tool_names
+            logger.info("no_tool_keywords_matched", defaults=sorted(defaults))
+            return defaults
+
+        logger.info("instruction_matched_tools", tools=sorted(matched))
+        return matched
+
     def _call_tools_and_format(self, tools: List[Any], state: PipelineState, candles: List[Dict], price_precision: int = 2) -> Tuple[str, Dict[str, Any]]:
         """Call tools directly and format their results as text for the LLM prompt.
 
@@ -531,6 +569,11 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
         results_lines = []
         tool_names = {t.name for t in tools}
 
+        # Select only tools relevant to the user's instructions
+        instructions = self.config.get("instructions", "")
+        relevant_tool_names = self._select_relevant_tools(instructions, tool_names)
+        self.log(state, f"Tools selected for instructions: {sorted(relevant_tool_names)}")
+
         # Helper to run async tool functions synchronously
         def _run_async(coro):
             loop = asyncio.new_event_loop()
@@ -540,7 +583,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                 loop.close()
 
         # Call ICT tools directly (bypassing CrewAI wrappers for structured dict results)
-        if "fvg_detector" in tool_names:
+        if "fvg_detector" in relevant_tool_names:
             try:
                 self.log(state, "Calling tool: fvg_detector")
                 detector = FVGDetector(timeframe="5m", min_gap_pips=5)
@@ -565,7 +608,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             except Exception as e:
                 self.log(state, f"Tool fvg_detector failed: {str(e)}")
 
-        if "premium_discount_analyzer" in tool_names:
+        if "premium_discount_analyzer" in relevant_tool_names:
             try:
                 self.log(state, "Calling tool: premium_discount_analyzer")
                 pd_analyzer = PremiumDiscountAnalyzer(timeframe="5m")
@@ -583,7 +626,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             except Exception as e:
                 self.log(state, f"Tool premium_discount_analyzer failed: {str(e)}")
 
-        if "liquidity_analyzer" in tool_names:
+        if "liquidity_analyzer" in relevant_tool_names:
             try:
                 self.log(state, "Calling tool: liquidity_analyzer")
                 liq_analyzer = LiquidityAnalyzer(timeframe="5m")
@@ -593,7 +636,7 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             except Exception as e:
                 self.log(state, f"Tool liquidity_analyzer failed: {str(e)}")
 
-        if "market_structure_analyzer" in tool_names:
+        if "market_structure_analyzer" in relevant_tool_names:
             try:
                 self.log(state, "Calling tool: market_structure_analyzer")
                 ms_analyzer = MarketStructureAnalyzer(timeframe="5m")
