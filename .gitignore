@@ -65,3 +65,4 @@ backend/data/
 
 # Docker
 *.pid
+.gitnexus

@@ -124,6 +124,8 @@
             Pipeline settings
           </div>
 
+          <div class="section-hint">Define how this pipeline runs, which scanner it uses, and what this workflow is intended to do.</div>
+
           <div class="pipeline-setup-grid">
             <mat-form-field appearance="outline">
               <mat-label>Trigger mode</mat-label>
@@ -608,7 +610,7 @@
 
         <!-- Agent settings -->
         <ng-container *ngIf="getSelectedAgentType() as at">
-          <div class="meta">
+          <div class="meta agent-meta-card">
           <div class="meta-row">
             <span class="k">Agent</span>
             <span class="v">{{ getAgentMetadata(at)?.name || at }}</span>
@@ -678,4 +680,3 @@
     </div>
   </div>
 </div>
-

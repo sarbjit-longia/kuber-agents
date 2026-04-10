@@ -1,7 +1,7 @@
 // ── Dashboard Layout ──────────────────────────────────────────
 
 .dashboard-container {
-  padding: 1.25rem;
+  padding: 1.5rem;
 }
 
 // ── Header ────────────────────────────────────────────────────
@@ -10,7 +10,15 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 1.2rem 1.35rem;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background:
+    radial-gradient(circle at top right, rgba(86, 194, 255, 0.1), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
+  box-shadow: var(--shadow-sm);
 
   .header-left {
     display: flex;
@@ -23,7 +31,7 @@
       gap: 0.5rem;
       margin: 0;
       font-size: 2rem;
-      font-weight: 500;
+      font-weight: 650;
       color: var(--text-primary);
 
       mat-icon {
@@ -98,7 +106,10 @@
 // ── Stat Cards (Enhanced) ────────────────────────────────────
 
 .stat-card {
-  border-radius: 12px !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--border-subtle) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)) var(--bg-card) !important;
+  box-shadow: var(--shadow-sm) !important;
   overflow: hidden;
   transition: all 0.3s ease;
 
@@ -266,11 +277,11 @@
 }
 
 .tile-tint-accent {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.03)) !important;
-  border-color: rgba(99, 102, 241, 0.15) !important;
+  background: linear-gradient(135deg, rgba(86, 194, 255, 0.08), rgba(45, 212, 191, 0.03)) !important;
+  border-color: rgba(86, 194, 255, 0.16) !important;
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15) !important;
+    box-shadow: 0 4px 16px rgba(86, 194, 255, 0.14) !important;
   }
 }
 
@@ -423,7 +434,10 @@
 // ── Section Cards (Enhanced) ─────────────────────────────────
 
 .section-card {
-  border-radius: 12px !important;
+  border-radius: 18px !important;
+  border: 1px solid var(--border-subtle) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)) var(--bg-card) !important;
+  box-shadow: var(--shadow-sm) !important;
   overflow: hidden;
 
   &.full-width {
@@ -459,7 +473,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(99, 102, 241, 0.12);
+      background: rgba(86, 194, 255, 0.12);
       border-radius: 8px;
       padding: 4px;
 
@@ -476,7 +490,7 @@
       height: 22px;
       border-radius: 11px;
       background: var(--accent-primary);
-      color: white;
+      color: #081018;
       font-size: 0.75rem;
       font-weight: 600;
       padding: 0 6px;
@@ -507,7 +521,7 @@
   border-radius: 12px;
   padding: 1.25rem;
   padding-top: calc(1.25rem + 3px);
-  background: rgba(30, 31, 46, 0.6);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)) var(--bg-elevated);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
@@ -646,10 +660,10 @@
 }
 
 .position-card {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
   padding: 1.25rem;
-  background: rgba(30, 31, 46, 0.6);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)) var(--bg-elevated);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
@@ -675,8 +689,8 @@
   }
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
-    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 14px 30px rgba(6, 10, 16, 0.28);
+    border-color: rgba(86, 194, 255, 0.2);
     transform: translateY(-2px);
   }
 
@@ -698,7 +712,7 @@
       font-size: 1.1rem;
       font-weight: 700;
       color: var(--text-primary);
-      background: linear-gradient(135deg, var(--bg-elevated), rgba(99, 102, 241, 0.08));
+      background: linear-gradient(135deg, var(--bg-elevated), rgba(86, 194, 255, 0.08));
       padding: 4px 12px;
       border-radius: 8px;
     }
@@ -831,6 +845,25 @@
   min-height: 20px !important;
   padding: 0 8px !important;
   border-radius: 20px !important;
+}
+
+@media (max-width: 900px) {
+  .dashboard-container {
+    padding: 1rem;
+  }
+
+  .header {
+    padding: 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+
+    .header-left {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+  }
 }
 
 // ── Tables ────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 .agent-instructions-container {
   padding: 16px;
-  background: var(--bg-elevated);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
   margin-bottom: 16px;
 
   .full-width {
@@ -9,32 +10,31 @@
   }
 
   .manual-detect {
-    margin: -6px 0 12px 0;
+    margin: -2px 0 14px 0;
     display: flex;
     justify-content: flex-end;
   }
 
   .instructions-textarea {
-    font-family: 'Roboto Mono', monospace;
+    font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.65;
   }
 
-  // File Upload Section
   .file-upload-section {
     margin-top: 16px;
-    padding: 12px;
-    background: var(--bg-card);
-    border-radius: 4px;
-    border: 1px dashed var(--border-color);
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 14px;
+    border: 1px dashed var(--border-strong);
 
     .upload-header {
-      margin-bottom: 8px;
+      margin-bottom: 10px;
 
       .upload-label {
         font-size: 13px;
         color: var(--text-secondary);
-        font-weight: 500;
+        font-weight: 600;
       }
     }
 
@@ -42,6 +42,7 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
 
       .uploading-indicator {
         display: flex;
@@ -52,14 +53,15 @@
       }
 
       .uploaded-file {
-        display: flex;
+        display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 12px;
+        padding: 8px 12px;
         background: var(--color-info-bg);
-        border-radius: 4px;
+        border: 1px solid rgba(96, 165, 250, 0.18);
+        border-radius: 12px;
         font-size: 13px;
-        color: var(--color-info);
+        color: #b9ddff;
 
         mat-icon {
           font-size: 18px;
@@ -70,12 +72,11 @@
     }
   }
 
-  // Detection Status
   .detection-status {
     margin-top: 16px;
-    padding: 12px;
-    background: var(--bg-card);
-    border-radius: 4px;
+    padding: 13px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 14px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -83,28 +84,27 @@
     color: var(--text-secondary);
 
     &.detecting {
-      border: 1px solid var(--color-info);
+      border: 1px solid rgba(96, 165, 250, 0.2);
       background: var(--color-info-bg);
-      color: var(--color-info);
+      color: #b9ddff;
     }
   }
 
-  // Detection Results
   .detection-results {
     margin-top: 16px;
 
     .tools-detected {
-      background: var(--bg-card);
-      border-radius: 4px;
-      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 16px;
+      border: 1px solid var(--border-subtle);
 
       .detection-header {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 12px 16px;
+        padding: 13px 16px;
         background: var(--color-success-bg);
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-subtle);
 
         &.partial {
           background: var(--color-warning-bg);
@@ -124,21 +124,21 @@
         h4 {
           margin: 0;
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 700;
           color: var(--text-primary);
         }
       }
 
       .strategy-summary {
-        padding: 12px 16px;
-        background: var(--bg-elevated);
+        padding: 13px 16px;
+        background: rgba(255, 255, 255, 0.02);
         font-size: 13px;
-        line-height: 1.6;
+        line-height: 1.65;
         color: var(--text-primary);
 
         &.info-message {
           background: var(--color-info-bg);
-          color: var(--color-info);
+          color: #c7e4ff;
           display: flex;
           align-items: flex-start;
           gap: 8px;
@@ -147,7 +147,7 @@
             font-size: 18px;
             width: 18px;
             height: 18px;
-            color: var(--color-info);
+            color: #9ed0ff;
             flex-shrink: 0;
             margin-top: 2px;
           }
@@ -161,17 +161,17 @@
       }
 
       .tools-list {
-        padding: 8px;
+        padding: 10px;
 
         .tool-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 10px 12px;
-          margin-bottom: 6px;
-          background: var(--bg-elevated);
-          border-radius: 4px;
-          border: 1px solid var(--border-color);
+          padding: 12px 13px;
+          margin-bottom: 8px;
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 14px;
+          border: 1px solid var(--border-subtle);
 
           .tool-info {
             display: flex;
@@ -192,7 +192,7 @@
               gap: 2px;
 
               .tool-name {
-                font-weight: 500;
+                font-weight: 600;
                 font-size: 13px;
                 color: var(--text-primary);
               }
@@ -200,13 +200,13 @@
               .tool-params {
                 font-size: 11px;
                 color: var(--text-secondary);
-                font-family: 'Roboto Mono', monospace;
+                font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
               }
             }
           }
 
           .tool-cost {
-            font-weight: 500;
+            font-weight: 700;
             color: var(--color-success);
             font-size: 13px;
           }
@@ -214,9 +214,9 @@
       }
 
       .cost-summary {
-        padding: 12px 16px;
-        background: var(--bg-elevated);
-        border-top: 1px solid var(--border-color);
+        padding: 13px 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border-top: 1px solid var(--border-subtle);
 
         .cost-row {
           display: flex;
@@ -228,7 +228,7 @@
           &.total {
             margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--border-subtle);
             font-size: 14px;
           }
 
@@ -241,9 +241,9 @@
       .unsupported-warning {
         display: flex;
         gap: 12px;
-        padding: 12px 16px;
+        padding: 13px 16px;
         background: var(--color-warning-bg);
-        border-top: 1px solid rgba(245, 158, 11, 0.3);
+        border-top: 1px solid rgba(246, 196, 83, 0.18);
 
         mat-icon {
           font-size: 22px;
@@ -284,8 +284,8 @@
       gap: 12px;
       padding: 16px;
       background: var(--color-error-bg);
-      border-radius: 4px;
-      border: 1px solid var(--color-error);
+      border-radius: 14px;
+      border: 1px solid rgba(251, 113, 133, 0.22);
 
       mat-icon {
         font-size: 22px;
@@ -301,7 +301,7 @@
           display: block;
           margin-bottom: 6px;
           font-size: 13px;
-          color: var(--color-error);
+          color: #ffc4cd;
         }
 
         p {
@@ -314,34 +314,6 @@
           color: var(--text-muted);
           font-style: italic;
         }
-      }
-    }
-  }
-
-  // Standalone cost estimation (shown independently of tool detection)
-  .cost-summary.standalone {
-    margin-top: 16px;
-    padding: 12px 16px;
-    background: var(--bg-card);
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-
-    .cost-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 13px;
-      color: var(--text-primary);
-
-      &.total {
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--border-color);
-        font-size: 14px;
-      }
-
-      .cost-value {
-        color: var(--color-success);
       }
     }
   }

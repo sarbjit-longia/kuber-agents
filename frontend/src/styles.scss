@@ -1,13 +1,10 @@
-/* You can add global styles to this file, and also import other style files */
 @use '@angular/material' as mat;
 
-// Include the common styles for Angular Material
 @include mat.core();
 
-// Define a custom DARK theme
-$custom-primary: mat.define-palette(mat.$indigo-palette, 300);
-$custom-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
-$custom-warn: mat.define-palette(mat.$red-palette, 300);
+$custom-primary: mat.define-palette(mat.$cyan-palette, 300);
+$custom-accent: mat.define-palette(mat.$teal-palette, 300);
+$custom-warn: mat.define-palette(mat.$red-palette, 400);
 
 $custom-theme: mat.define-dark-theme((
   color: (
@@ -15,90 +12,107 @@ $custom-theme: mat.define-dark-theme((
     accent: $custom-accent,
     warn: $custom-warn,
   ),
-  typography: mat.define-typography-config(),
-  density: 0,
+  typography: mat.define-typography-config(
+    $font-family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    $headline-1: mat.define-typography-level(32px, 40px, 700, $letter-spacing: -0.03em),
+    $headline-2: mat.define-typography-level(28px, 36px, 700, $letter-spacing: -0.03em),
+    $headline-3: mat.define-typography-level(22px, 30px, 650, $letter-spacing: -0.02em),
+    $headline-4: mat.define-typography-level(18px, 26px, 650, $letter-spacing: -0.015em),
+    $subtitle-1: mat.define-typography-level(15px, 22px, 600, $letter-spacing: -0.01em),
+    $body-1: mat.define-typography-level(14px, 22px, 400),
+    $body-2: mat.define-typography-level(13px, 20px, 400),
+    $button: mat.define-typography-level(14px, 14px, 600)
+  ),
+  density: -1,
 ));
 
-// Include theme styles for core and each component used in your app
 @include mat.all-component-themes($custom-theme);
 
-// ── Dark Theme CSS Custom Properties ──────────────────────────
 :root {
-  // Backgrounds
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1b26;
-  --bg-card: #1e1f2e;
-  --bg-card-hover: #252638;
-  --bg-elevated: #2a2b3d;
-  --bg-input: #1a1b26;
-  --bg-overlay: rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
 
-  // Text
-  --text-primary: #e1e2e8;
-  --text-secondary: #a0a1b2;
-  --text-muted: #6b6c7e;
-  --text-disabled: #4a4b5c;
+  --bg-primary: #0b0f14;
+  --bg-secondary: #10161d;
+  --bg-tertiary: #141c24;
+  --bg-card: #121922;
+  --bg-card-hover: #16202a;
+  --bg-elevated: #18222d;
+  --bg-input: #101821;
+  --bg-overlay: rgba(2, 6, 12, 0.78);
 
-  // Borders
-  --border-color: #2e2f42;
-  --border-light: #252638;
-  --border-focus: #667eea;
+  --text-primary: #edf2f7;
+  --text-secondary: #a8b3c2;
+  --text-muted: #7b8797;
+  --text-disabled: #586474;
 
-  // Brand / Accent
-  --accent-primary: #667eea;
-  --accent-secondary: #764ba2;
-  --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --accent-bg: rgba(102, 126, 234, 0.15);
-  --accent-bg-hover: rgba(102, 126, 234, 0.25);
+  --border-color: #243140;
+  --border-strong: #304052;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-focus: #56c2ff;
 
-  // Status
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.15);
-  --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.15);
-  --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.15);
-  --color-info: #3b82f6;
-  --color-info-bg: rgba(59, 130, 246, 0.15);
+  --accent-primary: #56c2ff;
+  --accent-secondary: #2bd4b3;
+  --accent-gradient: linear-gradient(135deg, #56c2ff 0%, #2bd4b3 100%);
+  --accent-bg: rgba(86, 194, 255, 0.12);
+  --accent-bg-hover: rgba(86, 194, 255, 0.18);
+  --accent-soft: rgba(43, 212, 179, 0.12);
 
-  // Shadows
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-accent: 0 4px 16px rgba(102, 126, 234, 0.3);
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.14);
+  --color-warning: #f6c453;
+  --color-warning-bg: rgba(246, 196, 83, 0.14);
+  --color-error: #fb7185;
+  --color-error-bg: rgba(251, 113, 133, 0.14);
+  --color-info: #60a5fa;
+  --color-info-bg: rgba(96, 165, 250, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.22), 0 18px 40px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.3);
+  --shadow-accent: 0 0 0 1px rgba(86, 194, 255, 0.16), 0 10px 30px rgba(86, 194, 255, 0.12);
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
 }
 
-// Global styles
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   font-family: 'Inter', sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(86, 194, 255, 0.08), transparent 26%),
+    linear-gradient(180deg, #0b0f14 0%, #0d1218 100%);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  min-height: 100vh;
 }
 
-// ── Typography Scale ─────────────────────────────────────────
 h1, h2, h3, h4 {
   color: var(--text-primary);
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
-h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; }
-h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.25px; }
-h3 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.1px; }
-h4 { font-size: 0.9375rem; font-weight: 600; }
+h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; }
+h2 { font-size: 1.625rem; font-weight: 700; letter-spacing: -0.025em; }
+h3 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.015em; }
+h4 { font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; }
 
-// ── Material Icons Font Fix ───────────────────────────────────
-// Ensure Material Icons render properly everywhere
+p, span, button, input, textarea, select {
+  letter-spacing: -0.01em;
+}
+
 mat-icon,
 .mat-icon,
 .material-icons {
@@ -122,31 +136,10 @@ mat-icon,
   font-feature-settings: 'liga';
 }
 
-// ── Button Quality ────────────────────────────────────────────
-.mat-mdc-button,
-.mat-mdc-raised-button,
-.mat-mdc-outlined-button,
-.mat-mdc-unelevated-button {
-  height: 40px !important;
-  font-weight: 500 !important;
-  letter-spacing: 0 !important;
-  font-family: 'Inter', sans-serif !important;
-}
-
-.mat-mdc-raised-button,
-.mat-mdc-outlined-button {
-  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-
-  &:hover:not(:disabled) {
-    transform: translateY(-1px);
-  }
-}
-
-// ── Angular Material Dark Overrides ──────────────────────────
 .mat-mdc-card {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: 12px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0)) var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
   box-shadow: var(--shadow-sm) !important;
   color: var(--text-primary) !important;
 }
@@ -162,17 +155,58 @@ mat-icon,
 .mat-mdc-dialog-container .mdc-dialog__surface {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
-  border-radius: 16px !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
-// Remove default padding for reconciliation dialog so inner component controls layout
-.reconciliation-dialog-panel .mat-mdc-dialog-container .mdc-dialog__surface {
+.reconciliation-dialog-panel .mat-mdc-dialog-container .mdc-dialog__surface,
+.reconciliation-dialog-panel .mat-mdc-dialog-container {
   padding: 0 !important;
   overflow: hidden;
 }
 
-.reconciliation-dialog-panel .mat-mdc-dialog-container {
-  padding: 0 !important;
+.mat-mdc-button,
+.mat-mdc-raised-button,
+.mat-mdc-outlined-button,
+.mat-mdc-unelevated-button {
+  height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  font-family: 'Inter', sans-serif !important;
+  text-transform: none !important;
+}
+
+.mat-mdc-raised-button,
+.mat-mdc-outlined-button {
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease !important;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
+.mat-mdc-raised-button.mat-primary {
+  box-shadow: var(--shadow-accent) !important;
+}
+
+.mat-mdc-outlined-button {
+  border-color: var(--border-color) !important;
+  background: rgba(255, 255, 255, 0.01) !important;
+}
+
+.mat-mdc-unelevated-button:not(.mat-primary) {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+.mat-mdc-icon-button {
+  border-radius: 12px !important;
+}
+
+.mat-mdc-mini-fab {
+  box-shadow: var(--shadow-sm) !important;
 }
 
 .mat-mdc-table {
@@ -180,29 +214,29 @@ mat-icon,
 }
 
 .mat-mdc-header-row {
-  background: var(--bg-secondary) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
 }
 
 .mat-mdc-row {
-  border-bottom-color: var(--border-color) !important;
+  border-bottom-color: var(--border-subtle) !important;
 
   &:hover {
-    background: var(--bg-card-hover) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
   }
 }
 
 .mat-mdc-header-cell {
-  color: var(--text-secondary) !important;
-  border-bottom-color: var(--border-color) !important;
+  color: var(--text-muted) !important;
+  border-bottom-color: var(--border-subtle) !important;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
   font-size: 11px !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
 }
 
 .mat-mdc-cell {
   color: var(--text-primary) !important;
-  border-bottom-color: var(--border-color) !important;
+  border-bottom-color: var(--border-subtle) !important;
 }
 
 .mat-mdc-paginator {
@@ -213,10 +247,13 @@ mat-icon,
 .mat-mdc-menu-panel {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
-  border-radius: 12px !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-lg) !important;
 
   .mat-mdc-menu-item {
     color: var(--text-primary) !important;
+    border-radius: 10px;
+    margin: 3px 6px;
 
     &:hover {
       background: var(--accent-bg) !important;
@@ -231,20 +268,18 @@ mat-icon,
 .mat-mdc-select-panel {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
-  border-radius: 10px !important;
-  padding: 4px !important;
+  border-radius: 14px !important;
+  padding: 6px !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
 .mat-mdc-option {
   color: var(--text-primary) !important;
-  min-height: 36px !important;
-  border-radius: 6px !important;
-  font-size: 14px !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
 
-  &:hover {
-    background: var(--accent-bg) !important;
-  }
-
+  &:hover,
   &.mdc-list-item--selected {
     background: var(--accent-bg) !important;
   }
@@ -255,113 +290,123 @@ mat-icon,
   --mdc-snackbar-supporting-text-color: var(--text-primary);
 }
 
-.mat-mdc-tab-group {
-  .mat-mdc-tab {
-    color: var(--text-secondary) !important;
+.mat-mdc-tab-group .mat-mdc-tab {
+  color: var(--text-secondary) !important;
+}
 
-    &.mdc-tab--active {
-      color: var(--accent-primary) !important;
-    }
-  }
+.mat-mdc-tab-group .mdc-tab--active .mdc-tab__text-label {
+  color: var(--accent-primary) !important;
+}
+
+.mat-mdc-tab-group .mdc-tab-indicator__content--underline {
+  border-color: var(--accent-primary) !important;
 }
 
 .mat-mdc-slide-toggle {
+  --mdc-switch-selected-focus-state-layer-color: var(--accent-primary);
+  --mdc-switch-selected-handle-color: #fff;
+  --mdc-switch-selected-hover-state-layer-color: var(--accent-primary);
+  --mdc-switch-selected-pressed-state-layer-color: var(--accent-primary);
   --mdc-switch-selected-track-color: var(--accent-primary);
+  --mdc-switch-unselected-track-color: var(--border-strong);
+  --mdc-switch-unselected-handle-color: #d7e1eb;
 }
 
 .mat-mdc-chip {
-  background: var(--bg-elevated) !important;
+  --mdc-chip-container-shape-radius: 999px;
+}
+
+.mat-mdc-form-field {
+  width: 100%;
+  font-size: 14px !important;
+}
+
+.mat-mdc-form-field-infix {
+  min-height: 44px !important;
+  padding-top: 12px !important;
+  padding-bottom: 11px !important;
+}
+
+.mat-mdc-text-field-wrapper {
+  background: var(--bg-input) !important;
+  border-radius: 14px !important;
+}
+
+.mdc-text-field--outlined {
+  --mdc-outlined-text-field-container-shape: 14px !important;
+  --mdc-outlined-text-field-outline-color: var(--border-color) !important;
+  --mdc-outlined-text-field-hover-outline-color: var(--border-strong) !important;
+  --mdc-outlined-text-field-focus-outline-color: var(--border-focus) !important;
+  --mdc-outlined-text-field-label-text-color: var(--text-secondary) !important;
+  --mdc-outlined-text-field-input-text-color: var(--text-primary) !important;
+  --mdc-outlined-text-field-hover-label-text-color: var(--text-primary) !important;
+  --mdc-outlined-text-field-focus-label-text-color: var(--accent-primary) !important;
+  --mat-form-field-state-layer-color: transparent !important;
+}
+
+.mdc-text-field--filled {
+  --mdc-filled-text-field-container-color: var(--bg-input) !important;
+  --mdc-filled-text-field-active-indicator-color: transparent !important;
+  --mdc-filled-text-field-focus-active-indicator-color: transparent !important;
+  --mdc-filled-text-field-hover-active-indicator-color: transparent !important;
+  border-radius: 14px !important;
+}
+
+.mat-mdc-input-element,
+.mat-mdc-select-value,
+.mat-mdc-select-placeholder,
+.mat-mdc-form-field-textarea-control {
   color: var(--text-primary) !important;
+  caret-color: var(--accent-primary) !important;
+}
+
+.mat-mdc-form-field-subscript-wrapper {
+  margin-top: 4px !important;
+}
+
+.mat-mdc-form-field-hint,
+.mat-mdc-form-field-error {
+  font-size: 11px !important;
+  line-height: 16px !important;
+}
+
+.mat-mdc-form-field-icon-suffix,
+.mat-datepicker-toggle {
+  color: var(--text-secondary) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+textarea.mat-mdc-input-element {
+  resize: vertical;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.mono,
+code,
+pre {
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
 }
 
 .mat-divider {
-  border-top-color: var(--border-color) !important;
+  border-top-color: var(--border-subtle) !important;
 }
 
 .mat-mdc-progress-spinner circle {
   stroke: var(--accent-primary) !important;
 }
 
-// ── Form Field Overrides ──────────────────────────────────────
-
-.mat-mdc-form-field {
-  width: 100%;
-
-  .mat-mdc-text-field-wrapper {
-    padding-bottom: 0;
-    background: var(--bg-input) !important;
-  }
-
-  .mat-mdc-form-field-subscript-wrapper {
-    display: block;
-    height: auto;
-    margin-top: 2px;
-  }
-
-  // Hide subscript space when no hint or error is present
-  &:not(.mat-form-field-has-hint):not(.ng-invalid) .mat-mdc-form-field-subscript-wrapper {
-    display: none;
-  }
-
-  .mat-mdc-form-field-error-wrapper {
-    padding: 0;
-  }
-
-  .mdc-text-field--outlined .mdc-notched-outline {
-    .mdc-notched-outline__leading,
-    .mdc-notched-outline__notch,
-    .mdc-notched-outline__trailing {
-      border-color: var(--border-color) !important;
-      border-width: 1px !important;
-      transition: border-color 0.15s ease !important;
-    }
-  }
-
-  &.mat-focused .mdc-text-field--outlined .mdc-notched-outline {
-    .mdc-notched-outline__leading,
-    .mdc-notched-outline__notch,
-    .mdc-notched-outline__trailing {
-      border-color: var(--accent-primary) !important;
-      border-width: 2px !important;
-    }
-  }
-
-  .mat-mdc-input-element {
-    color: var(--text-primary) !important;
-  }
-
-  .mat-mdc-floating-label {
-    color: var(--text-secondary) !important;
-  }
-}
-
-// Ensure proper label positioning
-.mat-mdc-form-field-has-label .mat-mdc-text-field-wrapper {
-  padding-top: 0;
-}
-
-// Fix outline appearance
-.mat-mdc-form-field-appearance-outline {
-  .mat-mdc-text-field-wrapper {
-    margin: 0;
-    padding: 0;
-  }
-
-  .mdc-notched-outline {
-    .mdc-notched-outline__leading,
-    .mdc-notched-outline__notch,
-    .mdc-notched-outline__trailing {
-      border-width: 1px;
-    }
-  }
-}
-
-// Loading spinner centering
 mat-spinner {
   display: inline-block;
 }
 
-// ── Scrollbar Styling ─────────────────────────────────────────
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -380,10 +425,12 @@ mat-spinner {
   }
 }
 
-// ── CDK Drag & Drop Preview Styles (Global to avoid encapsulation issues) ──
 .cdk-drag-preview {
   opacity: 1 !important;
   z-index: 10000 !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  contain: none !important;
 
   &.drag-preview-container {
     display: flex !important;
@@ -392,8 +439,8 @@ mat-spinner {
     padding: 1rem 1.5rem !important;
     background: var(--bg-card) !important;
     border: 3px solid var(--accent-primary) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 20px 60px rgba(102, 126, 234, 0.6) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 20px 60px rgba(86, 194, 255, 0.28) !important;
     min-width: 260px !important;
     max-width: 300px !important;
     cursor: grabbing !important;
@@ -463,55 +510,15 @@ mat-spinner {
       pointer-events: none !important;
     }
   }
-}
 
-// Disable CDK snap-back animation globally
-.cdk-drag-animating {
-  transition: none !important;
-}
-
-// Prevent scrollbars during drag on all elements
-body.cdk-drop-list-dragging,
-body.cdk-drop-list-dragging * {
-  overflow: hidden !important;
-}
-
-// Prevent any container from showing scrollbars during drag
-.cdk-drop-list-dragging,
-.cdk-drop-list-dragging * {
-  overflow: hidden !important;
-}
-
-// Prevent other items from moving/shaking during drag
-.cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-dragging):not(.cdk-drag-placeholder) {
-  transition: none !important;
-  transform: none !important;
-  animation: none !important;
-}
-
-// Ensure drag placeholder is subtle
-.cdk-drag-placeholder {
-  opacity: 0.4 !important;
-}
-
-// Canvas node drag preview - ensure proper rendering
-// These styles are in global scope to avoid Angular view encapsulation
-.cdk-drag-preview {
-  z-index: 10000 !important;
-  opacity: 0.95 !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-  contain: none !important;
-
-  // Canvas node specific styles
   &.canvas-node {
     .node-card {
       width: 160px !important;
       min-height: 90px !important;
       background: var(--bg-card) !important;
       border: 3px solid var(--accent-primary) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 20px 60px rgba(102, 126, 234, 0.5) !important;
+      border-radius: 14px !important;
+      box-shadow: 0 20px 60px rgba(86, 194, 255, 0.24) !important;
       overflow: visible !important;
       display: flex !important;
       flex-direction: column !important;
@@ -520,7 +527,11 @@ body.cdk-drop-list-dragging * {
       padding: 0.5rem !important;
     }
 
-    .connection-port, .tool-pegs, .tool-peg, .node-body, .node-remove {
+    .connection-port,
+    .tool-pegs,
+    .tool-peg,
+    .node-body,
+    .node-remove {
       display: none !important;
       visibility: hidden !important;
     }
@@ -594,12 +605,6 @@ body.cdk-drop-list-dragging * {
       }
     }
 
-    .node-body {
-      padding: 1rem !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-
     .node-badge {
       display: inline-flex !important;
       align-items: center !important;
@@ -619,12 +624,6 @@ body.cdk-drop-list-dragging * {
       &:not(.free-badge) {
         background: var(--accent-bg) !important;
         color: var(--accent-primary) !important;
-      }
-
-      mat-icon {
-        font-size: 1rem !important;
-        width: 1rem !important;
-        height: 1rem !important;
       }
     }
 
@@ -653,22 +652,10 @@ body.cdk-drop-list-dragging * {
         opacity: 1 !important;
       }
     }
-
-    .node-remove {
-      display: none !important;
-    }
   }
 
-  // Ensure Material Icons render properly everywhere
   mat-icon,
-  .mat-icon {
-    font-family: 'Material Icons' !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  // Ensure all text is visible
+  .mat-icon,
   span,
   h4,
   p {
@@ -676,15 +663,31 @@ body.cdk-drop-list-dragging * {
     opacity: 1 !important;
   }
 
-  // Prevent any interaction during drag
   * {
     pointer-events: none !important;
   }
 
-  // Ensure box-sizing is consistent
   *,
   *::before,
   *::after {
     box-sizing: border-box !important;
   }
+}
+
+.cdk-drag-animating,
+.cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-dragging):not(.cdk-drag-placeholder) {
+  transition: none !important;
+  transform: none !important;
+  animation: none !important;
+}
+
+body.cdk-drop-list-dragging,
+body.cdk-drop-list-dragging *,
+.cdk-drop-list-dragging,
+.cdk-drop-list-dragging * {
+  overflow: hidden !important;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.4 !important;
 }

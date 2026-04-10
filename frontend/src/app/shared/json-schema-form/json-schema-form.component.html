@@ -2,7 +2,7 @@
   <div *ngFor="let property of properties" class="form-field">
     
     <!-- Text/String Input -->
-    <mat-form-field *ngIf="getFieldType(property) === 'text'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'text'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <input 
         matInput 
@@ -15,7 +15,7 @@
     </mat-form-field>
 
     <!-- Number Input -->
-    <mat-form-field *ngIf="getFieldType(property) === 'number'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'number'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <input 
         matInput 
@@ -29,7 +29,7 @@
     </mat-form-field>
 
     <!-- Select/Enum -->
-    <mat-form-field *ngIf="getFieldType(property) === 'select'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'select'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <mat-select [formControlName]="property.key">
         <mat-option *ngFor="let option of property.enum" [value]="option">
@@ -55,7 +55,7 @@
     </div>
 
     <!-- Date Picker -->
-    <mat-form-field *ngIf="getFieldType(property) === 'date'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'date'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <input 
         matInput 
@@ -71,7 +71,7 @@
     </mat-form-field>
 
     <!-- Time Picker -->
-    <mat-form-field *ngIf="getFieldType(property) === 'time'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'time'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <input 
         matInput 
@@ -91,7 +91,7 @@
     </mat-form-field>
 
     <!-- DateTime Picker -->
-    <mat-form-field *ngIf="getFieldType(property) === 'datetime'" appearance="fill" class="full-width">
+    <mat-form-field *ngIf="getFieldType(property) === 'datetime'" appearance="outline" class="full-width">
       <mat-label>{{ property.title || property.key }}</mat-label>
       <input 
         matInput 

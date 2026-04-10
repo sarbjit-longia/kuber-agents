@@ -48,6 +48,10 @@
 
     <!-- Auth Buttons -->
     <div class="navbar-actions">
+      <button mat-icon-button [matMenuTriggerFor]="mobileMenu" class="mobile-menu-button" aria-label="Open navigation">
+        <mat-icon>menu</mat-icon>
+      </button>
+
       <ng-container *ngIf="!isAuthenticated">
         <button mat-button routerLink="/login" class="login-button">
           <mat-icon>login</mat-icon>
@@ -83,3 +87,34 @@
   </div>
 </mat-toolbar>
 
+<mat-menu #mobileMenu="matMenu" class="mobile-nav-menu">
+  <ng-container *ngIf="!isAuthenticated">
+    <button mat-menu-item routerLink="/">
+      <mat-icon>home</mat-icon>
+      <span>Home</span>
+    </button>
+    <button mat-menu-item routerLink="/how-it-works">
+      <mat-icon>info</mat-icon>
+      <span>How It Works</span>
+    </button>
+  </ng-container>
+
+  <ng-container *ngIf="isAuthenticated">
+    <button mat-menu-item routerLink="/dashboard">
+      <mat-icon>dashboard</mat-icon>
+      <span>Dashboard</span>
+    </button>
+    <button mat-menu-item routerLink="/pipelines">
+      <mat-icon>account_tree</mat-icon>
+      <span>Pipelines</span>
+    </button>
+    <button mat-menu-item routerLink="/scanners">
+      <mat-icon>manage_search</mat-icon>
+      <span>Scanners</span>
+    </button>
+    <button mat-menu-item routerLink="/monitoring">
+      <mat-icon>monitoring</mat-icon>
+      <span>Monitoring</span>
+    </button>
+  </ng-container>
+</mat-menu>
