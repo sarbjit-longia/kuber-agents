@@ -162,6 +162,31 @@ class TradeManagerAgent(BaseAgent):
             self.logger.warning(f"Market hours check failed: {str(e)} - proceeding with execution")
             # If market hours check fails, proceed (fail-safe)
         
+        # Check senior trader review (always present — injected by executor)
+        if state.trade_review is not None and state.trade_review.decision == "REJECTED":
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="rejected",
+                filled_price=None,
+                filled_quantity=None,
+                commission=None,
+                execution_time=None,
+                broker_response={"reason": f"Rejected by senior trader review: {state.trade_review.reasoning}"}
+            )
+            self.log(state, f"❌ Senior trader review rejected trade: {state.trade_review.reasoning[:100]}")
+            self.record_report(
+                state,
+                title="Trade rejected by senior trader review",
+                summary=state.trade_review.reasoning,
+                status="warning",
+                data={
+                    "decision": state.trade_review.decision,
+                    "key_concerns": state.trade_review.key_concerns,
+                },
+            )
+            state.should_complete = True
+            return state
+
         # Check if trade approved
         if not risk.approved or not strategy:
             state.trade_execution = TradeExecution(

@@ -173,6 +173,16 @@ class SignalData(BaseModel):
     market_data: Optional[Dict[str, Any]] = None
 
 
+class TradeReview(BaseModel):
+    """Final trade review from the Senior Trader Review Agent."""
+    decision: str  # "APPROVED", "REJECTED", "HOLD"
+    confidence: float  # 0.0-1.0
+    reasoning: str
+    key_concerns: List[str] = Field(default_factory=list)
+    key_strengths: List[str] = Field(default_factory=list)
+    trader_notes: Optional[str] = None
+
+
 class TradeOutcome(BaseModel):
     """Final outcome of a trade with P&L information."""
     status: str  # "executed" (filled+closed), "cancelled" (limit never filled), "pending" (limit waiting), "failed" (broker error)
@@ -211,6 +221,7 @@ class PipelineState(BaseModel):
     biases: Dict[str, BiasResult] = Field(default_factory=dict)  # keyed by timeframe
     strategy: Optional[StrategyResult] = None
     risk_assessment: Optional[RiskAssessment] = None
+    trade_review: Optional[TradeReview] = None  # Senior trader review (optional quality gate)
     trade_execution: Optional[TradeExecution] = None
     trade_outcome: Optional[TradeOutcome] = None  # Final P&L when position closes
     
@@ -365,7 +376,8 @@ class AgentMetadata(BaseModel):
     
     # Tools Support
     supported_tools: List[str] = Field(default_factory=list)  # e.g., ["alpaca_broker", "webhook_notifier"]
-    
+    default_tools: List[str] = Field(default_factory=list)  # CrewAI tools loaded at runtime (e.g., ["fvg_detector", "rsi_calculator"])
+
     # Capabilities
     can_initiate_trades: bool = False
     can_close_positions: bool = False

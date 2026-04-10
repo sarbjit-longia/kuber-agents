@@ -483,11 +483,11 @@ class PremiumDiscountTool(BaseTool):
 def get_available_tools(ticker: str, candles: list = None) -> list:
     """
     Get all available tools for LLM agents.
-    
+
     Args:
         ticker: Stock symbol
         candles: Optional candle data (required for some tools)
-    
+
     Returns:
         List of CrewAI BaseTool instances
     """
@@ -496,7 +496,7 @@ def get_available_tools(ticker: str, candles: list = None) -> list:
         MACDTool(ticker=ticker),
         SMACrossoverTool(ticker=ticker),
     ]
-    
+
     # Tools that require candle data
     if candles:
         tools.extend([
@@ -505,6 +505,51 @@ def get_available_tools(ticker: str, candles: list = None) -> list:
             MarketStructureTool(ticker=ticker, candles=candles),
             PremiumDiscountTool(ticker=ticker, candles=candles),
         ])
-    
+
+    return tools
+
+
+# Map from tool name strings (used in AgentMetadata.default_tools) to CrewAI tool classes
+_CREWAI_TOOL_MAP = {
+    "fvg_detector": FVGDetectorTool,
+    "liquidity_analyzer": LiquidityAnalyzerTool,
+    "market_structure_analyzer": MarketStructureTool,
+    "premium_discount_analyzer": PremiumDiscountTool,
+    "rsi_calculator": RSITool,
+    "macd_calculator": MACDTool,
+    "sma_crossover": SMACrossoverTool,
+}
+
+# Tools that require candle data to instantiate
+_CANDLE_TOOLS = {"fvg_detector", "liquidity_analyzer", "market_structure_analyzer", "premium_discount_analyzer"}
+
+
+def load_tools_for_agent(tool_names: list, ticker: str, candles: list = None) -> list:
+    """
+    Load CrewAI tool instances for the given tool names.
+
+    Only loads candle-dependent tools (FVG, liquidity, market structure, premium/discount)
+    when candle data is provided, so callers that don't have candles still get their
+    indicator tools (RSI, MACD, SMA) without error.
+
+    Args:
+        tool_names: List of tool name strings from AgentMetadata.default_tools
+        ticker: Stock symbol
+        candles: Optional candle data (required for ICT/SMC tools)
+
+    Returns:
+        List of instantiated CrewAI BaseTool instances
+    """
+    tools = []
+    for name in tool_names:
+        cls = _CREWAI_TOOL_MAP.get(name)
+        if not cls:
+            continue
+        if name in _CANDLE_TOOLS:
+            if not candles:
+                continue  # skip candle-dependent tools when no candle data available
+            tools.append(cls(ticker=ticker, candles=candles))
+        else:
+            tools.append(cls(ticker=ticker))
     return tools
 

@@ -9,6 +9,7 @@ from app.agents.market_data_agent import MarketDataAgent
 from app.agents.bias_agent import BiasAgent
 from app.agents.strategy_agent import StrategyAgent
 from app.agents.risk_manager_agent import RiskManagerAgent
+from app.agents.trade_review_agent import TradeReviewAgent
 from app.agents.trade_manager_agent import TradeManagerAgent
 
 # Register all agents
@@ -16,6 +17,7 @@ registry.register(MarketDataAgent)
 registry.register(BiasAgent)
 registry.register(StrategyAgent)
 registry.register(RiskManagerAgent)
+registry.register(TradeReviewAgent)
 registry.register(TradeManagerAgent)
 
 __all__ = [
@@ -29,5 +31,6 @@ __all__ = [
     "BiasAgent",
     "StrategyAgent",
     "RiskManagerAgent",
+    "TradeReviewAgent",
     "TradeManagerAgent",
 ]

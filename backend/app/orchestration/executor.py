@@ -149,9 +149,10 @@ class PipelineExecutor:
             "bias_agent",
             "strategy_agent",
             "risk_manager_agent",
+            "trade_review_agent",   # always runs before trade execution
             "trade_manager_agent"
         ]
-        
+
         # Build a map of agent_type -> node for quick lookup
         node_map = {}
         for node in self.nodes:
@@ -159,7 +160,17 @@ class PipelineExecutor:
             # Skip tool nodes (they are attached configs, not execution steps)
             if agent_type and node.get("node_category") != "tool":
                 node_map[agent_type] = node
-        
+
+        # trade_review_agent is mandatory — inject it with default config if not
+        # explicitly included in the pipeline's node list.
+        if "trade_review_agent" not in node_map and "trade_manager_agent" in node_map:
+            node_map["trade_review_agent"] = {
+                "id": "trade_review_agent_auto",
+                "agent_type": "trade_review_agent",
+                "config": {},  # uses all defaults
+            }
+            self.logger.info("trade_review_agent_auto_injected")
+
         # Build execution order by filtering nodes to match fixed sequence
         execution_order = []
         for agent_type in FIXED_AGENT_ORDER:

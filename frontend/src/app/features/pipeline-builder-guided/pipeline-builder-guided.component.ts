@@ -200,6 +200,12 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       icon: 'shield'
     },
     {
+      agent_type: 'trade_review_agent',
+      title: 'Senior Trader Review',
+      subtitle: 'Final approve / reject before execution',
+      icon: 'gavel'
+    },
+    {
       agent_type: 'trade_manager_agent',
       title: 'Trade Manager',
       subtitle: 'Execute + monitor (limit/bracket)',
@@ -286,6 +292,11 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       bias_agent: { instructions: '' },
       strategy_agent: { instructions: '' },
       risk_manager_agent: { instructions: '' },
+      trade_review_agent: {
+        min_bias_confidence: 0.6,
+        min_strategy_confidence: 0.65,
+        min_risk_reward: 1.5
+      },
       trade_manager_agent: {}
     };
 

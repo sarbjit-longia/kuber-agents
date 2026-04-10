@@ -16,7 +16,7 @@ from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
-from app.tools.crewai_tools import get_available_tools
+from app.tools.crewai_tools import load_tools_for_agent
 from app.services.model_registry import model_registry
 
 logger = structlog.get_logger()
@@ -52,6 +52,10 @@ class BiasAgent(BaseAgent):
                 # Analysis tools - Bias Agent can use any technical indicator
                 "rsi", "macd", "sma_crossover", "bollinger_bands",
                 "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+            ],
+            default_tools=[
+                "rsi_calculator", "macd_calculator", "sma_crossover",
+                "fvg_detector", "liquidity_analyzer", "market_structure_analyzer", "premium_discount_analyzer"
             ],
             config_schema=AgentConfigSchema(
                 type="object",
@@ -151,10 +155,11 @@ class BiasAgent(BaseAgent):
             # Prepare market context
             market_context = self._prepare_market_context(state)
             
-            # Get all available tools for this ticker
-            tools = get_available_tools(
+            # Load tools declared in metadata (indicator tools only — no candles at bias stage)
+            tools = load_tools_for_agent(
+                self.get_metadata().default_tools,
                 ticker=state.symbol,
-                candles=None  # Indicator tools don't need candles
+                candles=None  # Bias agent uses indicator tools that don't need candle data
             )
             
             self.log(state, f"Available tools: {[t.name for t in tools]}")

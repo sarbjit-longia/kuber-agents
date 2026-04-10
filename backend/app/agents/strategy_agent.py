@@ -15,7 +15,7 @@ from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingErr
 from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetadata, AgentConfigSchema
 from app.services.langfuse_service import trace_agent_execution
-from app.tools.crewai_tools import get_available_tools
+from app.tools.crewai_tools import load_tools_for_agent
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.services.model_registry import model_registry
 
@@ -51,6 +51,10 @@ class StrategyAgent(BaseAgent):
                 # Analysis tools - Strategy Agent can use any technical indicator
                 "rsi", "macd", "sma_crossover", "bollinger_bands",
                 "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+            ],
+            default_tools=[
+                "fvg_detector", "liquidity_analyzer", "market_structure_analyzer",
+                "premium_discount_analyzer", "rsi_calculator", "macd_calculator", "sma_crossover"
             ],
             config_schema=AgentConfigSchema(
                 type="object",
@@ -222,8 +226,9 @@ class StrategyAgent(BaseAgent):
                 for c in candles
             ] if candles else []
 
-            # Get all available tools
-            tools = get_available_tools(
+            # Load tools declared in metadata — passes candle data so ICT tools are included
+            tools = load_tools_for_agent(
+                self.get_metadata().default_tools,
                 ticker=state.symbol,
                 candles=candle_dicts if candle_dicts else None
             )
