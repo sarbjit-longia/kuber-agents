@@ -43,53 +43,59 @@
         <div class="core-subtitle">Fixed agent chain — click a block to configure it</div>
       </div>
 
-      <div class="setup-items">
-        <div
-          class="setup-card"
-          *ngFor="let item of setupItems"
-          [class.selected]="selectedItemKey === item.key"
-          (click)="selectItem(item.key)"
-        >
-          <div class="setup-left">
-            <div class="setup-icon">
-              <mat-icon>{{ item.icon }}</mat-icon>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Pipeline Setup</div>
+        <div class="setup-items">
+          <div
+            class="setup-card"
+            *ngFor="let item of setupItems"
+            [class.selected]="selectedItemKey === item.key"
+            (click)="selectItem(item.key)"
+          >
+            <div class="setup-left">
+              <div class="setup-icon">
+                <mat-icon>{{ item.icon }}</mat-icon>
+              </div>
+              <div class="setup-text">
+                <div class="setup-title">{{ item.title }}</div>
+                <div class="setup-subtitle" *ngIf="selectedItemKey === item.key">{{ item.subtitle }}</div>
+              </div>
             </div>
-            <div class="setup-text">
-              <div class="setup-title">{{ item.title }}</div>
-              <div class="setup-subtitle" *ngIf="selectedItemKey === item.key">{{ item.subtitle }}</div>
+            <div class="setup-right">
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus(item.key)">
+                {{ getSetupItemStatus(item.key) }}
+              </span>
+              <mat-icon class="chev">chevron_right</mat-icon>
             </div>
-          </div>
-          <div class="setup-right">
-            <span class="status-pill" [attr.data-status]="getSetupItemStatus(item.key)">
-              {{ getSetupItemStatus(item.key) }}
-            </span>
-            <mat-icon class="chev">chevron_right</mat-icon>
           </div>
         </div>
       </div>
 
-      <div class="chain">
-        <div
-          class="agent-card"
-          *ngFor="let slot of slots"
-          [class.selected]="selectedItemKey === ('agent:' + slot.agent_type)"
-          (click)="selectItem('agent:' + slot.agent_type)"
-        >
-          <div class="agent-left">
-            <div class="agent-icon">
-              <mat-icon>{{ slot.icon }}</mat-icon>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Agent Chain</div>
+        <div class="chain">
+          <div
+            class="agent-card"
+            *ngFor="let slot of slots"
+            [class.selected]="selectedItemKey === ('agent:' + slot.agent_type)"
+            (click)="selectItem('agent:' + slot.agent_type)"
+          >
+            <div class="agent-left">
+              <div class="agent-icon">
+                <mat-icon>{{ slot.icon }}</mat-icon>
+              </div>
+              <div class="agent-text">
+                <div class="agent-title">{{ slot.title }}</div>
+                <div class="agent-subtitle" *ngIf="selectedItemKey === ('agent:' + slot.agent_type)">{{ slot.subtitle }}</div>
+              </div>
             </div>
-            <div class="agent-text">
-              <div class="agent-title">{{ slot.title }}</div>
-              <div class="agent-subtitle" *ngIf="selectedItemKey === ('agent:' + slot.agent_type)">{{ slot.subtitle }}</div>
-            </div>
-          </div>
 
-          <div class="agent-right">
-            <span class="status-pill" [attr.data-status]="getSlotStatus(slot.agent_type)">
-              {{ getSlotStatus(slot.agent_type) }}
-            </span>
-            <mat-icon class="chev">chevron_right</mat-icon>
+            <div class="agent-right">
+              <span class="status-pill" [attr.data-status]="getSlotStatus(slot.agent_type)">
+                {{ getSlotStatus(slot.agent_type) }}
+              </span>
+              <mat-icon class="chev">chevron_right</mat-icon>
+            </div>
           </div>
         </div>
       </div>

@@ -74,7 +74,7 @@
       font-size: 1rem;
       padding: 0.5rem 1rem;
       border-radius: 8px;
-      transition: all 0.3s ease;
+      transition: all 0.2s ease;
       position: relative;
 
       &:hover {
@@ -92,8 +92,8 @@
           bottom: -8px;
           left: 50%;
           transform: translateX(-50%);
-          width: 40%;
-          height: 3px;
+          width: 36%;
+          height: 2px;
           background: var(--accent-gradient);
           border-radius: 2px;
         }
@@ -134,7 +134,7 @@
       align-items: center;
       gap: 0.5rem;
       box-shadow: var(--shadow-accent);
-      transition: all 0.3s ease;
+      transition: all 0.2s ease;
 
       &:hover {
         transform: translateY(-2px);
