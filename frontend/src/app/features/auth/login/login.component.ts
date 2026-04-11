@@ -38,7 +38,7 @@ export class LoginComponent implements OnInit {
   loginForm!: FormGroup;
   loading = false;
   error: string | null = null;
-  returnUrl: string = '/';
+  returnUrl: string = '/dashboard';
   sessionExpiredMessage: string | null = null;
 
   constructor(
@@ -54,8 +54,8 @@ export class LoginComponent implements OnInit {
       password: ['', [Validators.required, Validators.minLength(8)]]
     });
 
-    // Get return URL from route parameters or default to '/'
-    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
+    // Get return URL from route parameters or default to the authenticated home.
+    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/dashboard';
     
     // Check if redirected due to session expiry
     const reason = this.route.snapshot.queryParams['reason'];
@@ -83,4 +83,3 @@ export class LoginComponent implements OnInit {
     });
   }
 }
-

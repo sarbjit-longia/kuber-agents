@@ -1,166 +1,244 @@
 <div class="how-it-works-page">
-  <!-- Navigation Bar -->
   <app-navbar></app-navbar>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- HERO                                                       -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="hero-section">
-    <div class="hero-content">
-      <div class="hero-badge">
-        <mat-icon>auto_awesome</mat-icon>
-        <span>Step-by-Step Guide</span>
+    <div class="hero-grid"></div>
+
+    <div class="hero-shell">
+      <div class="hero-copy">
+        <div class="hero-badge">
+          <mat-icon>schema</mat-icon>
+          <span>Step-by-step operating model</span>
+        </div>
+
+        <h1>How CloverCharts moves from market scan to managed execution.</h1>
+        <p>
+          The platform is designed as a sequence of explicit decisions: define the market universe,
+          configure the analysis chain, connect execution, then supervise everything from a live operations layer.
+        </p>
+
+        <div class="hero-actions">
+          <button mat-raised-button class="primary-action" routerLink="/register">
+            <mat-icon>north_east</mat-icon>
+            Create Free Account
+          </button>
+          <button mat-stroked-button class="secondary-action" routerLink="/">
+            <mat-icon>west</mat-icon>
+            Back to Home
+          </button>
+        </div>
       </div>
-      <h1 class="hero-title">
-        How <span class="gradient-text">CloverCharts</span> Works
-      </h1>
-      <p class="hero-subtitle">
-        Go from zero to a fully automated trading strategy in four simple steps.
-        No code. No complexity. Just results.
-      </p>
+
+      <div class="hero-visual">
+        <div class="blueprint-card">
+          <div class="blueprint-heading">
+            <span>Workflow Blueprint</span>
+            <small>reviewable by design</small>
+          </div>
+
+          <div class="blueprint-stages">
+            <div class="blueprint-stage">
+              <strong>01</strong>
+              <span>Scanner</span>
+              <small>define monitored symbols</small>
+            </div>
+            <div class="stage-connector"></div>
+            <div class="blueprint-stage accent">
+              <strong>02</strong>
+              <span>Pipeline</span>
+              <small>compose analysis + risk</small>
+            </div>
+            <div class="stage-connector"></div>
+            <div class="blueprint-stage">
+              <strong>03</strong>
+              <span>Broker</span>
+              <small>paper or live execution</small>
+            </div>
+            <div class="stage-connector"></div>
+            <div class="blueprint-stage">
+              <strong>04</strong>
+              <span>Monitoring</span>
+              <small>track active positions</small>
+            </div>
+          </div>
+
+          <div class="blueprint-footer">
+            <div class="footer-metric">
+              <label>Pipeline state</label>
+              <strong>Deterministic</strong>
+            </div>
+            <div class="footer-metric">
+              <label>Operator view</label>
+              <strong>Full trace</strong>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- STEPS                                                      -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="principles-section">
+    <div class="section-header">
+      <span class="section-tag">Core Principles</span>
+      <h2>Automation with readable structure</h2>
+      <p>The flow is split into bounded stages so you can understand what happened, what it cost, and where to intervene.</p>
+    </div>
+
+    <div class="principles-grid">
+      <article class="principle-card">
+        <mat-icon>visibility</mat-icon>
+        <h3>Observable</h3>
+        <p>Executions, active positions, costs, and trade outcomes remain visible from the dashboard and monitoring views.</p>
+      </article>
+      <article class="principle-card">
+        <mat-icon>verified_user</mat-icon>
+        <h3>Risk-first</h3>
+        <p>Risk checks sit inside the workflow rather than as an afterthought, which makes capital protection part of the pipeline design.</p>
+      </article>
+      <article class="principle-card">
+        <mat-icon>account_tree</mat-icon>
+        <h3>Composable</h3>
+        <p>Scanners, pipelines, and brokers can be recombined without rebuilding the entire process every time you test a new idea.</p>
+      </article>
+    </div>
+  </section>
+
   <section class="steps-section">
+    <div class="section-header">
+      <span class="section-tag">Four Stages</span>
+      <h2>The working sequence</h2>
+      <p>Each stage narrows uncertainty before the next stage spends capital or opens exposure.</p>
+    </div>
+
     <div class="steps-timeline">
-      <div class="step-block" *ngFor="let step of steps; let last = last">
-        <!-- Left: number + connector line -->
-        <div class="step-indicator">
+      <article class="step-card" *ngFor="let step of steps">
+        <div class="step-rail">
           <div class="step-number">{{ step.number }}</div>
-          <div class="step-line" *ngIf="!last"></div>
         </div>
 
-        <!-- Right: content card -->
-        <div class="step-content">
+        <div class="step-main">
           <div class="step-header">
             <div class="step-icon">
               <mat-icon>{{ step.icon }}</mat-icon>
             </div>
             <div>
-              <h2>{{ step.title }}</h2>
               <span class="step-subtitle">{{ step.subtitle }}</span>
+              <h3>{{ step.title }}</h3>
             </div>
           </div>
+
           <p class="step-description">{{ step.description }}</p>
-          <ul class="step-details">
-            <li *ngFor="let detail of step.details">
-              <mat-icon class="check-icon">check_circle</mat-icon>
+
+          <div class="step-details">
+            <div class="detail-item" *ngFor="let detail of step.details">
+              <mat-icon>check_circle</mat-icon>
               <span>{{ detail }}</span>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
-      </div>
+      </article>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PIPELINE WALKTHROUGH                                       -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="pipeline-section">
     <div class="section-header">
       <span class="section-tag">Example Pipeline</span>
-      <h2>See a Pipeline in Action</h2>
-      <p>
-        Here's what a typical automated pipeline looks like — six agents chained
-        together, each handling one step of the trading lifecycle.
-      </p>
+      <h2>A typical execution chain</h2>
+      <p>The example below shows how specialist agents pass context down the line until the trade manager can act.</p>
     </div>
 
     <div class="pipeline-flow">
-      <div class="pipeline-agent" *ngFor="let agent of pipelineAgents; let i = index">
-        <div class="agent-card" [class.ai]="!agent.free && agent.category === 'analysis'">
-          <div class="agent-number">{{ i + 1 }}</div>
+      <ng-container *ngFor="let agent of pipelineAgents; let i = index; let last = last">
+        <article class="pipeline-agent-card">
+          <div class="agent-index">0{{ i + 1 }}</div>
           <div class="agent-icon">
             <mat-icon>{{ agent.icon }}</mat-icon>
           </div>
-          <div class="agent-info">
-            <h4>{{ agent.name }}</h4>
-            <span class="agent-category">{{ agent.category }}</span>
+          <div class="agent-copy">
+            <div class="agent-meta">
+              <span>{{ agent.category }}</span>
+              <span class="agent-badge" [class.free]="agent.free" [class.premium]="!agent.free">
+                {{ agent.free ? 'Core' : 'AI' }}
+              </span>
+            </div>
+            <h3>{{ agent.name }}</h3>
+            <p>{{ agent.description }}</p>
           </div>
-          <span class="agent-badge" [class.free]="agent.free" [class.premium]="!agent.free">
-            {{ agent.free ? 'FREE' : 'AI' }}
-          </span>
-        </div>
-        <p class="agent-desc">{{ agent.description }}</p>
-      </div>
+        </article>
+        <div class="pipeline-connector" *ngIf="!last"></div>
+      </ng-container>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- FAQ                                                        -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="faq-section">
     <div class="section-header">
       <span class="section-tag">FAQ</span>
-      <h2>Frequently Asked Questions</h2>
-      <p>Everything you need to know before you start.</p>
+      <h2>Questions traders usually ask first</h2>
+      <p>These cover setup, risk, brokers, and how the platform behaves in production.</p>
     </div>
 
     <div class="faq-list">
-      <div class="faq-item" *ngFor="let faq of faqs" [class.open]="faq.open" (click)="toggleFaq(faq)">
+      <article class="faq-item" *ngFor="let faq of faqs" [class.open]="faq.open" (click)="toggleFaq(faq)">
         <div class="faq-question">
           <span>{{ faq.question }}</span>
-          <mat-icon>{{ faq.open ? 'expand_less' : 'expand_more' }}</mat-icon>
+          <mat-icon>{{ faq.open ? 'remove' : 'add' }}</mat-icon>
         </div>
         <div class="faq-answer" *ngIf="faq.open">
           <p>{{ faq.answer }}</p>
         </div>
-      </div>
+      </article>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- CTA                                                        -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="cta-section">
-    <div class="cta-content">
-      <h2>Ready to Build Your First Pipeline?</h2>
-      <p>Sign up for free, connect your broker, and have an automated strategy running in minutes.</p>
-      <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
-        <mat-icon>arrow_forward</mat-icon>
-        Get Started — It's Free
-      </button>
-      <p class="cta-note">No credit card required · $10 free AI credits · Paper trading included</p>
+    <div class="cta-shell">
+      <div>
+        <span class="section-tag">Start Here</span>
+        <h2>Build the first version in paper mode, then tighten the workflow with live data.</h2>
+        <p>You do not need to perfect everything upfront. The product is built so you can iterate through scanners, pipelines, and monitoring with visible feedback.</p>
+      </div>
+      <div class="cta-actions">
+        <button mat-raised-button class="primary-action" routerLink="/register">
+          <mat-icon>north_east</mat-icon>
+          Get Started
+        </button>
+        <button mat-stroked-button class="secondary-action" routerLink="/login">
+          <mat-icon>login</mat-icon>
+          Sign In
+        </button>
+      </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- FOOTER                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <footer class="footer">
-    <div class="footer-content">
+  <footer class="public-footer">
+    <div class="footer-shell">
       <div class="footer-brand">
-        <h3>
+        <div class="footer-brand-top">
           <img src="assets/logo.svg" alt="CloverCharts" class="footer-logo">
-          CloverCharts
-        </h3>
-        <p>Agent-based algorithmic trading platform</p>
+          <span>CloverCharts</span>
+        </div>
+        <p>Agent-based trading infrastructure for scanners, pipeline orchestration, and execution oversight.</p>
       </div>
-      <div class="footer-columns">
-        <div class="footer-col">
-          <h4>Product</h4>
+
+      <div class="footer-links">
+        <div class="footer-column">
+          <h4>Platform</h4>
+          <a routerLink="/">Home</a>
           <a routerLink="/how-it-works">How It Works</a>
-          <a routerLink="/register">Pipeline Builder</a>
-          <a routerLink="/register">Agent Marketplace</a>
-        </div>
-        <div class="footer-col">
-          <h4>Legal</h4>
-          <a routerLink="/terms">Terms of Service</a>
-          <a routerLink="/privacy">Privacy Policy</a>
-          <a routerLink="/disclaimer">Disclaimer</a>
-        </div>
-        <div class="footer-col">
-          <h4>Account</h4>
-          <a routerLink="/login">Sign In</a>
           <a routerLink="/register">Create Account</a>
         </div>
+        <div class="footer-column">
+          <h4>Legal</h4>
+          <a routerLink="/terms">Terms</a>
+          <a routerLink="/privacy">Privacy</a>
+          <a routerLink="/disclaimer">Disclaimer</a>
+        </div>
       </div>
     </div>
+
     <div class="footer-bottom">
-      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+      <span>&copy; 2026 Longia LLC. All rights reserved.</span>
+      <span>Operational workspace for CloverCharts</span>
     </div>
   </footer>
 </div>

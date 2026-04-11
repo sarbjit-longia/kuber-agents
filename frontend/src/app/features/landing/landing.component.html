@@ -1,348 +1,356 @@
 <div class="landing-page">
-  <!-- Navigation Bar -->
   <app-navbar></app-navbar>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- HERO SECTION                                               -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="hero-section">
-    <!-- Animated gradient orbs -->
-    <div class="hero-orb hero-orb--1"></div>
-    <div class="hero-orb hero-orb--2"></div>
-    <div class="hero-orb hero-orb--3"></div>
-    <!-- Dot grid pattern -->
-    <div class="hero-grid-pattern"></div>
+    <div class="hero-noise"></div>
+    <div class="hero-orb hero-orb-a"></div>
+    <div class="hero-orb hero-orb-b"></div>
+    <div class="hero-orb hero-orb-c"></div>
 
-    <div class="hero-content">
-      <div class="hero-text">
+    <div class="hero-shell">
+      <div class="hero-copy">
         <div class="hero-badge">
           <span class="badge-dot"></span>
-          <span>AI-Powered Algorithmic Trading</span>
+          Agent-based trading infrastructure
         </div>
-        <h1 class="hero-title">
-          Automate Your Trading<br>
-          <span class="gradient-text">with Intelligent Agents</span>
+
+        <h1>
+          Build trading systems that look
+          <span>closer to an operations desk</span>
+          than a chatbot.
         </h1>
-        <p class="hero-subtitle">
-          Chain AI agents into automated pipelines that analyse markets,
-          generate signals, manage risk, and execute trades — around the clock.
+
+        <p class="hero-description">
+          CloverCharts turns scanners, AI analysis, risk controls, and broker execution into one disciplined workflow.
+          Design pipelines visually, monitor every decision, and move from paper to live with far less friction.
         </p>
 
-        <!-- Feature pills -->
-        <div class="hero-pills">
-          <span class="pill"><mat-icon>psychology</mat-icon> GPT-4 Strategies</span>
-          <span class="pill"><mat-icon>shield</mat-icon> Bracket Orders</span>
-          <span class="pill"><mat-icon>candlestick_chart</mat-icon> Multi-Timeframe</span>
-          <span class="pill"><mat-icon>code_off</mat-icon> Zero Code</span>
+        <div class="hero-actions">
+          <button mat-raised-button class="primary-action" routerLink="/register">
+            <mat-icon>north_east</mat-icon>
+            Start Free
+          </button>
+          <button mat-stroked-button class="secondary-action" routerLink="/how-it-works">
+            <mat-icon>schema</mat-icon>
+            Explore How It Works
+          </button>
         </div>
 
-        <div class="hero-actions">
-          <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
-            <mat-icon>rocket_launch</mat-icon>
-            Start Building — It's Free
-          </button>
-          <button mat-stroked-button class="secondary-button" routerLink="/how-it-works">
-            <mat-icon>play_circle</mat-icon>
-            See How It Works
-          </button>
-        </div>
         <div class="hero-trust">
-          <mat-icon class="trust-icon">verified</mat-icon>
-          <span>No credit card required</span>
-          <span class="dot">·</span>
-          <span>$10 free AI credits</span>
-          <span class="dot">·</span>
           <span>Paper trading included</span>
+          <span class="separator"></span>
+          <span>$10 free AI credits</span>
+          <span class="separator"></span>
+          <span>No credit card required</span>
         </div>
       </div>
 
       <div class="hero-visual">
-        <div class="pipeline-preview">
-          <!-- Dashboard-like header -->
-          <div class="preview-header">
-            <div class="preview-header-dots">
-              <span class="dot-red"></span>
-              <span class="dot-yellow"></span>
-              <span class="dot-green"></span>
+        <div class="hero-dashboard">
+          <div class="dashboard-topbar">
+            <div class="window-controls">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
-            <span class="preview-header-title">My Trading Pipeline</span>
-            <span class="preview-status">
-              <span class="status-dot"></span>
-              Running
-            </span>
+            <div class="topbar-title">Live Strategy Workspace</div>
+            <div class="live-pill">
+              <span class="live-dot"></span>
+              Active
+            </div>
           </div>
 
-          <div class="preview-body">
-            <div class="preview-card agent-card">
-              <div class="agent-status done"></div>
-              <mat-icon>schedule</mat-icon>
-              <span>Time Trigger</span>
-              <span class="card-tag free">FREE</span>
+          <div class="dashboard-grid">
+            <div class="visual-panel signal-panel">
+              <div class="panel-heading">
+                <span>Signal Chain</span>
+                <small>Bias to execution</small>
+              </div>
+
+              <div class="signal-flow">
+                <div class="signal-node">
+                  <mat-icon>radar</mat-icon>
+                  <span>Scanner</span>
+                </div>
+                <div class="signal-link"></div>
+                <div class="signal-node accent">
+                  <mat-icon>psychology</mat-icon>
+                  <span>AI Strategy</span>
+                </div>
+                <div class="signal-link"></div>
+                <div class="signal-node">
+                  <mat-icon>verified_user</mat-icon>
+                  <span>Risk</span>
+                </div>
+                <div class="signal-link"></div>
+                <div class="signal-node">
+                  <mat-icon>candlestick_chart</mat-icon>
+                  <span>Broker</span>
+                </div>
+              </div>
             </div>
-            <div class="flow-connector">
-              <div class="connector-line"></div>
-              <mat-icon class="connector-icon">arrow_downward</mat-icon>
+
+            <div class="visual-panel metrics-panel">
+              <div class="metric-box">
+                <label>Monitored symbols</label>
+                <strong>128</strong>
+              </div>
+              <div class="metric-box">
+                <label>Automation uptime</label>
+                <strong>24/7</strong>
+              </div>
+              <div class="metric-box">
+                <label>Protected by risk rules</label>
+                <strong>100%</strong>
+              </div>
             </div>
-            <div class="preview-card agent-card">
-              <div class="agent-status done"></div>
-              <mat-icon>candlestick_chart</mat-icon>
-              <span>Market Data</span>
-              <span class="card-tag free">FREE</span>
+
+            <div class="visual-panel chart-panel">
+              <div class="panel-heading">
+                <span>Execution cadence</span>
+                <small>Recent operating window</small>
+              </div>
+              <div class="chart-bars">
+                <span class="bar bar-sm"></span>
+                <span class="bar bar-md"></span>
+                <span class="bar bar-lg"></span>
+                <span class="bar bar-xl"></span>
+                <span class="bar bar-md"></span>
+                <span class="bar bar-lg"></span>
+                <span class="bar bar-sm"></span>
+                <span class="bar bar-md"></span>
+                <span class="bar bar-xl"></span>
+                <span class="bar bar-lg"></span>
+                <span class="bar bar-md"></span>
+                <span class="bar bar-sm"></span>
+              </div>
+              <div class="chart-footer">
+                <span class="positive">+84.9% success rate</span>
+                <span>full audit trail available</span>
+              </div>
             </div>
-            <div class="flow-connector">
-              <div class="connector-line"></div>
-              <mat-icon class="connector-icon">arrow_downward</mat-icon>
-            </div>
-            <div class="preview-card agent-card ai">
-              <div class="agent-status active"></div>
-              <mat-icon>psychology</mat-icon>
-              <span>AI Strategy</span>
-              <span class="card-tag premium">AI</span>
-            </div>
-            <div class="flow-connector">
-              <div class="connector-line"></div>
-              <mat-icon class="connector-icon">arrow_downward</mat-icon>
-            </div>
-            <div class="preview-card agent-card">
-              <div class="agent-status pending"></div>
-              <mat-icon>shield</mat-icon>
-              <span>Risk Manager</span>
-              <span class="card-tag free">FREE</span>
-            </div>
-            <div class="flow-connector">
-              <div class="connector-line"></div>
-              <mat-icon class="connector-icon">arrow_downward</mat-icon>
-            </div>
-            <div class="preview-card agent-card">
-              <div class="agent-status pending"></div>
-              <mat-icon>swap_horiz</mat-icon>
-              <span>Execute Trade</span>
-              <span class="card-tag free">FREE</span>
+
+            <div class="visual-panel tape-panel">
+              <div class="panel-heading">
+                <span>Operating modes</span>
+                <small>Paper and live</small>
+              </div>
+              <div class="tape-row">
+                <span class="tape-chip">Stocks</span>
+                <span class="tape-chip">Forex</span>
+                <span class="tape-chip">Scanners</span>
+                <span class="tape-chip">Pipelines</span>
+                <span class="tape-chip">Monitoring</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Floating Stats Bar -->
-    <div class="stats-bar">
-      <div class="stat">
-        <div class="stat-number">6</div>
-        <div class="stat-label">Pre-built Agents</div>
+    <div class="hero-strip">
+      <div class="hero-strip-card">
+        <span class="kpi-label">Setup time</span>
+        <strong>&lt; 5 min</strong>
+        <p>from first login to first pipeline</p>
       </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <div class="stat-number">3</div>
-        <div class="stat-label">Supported Brokers</div>
+      <div class="hero-strip-card">
+        <span class="kpi-label">Supported brokers</span>
+        <strong>3</strong>
+        <p>Tradier, Alpaca, OANDA</p>
       </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <div class="stat-number">24/7</div>
-        <div class="stat-label">Automated</div>
+      <div class="hero-strip-card">
+        <span class="kpi-label">Specialist agents</span>
+        <strong>6</strong>
+        <p>trigger, analysis, risk, execution</p>
       </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <div class="stat-number">$0</div>
-        <div class="stat-label">To Get Started</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PLATFORM HIGHLIGHTS                                        -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="highlights-section">
-    <div class="highlights-grid">
-      <div class="highlight-card" *ngFor="let h of highlights">
-        <div class="highlight-icon">
-          <mat-icon>{{ h.icon }}</mat-icon>
-        </div>
-        <div class="highlight-number">{{ h.number }}</div>
-        <div class="highlight-label">{{ h.label }}</div>
-        <p class="highlight-desc">{{ h.description }}</p>
+      <div class="hero-strip-card">
+        <span class="kpi-label">Built for</span>
+        <strong>Review</strong>
+        <p>signals, costs, execution, and controls</p>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- HOW IT WORKS                                               -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="how-it-works-section">
+  <section class="insight-section">
     <div class="section-header">
-      <span class="section-tag">Simple & Powerful</span>
-      <h2>How It Works</h2>
-      <p>From idea to automated trading in four easy steps</p>
+      <span class="section-tag">Operational Highlights</span>
+      <h2>Designed for control, not just automation</h2>
+      <p>Every screen is centered around traceability, cost visibility, and practical decision-making.</p>
     </div>
-    <div class="steps-grid">
-      <ng-container *ngFor="let step of howItWorksSteps; let last = last">
-        <div class="step-card">
-          <div class="step-number">{{ step.step }}</div>
-          <div class="step-icon">
-            <mat-icon>{{ step.icon }}</mat-icon>
+
+    <div class="highlights-grid">
+      <article class="highlight-card" *ngFor="let h of highlights">
+        <div class="highlight-top">
+          <div class="highlight-icon">
+            <mat-icon>{{ h.icon }}</mat-icon>
           </div>
-          <h3>{{ step.title }}</h3>
-          <p>{{ step.description }}</p>
+          <div class="highlight-number">{{ h.number }}</div>
         </div>
-        <div class="step-arrow" *ngIf="!last">
-          <mat-icon>east</mat-icon>
-        </div>
-      </ng-container>
+        <h3>{{ h.label }}</h3>
+        <p>{{ h.description }}</p>
+      </article>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- FEATURES                                                   -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="process-section">
+    <div class="section-header">
+      <span class="section-tag">Operating Model</span>
+      <h2>Four clear stages from idea to automation</h2>
+      <p>The workflow is intentionally structured so you can review what matters before capital is exposed.</p>
+    </div>
+
+    <div class="process-grid">
+      <article class="process-card" *ngFor="let step of howItWorksSteps">
+        <div class="process-step">0{{ step.step }}</div>
+        <div class="process-icon">
+          <mat-icon>{{ step.icon }}</mat-icon>
+        </div>
+        <h3>{{ step.title }}</h3>
+        <p>{{ step.description }}</p>
+      </article>
+    </div>
+  </section>
+
   <section class="features-section">
     <div class="section-header">
       <span class="section-tag">Platform Capabilities</span>
-      <h2>Everything You Need to Succeed</h2>
-      <p>Powerful features designed for both beginners and experienced traders</p>
+      <h2>One system for strategy design, execution, and oversight</h2>
+      <p>Use AI where it helps, preserve operator control where it matters, and keep the workflow readable.</p>
     </div>
-    <div class="features-grid">
-      <div class="feature-card" *ngFor="let feature of features">
-        <div class="feature-accent"></div>
+
+    <div class="feature-mosaic">
+      <article class="feature-card feature-card-large" *ngFor="let feature of features; let i = index" [class.feature-card-large]="i === 0" [class.feature-card-wide]="i === 3">
         <div class="feature-icon">
           <mat-icon>{{ feature.icon }}</mat-icon>
         </div>
         <h3>{{ feature.title }}</h3>
         <p>{{ feature.description }}</p>
-      </div>
+      </article>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- AGENT SHOWCASE                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="agents-section">
     <div class="section-header">
-      <span class="section-tag">Agent Marketplace</span>
-      <h2>Meet Your AI Trading Team</h2>
-      <p>Each agent is a specialist. Chain them together to build unstoppable strategies.</p>
+      <span class="section-tag">Agent Stack</span>
+      <h2>Specialists that compose into a repeatable workflow</h2>
+      <p>Each agent owns one part of the job, which keeps pipelines more interpretable than one opaque model call.</p>
     </div>
+
     <div class="agents-grid">
-      <div class="agent-card-v2" *ngFor="let agent of agents">
-        <div class="agent-card-header">
-          <div class="agent-icon-v2">
+      <article class="agent-card" *ngFor="let agent of agents">
+        <div class="agent-card-top">
+          <div class="agent-icon">
             <mat-icon>{{ agent.icon }}</mat-icon>
           </div>
-          <span class="agent-badge-v2" [class.free]="agent.free" [class.premium]="!agent.free">
-            {{ agent.free ? 'FREE' : 'PREMIUM' }}
+          <span class="agent-badge" [class.free]="agent.free" [class.premium]="!agent.free">
+            {{ agent.free ? 'Core' : 'AI' }}
           </span>
         </div>
-        <h4>{{ agent.name }}</h4>
-        <span class="agent-category">{{ agent.category }}</span>
+        <div class="agent-category">{{ agent.category }}</div>
+        <h3>{{ agent.name }}</h3>
         <p>{{ agent.description }}</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="broker-pricing-section">
+    <div class="broker-panel">
+      <div class="section-header section-header-left">
+        <span class="section-tag">Broker Integrations</span>
+        <h2>Connect execution where your strategy already lives</h2>
+        <p>Start in paper mode, validate the process, then switch to live with the same workflow.</p>
+      </div>
+
+      <div class="brokers-grid">
+        <article class="broker-card" *ngFor="let broker of brokers">
+          <div class="broker-icon">
+            <mat-icon>{{ broker.icon }}</mat-icon>
+          </div>
+          <h3>{{ broker.name }}</h3>
+          <p>{{ broker.description }}</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="pricing-panel">
+      <div class="section-header section-header-left">
+        <span class="section-tag">Pricing</span>
+        <h2>Start free and scale only when the workflow proves itself</h2>
+        <p>Plans are structured around access and operating depth rather than decorative feature gating.</p>
+      </div>
+
+      <div class="pricing-grid">
+        <article class="pricing-card" *ngFor="let tier of pricingTiers" [class.highlight]="tier.highlight">
+          <div class="pricing-eyebrow" *ngIf="tier.highlight">Recommended</div>
+          <h3>{{ tier.name }}</h3>
+          <div class="pricing-price">
+            <strong>{{ tier.price }}</strong>
+            <span *ngIf="tier.period">{{ tier.period }}</span>
+          </div>
+          <ul>
+            <li *ngFor="let f of tier.features">
+              <mat-icon>check</mat-icon>
+              <span>{{ f }}</span>
+            </li>
+          </ul>
+          <button mat-raised-button class="pricing-action" routerLink="/register">
+            {{ tier.cta }}
+          </button>
+        </article>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- SUPPORTED BROKERS                                          -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="brokers-section">
-    <div class="section-header">
-      <span class="section-tag">Broker Integrations</span>
-      <h2>Connect Your Broker in Seconds</h2>
-      <p>Trade stocks, forex, and options through your favourite brokerage</p>
-    </div>
-    <div class="brokers-grid">
-      <div class="broker-card" *ngFor="let broker of brokers">
-        <div class="broker-icon">
-          <mat-icon>{{ broker.icon }}</mat-icon>
-        </div>
-        <h3>{{ broker.name }}</h3>
-        <p>{{ broker.description }}</p>
+  <section class="cta-section">
+    <div class="cta-shell">
+      <div>
+        <span class="section-tag">Start Building</span>
+        <h2>Open the platform and build a first pipeline in minutes.</h2>
+        <p>Begin with paper trading, validate the logic, then promote the exact same workflow into production.</p>
       </div>
-    </div>
-    <p class="broker-note">
-      <mat-icon>info</mat-icon>
-      All brokers support paper trading so you can test strategies risk-free before going live.
-    </p>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PRICING                                                    -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="pricing-section">
-    <div class="section-header">
-      <span class="section-tag">Simple Pricing</span>
-      <h2>Start Free. Scale When Ready.</h2>
-      <p>No hidden fees. Cancel anytime.</p>
-    </div>
-    <div class="pricing-grid">
-      <div class="pricing-card" *ngFor="let tier of pricingTiers" [class.highlight]="tier.highlight">
-        <div class="pricing-popular" *ngIf="tier.highlight">Most Popular</div>
-        <h3>{{ tier.name }}</h3>
-        <div class="pricing-price">
-          <span class="price-amount">{{ tier.price }}</span>
-          <span class="price-period" *ngIf="tier.period">{{ tier.period }}</span>
-        </div>
-        <ul class="pricing-features">
-          <li *ngFor="let f of tier.features">
-            <mat-icon>check_circle</mat-icon>
-            {{ f }}
-          </li>
-        </ul>
-        <button mat-raised-button
-                class="pricing-cta"
-                [class.primary]="tier.highlight"
-                routerLink="/register">
-          {{ tier.cta }}
+      <div class="cta-actions">
+        <button mat-raised-button class="primary-action" routerLink="/register">
+          <mat-icon>north_east</mat-icon>
+          Create Account
+        </button>
+        <button mat-stroked-button class="secondary-action" routerLink="/login">
+          <mat-icon>login</mat-icon>
+          Sign In
         </button>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- FINAL CTA                                                  -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="cta-section">
-    <div class="cta-content">
-      <h2>Ready to Automate Your Trading?</h2>
-      <p>Join traders who are already building AI-powered strategies. Your first pipeline is minutes away.</p>
-      <button mat-raised-button color="primary" class="cta-button" routerLink="/register">
-        <mat-icon>arrow_forward</mat-icon>
-        Get Started Now — It's Free
-      </button>
-      <p class="cta-note">No credit card required · $10 free AI credits · Cancel anytime</p>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- FOOTER                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <footer class="footer">
-    <div class="footer-content">
+  <footer class="public-footer">
+    <div class="footer-shell">
       <div class="footer-brand">
-        <h3>
+        <div class="footer-brand-top">
           <img src="assets/logo.svg" alt="CloverCharts" class="footer-logo">
-          CloverCharts
-        </h3>
-        <p>Agent-based algorithmic trading platform</p>
-      </div>
-      <div class="footer-columns">
-        <div class="footer-col">
-          <h4>Product</h4>
-          <a routerLink="/how-it-works">How It Works</a>
-          <a routerLink="/register">Pipeline Builder</a>
-          <a routerLink="/register">Agent Marketplace</a>
+          <span>CloverCharts</span>
         </div>
-        <div class="footer-col">
+        <p>Agent-based trading infrastructure for scanners, pipeline orchestration, and broker execution.</p>
+      </div>
+
+      <div class="footer-links">
+        <div class="footer-column">
+          <h4>Platform</h4>
+          <a routerLink="/how-it-works">How It Works</a>
+          <a routerLink="/register">Create Account</a>
+          <a routerLink="/login">Sign In</a>
+        </div>
+        <div class="footer-column">
           <h4>Legal</h4>
-          <a routerLink="/terms">Terms of Service</a>
-          <a routerLink="/privacy">Privacy Policy</a>
+          <a routerLink="/terms">Terms</a>
+          <a routerLink="/privacy">Privacy</a>
           <a routerLink="/disclaimer">Disclaimer</a>
         </div>
-        <div class="footer-col">
-          <h4>Account</h4>
-          <a routerLink="/login">Sign In</a>
-          <a routerLink="/register">Create Account</a>
-        </div>
       </div>
     </div>
+
     <div class="footer-bottom">
-      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+      <span>&copy; 2026 Longia LLC. All rights reserved.</span>
+      <span>Operational workspace for CloverCharts</span>
     </div>
   </footer>
 </div>
