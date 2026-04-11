@@ -2,16 +2,96 @@
   <app-navbar></app-navbar>
 
 <div class="monitoring-container">
-  <div class="header">
-    <h1>
-      <mat-icon>monitoring</mat-icon>
-      Execution Monitoring
-    </h1>
-    <button mat-raised-button color="primary" (click)="refresh()">
-      <mat-icon>refresh</mat-icon>
-      Refresh
-    </button>
-  </div>
+  <section class="page-hero">
+    <div class="hero-copy">
+      <div class="eyebrow">
+        <mat-icon>monitoring</mat-icon>
+        Operational Oversight
+      </div>
+      <h1>Execution Monitoring</h1>
+      <p>
+        Track live workflows, approval queues, reconciliation exceptions, and historical execution quality from a
+        single monitoring surface.
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button (click)="clearFilters()">
+        <mat-icon>filter_alt_off</mat-icon>
+        Reset Filters
+      </button>
+      <button mat-raised-button color="primary" (click)="refresh()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+    </div>
+  </section>
+
+  <section class="overview-strip" *ngIf="stats">
+    <div class="overview-card">
+      <span class="overview-label">Total executions</span>
+      <span class="overview-value">{{ stats.total_executions }}</span>
+    </div>
+    <div class="overview-card">
+      <span class="overview-label">Active now</span>
+      <span class="overview-value">{{ activeExecutions.length }}</span>
+    </div>
+    <div class="overview-card">
+      <span class="overview-label">Awaiting approval</span>
+      <span class="overview-value">{{ awaitingApprovalCount }}</span>
+    </div>
+    <div class="overview-card">
+      <span class="overview-label">Needs reconciliation</span>
+      <span class="overview-value">{{ reconciliationCount }}</span>
+    </div>
+    <div class="overview-note">
+      <mat-icon>insights</mat-icon>
+      <span>{{ allExecutions.length }} loaded locally from {{ totalServerCount }} total executions on the server.</span>
+    </div>
+  </section>
+
+  <section class="metrics-grid" *ngIf="stats">
+    <mat-card class="metric-card">
+      <mat-card-content>
+        <div class="metric-label">Success Rate</div>
+        <div class="metric-value">{{ (stats.success_rate * 100).toFixed(1) }}%</div>
+        <div class="metric-subtext">Completed workflows that exited successfully</div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="metric-card">
+      <mat-card-content>
+        <div class="metric-label">Realized P&amp;L</div>
+        <div class="metric-value" [class.positive]="realizedPnLTotal >= 0" [class.negative]="realizedPnLTotal < 0">
+          {{ realizedPnLTotal >= 0 ? '+' : '' }}${{ realizedPnLTotal.toFixed(2) }}
+        </div>
+        <div class="metric-subtext">Across loaded executions with P&amp;L data</div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="metric-card">
+      <mat-card-content>
+        <div class="metric-label">Avg Cost / Execution</div>
+        <div class="metric-value">{{ formatCost(avgCostPerExecution) }}</div>
+        <div class="metric-subtext">Average spend across loaded records</div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="metric-card">
+      <mat-card-content>
+        <div class="metric-label">Avg Duration</div>
+        <div class="metric-value">{{ formatDuration(stats.avg_duration_seconds) }}</div>
+        <div class="metric-subtext">Mean runtime per execution</div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="metric-card">
+      <mat-card-content>
+        <div class="metric-label">Live Mode Exposure</div>
+        <div class="metric-value">{{ liveModeCount }}</div>
+        <div class="metric-subtext">Loaded executions running in live mode</div>
+      </mat-card-content>
+    </mat-card>
+  </section>
 
   <!-- Active Monitoring Section (Always Visible, No Paging) - Shown First -->
   <mat-card class="active-monitoring-card" *ngIf="activeExecutions.length > 0">
@@ -180,7 +260,10 @@
   <mat-card class="filters-card">
     <mat-card-content>
       <div class="filters-header">
-        <h3><mat-icon>filter_list</mat-icon> Filters</h3>
+        <div>
+          <h3><mat-icon>filter_list</mat-icon> Filters</h3>
+          <p class="filters-subtitle">Narrow the table by lifecycle state, workflow mode, symbol, or execution window.</p>
+        </div>
         <button mat-button color="accent" (click)="clearFilters()">
           <mat-icon>clear</mat-icon>
           Clear Filters
@@ -261,57 +344,6 @@
       </div>
     </mat-card-content>
   </mat-card>
-
-  <!-- Stats Cards -->
-  <div class="stats-grid" *ngIf="stats">
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon">
-          <mat-icon>analytics</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Total Executions</div>
-          <div class="stat-value">{{ stats.total_executions }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon running">
-          <mat-icon>play_circle</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Active</div>
-          <div class="stat-value">{{ activeExecutions.length }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon success">
-          <mat-icon>check_circle</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Success Rate</div>
-          <div class="stat-value">{{ (stats.success_rate * 100).toFixed(1) }}%</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-
-    <mat-card class="stat-card">
-      <mat-card-content>
-        <div class="stat-icon cost">
-          <mat-icon>attach_money</mat-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-label">Total Cost</div>
-          <div class="stat-value">{{ formatCost(stats.total_cost) }}</div>
-        </div>
-      </mat-card-content>
-    </mat-card>
-  </div>
 
   <!-- Historical Executions Table (Paginated) -->
   <mat-card class="table-card">

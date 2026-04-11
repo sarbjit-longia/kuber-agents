@@ -68,6 +68,18 @@ export class PipelinesComponent implements OnInit {
     this.loadPipelines();
   }
 
+  get activeCount(): number {
+    return this.pipelines.filter(p => p.is_active).length;
+  }
+
+  get inactiveCount(): number {
+    return this.pipelines.filter(p => !p.is_active).length;
+  }
+
+  get signalCount(): number {
+    return this.pipelines.filter(p => p.trigger_mode === 'signal').length;
+  }
+
   loadPipelines(): void {
     this.loading = true;
     this.pipelineService.loadPipelines().subscribe({
@@ -181,4 +193,3 @@ export class PipelinesComponent implements OnInit {
     });
   }
 }
-

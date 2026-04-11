@@ -4,7 +4,7 @@ Risk Manager Agent
 Instruction-driven risk management and position sizing using LLM.
 Queries broker for account state and calculates safe position sizes.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError

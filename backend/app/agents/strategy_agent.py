@@ -118,19 +118,27 @@ class StrategyAgent(BaseAgent):
         if not self.validate_input(state):
             raise InsufficientDataError("Strategy agent requires market data")
         
-        # CHECK BIAS: If bias is NEUTRAL, skip strategy generation
+        # ── Deterministic regime + setup evaluation (TP-006/TP-007/TP-011) ──
+        # Run before the LLM so the LLM receives the deterministic spec as context
+        # and is used only for explanation/ranking, not for mechanical decisions.
+        det_spec = self._run_deterministic_evaluation(state)
+        if det_spec is not None:
+            self.log(
+                state,
+                f"🎯 Deterministic setup found: {det_spec.strategy_family} "
+                f"→ {det_spec.action} (confidence={det_spec.confidence:.2f})"
+            )
+
+        # CHECK BIAS: If bias is NEUTRAL and no deterministic setup fired, skip strategy
         if state.biases:
-            # Get the primary bias
             preferred_tf = state.timeframes[0] if getattr(state, "timeframes", None) else None
             bias = state.biases.get(preferred_tf) if preferred_tf else None
             if not bias:
-                # Fall back to first available bias result
                 bias = next(iter(state.biases.values()), None)
-            
-            if bias and bias.bias == "NEUTRAL":
-                self.log(state, "⚠️  Bias is NEUTRAL - skipping strategy generation")
-                
-                # Return HOLD strategy
+
+            if bias and bias.bias == "NEUTRAL" and det_spec is None:
+                self.log(state, "⚠️  Bias is NEUTRAL and no deterministic setup — HOLD")
+
                 state.strategy = StrategyResult(
                     action="HOLD",
                     confidence=0.0,
@@ -138,24 +146,29 @@ class StrategyAgent(BaseAgent):
                     stop_loss=None,
                     take_profit=None,
                     position_size=None,
-                    reasoning=f"**Market Bias: NEUTRAL**\n\nNo strategy generated because the bias analysis determined the market is NEUTRAL with {bias.confidence:.0%} confidence.\n\n**Bias Reasoning:**\n{bias.reasoning}\n\n**Action:** HOLD and wait for a clear directional bias (BULLISH or BEARISH) before entering a position.",
-                    pattern_detected=""
+                    reasoning=(
+                        f"**Market Bias: NEUTRAL**\n\n"
+                        f"No strategy generated because the bias analysis determined the market is NEUTRAL "
+                        f"with {bias.confidence:.0%} confidence, and no deterministic setup qualified.\n\n"
+                        f"**Bias Reasoning:**\n{bias.reasoning}\n\n"
+                        f"**Action:** HOLD and wait for a clear directional bias or a setup signal."
+                    ),
+                    pattern_detected="",
                 )
-                
+
                 self.record_report(
                     state,
                     title="Strategy Decision",
-                    summary="HOLD - Market bias is NEUTRAL",
+                    summary="HOLD - Market bias is NEUTRAL, no setup found",
                     status="completed",
                     data={
                         "Decision": "HOLD",
-                        "Reason": "Bias is NEUTRAL",
+                        "Reason": "Bias NEUTRAL + no deterministic setup",
                         "Bias Confidence": f"{bias.confidence:.0%}",
-                        "Recommendation": "Wait for clear directional bias"
-                    }
+                    },
                 )
-                
-                self.log(state, "✓ Strategy: HOLD (bias is NEUTRAL)")
+
+                self.log(state, "✓ Strategy: HOLD (bias NEUTRAL, no setup)")
                 return state
         
         try:
@@ -388,7 +401,21 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             
             # Update state
             state.strategy = strategy_result
-            
+
+            # Attach deterministic spec if one was found (TP-011).
+            # When a deterministic spec exists and conflicts with the LLM:
+            #   - use deterministic price levels (reproducible, trusted)
+            #   - keep LLM reasoning for explanation value
+            if det_spec is not None:
+                state.strategy.strategy_spec = det_spec
+                if det_spec.action != "HOLD":
+                    # Override mechanical levels with deterministic values
+                    state.strategy.entry_price = det_spec.entry_price or state.strategy.entry_price
+                    state.strategy.stop_loss   = det_spec.stop_loss   or state.strategy.stop_loss
+                    state.strategy.take_profit = det_spec.take_profit or state.strategy.take_profit
+                    state.strategy.action      = det_spec.action
+                    self.log(state, f"🎯 Deterministic levels applied from {det_spec.strategy_family}")
+
             self.log(
                 state,
                 f"✓ Strategy: {strategy_result.action} @ ${strategy_result.entry_price:.2f} "
@@ -843,6 +870,48 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
             f"Reasoning: {bias.reasoning[:200]}..."
         )
     
+    def _run_deterministic_evaluation(self, state: PipelineState):
+        """
+        Run regime detection and setup evaluation before the LLM (TP-011).
+
+        Returns a StrategySpec if a deterministic setup fires, otherwise None.
+        The LLM still runs for explanation, but mechanical levels come from here.
+        """
+        try:
+            from app.agents.strategy_engine import RegimeDetector, SetupEvaluator
+            from app.schemas.pipeline_state import RegimeContext
+
+            if not state.market_data:
+                return None
+
+            candles_5m = list(state.market_data.timeframes.get("5m", []))
+            candles_1h = list(state.market_data.timeframes.get("1h", []))
+            candles_daily = list(state.market_data.timeframes.get("1d", []))
+            price = float(state.market_data.current_price or 0)
+
+            if not candles_5m and not candles_1h:
+                return None
+
+            detector = RegimeDetector()
+            regime = detector.detect(
+                candles_5m=candles_5m,
+                candles_1h=candles_1h or None,
+                current_price=price,
+            )
+
+            evaluator = SetupEvaluator()
+            spec = evaluator.evaluate(
+                regime=regime,
+                candles_5m=candles_5m,
+                candles_1h=candles_1h or None,
+                candles_daily=candles_daily or None,
+                current_price=price,
+            )
+            return spec
+        except Exception as e:
+            self.logger.warning(f"Deterministic evaluation failed (non-fatal): {e}")
+            return None
+
     def _parse_strategy_result(self, result: Any, state: PipelineState) -> StrategyResult:
         """Parse CrewAI result into StrategyResult."""
         import json

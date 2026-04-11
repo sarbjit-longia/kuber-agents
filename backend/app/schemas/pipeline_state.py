@@ -177,6 +177,10 @@ class TradeExecution(BaseModel):
     last_api_error: Optional[str] = None  # Last API error message
     last_successful_check: Optional[datetime] = None  # Last time we successfully checked broker
 
+    # Trailing-stop and break-even tracking (TP-020)
+    high_water_pnl: float = 0.0    # Highest unrealized P&L seen — used for trailing stop
+    break_even_armed: bool = False  # True once position has reached the break-even threshold
+
 
 class Position(BaseModel):
     """Current position information."""

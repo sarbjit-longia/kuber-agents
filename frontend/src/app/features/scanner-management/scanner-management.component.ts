@@ -5,6 +5,7 @@
  */
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,9 +18,8 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { FormsModule } from '@angular/forms';
-import { Scanner, ScannerCreate } from '../../core/models/scanner.model';
+import { Scanner } from '../../core/models/scanner.model';
 import { ScannerService } from '../../core/services/scanner.service';
-import { CreateScannerDialogComponent } from './create-scanner-dialog/create-scanner-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog/confirm-dialog.component';
 import { NavbarComponent } from '../../core/components/navbar/navbar.component';
 import { FooterComponent } from '../../shared/components/footer/footer.component';
@@ -44,7 +44,6 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
     MatInputModule,
     NavbarComponent,
     FooterComponent,
-    CreateScannerDialogComponent,
     LocalDatePipe
   ],
   templateUrl: './scanner-management.component.html',
@@ -59,6 +58,7 @@ export class ScannerManagementComponent implements OnInit {
 
   constructor(
     private scannerService: ScannerService,
+    private router: Router,
     private dialog: MatDialog,
     private snackBar: MatSnackBar
   ) {}
@@ -104,57 +104,11 @@ export class ScannerManagementComponent implements OnInit {
   }
 
   openCreateDialog(): void {
-    const dialogRef = this.dialog.open(CreateScannerDialogComponent, {
-      width: '720px',
-      data: {}
-    });
-
-    dialogRef.afterClosed().subscribe(result => {
-      if (result) {
-        this.createScanner(result);
-      }
-    });
+    this.router.navigate(['/scanners/new']);
   }
 
   openEditDialog(scanner: Scanner): void {
-    const dialogRef = this.dialog.open(CreateScannerDialogComponent, {
-      width: '720px',
-      data: { scanner }
-    });
-
-    dialogRef.afterClosed().subscribe(result => {
-      if (result) {
-        this.updateScanner(scanner.id, result);
-      }
-    });
-  }
-
-  createScanner(scannerData: ScannerCreate): void {
-    this.scannerService.createScanner(scannerData).subscribe({
-      next: () => {
-        this.snackBar.open('Scanner created successfully', 'Close', { duration: 3000 });
-        this.loadScanners();
-      },
-      error: (error) => {
-        console.error('Failed to create scanner:', error);
-        const message = error.error?.detail || 'Failed to create scanner';
-        this.snackBar.open(message, 'Close', { duration: 5000 });
-      }
-    });
-  }
-
-  updateScanner(scannerId: string, updates: any): void {
-    this.scannerService.updateScanner(scannerId, updates).subscribe({
-      next: () => {
-        this.snackBar.open('Scanner updated successfully', 'Close', { duration: 3000 });
-        this.loadScanners();
-      },
-      error: (error) => {
-        console.error('Failed to update scanner:', error);
-        const message = error.error?.detail || 'Failed to update scanner';
-        this.snackBar.open(message, 'Close', { duration: 5000 });
-      }
-    });
+    this.router.navigate(['/scanners', scanner.id, 'edit']);
   }
 
   deleteScanner(scanner: Scanner): void {

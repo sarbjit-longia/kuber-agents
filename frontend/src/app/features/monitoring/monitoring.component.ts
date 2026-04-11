@@ -186,6 +186,33 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     this.historicalDataSource.paginator = this.paginator;
   }
 
+  get awaitingApprovalCount(): number {
+    return this.allExecutions.filter(e => e.status.toUpperCase() === 'AWAITING_APPROVAL').length;
+  }
+
+  get reconciliationCount(): number {
+    return this.allExecutions.filter(e => e.status.toUpperCase() === 'NEEDS_RECONCILIATION').length;
+  }
+
+  get liveModeCount(): number {
+    return this.allExecutions.filter(e => e.mode.toLowerCase() === 'live').length;
+  }
+
+  get realizedPnLTotal(): number {
+    return this.allExecutions.reduce((sum, execution) => {
+      const pnl = this.getPnL(execution);
+      return pnl.value !== null && pnl.value !== undefined ? sum + pnl.value : sum;
+    }, 0);
+  }
+
+  get avgCostPerExecution(): number {
+    if (!this.allExecutions.length) {
+      return 0;
+    }
+    const totalCost = this.allExecutions.reduce((sum, execution) => sum + (execution.total_cost || 0), 0);
+    return totalCost / this.allExecutions.length;
+  }
+
   loadData(): void {
     this.monitoringService.loadExecutions(this.fetchSize, 0).subscribe({
       next: (resp: ExecutionListResponse) => {
@@ -828,4 +855,3 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
   }
 }
-

@@ -70,6 +70,16 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'scanners/new',
+    loadComponent: () => import('./features/scanner-management/scanner-editor/scanner-editor.component').then(m => m.ScannerEditorComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'scanners/:id/edit',
+    loadComponent: () => import('./features/scanner-management/scanner-editor/scanner-editor.component').then(m => m.ScannerEditorComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'scanners',
     loadComponent: () => import('./features/scanner-management/scanner-management.component').then(m => m.ScannerManagementComponent),
     canActivate: [authGuard]

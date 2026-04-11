@@ -626,7 +626,12 @@ class TradeManagerAgent(BaseAgent):
             pnl_percent = ((position["unrealized_pl"] / position["cost_basis"]) * 100) if position.get("cost_basis") else 0
             self.log(state, f"Position: {position['qty']} shares @ {pnl_percent:+.2f}% P&L")
             
-            # Evaluate emergency exit conditions
+            # ── Update trailing-stop high-water mark (TP-020) ─────────
+            unrealized_pl_for_trail = float(position.get("unrealized_pl", 0))
+            if state.trade_execution and unrealized_pl_for_trail > state.trade_execution.high_water_pnl:
+                state.trade_execution.high_water_pnl = unrealized_pl_for_trail
+
+            # Evaluate all exit conditions
             should_close, reason = self._evaluate_exit_conditions(state, position)
             
             if should_close:
@@ -1515,25 +1520,71 @@ class TradeManagerAgent(BaseAgent):
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        # TODO: Send webhook
-        # webhook_tool.send(payload)
-        
+        # ── Real HTTP delivery with retries (TP-019) ──────────────────
+        url = (
+            webhook_tool.get("url") or
+            webhook_tool.get("webhook_url") or
+            self.config.get("webhook_url", "")
+        )
+
+        delivery_status = "skipped"
+        delivery_error  = None
+        delivery_attempts = 0
+
+        if url:
+            from app.utils.webhook import WebhookDelivery
+            extra_headers: dict = {}
+            secret = webhook_tool.get("secret") or webhook_tool.get("auth_token")
+            if secret:
+                extra_headers["Authorization"] = f"Bearer {secret}"
+
+            delivery = WebhookDelivery(timeout_s=10.0, max_retries=3)
+            receipt  = delivery.send(url, payload, headers=extra_headers or None)
+
+            delivery_status   = receipt.status
+            delivery_error    = receipt.error
+            delivery_attempts = receipt.attempts
+
+            if receipt.status == "delivered":
+                self.log(state, f"✓ Webhook delivered to {url} (attempt {receipt.attempts})")
+            else:
+                self.log(
+                    state,
+                    f"⚠️ Webhook delivery failed after {receipt.attempts} attempts: {receipt.error}",
+                    level="warning",
+                )
+                self.add_warning(state, f"Webhook delivery failed: {receipt.error}")
+        else:
+            self.log(state, "⚠️ No webhook URL configured — skipping delivery", level="warning")
+
         state.trade_execution = TradeExecution(
             order_id=f"WEBHOOK-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}",
-            status="sent",
+            status=delivery_status,
             filled_price=None,
             filled_quantity=None,
             commission=None,
             execution_time=datetime.utcnow(),
-            broker_response={"webhook": "sent", "payload": payload}
+            broker_response={
+                "webhook": delivery_status,
+                "url": url,
+                "attempts": delivery_attempts,
+                "error": delivery_error,
+                "payload": payload,
+            }
         )
-        
-        self.log(state, "✓ Webhook sent successfully")
+
+        summary = (
+            f"{strategy.action} {state.symbol} via webhook ({delivery_status})"
+            if url else
+            f"{strategy.action} {state.symbol} — no webhook URL configured"
+        )
+        self.log(state, f"✓ Webhook {delivery_status}")
         self.record_report(
             state,
-            title="Webhook sent",
-            summary=f"{strategy.action} {state.symbol} via webhook",
-            data=payload,
+            title="Webhook delivery",
+            summary=summary,
+            status="completed" if delivery_status == "delivered" else "warning",
+            data={**payload, "delivery_status": delivery_status, "attempts": delivery_attempts},
         )
         
         # Webhook completes immediately (no monitoring)
@@ -1572,18 +1623,68 @@ class TradeManagerAgent(BaseAgent):
                     )
                     return state
             
+            # ── Session-aware execution gate (TP-021) ─────────────────
+            session_rejection = self._check_session_execution_policy(state)
+            if session_rejection:
+                self.log(state, f"⏸️ Execution blocked by session policy: {session_rejection}")
+                state.trade_execution = TradeExecution(
+                    order_id=None,
+                    status="skipped",
+                    filled_price=None,
+                    filled_quantity=None,
+                    commission=None,
+                    execution_time=datetime.utcnow(),
+                    broker_response={"reason": session_rejection},
+                )
+                self.record_report(
+                    state,
+                    title="Trade skipped — session policy",
+                    summary=session_rejection,
+                    status="skipped",
+                    data={"reason": session_rejection},
+                )
+                return state
+
             # Get strategy details
             entry = strategy.entry_price
             take_profit = strategy.take_profit
             stop_loss = strategy.stop_loss
             broker_side = OrderSide.BUY if strategy.action == "BUY" else OrderSide.SELL
-            
+
             # Get time in force from config
             time_in_force_str = self.config.get("time_in_force", "Good Till Cancelled")
             time_in_force = self._convert_time_in_force(time_in_force_str)
-            
+
             # 🎯 AUTO-DETECT ORDER TYPE: If strategy provides TP/SL, use bracket order
             has_targets = take_profit is not None and stop_loss is not None
+
+            # ── Pre-trade execution filters (TP-022) ──────────────────
+            quote_data = {}
+            if state.market_data:
+                quote_data = {
+                    "bid": state.market_data.bid,
+                    "ask": state.market_data.ask,
+                }
+            filter_result = self._run_pre_trade_filter(state, float(entry or 0), quote_data)
+            if not filter_result.passed:
+                self.log(state, f"🚫 Pre-trade filter rejected: {filter_result.rejection_reason}")
+                state.trade_execution = TradeExecution(
+                    order_id=None,
+                    status="skipped",
+                    filled_price=None,
+                    filled_quantity=None,
+                    commission=None,
+                    execution_time=datetime.utcnow(),
+                    broker_response={"reason": filter_result.rejection_reason, "checks": filter_result.checks},
+                )
+                self.record_report(
+                    state,
+                    title="Trade skipped — pre-trade filter",
+                    summary=filter_result.rejection_reason or "Pre-trade filter rejected",
+                    status="skipped",
+                    data={"checks": filter_result.checks},
+                )
+                return state
             
             # Determine price precision for logging
             is_forex = "_" in state.symbol
@@ -1651,7 +1752,7 @@ class TradeManagerAgent(BaseAgent):
                 status=order.status.value,
                 filled_price=order.filled_price or entry,
                 filled_quantity=order.filled_qty or risk.position_size,
-                commission=0.0,  # TODO: Get from broker if available
+                commission=self._extract_commission(order.broker_data or {}),
                 execution_time=order.submitted_at or datetime.utcnow(),
                 broker_response={
                     "broker": broker.__class__.__name__,
@@ -1787,43 +1888,302 @@ class TradeManagerAgent(BaseAgent):
     
     def _evaluate_exit_conditions(self, state, position) -> tuple[bool, str]:
         """
-        Evaluate emergency exit conditions from instructions.
-        
+        Evaluate all exit conditions during position monitoring (TP-020/TP-024).
+
+        Checks (in priority order):
+          1. Manual EMERGENCY_EXIT signal
+          2. Break-even soft stop (TP-020)
+          3. Trailing stop (TP-020)
+          4. Session / EOD time stop (TP-020)
+          5. VIX spike (TP-024)
+          6. SPY market crash (TP-024)
+
         Returns:
-            (should_close, reason)
+            (should_close, reason)  — reason is "" when should_close is False
         """
         instructions = self.config.get("instructions", "").lower()
-        
-        # Check for manual emergency signal
+        current_price = float(position.get("current_price") or 0)
+        unrealized_pl = float(position.get("unrealized_pl", 0))
+        entry_price   = float(
+            (state.strategy.entry_price if state.strategy else None) or
+            position.get("avg_entry_price", 0) or
+            current_price
+        )
+        action = (state.strategy.action if state.strategy else None) or position.get("side", "")
+
+        # ── 1. Manual emergency signal ────────────────────────────────
         if state.signal_data and state.signal_data.signal_type == "EMERGENCY_EXIT":
             return True, "Manual emergency signal received"
-        
-        # Parse VIX threshold from instructions
+
+        # ── 2. Break-even soft stop (TP-020) ─────────────────────────
+        # Arm break-even once the position reaches the configured R multiple.
+        # After that, if unrealized P&L drops to zero (or below), close the position
+        # to protect the trade from a winner turning into a loser.
+        be_r = self._parse_float_instruction(instructions, r'break.?even\s+(?:at\s+)?(\d+(?:\.\d+)?)r', default=None)
+        if be_r is not None and entry_price > 0 and state.trade_execution:
+            stop_price = (state.strategy.stop_loss if state.strategy else 0) or 0
+            initial_risk = abs(entry_price - stop_price) * float(
+                (state.trade_execution.filled_quantity or 0)
+            )
+            if initial_risk > 0:
+                r_achieved = unrealized_pl / initial_risk
+                # Arm once we reach the threshold
+                if r_achieved >= be_r and not state.trade_execution.break_even_armed:
+                    state.trade_execution.break_even_armed = True
+                    self.log(state, f"🎯 Break-even armed at {r_achieved:.2f}R (threshold {be_r}R)")
+                # Once armed, close if P&L drops to break-even or below
+                if state.trade_execution.break_even_armed and unrealized_pl <= 0:
+                    return True, f"Break-even stop triggered — position at or below entry after reaching {be_r}R"
+
+        # ── 3. Trailing stop (TP-020) ────────────────────────────────
+        # Parse: "trail 1.5%" or "trailing stop 2%"
+        trail_pct = self._parse_float_instruction(instructions, r'trail(?:ing)?\s+(?:stop\s+)?(\d+(?:\.\d+)?)\s*%', default=None)
+        if trail_pct is not None and state.trade_execution and current_price > 0:
+            # Update high-water mark
+            if unrealized_pl > state.trade_execution.high_water_pnl:
+                state.trade_execution.high_water_pnl = unrealized_pl
+
+            # Trail in dollar terms: drop from high-water mark > trail_pct of entry
+            trail_drop_threshold = entry_price * (trail_pct / 100) * float(
+                (state.trade_execution.filled_quantity or 1)
+            )
+            drawdown_from_peak = state.trade_execution.high_water_pnl - unrealized_pl
+            if (
+                state.trade_execution.high_water_pnl > 0
+                and drawdown_from_peak >= trail_drop_threshold
+            ):
+                return (
+                    True,
+                    f"Trailing stop triggered: pullback of ${drawdown_from_peak:.2f} "
+                    f"exceeds {trail_pct:.1f}% trail from peak P&L ${state.trade_execution.high_water_pnl:.2f}",
+                )
+
+        # ── 4. Session / EOD time stop (TP-020) ──────────────────────
+        # Parse: "close by 3:55pm ET" or "exit before 15:55"
+        eod_close = self._check_session_time_stop(instructions)
+        if eod_close:
+            return True, eod_close
+
+        # ── 5. VIX spike (TP-024) ────────────────────────────────────
         vix_match = re.search(r'vix\s*[>]\s*(\d+)', instructions)
         if vix_match:
             vix_threshold = float(vix_match.group(1))
-            # TODO: Get actual VIX value
-            # current_vix = get_vix()
-            # if current_vix > vix_threshold:
-            #     return True, f"VIX spike: {current_vix} > {vix_threshold}"
-        
-        # Check for news-based exit
-        if "news" in instructions or "high impact" in instructions:
-            # TODO: Check for high impact news
-            # if check_high_impact_news(state.symbol):
-            #     return True, "High impact news detected"
-            pass
-        
-        # Check for market crash condition
+            snap = self._fetch_market_snapshot()
+            triggered, reason = self._check_vix(snap, vix_threshold)
+            if triggered:
+                return True, reason
+
+        # ── 6. SPY market crash (TP-024) ─────────────────────────────
         if "market crash" in instructions or "spy" in instructions:
-            # TODO: Check SPY performance
-            # spy_change = get_spy_daily_change()
-            # if spy_change < -3.0:
-            #     return True, f"Market crash: SPY {spy_change:.1f}%"
-            pass
-        
+            crash_pct = self._parse_float_instruction(
+                instructions, r'spy\s*[<]\s*(-?\d+(?:\.\d+)?)\s*%', default=-3.0
+            )
+            snap = self._fetch_market_snapshot()
+            triggered, reason = self._check_spy_crash(snap, crash_pct)
+            if triggered:
+                return True, reason
+
         return False, ""
+
+    # ------------------------------------------------------------------
+    # Exit condition helpers (TP-020 / TP-024)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_float_instruction(text: str, pattern: str, default) -> Optional[float]:
+        """Extract a float from instructions text using a regex pattern."""
+        m = re.search(pattern, text)
+        if m:
+            try:
+                return float(m.group(1))
+            except (ValueError, IndexError):
+                pass
+        return default
+
+    @staticmethod
+    def _check_session_time_stop(instructions: str) -> Optional[str]:
+        """
+        Return a close reason if the current ET time is past the configured exit time.
+
+        Parses patterns like "close by 3:55pm", "exit before 15:55", "eod exit 3:50pm".
+        """
+        import re
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        et = ZoneInfo("America/New_York")
+        now_et = datetime.now(tz=et)
+
+        # Match "close/exit by/before HH:MMam/pm" or "HH:MM" 24h
+        patterns = [
+            r'(?:close|exit|eod)\s+(?:by|before|at)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?',
+            r'(?:close|exit)\s+(?:eod|end.of.day)',
+        ]
+
+        for pat in patterns:
+            m = re.search(pat, instructions)
+            if m:
+                if m.lastindex and m.lastindex >= 2:
+                    hour, minute = int(m.group(1)), int(m.group(2))
+                    ampm = m.group(3) if m.lastindex >= 3 else None
+                    if ampm == "pm" and hour < 12:
+                        hour += 12
+                    elif ampm == "am" and hour == 12:
+                        hour = 0
+                    from datetime import time as dt_time
+                    exit_time = dt_time(hour, minute)
+                    if now_et.time() >= exit_time:
+                        return (
+                            f"Session time stop: past configured exit time "
+                            f"{hour:02d}:{minute:02d} ET (now {now_et.strftime('%H:%M')} ET)"
+                        )
+                else:
+                    # Generic "eod" match — 3:55 PM ET default
+                    from datetime import time as dt_time
+                    if now_et.time() >= dt_time(15, 55):
+                        return "EOD time stop: after 3:55 PM ET"
+
+        return None
+
+    def _fetch_market_snapshot(self):
+        """Synchronously fetch VIX/SPY snapshot (TP-024)."""
+        try:
+            import asyncio
+            from app.utils.market_context import get_market_snapshot
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        return ex.submit(asyncio.run, get_market_snapshot()).result()
+                return loop.run_until_complete(get_market_snapshot())
+            except RuntimeError:
+                return asyncio.run(get_market_snapshot())
+        except Exception:
+            from app.utils.market_context import MarketSnapshot
+            return MarketSnapshot()
+
+    @staticmethod
+    def _check_vix(snap, threshold: float) -> tuple[bool, str]:
+        from app.utils.market_context import check_vix_spike
+        return check_vix_spike(snap, threshold)
+
+    @staticmethod
+    def _check_spy_crash(snap, threshold_pct: float) -> tuple[bool, str]:
+        from app.utils.market_context import check_spy_crash
+        return check_spy_crash(snap, threshold_pct)
     
+    # ------------------------------------------------------------------
+    # Session-aware execution (TP-021)
+    # ------------------------------------------------------------------
+
+    def _check_session_execution_policy(self, state) -> Optional[str]:
+        """
+        Block new entries during unfavourable sessions based on config.
+
+        Returns a rejection string if execution should be skipped, else None.
+
+        Config keys checked:
+            no_entry_sessions : list[str] — sessions to block (default ["lunch", "after_hours"])
+            no_entry_after    : "HH:MM" 24h ET — no new entries after this time
+
+        Sessions match RegimeContext labels: pre_market | regular | lunch | power_hour | after_hours
+        """
+        from datetime import datetime, time as dt_time
+        from zoneinfo import ZoneInfo
+
+        et = ZoneInfo("America/New_York")
+        now_et = datetime.now(tz=et)
+
+        # ── No-entry-after time ───────────────────────────────────────
+        no_entry_after = self.config.get("no_entry_after", "")
+        if no_entry_after:
+            try:
+                h, m = map(int, no_entry_after.split(":"))
+                if now_et.time() >= dt_time(h, m):
+                    return f"Session policy: no new entries after {no_entry_after} ET (now {now_et.strftime('%H:%M')} ET)"
+            except (ValueError, AttributeError):
+                pass  # Invalid config — don't block
+
+        # ── Blocked sessions ─────────────────────────────────────────
+        blocked = self.config.get("no_entry_sessions", ["lunch", "after_hours", "pre_market"])
+        if isinstance(blocked, str):
+            blocked = [s.strip() for s in blocked.split(",")]
+
+        current_session = self._current_et_session(now_et)
+
+        if current_session and current_session in blocked:
+            return (
+                f"Session policy: no new entries during '{current_session}' session "
+                f"(blocked sessions: {', '.join(blocked)})"
+            )
+
+        return None
+
+    @staticmethod
+    def _current_et_session(now_et) -> str:
+        """Map current ET time to a session label matching RegimeContext.session."""
+        from datetime import time as dt_time
+        t = now_et.time()
+        if dt_time(4, 0) <= t < dt_time(9, 30):
+            return "pre_market"
+        if dt_time(9, 30) <= t < dt_time(12, 0):
+            return "regular"
+        if dt_time(12, 0) <= t < dt_time(14, 0):
+            return "lunch"
+        if dt_time(14, 0) <= t < dt_time(16, 0):
+            return "power_hour"
+        if dt_time(16, 0) <= t < dt_time(20, 0):
+            return "after_hours"
+        return "after_hours"
+
+    # ------------------------------------------------------------------
+    # Pre-trade filter (TP-022)
+    # ------------------------------------------------------------------
+
+    def _run_pre_trade_filter(self, state, entry_price: float, quote_data: dict):
+        """Run pre-trade spread/volume/volatility filters before placing order."""
+        from app.utils.pre_trade_filter import PreTradeFilter, parse_filter_config_from_instructions
+        instructions = self.config.get("instructions", "")
+        filter_config = {**self.config, **parse_filter_config_from_instructions(instructions)}
+        f = PreTradeFilter(filter_config)
+        return f.check(
+            symbol=state.symbol,
+            entry_price=entry_price,
+            market_data=quote_data or {},
+        )
+
+    # ------------------------------------------------------------------
+    # Commission extraction (TP-023)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_commission(broker_data: dict) -> float:
+        """
+        Extract commission from the broker's order fill data.
+
+        Tries multiple field names used by different brokers:
+          - Alpaca: broker_data["commission"]
+          - OANDA:  broker_data["orderFillTransaction"]["commission"]
+          - Tradier: broker_data["order"]["commission"]
+        Returns 0.0 if not available.
+        """
+        try:
+            # Direct field
+            if "commission" in broker_data:
+                return float(broker_data["commission"] or 0)
+            # OANDA fill transaction
+            fill = broker_data.get("orderFillTransaction", {})
+            if fill and "commission" in fill:
+                return abs(float(fill["commission"] or 0))
+            # Tradier / generic nested
+            order = broker_data.get("order", {})
+            if order and "commission" in order:
+                return float(order["commission"] or 0)
+        except (TypeError, ValueError):
+            pass
+        return 0.0
+
     def _get_tool_by_type(self, tool_type: str):
         """Get attached tool by type."""
         tools = self.config.get("tools", [])
