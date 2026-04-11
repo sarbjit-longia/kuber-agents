@@ -1,27 +1,47 @@
 <footer class="app-footer">
-  <div class="footer-content">
-    <div class="footer-brand">
-      <h3>
-        <img src="assets/logo.svg" alt="CloverCharts" class="footer-logo">
-        CloverCharts
-      </h3>
-      <p>Agent-based algorithmic trading platform</p>
+  <div class="footer-shell">
+    <div class="footer-main">
+      <div class="footer-brand">
+        <div class="brand-mark">
+          <img src="assets/logo.svg" alt="CloverCharts" class="footer-logo">
+        </div>
+        <div class="brand-copy">
+          <h3>CloverCharts</h3>
+          <p>Agent-based trading infrastructure for signal monitoring, pipeline orchestration, and execution oversight.</p>
+        </div>
+      </div>
+
+      <div class="footer-nav">
+        <div class="footer-column">
+          <span class="column-label">Platform</span>
+          <div class="footer-links">
+            <a routerLink="/dashboard">Dashboard</a>
+            <a routerLink="/monitoring">Monitoring</a>
+            <a routerLink="/pipelines">Pipelines</a>
+            <a routerLink="/scanners">Scanners</a>
+          </div>
+        </div>
+
+        <div class="footer-column">
+          <span class="column-label">Company</span>
+          <div class="footer-links">
+            <a routerLink="/terms">Terms</a>
+            <a routerLink="/privacy">Privacy</a>
+            <a routerLink="/disclaimer">Disclaimer</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-aside">
+        <span class="column-label">Overview</span>
+        <p>Designed for disciplined review of scanners, pipelines, and execution workflows in a single workspace.</p>
+      </div>
     </div>
-    <div class="footer-links">
-      <a routerLink="/dashboard">Dashboard</a>
-      <span class="link-separator">&middot;</span>
-      <a routerLink="/monitoring">Monitoring</a>
-      <span class="link-separator">&middot;</span>
-      <a routerLink="/pipelines">Pipelines</a>
-      <span class="link-separator">&middot;</span>
-      <a routerLink="/terms">Terms</a>
-      <span class="link-separator">&middot;</span>
-      <a routerLink="/privacy">Privacy</a>
-      <span class="link-separator">&middot;</span>
-      <a routerLink="/disclaimer">Disclaimer</a>
+
+    <div class="footer-bottom">
+      <p>&copy; 2026 Longia LLC. All rights reserved.</p>
+      <span class="footer-bottom-divider"></span>
+      <p>Operational workspace for CloverCharts</p>
     </div>
-  </div>
-  <div class="footer-bottom">
-    <p>&copy; 2026 Longia LLC. All rights reserved.</p>
   </div>
 </footer>

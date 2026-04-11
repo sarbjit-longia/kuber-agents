@@ -172,7 +172,31 @@ class RiskManagerAgent(BaseAgent):
             
             # Get broker account info
             broker_info = self._get_broker_account_info(state)
-            
+
+            # ── Deterministic sizing (always runs first, TP-008) ──────────────
+            risk_pct = self._extract_risk_pct(instructions)
+            det      = self._deterministic_size(strategy, broker_info, risk_pct)
+            self.log(
+                state,
+                f"📐 Deterministic size: {int(det['position_size'])} shares "
+                f"({risk_pct*100:.1f}% risk, R/R={det['rr_ratio']:.2f})"
+            )
+
+            # ── Portfolio-level gate (TP-009) ─────────────────────────────────
+            portfolio_rejection = self._portfolio_risk_check(state, broker_info, det["position_size"])
+            if portfolio_rejection:
+                state.risk_assessment = RiskAssessment(
+                    approved=False,
+                    risk_score=1.0,
+                    position_size=0.0,
+                    max_loss_amount=0.0,
+                    risk_reward_ratio=det["rr_ratio"],
+                    warnings=[portfolio_rejection],
+                    reasoning=f"Portfolio risk limit: {portfolio_rejection}",
+                )
+                self.log(state, f"✗ Portfolio gate rejected trade: {portfolio_rejection}")
+                return state
+
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
             
@@ -262,25 +286,22 @@ REASONING: <brief explanation of your calculation including the formula used>
             
             result = crew.kickoff()
             
-            # Parse LLM response
+            # Parse LLM response — use LLM for approval decision + narrative only
             risk_decision = self._parse_risk_decision(str(result), strategy)
-            
-            # Safety net: if trade approved but position_size is 0, calculate a fallback.
-            # This happens when user gives loose instructions like "just approve everything".
-            if risk_decision["approved"] and risk_decision["position_size"] <= 0:
-                fallback_size = self._calculate_fallback_position_size(
-                    state, strategy, broker_info
-                )
-                self.log(
-                    state,
-                    f"⚠️ LLM returned position size 0 despite approving. "
-                    f"Using fallback position size: {fallback_size}"
-                )
-                risk_decision["position_size"] = fallback_size
-                risk_decision["warnings"].append(
-                    "Position size was auto-calculated (2% risk default) "
-                    "because instructions did not specify sizing rules."
-                )
+
+            # ── Always use deterministic size (TP-008) ────────────────────────
+            # LLM approval flag is respected; LLM size is DISCARDED in favour of
+            # the deterministic calculation which is reproducible and safe.
+            if risk_decision["approved"]:
+                llm_size = risk_decision["position_size"]
+                risk_decision["position_size"] = det["position_size"]
+                risk_decision["max_loss"]       = det["max_loss"]
+                risk_decision["rr_ratio"]       = det["rr_ratio"]
+                if llm_size != det["position_size"]:
+                    risk_decision["warnings"].append(
+                        f"Position size set deterministically to {int(det['position_size'])} shares "
+                        f"({risk_pct*100:.1f}% risk rule). LLM suggested {int(llm_size)}."
+                    )
             
             # HARD SAFETY CAP: position value must not exceed buying power
             # This prevents LLM hallucinations from causing absurd orders
@@ -550,46 +571,147 @@ MARKET CONDITIONS:
         
         return context
     
+    # ------------------------------------------------------------------
+    # Deterministic risk engine (TP-008)
+    # ------------------------------------------------------------------
+
+    def _extract_risk_pct(self, instructions: str) -> float:
+        """
+        Extract the user's risk percentage from natural language instructions.
+        Looks for patterns like "1% risk", "risk 2%", "0.5 percent".
+        Defaults to 2% if not found.
+        """
+        import re
+        patterns = [
+            r"(\d+(?:\.\d+)?)\s*%\s*(?:risk|of\s+(?:account|equity|balance|capital))",
+            r"risk\s+(?:of\s+)?(\d+(?:\.\d+)?)\s*%",
+            r"(\d+(?:\.\d+)?)\s+percent\s+(?:risk|of\s+(?:account|equity))",
+        ]
+        for pat in patterns:
+            m = re.search(pat, instructions, re.IGNORECASE)
+            if m:
+                pct = float(m.group(1)) / 100
+                return max(0.001, min(0.10, pct))  # Clamp between 0.1% and 10%
+        return 0.02  # 2% default
+
+    def _deterministic_size(
+        self,
+        strategy,
+        broker_info: Dict[str, Any],
+        risk_pct: float = 0.02,
+    ) -> Dict[str, Any]:
+        """
+        Calculate position size, R/R ratio, and max loss purely from math.
+
+        This is the PRIMARY sizing path (TP-008). The result always overrides
+        any LLM-generated position size.
+
+        Returns a dict with keys: position_size, max_loss, rr_ratio, risk_pct_used.
+        """
+        equity       = float(broker_info.get("equity", broker_info.get("account_balance", 10000)))
+        buying_power = float(broker_info.get("buying_power", equity))
+        entry        = float(strategy.entry_price or 0)
+        stop         = strategy.stop_loss
+        target       = strategy.take_profit
+
+        if entry <= 0:
+            return {"position_size": 1.0, "max_loss": 0.0, "rr_ratio": 0.0, "risk_pct_used": risk_pct}
+
+        max_affordable = max(1, int(buying_power / entry))
+
+        # Primary: risk-based sizing
+        if stop is not None and stop != 0:
+            risk_per_unit = abs(entry - float(stop))
+            if risk_per_unit > 0:
+                risk_amount = equity * risk_pct
+                raw_size    = risk_amount / risk_per_unit
+                size        = max(1, min(int(raw_size), max_affordable))
+                max_loss    = size * risk_per_unit
+
+                # R/R ratio
+                rr = 0.0
+                if target is not None and target != 0:
+                    reward = abs(float(target) - entry)
+                    rr     = reward / risk_per_unit if risk_per_unit > 0 else 0.0
+
+                return {"position_size": float(size), "max_loss": max_loss, "rr_ratio": rr, "risk_pct_used": risk_pct}
+
+        # Fallback: dollar allocation (1% of equity)
+        size     = max(1, min(int((equity * 0.01) / entry), max_affordable))
+        max_loss = size * entry * 0.02  # Estimate 2% price risk
+        return {"position_size": float(size), "max_loss": max_loss, "rr_ratio": 0.0, "risk_pct_used": risk_pct}
+
+    # ------------------------------------------------------------------
+    # Portfolio-level risk controls (TP-009)
+    # ------------------------------------------------------------------
+
+    def _portfolio_risk_check(
+        self,
+        state: PipelineState,
+        broker_info: Dict[str, Any],
+        det_size: float,
+    ) -> Optional[str]:
+        """
+        Check portfolio-level constraints before approving a new trade.
+
+        Returns a rejection reason string if any constraint is violated,
+        or None if all checks pass.
+        """
+        import re
+
+        positions = broker_info.get("positions", [])
+        equity    = float(broker_info.get("equity", broker_info.get("account_balance", 10000)))
+        strategy  = state.strategy
+        entry     = float(strategy.entry_price or 0)
+        action    = strategy.action
+
+        # 1. Max concurrent positions
+        max_pos = int(self.config.get("max_concurrent_positions", 5))
+        if len(positions) >= max_pos:
+            return (
+                f"Max concurrent positions reached ({len(positions)}/{max_pos}). "
+                "Close an existing position before opening a new one."
+            )
+
+        # 2. Total exposure cap
+        max_exposure_pct = float(self.config.get("max_total_exposure_pct", 0.90))
+        current_exposure = sum(
+            abs(float(p.get("market_value", 0) or p.get("qty", 0) * float(p.get("avg_entry_price", 0) or 0)))
+            for p in positions
+        )
+        new_trade_value = det_size * entry if entry > 0 else 0
+        if equity > 0 and (current_exposure + new_trade_value) / equity > max_exposure_pct:
+            return (
+                f"Adding this position would bring total exposure to "
+                f"{(current_exposure + new_trade_value) / equity * 100:.0f}% of equity "
+                f"(limit: {max_exposure_pct * 100:.0f}%)."
+            )
+
+        # 3. Side imbalance — don't allow > 80% of open positions on one side
+        if positions:
+            longs  = sum(1 for p in positions if float(p.get("qty", 0) or p.get("side", "").lower() == "long") > 0)
+            shorts = len(positions) - longs
+            new_long  = longs  + (1 if action == "BUY"  else 0)
+            new_short = shorts + (1 if action == "SELL" else 0)
+            total = new_long + new_short
+            if total > 0:
+                long_pct  = new_long  / total
+                short_pct = new_short / total
+                if long_pct > 0.80 or short_pct > 0.80:
+                    dominant = "long" if long_pct > 0.80 else "short"
+                    return (
+                        f"Portfolio is >80% {dominant}-biased after this trade. "
+                        "Add some balance before adding more exposure."
+                    )
+
+        return None  # All checks passed
+
     def _calculate_fallback_position_size(
         self, state: PipelineState, strategy, broker_info: Dict[str, Any]
     ) -> float:
-        """
-        Calculate a sensible fallback position size when the LLM fails to provide one.
-        
-        Uses 2% risk of account equity ÷ distance-to-stop-loss. If stop loss is missing,
-        falls back to 1% of equity ÷ entry price (i.e. dollar-based sizing).
-        
-        Always caps the result so that total position value does not exceed buying power.
-        
-        Returns:
-            Position size as a positive integer (min 1).
-        """
-        equity = broker_info.get("equity", broker_info.get("account_balance", 10000))
-        buying_power = broker_info.get("buying_power", equity)
-        entry = strategy.entry_price or 0
-        stop = strategy.stop_loss
-        risk_pct = 0.02  # 2% default risk
-
-        # Calculate max affordable shares based on buying power
-        max_affordable = int(buying_power / entry) if entry > 0 else float('inf')
-
-        if entry > 0 and stop is not None and stop != 0:
-            # Standard risk-based sizing
-            risk_per_unit = abs(entry - stop)
-            if risk_per_unit > 0:
-                risk_amount = equity * risk_pct
-                size = risk_amount / risk_per_unit
-                # Cap by buying power
-                return max(1, min(int(size), max_affordable))
-
-        # Fallback: allocate 1% of equity by dollar value
-        if entry > 0:
-            size = (equity * 0.01) / entry
-            # Cap by buying power
-            return max(1, min(int(size), max_affordable))
-
-        # Last resort
-        return 1
+        """Kept for backwards compatibility — delegates to _deterministic_size."""
+        result = self._deterministic_size(strategy, broker_info, risk_pct=0.02)
+        return result["position_size"]
     
     def _parse_risk_decision(self, llm_response: str, strategy) -> Dict[str, Any]:
         """Parse LLM response into structured risk decision."""

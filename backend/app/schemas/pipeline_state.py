@@ -62,6 +62,43 @@ class BiasResult(BaseModel):
     key_factors: List[str] = Field(default_factory=list)
 
 
+class RegimeContext(BaseModel):
+    """Deterministic market regime classification produced before LLM strategy generation."""
+    trend: str = "unknown"           # "uptrend" | "downtrend" | "sideways" | "unknown"
+    volatility: str = "normal"       # "low" | "normal" | "high"
+    session: str = "regular"         # "pre_market" | "regular" | "lunch" | "power_hour" | "after_hours"
+    adr_pct: Optional[float] = None  # Average daily range as % of price
+    above_vwap: Optional[bool] = None
+    sma_alignment: Optional[str] = None  # "bullish" | "bearish" | "mixed"
+    regime_score: float = 0.0        # -1.0 (strong bear) to +1.0 (strong bull)
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StrategySpec(BaseModel):
+    """
+    Machine-valid deterministic strategy specification.
+
+    Produced by the deterministic setup evaluators.  The LLM may refine
+    entry_reasoning / exit_reasoning but must not change the numeric levels.
+    """
+    strategy_family: str              # "orb" | "vwap_pullback" | "first_pullback" | "range_fade"
+                                      # | "breakout_retest" | "swing_continuation" | "mean_reversion"
+    timeframe: str                    # Execution timeframe e.g. "5m"
+    action: str                       # "BUY" | "SELL" | "HOLD"
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    take_profit_2: Optional[float] = None    # Optional second target
+    stop_type: str = "fixed"          # "fixed" | "atr_trail" | "breakeven_trail"
+    valid_until: Optional[datetime] = None   # Time-based invalidation
+    regime_required: Optional[str] = None    # Required regime for entry
+    confidence: float = 0.0
+    entry_reason: str = ""
+    exit_reason: str = ""
+    invalidation_reason: str = ""     # Why this setup is NOT valid
+    source: str = "deterministic"     # "deterministic" | "llm_assisted"
+
+
 class StrategyResult(BaseModel):
     """Result from Strategy Agent."""
     action: str  # "BUY", "SELL", "HOLD", "CLOSE"
@@ -72,6 +109,9 @@ class StrategyResult(BaseModel):
     position_size: Optional[float] = None  # Number of shares/contracts
     reasoning: str
     pattern_detected: Optional[str] = None
+    # Deterministic strategy spec — populated when a setup evaluator fires
+    strategy_spec: Optional[StrategySpec] = None
+    regime: Optional[RegimeContext] = None
 
 
 class RiskAssessment(BaseModel):
@@ -355,7 +395,7 @@ class AgentMetadata(BaseModel):
     
     This is returned by agents to describe themselves to the UI.
     """
-    agent_type: str  # Unique identifier (e.g., "time_trigger", "market_data_agent")
+    agent_type: str  # Unique identifier (e.g., "market_data_agent", "bias_agent")
     name: str  # Display name
     description: str  # Detailed description
     category: str  # "trigger", "data", "analysis", "risk", "execution", "reporting"
@@ -385,22 +425,23 @@ class AgentMetadata(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "agent_type": "time_trigger",
-                "name": "Time-Based Trigger",
-                "description": "Triggers pipeline execution at regular intervals",
-                "category": "trigger",
+                "agent_type": "market_data_agent",
+                "name": "Market Data Agent",
+                "description": "Fetches OHLCV candles and indicators from the Data Plane",
+                "category": "data",
                 "version": "1.0.0",
-                "icon": "schedule",
+                "icon": "bar_chart",
                 "pricing_rate": 0.0,
                 "is_free": True,
-                "requires_timeframes": [],
+                "requires_timeframes": ["5m", "1h"],
                 "config_schema": {
                     "type": "object",
-                    "title": "Time Trigger Configuration",
+                    "title": "Market Data Configuration",
                     "properties": {
-                        "interval": {
-                            "type": "string",
-                            "title": "Interval"
+                        "timeframes": {
+                            "type": "array",
+                            "title": "Timeframes",
+                            "items": {"type": "string"}
                         }
                     }
                 }

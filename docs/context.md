@@ -37,14 +37,15 @@ An agent-based trading pipeline platform (similar to n8n) where retail traders c
 
 An **Agent** is a self-contained AI-powered component that performs a specific task in the trading pipeline.
 
-**Registered Agents** (5 in fixed execution order):
+**Registered Agents** (6 in fixed execution order):
 1. **Market Data Agent** (`market_data_agent`): Fetches candles and indicators from Data Plane API
 2. **Bias Agent** (`bias_agent`): Analyzes multi-timeframe market bias using LLM + indicators
 3. **Strategy Agent** (`strategy_agent`): Generates trade plans (entry, stop loss, targets) from natural language instructions
 4. **Risk Manager Agent** (`risk_manager_agent`): Validates trades, calculates position sizing per user's risk rules
-5. **Trade Manager Agent** (`trade_manager_agent`): Executes trades via broker, monitors positions
+5. **Trade Review Agent** (`trade_review_agent`): Mandatory gate — reviews trade before execution; defaults fail-safe for live mode
+6. **Trade Manager Agent** (`trade_manager_agent`): Executes trades via broker, monitors positions
 
-> **Note**: Trigger agents were replaced by the Signal Generator + Trigger Dispatcher microservices (event-driven via Kafka). Reporting is now a system function (PDF generation on pipeline completion), not a separate agent.
+> **Note**: `TimeTriggerAgent` was removed. Periodic pipelines are scheduled by **Celery Beat** (no trigger node needed in pipeline config). Signal-based pipelines are triggered by the **Signal Generator → Kafka → Trigger Dispatcher** microservice chain. Reporting is a system function (PDF generation on pipeline completion), not a separate agent.
 
 **Key Properties**:
 - Each agent has **metadata** (name, description, pricing, config schema)
@@ -73,15 +74,23 @@ A **Pipeline** is a connected sequence of agents that work together.
 ```json
 {
   "nodes": [
-    {"id": "node-1", "agent_type": "time_trigger", "config": {...}},
-    {"id": "node-2", "agent_type": "market_data_agent", "config": {...}}
+    {"id": "node-1", "agent_type": "market_data_agent", "config": {"timeframes": ["5m", "1h"]}},
+    {"id": "node-2", "agent_type": "bias_agent", "config": {}},
+    {"id": "node-3", "agent_type": "strategy_agent", "config": {}},
+    {"id": "node-4", "agent_type": "risk_manager_agent", "config": {}},
+    {"id": "node-5", "agent_type": "trade_manager_agent", "config": {}}
   ],
-  "edges": [{"from": "node-1", "to": "node-2"}]
+  "edges": [
+    {"from": "node-1", "to": "node-2"},
+    {"from": "node-2", "to": "node-3"},
+    {"from": "node-3", "to": "node-4"},
+    {"from": "node-4", "to": "node-5"}
+  ]
 }
 ```
 
 **Execution**: When a pipeline runs:
-1. `PipelineExecutor` runs agents in a fixed sequential order: Market Data → Bias → Strategy → Risk → Trade Manager
+1. `PipelineExecutor` runs agents in a fixed sequential order: Market Data → Bias → Strategy → Risk → Trade Review → Trade Manager
 2. Agents pass `PipelineState` object between each other
 3. State accumulates outputs (market data → bias → strategy → risk → trade)
 4. Celery workers execute pipelines asynchronously

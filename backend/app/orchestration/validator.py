@@ -143,12 +143,9 @@ class PipelineValidator:
         
         # Validate trigger configuration based on mode
         if trigger_mode == "periodic":
-            # Periodic pipelines require a Time Trigger agent
-            has_trigger = any(n.get("agent_type") == "time_trigger" for n in agent_nodes)
-            if not has_trigger:
-                errors.append(
-                    "Periodic pipelines must have a Time Trigger agent to schedule execution"
-                )
+            # Periodic pipelines are scheduled by Celery Beat — no trigger agent node required.
+            # Just ensure there is at least one pipeline agent to execute.
+            pass
         elif trigger_mode == "signal":
             # Signal-based pipelines require a scanner
             if not scanner_id:

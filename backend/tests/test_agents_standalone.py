@@ -17,25 +17,24 @@ def test_agent_registry():
     print(f"\n✅ Agent Registry Test")
     print(f"   Total agents: {len(agents)}")
     
-    # Check we have the expected agents
+    # Check we have the expected agents (TimeTriggerAgent removed — signals handled by Kafka/dispatcher)
     agent_types = {agent.agent_type for agent in agents}
-    
+
     expected = {
-        "time_trigger",
-        "market_data_agent", 
+        "market_data_agent",
         "bias_agent",
         "strategy_agent",
         "risk_manager_agent",
         "trade_manager_agent"
     }
-    
+
     assert expected.issubset(agent_types), f"Missing agents: {expected - agent_types}"
-    
+    assert "time_trigger" not in agent_types, "time_trigger should not be registered"
+
     # Check categories
     categories = {agent.category for agent in agents}
     print(f"   Categories: {', '.join(sorted(categories))}")
-    
-    assert "trigger" in categories
+
     assert "data" in categories
     assert "analysis" in categories
     assert "risk" in categories
@@ -47,38 +46,6 @@ def test_agent_registry():
         print(f"   [{agent.category:10s}] {agent.name:35s} - {cost_str}")
     
     print("   ✓ All agents registered correctly\n")
-
-
-def test_time_trigger_agent():
-    """Test TimeTriggerAgent."""
-    from app.agents import TimeTriggerAgent
-    from app.schemas.pipeline_state import PipelineState
-    
-    print(f"\n✅ Time Trigger Agent Test")
-    
-    # Create agent
-    agent = TimeTriggerAgent(
-        "test-trigger",
-        {"interval": "5m"}
-    )
-    
-    # Create state
-    state = PipelineState(
-        pipeline_id=uuid4(),
-        execution_id=uuid4(),
-        user_id=uuid4(),
-        symbol="AAPL",
-        mode="paper"
-    )
-    
-    # Process (should always trigger in test)
-    result = agent.process(state)
-    
-    assert result.trigger_met is True
-    assert result.trigger_reason is not None
-    print(f"   Trigger Status: {result.trigger_met}")
-    print(f"   Trigger Reason: {result.trigger_reason}")
-    print("   ✓ Time trigger working\n")
 
 
 def test_market_data_agent():
@@ -274,11 +241,11 @@ def test_trade_manager_agent():
 
 def test_agent_cost_tracking():
     """Test that cost tracking works."""
-    from app.agents import TimeTriggerAgent, MarketDataAgent
+    from app.agents import MarketDataAgent
     from app.schemas.pipeline_state import PipelineState
-    
+
     print(f"\n✅ Cost Tracking Test")
-    
+
     state = PipelineState(
         pipeline_id=uuid4(),
         execution_id=uuid4(),
@@ -286,11 +253,7 @@ def test_agent_cost_tracking():
         symbol="AAPL",
         mode="paper"
     )
-    
-    # Run free agents
-    trigger = TimeTriggerAgent("t1", {"interval": "5m"})
-    state = trigger.process(state)
-    
+
     market = MarketDataAgent("m1", {"timeframes": ["5m"], "use_mock_data": True})
     state = market.process(state)
     
@@ -305,7 +268,6 @@ def test_agent_cost_tracking():
 if __name__ == "__main__":
     """Run tests manually."""
     test_agent_registry()
-    test_time_trigger_agent()
     test_market_data_agent()
     test_risk_manager_agent()
     test_trade_manager_agent()

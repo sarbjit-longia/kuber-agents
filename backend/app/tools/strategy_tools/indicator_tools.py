@@ -4,10 +4,16 @@ Indicator Tools - Wrappers for Data Plane indicators
 These tools fetch pre-computed indicators from the Data Plane service
 and format them for LLM consumption.
 """
+import asyncio
 import structlog
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from app.config import settings
+
+
+async def _gather(*coros):
+    """Run coroutines concurrently and return results in order."""
+    return await asyncio.gather(*coros)
 
 logger = structlog.get_logger()
 
@@ -71,14 +77,16 @@ class IndicatorTools:
             
             current_rsi = rsi_values[-1]
             previous_rsi = rsi_values[-2] if len(rsi_values) > 1 else current_rsi
-            
+
+            is_bullish_div, is_bearish_div = self._detect_rsi_divergence(rsi_values)
+
             return {
                 "current_rsi": round(current_rsi, 2),
                 "previous_rsi": round(previous_rsi, 2),
                 "is_oversold": current_rsi < 30,
                 "is_overbought": current_rsi > 70,
-                "is_bullish_divergence": False,  # TODO: Implement divergence detection
-                "is_bearish_divergence": False,
+                "is_bullish_divergence": is_bullish_div,
+                "is_bearish_divergence": is_bearish_div,
                 "values": [round(v, 2) for v in rsi_values],
                 "timeframe": timeframe
             }
@@ -114,36 +122,51 @@ class IndicatorTools:
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.data_plane_url}/api/v1/data/indicators/{self.ticker}",
-                    params={
-                        "timeframe": timeframe,
-                        "indicators": "sma",
-                        "limit": limit
-                    }
+                fast_resp, slow_resp = await _gather(
+                    client.get(
+                        f"{self.data_plane_url}/api/v1/data/indicators/{self.ticker}",
+                        params={"timeframe": timeframe, "indicators": "sma",
+                                "sma_period": fast_period, "limit": limit + 1},
+                    ),
+                    client.get(
+                        f"{self.data_plane_url}/api/v1/data/indicators/{self.ticker}",
+                        params={"timeframe": timeframe, "indicators": "sma",
+                                "sma_period": slow_period, "limit": limit + 1},
+                    ),
                 )
-                response.raise_for_status()
-                data = response.json()
-            
-            # Note: Data Plane would need to support multiple SMA periods
-            # For now, we'll use a simplified version
-            sma_values = data.get("indicators", {}).get("sma", [])
-            
-            if len(sma_values) < 2:
+                fast_resp.raise_for_status()
+                slow_resp.raise_for_status()
+
+            fast_vals = [v for v in fast_resp.json().get("indicators", {}).get("sma", []) if v is not None]
+            slow_vals = [v for v in slow_resp.json().get("indicators", {}).get("sma", []) if v is not None]
+
+            if len(fast_vals) < 2 or len(slow_vals) < 2:
                 return self._empty_sma_result()
-            
-            # Simplified: assume data plane returns fast and slow SMA
-            # In reality, we'd need to fetch both separately or extend the API
-            
+
+            cur_fast, cur_slow = fast_vals[-1], slow_vals[-1]
+            prev_fast, prev_slow = fast_vals[-2], slow_vals[-2]
+
+            is_golden = prev_fast <= prev_slow and cur_fast > cur_slow
+            is_death  = prev_fast >= prev_slow and cur_fast < cur_slow
+
+            if cur_fast > cur_slow:
+                trend = "bullish"
+            elif cur_fast < cur_slow:
+                trend = "bearish"
+            else:
+                trend = "neutral"
+
             return {
-                "current_fast_sma": 0.0,  # TODO: Fetch from Data Plane
-                "current_slow_sma": 0.0,
-                "is_golden_cross": False,
-                "is_death_cross": False,
-                "trend": "neutral",
-                "timeframe": timeframe
+                "current_fast_sma": round(cur_fast, 4),
+                "current_slow_sma": round(cur_slow, 4),
+                "is_golden_cross": is_golden,
+                "is_death_cross": is_death,
+                "trend": trend,
+                "fast_period": fast_period,
+                "slow_period": slow_period,
+                "timeframe": timeframe,
             }
-            
+
         except Exception as e:
             logger.error("sma_fetch_failed", ticker=self.ticker, error=str(e))
             return self._empty_sma_result()
@@ -307,6 +330,46 @@ class IndicatorTools:
             logger.error("bbands_fetch_failed", ticker=self.ticker, error=str(e))
             return self._empty_bbands_result()
     
+    def _detect_rsi_divergence(self, rsi_values: List[float]) -> Tuple[bool, bool]:
+        """
+        Detect basic RSI divergence using the last two swing points.
+
+        Bullish divergence: price makes lower low, RSI makes higher low.
+        Bearish divergence: price makes higher high, RSI makes lower high.
+
+        We approximate price direction from the RSI series itself (both
+        reflect price momentum) — a proper implementation would compare
+        against the candle close series. Returns (is_bullish, is_bearish).
+        """
+        if len(rsi_values) < 4:
+            return False, False
+
+        # Split into two halves and compare trough/peak RSI values
+        mid = len(rsi_values) // 2
+        first_half = rsi_values[:mid]
+        second_half = rsi_values[mid:]
+
+        first_min = min(first_half)
+        second_min = min(second_half)
+        first_max = max(first_half)
+        second_max = max(second_half)
+
+        # Bullish divergence: RSI trough rising while price trough falling
+        # We use RSI trough as proxy — if the latest trough is higher while
+        # RSI is still in oversold territory, flag it.
+        is_bullish = (
+            second_min > first_min
+            and second_half[-1] < 40
+        )
+
+        # Bearish divergence: RSI peak falling while in overbought territory
+        is_bearish = (
+            second_max < first_max
+            and second_half[-1] > 60
+        )
+
+        return is_bullish, is_bearish
+
     def _empty_rsi_result(self) -> Dict[str, Any]:
         return {
             "current_rsi": 50.0,
@@ -326,7 +389,9 @@ class IndicatorTools:
             "is_golden_cross": False,
             "is_death_cross": False,
             "trend": "neutral",
-            "timeframe": "unknown"
+            "fast_period": 20,
+            "slow_period": 50,
+            "timeframe": "unknown",
         }
     
     def _empty_macd_result(self) -> Dict[str, Any]:

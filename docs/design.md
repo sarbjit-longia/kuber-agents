@@ -621,31 +621,11 @@ class PipelineExecutor:
 
 ## 4. Individual Agent Designs
 
-### 4.1 Time-Based Trigger Agent (FREE)
+### 4.1 Time-Based Trigger Agent ~~(FREE)~~ — REMOVED
 
-**Purpose**: Pause pipeline execution until specific time conditions met
+> **Deprecated**: `TimeTriggerAgent` has been removed. Periodic pipeline scheduling is handled by **Celery Beat** at the infrastructure level — no trigger node is required in the pipeline config. Signal-based pipelines are triggered by the **Signal Generator → Kafka → Trigger Dispatcher** microservice chain.
 
-**Input Requirements**: None (uses config)
-
-**Configuration**:
-```python
-{
-    "type": "time_trigger",
-    "schedule": {
-        "type": "market_hours",  # or "specific_time", "cron"
-        "market": "US",
-        "offset_minutes": 5  # start 5 min after market open
-    }
-}
-```
-
-**Output**: Updates `state.trigger_condition`
-
-**Implementation**:
-- Check if current time matches schedule
-- If not met, raise `TriggerNotMetException` (handled by orchestrator)
-- Celery retries task with exponential backoff
-- No LLM calls required (free agent)
+The first agent in every pipeline is now `market_data_agent`.
 
 ### 4.2 Technical Indicator Trigger Agent
 
@@ -935,49 +915,49 @@ Pipelines are stored as JSON in the database `config` column:
   "nodes": [
     {
       "id": "node-1",
-      "agent_type": "time_trigger",
-      "position": {"x": 100, "y": 100},
-      "config": {
-        "schedule": {
-          "type": "market_hours",
-          "market": "US",
-          "offset_minutes": 5
-        }
-      }
-    },
-    {
-      "id": "node-2",
       "agent_type": "market_data_agent",
-      "position": {"x": 300, "y": 100},
+      "position": {"x": 100, "y": 100},
       "config": {
         "timeframes": ["1h", "4h", "1d", "5m"],
         "indicators": ["SMA_20", "SMA_50", "RSI", "MACD"]
       }
     },
     {
-      "id": "node-3",
+      "id": "node-2",
       "agent_type": "bias_agent",
-      "position": {"x": 500, "y": 100},
+      "position": {"x": 300, "y": 100},
       "config": {
         "analysis_timeframes": ["1h", "4h", "1d"],
         "confidence_threshold": 70
       }
     },
     {
-      "id": "node-4",
+      "id": "node-3",
       "agent_type": "strategy_agent",
-      "position": {"x": 700, "y": 100},
+      "position": {"x": 500, "y": 100},
       "config": {
         "timeframe": "5m",
-        "risk_reward_min": 1.5,
-        "creativity": 0.7
+        "risk_reward_min": 1.5
       }
+    },
+    {
+      "id": "node-4",
+      "agent_type": "risk_manager_agent",
+      "position": {"x": 700, "y": 100},
+      "config": {}
+    },
+    {
+      "id": "node-5",
+      "agent_type": "trade_manager_agent",
+      "position": {"x": 900, "y": 100},
+      "config": {}
     }
   ],
   "edges": [
     {"from": "node-1", "to": "node-2"},
     {"from": "node-2", "to": "node-3"},
-    {"from": "node-3", "to": "node-4"}
+    {"from": "node-3", "to": "node-4"},
+    {"from": "node-4", "to": "node-5"}
   ],
   "settings": {
     "max_retries": 3,
@@ -1797,28 +1777,21 @@ class CostEstimator:
     
     # Agent hourly rates ($/hour)
     AGENT_HOURLY_RATES = {
-        "time_trigger": 0.0,
-        "technical_trigger": 0.03,
-        "price_trigger": 0.02,
-        "news_trigger": 0.05,
         "market_data_agent": 0.0,
         "bias_agent": 0.08,
         "strategy_agent": 0.10,
         "risk_manager_agent": 0.05,
+        "trade_review_agent": 0.02,
         "trade_manager_agent": 0.0,
-        "reporting_agent": 0.0,
     }
-    
+
     # Average execution time per agent (minutes)
     AGENT_AVG_DURATION = {
-        "time_trigger": 0.5,
-        "technical_trigger": 1.0,
-        "price_trigger": 0.5,
-        "news_trigger": 2.0,
         "market_data_agent": 1.0,
         "bias_agent": 6.0,  # Uses LLM, slower
         "strategy_agent": 6.0,
         "risk_manager_agent": 3.0,
+        "trade_review_agent": 2.0,
         "trade_manager_agent": 2.0,
         "reporting_agent": 2.0,
     }

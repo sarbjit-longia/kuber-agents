@@ -159,14 +159,23 @@ class TradeReviewAgent(BaseAgent):
             self.log(state, f"Trade review decision: {review.decision} (confidence={review.confidence:.2f})")
         except Exception as e:
             logger.error("trade_review_llm_failed", error=str(e))
-            # Fail-open: approve with a warning rather than blocking execution
+            # Fail-safe for live trading: block the trade on review failure.
+            # For paper/simulation mode we fail-open to avoid blocking research workflows.
+            is_live = state.mode == "live"
+            fallback_decision = "REJECTED" if is_live else "APPROVED"
+            fallback_note = (
+                "Trade REJECTED because automated review failed in live mode. "
+                "Manual review required before executing."
+                if is_live else
+                "Trade review LLM failed in paper mode. Defaulting to APPROVED for research continuity."
+            )
             state.trade_review = TradeReview(
-                decision="APPROVED",
-                confidence=0.5,
-                reasoning=f"Trade review LLM failed ({str(e)[:80]}). Defaulting to APPROVED with caution.",
-                key_concerns=["Review agent encountered an error — manual oversight advised"],
+                decision=fallback_decision,
+                confidence=0.0 if is_live else 0.5,
+                reasoning=f"Trade review LLM failed ({str(e)[:80]}). {fallback_note}",
+                key_concerns=["Review agent encountered an error — manual oversight required"],
                 key_strengths=[],
-                trader_notes="Automated review was skipped due to an internal error",
+                trader_notes=fallback_note,
             )
             self.add_warning(state, f"Trade review LLM failed: {str(e)}")
 
@@ -339,9 +348,10 @@ class TradeReviewAgent(BaseAgent):
             else:
                 raise AgentProcessingError(f"Could not parse trade review JSON: {cleaned[:200]}")
 
-        decision = str(data.get("decision", "APPROVED")).upper()
+        decision = str(data.get("decision", "HOLD")).upper()
         if decision not in ("APPROVED", "REJECTED", "HOLD"):
-            decision = "APPROVED"
+            # Unknown decision — default to HOLD (neutral) rather than APPROVED
+            decision = "HOLD"
 
         return TradeReview(
             decision=decision,
