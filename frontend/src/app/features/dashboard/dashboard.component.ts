@@ -75,6 +75,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Chart display settings
   costChartDays = 14;
   pnlChartDays = 14;
+  equityChartDays = 30;
 
   // Analytics chart colors
   private chartColors = ['#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
@@ -83,8 +84,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   calendarMonth = new Date().getMonth();
   calendarYear = new Date().getFullYear();
   selectedCalendarDay: CalendarDayData | null = null;
-  calendarPopoverTop = 0;
-  calendarPopoverLeft = 0;
+  readonly calendarWeekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   constructor(
     private dashboardService: DashboardService,
@@ -112,6 +112,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  get liveBrokerCount(): number {
+    return this.data?.broker_accounts.filter(account => account.account_type === 'live').length || 0;
+  }
+
+  get tradedCalendarDaysCount(): number {
+    return this.getCalendarDays().filter((day): day is CalendarDayData => !!day && day.trades > 0).length;
+  }
+
+  get calendarMonthPnL(): number {
+    return this.getCalendarDays().reduce((sum, day) => sum + ((day && day.trades > 0) ? day.pnl : 0), 0);
+  }
+
+  get bestCalendarDay(): CalendarDayData | null {
+    const tradedDays = this.getCalendarDays().filter((day): day is CalendarDayData => !!day && day.trades > 0);
+    if (!tradedDays.length) return null;
+    return tradedDays.reduce((best, day) => day.pnl > best.pnl ? day : best, tradedDays[0]);
+  }
+
+  get pipelineLifetimePnLTotal(): number {
+    return this.getPipelinePnLData().reduce((sum, pipeline) => sum + pipeline.total_pnl, 0);
   }
 
   loadAll(): void {
@@ -855,12 +877,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return day.date.slice(-2).replace(/^0/, '');
   }
 
-  selectCalendarDay(day: CalendarDayData | null): void {
-    if (day && day.trades > 0) {
-      this.selectedCalendarDay = day;
-    }
-  }
-
   onCalendarDayClick(event: MouseEvent, day: CalendarDayData | null): void {
     event.stopPropagation();
     if (!day || day.trades === 0) {
@@ -871,19 +887,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.selectedCalendarDay = null;
       return;
     }
-    // Position popover relative to the .pnl-calendar container
-    const cell = event.currentTarget as HTMLElement;
-    const container = cell.closest('.pnl-calendar') as HTMLElement;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const cellRect = cell.getBoundingClientRect();
-    const popoverW = 220;
-    let left = cellRect.left - containerRect.left + cellRect.width / 2 - popoverW / 2;
-    // Clamp within container
-    left = Math.max(0, Math.min(left, containerRect.width - popoverW));
-    const top = cellRect.top - containerRect.top + cellRect.height + 6;
-    this.calendarPopoverTop = top;
-    this.calendarPopoverLeft = left;
     this.selectedCalendarDay = day;
   }
 
@@ -891,7 +894,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onDocumentClick(event: MouseEvent): void {
     if (!this.selectedCalendarDay) return;
     const target = event.target as HTMLElement;
-    if (!target.closest('.calendar-day') && !target.closest('.calendar-popover')) {
+    if (!target.closest('.calendar-day') && !target.closest('.calendar-detail-panel')) {
       this.selectedCalendarDay = null;
     }
   }

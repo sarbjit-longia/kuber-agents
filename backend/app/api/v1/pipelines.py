@@ -152,6 +152,30 @@ async def update_existing_pipeline(
                     "errors": validation_errors
                 }
             )
+
+        # ── Deployment guardrails for live mode (TP-025) ──────────────
+        # Determine the effective mode: updated value or existing config default.
+        effective_mode = (
+            (config_to_validate.get("mode") if isinstance(config_to_validate, dict) else None)
+            or existing_pipeline.config.get("mode", "paper")
+        )
+        if effective_mode == "live":
+            from app.services.deployment_guardrails import check_live_deployment
+            guardrail = await check_live_deployment(
+                db=db,
+                pipeline_id=pipeline_id,
+                pipeline_config=config_to_validate if isinstance(config_to_validate, dict) else {},
+            )
+            if not guardrail.passed:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "message": "Cannot activate pipeline in live mode: deployment guardrails not met",
+                        "failures": guardrail.failures,
+                        "warnings": guardrail.warnings,
+                        "metrics": guardrail.metrics,
+                    }
+                )
     
     pipeline = await update_pipeline(db, pipeline_id, pipeline_update, current_user.id)
     if not pipeline:

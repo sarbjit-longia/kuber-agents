@@ -2,24 +2,27 @@
   <app-navbar></app-navbar>
 
   <div class="dashboard-container">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-left">
-        <h1>
+    <section class="page-hero">
+      <div class="hero-copy">
+        <div class="eyebrow">
           <mat-icon>dashboard</mat-icon>
-          Dashboard
-        </h1>
-        <span class="last-updated" *ngIf="lastUpdated">
-          Updated {{ lastUpdated | localDate:'timeOnly' }}
-        </span>
+          Portfolio Command
+        </div>
+        <h1>Dashboard</h1>
+        <p>
+          Monitor active positions, trading performance, execution quality, and capital distribution across brokers and pipelines.
+        </p>
       </div>
-      <div class="header-actions">
+      <div class="hero-actions">
+        <div class="last-updated" *ngIf="lastUpdated">
+          Updated {{ lastUpdated | localDate:'timeOnly' }}
+        </div>
         <button mat-raised-button color="primary" (click)="refresh()">
           <mat-icon>refresh</mat-icon>
           Refresh
         </button>
       </div>
-    </div>
+    </section>
 
     <!-- Loading -->
     <div class="loading-container" *ngIf="loading">
@@ -36,6 +39,27 @@
 
     <!-- Dashboard Content -->
     <div class="dashboard-content" *ngIf="data && !loading">
+      <section class="overview-strip">
+        <div class="overview-card">
+          <span class="overview-label">Pipelines</span>
+          <span class="overview-value">{{ data.pipelines.total }}</span>
+          <span class="overview-sub">{{ data.pipelines.active }} active · {{ data.pipelines.signal_based }} signal-based</span>
+        </div>
+        <div class="overview-card">
+          <span class="overview-label">Executions</span>
+          <span class="overview-value">{{ data.executions.total }}</span>
+          <span class="overview-sub">{{ data.executions.monitoring + data.executions.running }} live now</span>
+        </div>
+        <div class="overview-card">
+          <span class="overview-label">Broker Accounts</span>
+          <span class="overview-value">{{ data.broker_accounts.length }}</span>
+          <span class="overview-sub">{{ liveBrokerCount }} live connected</span>
+        </div>
+        <div class="overview-note">
+          <mat-icon>insights</mat-icon>
+          <span>{{ data.trade_stats.total_trades }} total trades tracked with {{ formatSuccessRate(data.executions.success_rate) }} execution success rate.</span>
+        </div>
+      </section>
 
       <!-- ─── Section 2: Live Stats Bar (reordered) ──────────── -->
       <div class="stats-row">
@@ -49,7 +73,7 @@
               <div class="stat-value">{{ data.executions.monitoring + data.executions.running }}</div>
               <div class="stat-label">Active Now</div>
               <div class="stat-sub">
-                {{ data.executions.monitoring }} monitoring · {{ data.executions.running }} running
+                {{ data.active_positions.length }} positions · {{ data.executions.monitoring }} monitoring
               </div>
             </div>
           </mat-card-content>
@@ -65,9 +89,9 @@
               <div class="stat-value" [ngClass]="getPnLClass(data.today.pnl)">
                 {{ formatPnL(data.today.pnl) }}
               </div>
-              <div class="stat-label">Today's P&L</div>
+              <div class="stat-label">Today</div>
               <div class="stat-sub" *ngIf="data.today.total_trades > 0">
-                {{ data.today.total_trades }} trade{{ data.today.total_trades !== 1 ? 's' : '' }} today
+                {{ data.today.total_trades }} trade{{ data.today.total_trades !== 1 ? 's' : '' }} · {{ data.today.wins }} wins
               </div>
               <div class="stat-sub" *ngIf="data.today.total_trades === 0">
                 No trades today
@@ -86,7 +110,7 @@
               <div class="stat-value" [ngClass]="getPnLClass(data.pnl.total)">
                 {{ formatPnL(data.pnl.total) }}
               </div>
-              <div class="stat-label">Total P&L</div>
+              <div class="stat-label">Portfolio P&amp;L</div>
               <div class="stat-sub">
                 Realized: {{ formatPnL(data.pnl.total_realized) }} ·
                 Unrealized: {{ formatPnL(data.pnl.total_unrealized) }}
@@ -103,9 +127,9 @@
             </div>
             <div class="stat-info">
               <div class="stat-value">{{ formatCost(data.executions.total_cost) }}</div>
-              <div class="stat-label">Total Cost</div>
+              <div class="stat-label">Execution Cost</div>
               <div class="stat-sub">
-                {{ formatSuccessRate(data.executions.success_rate) }} success rate
+                {{ formatSuccessRate(data.executions.success_rate) }} success · {{ data.executions.completed }} completed
               </div>
             </div>
           </mat-card-content>
@@ -384,9 +408,13 @@
             <mat-card-title>
               <div class="section-title">
                 <mat-icon>account_tree</mat-icon>
-                Equity by Pipeline
+                30D Pipeline Trend
+                <span class="section-subtitle">Cumulative P&amp;L rebased to the window start</span>
               </div>
             </mat-card-title>
+            <div class="section-actions">
+              <span class="chart-period-total">Last {{ equityChartDays }} days</span>
+            </div>
           </mat-card-header>
           <mat-card-content>
             <div class="svg-chart-container" *ngIf="getEquityPipelineSvgPaths().length > 0; else noPipelineEquity">
@@ -436,11 +464,14 @@
                   <span class="legend-value" [ngClass]="getPnLClass(line.lastValue)">{{ formatPnL(line.lastValue) }}</span>
                 </div>
               </div>
+              <div class="chart-context-note">
+                End values show net pipeline P&amp;L accumulated within the last {{ equityChartDays }} days, not lifetime totals.
+              </div>
             </div>
             <ng-template #noPipelineEquity>
               <div class="empty-section compact">
                 <mat-icon>show_chart</mat-icon>
-                <p>No pipeline equity data yet</p>
+                <p>No recent pipeline trend data yet</p>
               </div>
             </ng-template>
           </mat-card-content>
@@ -581,12 +612,13 @@
             <mat-card-title>
               <div class="section-title">
                 <mat-icon>leaderboard</mat-icon>
-                P&L by Pipeline
+                Pipeline P&amp;L
+                <span class="section-subtitle">Lifetime realized total by pipeline</span>
               </div>
             </mat-card-title>
             <div class="section-actions">
-              <span class="chart-period-total" [ngClass]="getPnLClass(data.pnl.total_realized)">
-                Total: {{ formatPnL(data.pnl.total_realized) }}
+              <span class="chart-period-total" [ngClass]="getPnLClass(pipelineLifetimePnLTotal)">
+                Lifetime total: {{ formatPnL(pipelineLifetimePnLTotal) }}
               </span>
             </div>
           </mat-card-header>
@@ -990,7 +1022,7 @@
           <mat-card-title>
             <div class="section-title">
               <mat-icon>calendar_month</mat-icon>
-              P&L Calendar
+              Monthly Performance Calendar
             </div>
           </mat-card-title>
           <div class="section-actions">
@@ -1001,52 +1033,84 @@
         </mat-card-header>
         <mat-card-content>
           <div class="pnl-calendar">
-            <div class="calendar-header">
-              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-            </div>
-            <div class="calendar-grid">
-              <div *ngFor="let day of getCalendarDays()"
-                   class="calendar-day"
-                   [ngClass]="getCalendarDayClass(day)"
-                   [class.cal-selected]="selectedCalendarDay && day && selectedCalendarDay.date === day.date"
-                   (click)="onCalendarDayClick($event, day)">
-                <span class="cal-date">{{ getCalendarDayNumber(day) }}</span>
-                <span class="cal-pnl" *ngIf="day && day.trades > 0" [ngClass]="getPnLClass(day.pnl)">
-                  {{ formatPnL(day.pnl) }}
-                </span>
+            <div class="calendar-overview">
+              <div class="calendar-kpi">
+                <span class="calendar-kpi-label">Month P&amp;L</span>
+                <span class="calendar-kpi-value" [ngClass]="getPnLClass(calendarMonthPnL)">{{ formatPnL(calendarMonthPnL) }}</span>
+              </div>
+              <div class="calendar-kpi">
+                <span class="calendar-kpi-label">Trading Days</span>
+                <span class="calendar-kpi-value">{{ tradedCalendarDaysCount }}</span>
+              </div>
+              <div class="calendar-kpi" *ngIf="bestCalendarDay">
+                <span class="calendar-kpi-label">Best Day</span>
+                <span class="calendar-kpi-value pnl-positive">{{ formatPnL(bestCalendarDay.pnl) }}</span>
               </div>
             </div>
-            <!-- Floating popover -->
-            <div class="calendar-popover" *ngIf="selectedCalendarDay"
-                 [style.top.px]="calendarPopoverTop" [style.left.px]="calendarPopoverLeft">
-              <div class="popover-header">
-                {{ formatChartDate(selectedCalendarDay.date) }}
-                <span class="popover-pnl" [ngClass]="getPnLClass(selectedCalendarDay.pnl)">
-                  {{ formatPnL(selectedCalendarDay.pnl) }}
-                </span>
-              </div>
-              <div class="popover-stats">
-                <div class="popover-stat">
-                  <span class="popover-label">Trades</span>
-                  <span class="popover-value">{{ selectedCalendarDay.trades }}</span>
+
+            <div class="calendar-layout">
+              <div class="calendar-board">
+                <div class="calendar-header">
+                  <span *ngFor="let weekday of calendarWeekdays">{{ weekday }}</span>
                 </div>
-                <div class="popover-stat">
-                  <span class="popover-label">W / L</span>
-                  <span class="popover-value">
-                    <span class="pnl-positive">{{ selectedCalendarDay.wins }}</span>
-                    /
-                    <span class="pnl-negative">{{ selectedCalendarDay.losses }}</span>
+                <div class="calendar-grid">
+                  <div *ngFor="let day of getCalendarDays()"
+                       class="calendar-day"
+                       [ngClass]="getCalendarDayClass(day)"
+                       [class.cal-selected]="selectedCalendarDay && day && selectedCalendarDay.date === day.date"
+                       (click)="onCalendarDayClick($event, day)">
+                    <span class="cal-date">{{ getCalendarDayNumber(day) }}</span>
+                    <span class="cal-trades" *ngIf="day && day.trades > 0">{{ day.trades }} trade{{ day.trades === 1 ? '' : 's' }}</span>
+                    <span class="cal-pnl" *ngIf="day && day.trades > 0" [ngClass]="getPnLClass(day.pnl)">
+                      {{ formatPnL(day.pnl) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="calendar-detail-panel" *ngIf="selectedCalendarDay; else calendarEmptyDetail">
+                <div class="detail-header">
+                  <div>
+                    <div class="detail-title">{{ formatChartDate(selectedCalendarDay.date) }}</div>
+                    <div class="detail-subtitle">Daily trading summary</div>
+                  </div>
+                  <span class="detail-pnl" [ngClass]="getPnLClass(selectedCalendarDay.pnl)">
+                    {{ formatPnL(selectedCalendarDay.pnl) }}
                   </span>
                 </div>
-                <div class="popover-stat">
-                  <span class="popover-label">Best</span>
-                  <span class="popover-value pnl-positive">{{ formatPnL(selectedCalendarDay.best_trade) }}</span>
+
+                <div class="detail-stats">
+                  <div class="detail-stat">
+                    <span class="detail-stat-label">Trades</span>
+                    <span class="detail-stat-value">{{ selectedCalendarDay.trades }}</span>
+                  </div>
+                  <div class="detail-stat">
+                    <span class="detail-stat-label">Wins / Losses</span>
+                    <span class="detail-stat-value">
+                      <span class="pnl-positive">{{ selectedCalendarDay.wins }}</span>
+                      /
+                      <span class="pnl-negative">{{ selectedCalendarDay.losses }}</span>
+                    </span>
+                  </div>
+                  <div class="detail-stat">
+                    <span class="detail-stat-label">Best Trade</span>
+                    <span class="detail-stat-value pnl-positive">{{ formatPnL(selectedCalendarDay.best_trade) }}</span>
+                  </div>
+                  <div class="detail-stat">
+                    <span class="detail-stat-label">Worst Trade</span>
+                    <span class="detail-stat-value pnl-negative">{{ formatPnL(selectedCalendarDay.worst_trade) }}</span>
+                  </div>
                 </div>
-                <div class="popover-stat">
-                  <span class="popover-label">Worst</span>
-                  <span class="popover-value pnl-negative">{{ formatPnL(selectedCalendarDay.worst_trade) }}</span>
-                </div>
+
+                <div class="detail-hint">Select another active day in the calendar to compare session performance.</div>
               </div>
+
+              <ng-template #calendarEmptyDetail>
+                <div class="calendar-detail-panel calendar-detail-panel--empty">
+                  <mat-icon>touch_app</mat-icon>
+                  <p>Select a highlighted day to inspect daily performance details.</p>
+                </div>
+              </ng-template>
             </div>
           </div>
         </mat-card-content>
