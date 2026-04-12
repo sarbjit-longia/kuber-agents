@@ -461,3 +461,43 @@ class TestRiskManagerCalculations:
             assert 400 <= risk.position_size <= 600, \
                 f"Position size should be ~{expected_size}, got {risk.position_size}"
 
+    @pytest.mark.unit
+    def test_exposure_cap_reduces_size_instead_of_rejecting(self, state_with_strategy):
+        """Exposure cap should downsize a trade when some portfolio capacity remains."""
+        registry = get_registry()
+
+        state_with_strategy.strategy = StrategyResult(
+            action="BUY",
+            entry_price=100.0,
+            stop_loss=95.0,
+            take_profit=115.0,
+            confidence=0.75,
+            pattern_detected="Test",
+            reasoning="Test"
+        )
+
+        agent = registry.create_agent(
+            agent_type="risk_manager_agent",
+            agent_id="test-risk-exposure-cap-resize",
+            config={
+                "instructions": "Risk 1% per trade.",
+                "model": "gpt-4o",
+                "max_total_exposure_pct": 0.90,
+            }
+        )
+
+        result = agent._portfolio_risk_check(
+            state_with_strategy,
+            broker_info={
+                "equity": 10000,
+                "buying_power": 10000,
+                "positions": [
+                    {"market_value": 8000},
+                ],
+            },
+            det_size=20,
+        )
+
+        assert result["rejected"] is False
+        assert result["adjusted_size"] == 10.0
+        assert "reduced" in result["reason"].lower() or "exposure cap" in result["reason"].lower()

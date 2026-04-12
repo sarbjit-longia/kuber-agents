@@ -42,6 +42,11 @@ class BacktestRunSummary(BaseModel):
     progress: Dict[str, Any]
     metrics: Optional[Dict[str, Any]] = None
     trades_count: int
+    filled_orders_count: int = 0
+    open_positions_count: int = 0
+    account_equity: Optional[float] = None
+    cash_balance: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
     estimated_cost: Optional[float] = None
     actual_cost: float
     failure_reason: Optional[str] = None
@@ -60,7 +65,10 @@ class BacktestRunList(BaseModel):
 
 class BacktestRunResult(BacktestRunSummary):
     equity_curve: List[float] = Field(default_factory=list)
+    equity_series: List[Dict[str, Any]] = Field(default_factory=list)
+    daily_pnl: List[Dict[str, Any]] = Field(default_factory=list)
     trades: List[Dict[str, Any]] = Field(default_factory=list)
+    open_positions: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class BacktestStartResponse(BaseModel):

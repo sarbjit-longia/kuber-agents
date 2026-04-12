@@ -146,8 +146,9 @@ class BacktestOrchestrator:
         if checkpoint and checkpoint.get("actual_cost") is not None:
             self.run.actual_cost = float(checkpoint["actual_cost"])
         equity_curve: List[float] = list(checkpoint.get("equity_curve") or []) if checkpoint else []
-        if not equity_curve:
-            equity_curve = [self.initial_capital]
+        equity_points: List[Dict] = list(checkpoint.get("equity_points") or []) if checkpoint else []
+        if not equity_curve and equity_points:
+            equity_curve = [float(point.get("equity", self.initial_capital)) for point in equity_points]
         signal_types = [sub.get("signal_type") for sub in (self.pipeline.signal_subscriptions or []) if sub.get("signal_type")]
 
         for timeline_index, ts in enumerate(timeline):
@@ -183,6 +184,7 @@ class BacktestOrchestrator:
                     total_bars=total_bars,
                     backtest_ts=ts,
                     equity_curve=equity_curve,
+                    equity_points=equity_points,
                     signal_dispatch_completed=True,
                 )
 
@@ -203,7 +205,12 @@ class BacktestOrchestrator:
                 self._update_progress(symbol, processed, total_bars, ts, force=False)
 
                 self.broker.evaluate_bar(symbol, candle)
-                equity_curve.append(self.broker.get_equity())
+                current_equity = self.broker.get_equity()
+                equity_curve.append(current_equity)
+                if equity_points and equity_points[-1].get("ts") == ts:
+                    equity_points[-1]["equity"] = current_equity
+                else:
+                    equity_points.append({"ts": ts, "equity": current_equity})
                 self._save_checkpoint(
                     timeline_index=timeline_index,
                     symbol_index=symbol_index,
@@ -211,6 +218,7 @@ class BacktestOrchestrator:
                     total_bars=total_bars,
                     backtest_ts=ts,
                     equity_curve=equity_curve,
+                    equity_points=equity_points,
                     signal_dispatch_completed=True,
                 )
 
@@ -231,7 +239,7 @@ class BacktestOrchestrator:
             "percent_complete": 100.0,
             "current_ts": timeline[-1],
         }
-        self.run.metrics = self._augment_metrics(metrics, processed, total_bars)
+        self.run.metrics = self._augment_metrics(metrics, processed, total_bars, equity_points)
         self._record_event(
             event_type="run_completed",
             title="Backtest completed",
@@ -344,7 +352,11 @@ class BacktestOrchestrator:
             "current_ts": current_ts,
             "cancelled": True,
         }
-        self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars)
+        checkpoint = self._load_checkpoint() or {}
+        equity_curve = list(checkpoint.get("equity_curve") or self.run.equity_curve or [])
+        equity_points = list(checkpoint.get("equity_points") or ((self.run.metrics or {}).get("runtime") or {}).get("equity_points") or [])
+        self.run.equity_curve = equity_curve
+        self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars, equity_points)
         self._record_event(
             event_type="run_cancelled",
             title="Backtest cancelled",
@@ -354,6 +366,7 @@ class BacktestOrchestrator:
         )
         _flag_modified_if_present(self.run, "progress")
         _flag_modified_if_present(self.run, "metrics")
+        _flag_modified_if_present(self.run, "equity_curve")
         self.db.commit()
         self._clear_checkpoint()
         return {"run_id": str(self.run.id), "status": self.run.status.value}
@@ -373,7 +386,11 @@ class BacktestOrchestrator:
             "current_ts": current_ts,
             "stopped_for_cost_limit": True,
         }
-        self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars)
+        checkpoint = self._load_checkpoint() or {}
+        equity_curve = list(checkpoint.get("equity_curve") or self.run.equity_curve or [])
+        equity_points = list(checkpoint.get("equity_points") or ((self.run.metrics or {}).get("runtime") or {}).get("equity_points") or [])
+        self.run.equity_curve = equity_curve
+        self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars, equity_points)
         self._record_event(
             event_type="cost_limit_exceeded",
             title="Backtest stopped by cost cap",
@@ -383,11 +400,12 @@ class BacktestOrchestrator:
         )
         _flag_modified_if_present(self.run, "progress")
         _flag_modified_if_present(self.run, "metrics")
+        _flag_modified_if_present(self.run, "equity_curve")
         self.db.commit()
         self._clear_checkpoint()
         return {"run_id": str(self.run.id), "status": self.run.status.value}
 
-    def _augment_metrics(self, metrics: Dict, processed: int, total_bars: int) -> Dict:
+    def _augment_metrics(self, metrics: Dict, processed: int, total_bars: int, equity_points: List[Dict] | None = None) -> Dict:
         merged_metrics = dict(metrics or {})
         merged_metrics["runtime"] = {
             "processed_bars": processed,
@@ -397,6 +415,7 @@ class BacktestOrchestrator:
             "pipeline_executions": self._pipeline_executions,
             "progress_commits": self._progress_commits,
             "runtime_seconds": round(time.monotonic() - self._runtime_started_at, 2),
+            "equity_points": list(equity_points or []),
         }
         return merged_metrics
 
@@ -418,6 +437,7 @@ class BacktestOrchestrator:
         total_bars: int,
         backtest_ts: str,
         equity_curve: List[float],
+        equity_points: List[Dict],
         signal_dispatch_completed: bool,
     ) -> None:
         checkpoint = {
@@ -428,6 +448,7 @@ class BacktestOrchestrator:
             "current_ts": backtest_ts,
             "signal_dispatch_completed": signal_dispatch_completed,
             "equity_curve": equity_curve,
+            "equity_points": equity_points,
             "actual_cost": self.run.actual_cost,
             "updated_at": datetime.utcnow().isoformat(),
         }

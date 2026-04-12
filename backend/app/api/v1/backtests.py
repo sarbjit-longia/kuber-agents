@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.backtesting.backtest_broker import BacktestBroker
 from app.backtesting.snapshot import build_backtest_runtime_snapshot
 from app.core.deps import get_current_active_user
 from app.database import get_db
@@ -98,6 +99,138 @@ def _safe_number(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _load_backtest_runtime_state(run: BacktestRun) -> dict[str, Any]:
+    config = run.config or {}
+    initial_capital = _safe_number(config.get("initial_capital") or 10_000.0)
+    try:
+        broker = BacktestBroker(
+            run_id=str(run.id),
+            initial_capital=initial_capital,
+            slippage_model=config.get("slippage_model", "fixed"),
+            slippage_value=_safe_number(config.get("slippage_value") or 0.01),
+            commission_model=config.get("commission_model", "per_share"),
+            commission_value=_safe_number(config.get("commission_value") or 0.005),
+        )
+        account = broker.get_account() or {}
+        positions_map = broker.get_positions() or {}
+        positions = list(positions_map.values())
+        cash = _safe_number(account.get("cash"))
+        equity = _safe_number(account.get("equity"))
+        if equity <= 0:
+            equity = initial_capital
+        if cash <= 0 and not positions:
+            cash = initial_capital
+        return {
+            "account_equity": equity,
+            "cash_balance": cash,
+            "unrealized_pnl": round(equity - cash, 2),
+            "open_positions": positions,
+            "open_positions_count": len(positions),
+        }
+    except Exception:
+        return {
+            "account_equity": None,
+            "cash_balance": None,
+            "unrealized_pnl": None,
+            "open_positions": [],
+            "open_positions_count": 0,
+        }
+
+
+def _load_backtest_checkpoint(run: BacktestRun) -> dict[str, Any]:
+    try:
+        broker = BacktestBroker(run_id=str(run.id), initial_capital=_safe_number((run.config or {}).get("initial_capital") or 10_000.0))
+        raw = broker.redis.get(f"backtest:{run.id}:checkpoint")
+        return raw and __import__("json").loads(raw) or {}
+    except Exception:
+        return {}
+
+
+def _filled_orders_count(executions: list[Execution]) -> int:
+    count = 0
+    for execution in executions:
+        trade_execution = (execution.result or {}).get("trade_execution") or {}
+        if trade_execution.get("status") == "filled":
+            count += 1
+    return count
+
+
+def _build_run_payload(run: BacktestRun, executions: list[Execution] | None = None) -> dict[str, Any]:
+    runtime_state = _load_backtest_runtime_state(run)
+    checkpoint = _load_backtest_checkpoint(run)
+    executions = executions or []
+    filled_orders_count = _filled_orders_count(executions)
+    equity_curve = list(run.equity_curve or checkpoint.get("equity_curve") or [])
+    equity_series = list(((run.metrics or {}).get("runtime") or {}).get("equity_points") or checkpoint.get("equity_points") or [])
+    account_equity = runtime_state.get("account_equity")
+    daily_pnl = _build_daily_pnl(equity_series, _safe_number((run.config or {}).get("initial_capital") or 10_000.0))
+
+    return {
+        "id": run.id,
+        "pipeline_id": run.pipeline_id,
+        "pipeline_name": run.pipeline_name,
+        "status": run.status,
+        "config": run.config or {},
+        "progress": run.progress or {},
+        "metrics": run.metrics or {},
+        "trades_count": len(run.trades or []),
+        "filled_orders_count": filled_orders_count,
+        "open_positions_count": runtime_state["open_positions_count"],
+        "account_equity": runtime_state["account_equity"],
+        "cash_balance": runtime_state["cash_balance"],
+        "unrealized_pnl": runtime_state["unrealized_pnl"],
+        "estimated_cost": run.estimated_cost,
+        "actual_cost": run.actual_cost,
+        "failure_reason": run.failure_reason,
+        "created_at": run.created_at,
+        "started_at": run.started_at,
+        "completed_at": run.completed_at,
+        "equity_curve": equity_curve,
+        "equity_series": equity_series,
+        "daily_pnl": daily_pnl,
+        "trades": run.trades or [],
+        "open_positions": runtime_state["open_positions"],
+    }
+
+
+def _build_daily_pnl(equity_series: list[dict[str, Any]], initial_capital: float) -> list[dict[str, Any]]:
+    if not equity_series:
+        return []
+
+    daily_last: dict[str, float] = {}
+    for point in equity_series:
+        ts = str(point.get("ts") or "")
+        date_key = ts[:10]
+        if not date_key:
+            continue
+        daily_last[date_key] = _safe_number(point.get("equity"))
+
+    if not daily_last:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    previous_equity = initial_capital
+    for day in sorted(daily_last.keys()):
+        equity = daily_last[day]
+        pnl = equity - previous_equity
+        rows.append({"date": day, "pnl": round(pnl, 2), "equity": round(equity, 2)})
+        previous_equity = equity
+    return rows
+
+
+async def _load_backtest_executions(db: AsyncSession, current_user: User, run_id: UUID) -> list[Execution]:
+    result = await db.execute(
+        select(Execution)
+        .where(
+            Execution.user_id == current_user.id,
+            Execution.mode == "backtest",
+            _execution_belongs_to_backtest(run_id),
+        )
+        .order_by(desc(Execution.created_at))
+    )
+    return result.scalars().all()
 
 
 def _build_report_summary(
@@ -414,7 +547,12 @@ async def list_backtests(
         .offset(skip)
         .limit(limit)
     )
-    return BacktestRunList(backtests=result.scalars().all(), total=total or 0)
+    runs = result.scalars().all()
+    backtests: list[BacktestRunSummary] = []
+    for run in runs:
+        executions = await _load_backtest_executions(db, current_user, run.id)
+        backtests.append(BacktestRunSummary.model_validate(_build_run_payload(run, executions)))
+    return BacktestRunList(backtests=backtests, total=total or 0)
 
 
 @router.get("/{run_id}", response_model=BacktestRunSummary)
@@ -429,7 +567,8 @@ async def get_backtest(
     run = result.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run not found")
-    return run
+    executions = await _load_backtest_executions(db, current_user, run.id)
+    return BacktestRunSummary.model_validate(_build_run_payload(run, executions))
 
 
 @router.get("/{run_id}/results", response_model=BacktestRunResult)
@@ -439,7 +578,8 @@ async def get_backtest_results(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     run = await _get_backtest_or_404(run_id, current_user, db)
-    return run
+    executions = await _load_backtest_executions(db, current_user, run.id)
+    return BacktestRunResult.model_validate(_build_run_payload(run, executions))
 
 
 @router.get("/{run_id}/executions", response_model=BacktestExecutionList)
@@ -449,16 +589,7 @@ async def list_backtest_executions(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     await _get_backtest_or_404(run_id, current_user, db)
-    result = await db.execute(
-        select(Execution)
-        .where(
-            Execution.user_id == current_user.id,
-            Execution.mode == "backtest",
-            _execution_belongs_to_backtest(run_id),
-        )
-        .order_by(desc(Execution.created_at))
-    )
-    executions = result.scalars().all()
+    executions = await _load_backtest_executions(db, current_user, run_id)
     return BacktestExecutionList(executions=executions, total=len(executions))
 
 
@@ -606,4 +737,5 @@ async def cancel_backtest(
         await db.commit()
         await db.refresh(run)
 
-    return run
+    executions = await _load_backtest_executions(db, current_user, run.id)
+    return BacktestRunSummary.model_validate(_build_run_payload(run, executions))

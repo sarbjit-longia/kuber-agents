@@ -42,12 +42,16 @@
 
         <mat-form-field appearance="outline">
           <mat-label>Start date</mat-label>
-          <input matInput type="date" formControlName="startDate">
+          <input matInput [matDatepicker]="startPicker" formControlName="startDate">
+          <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
           <mat-label>End date</mat-label>
-          <input matInput type="date" formControlName="endDate">
+          <input matInput [matDatepicker]="endPicker" formControlName="endDate">
+          <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
         </mat-form-field>
 
         <div class="date-error" *ngIf="formHasDateError">
@@ -109,106 +113,6 @@
           <strong>${{ estimatedCostUsd.toFixed(2) }}</strong>
         </div>
         <span class="estimate-note">Heuristic only. Real cost depends on agent planning volume.</span>
-      </div>
-    </div>
-
-    <div class="runs-panel">
-      <div class="panel-header">
-        <h3>Recent runs</h3>
-        <p>Latest backtests for this pipeline. Active runs refresh automatically while this dialog is open.</p>
-      </div>
-
-      <div class="runs-loading" *ngIf="loadingRuns">
-        <mat-spinner diameter="26"></mat-spinner>
-        <span>Loading backtests...</span>
-      </div>
-
-      <div class="latest-run" *ngIf="!loadingRuns && latestRun">
-        <div class="latest-head">
-          <span class="status-pill" [ngClass]="statusClass(latestRun.status)">
-            {{ statusLabel(latestRun.status) }}
-          </span>
-          <span class="latest-time">{{ latestRun.created_at | localDate:'short' }}</span>
-        </div>
-
-        <div class="latest-body">
-          <div class="metric">
-            <span class="metric-label">Symbols</span>
-            <span class="metric-value metric-text">{{ symbolsSummary(latestRun) }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Trades</span>
-            <span class="metric-value">{{ latestRun.trades_count }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Cost</span>
-            <span class="metric-value">${{ latestRun.actual_cost.toFixed(2) }}</span>
-          </div>
-          <div class="metric" *ngIf="metricValue(latestRun, 'total_return_pct') !== null">
-            <span class="metric-label">Return</span>
-            <span class="metric-value">
-              {{ (metricValue(latestRun, 'total_return_pct') || 0) * 100 | number:'1.1-2' }}%
-            </span>
-          </div>
-          <div class="metric" *ngIf="metricValue(latestRun, 'win_rate') !== null">
-            <span class="metric-label">Win rate</span>
-            <span class="metric-value">
-              {{ (metricValue(latestRun, 'win_rate') || 0) * 100 | number:'1.0-0' }}%
-            </span>
-          </div>
-          <div class="metric" *ngIf="metricValue(latestRun, 'total_net_pnl') !== null">
-            <span class="metric-label">Net P&amp;L</span>
-            <span class="metric-value">
-              ${{ metricValue(latestRun, 'total_net_pnl') || 0 | number:'1.2-2' }}
-            </span>
-          </div>
-        </div>
-
-        <mat-progress-bar
-          *ngIf="isActive(latestRun.status)"
-          mode="determinate"
-          [value]="progressValue(latestRun)">
-        </mat-progress-bar>
-
-        <div class="latest-progress" *ngIf="isActive(latestRun.status)">
-          {{ progressValue(latestRun) | number:'1.0-0' }}% complete
-          <span *ngIf="currentSymbol(latestRun)">· {{ currentSymbol(latestRun) }}</span>
-        </div>
-
-        <div class="failure-note" *ngIf="latestRun.failure_reason">
-          {{ latestRun.failure_reason }}
-        </div>
-      </div>
-
-      <div class="empty-runs" *ngIf="!loadingRuns && recentRuns.length === 0">
-        <mat-icon>history</mat-icon>
-        <span>No backtests yet for this pipeline.</span>
-      </div>
-
-      <div class="runs-list" *ngIf="!loadingRuns && recentRuns.length > 0">
-        <div class="run-row" *ngFor="let run of recentRuns">
-          <div class="run-main">
-            <div class="run-topline">
-              <span class="status-pill small" [ngClass]="statusClass(run.status)">
-                {{ statusLabel(run.status) }}
-              </span>
-              <span class="run-time">{{ run.created_at | localDate:'short' }}</span>
-            </div>
-            <div class="run-meta">
-              {{ runTimeframe(run) }} · {{ run.trades_count }} trades ·
-              ${{ run.actual_cost.toFixed(2) }}
-            </div>
-          </div>
-          <button
-            *ngIf="isActive(run.status)"
-            mat-stroked-button
-            color="warn"
-            type="button"
-            [disabled]="cancellingRunId === run.id"
-            (click)="cancelRun(run)">
-            {{ cancellingRunId === run.id ? 'Cancelling...' : 'Cancel' }}
-          </button>
-        </div>
       </div>
     </div>
   </section>

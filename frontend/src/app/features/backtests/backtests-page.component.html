@@ -1,8 +1,8 @@
 <app-navbar></app-navbar>
 
 <main class="backtests-shell">
-  <section class="hero">
-    <div>
+  <section class="page-hero">
+    <div class="hero-copy">
       <span class="eyebrow">Backtesting Workspace</span>
       <h1>Launch, monitor, and review parity backtests.</h1>
       <p>
@@ -28,114 +28,7 @@
   </section>
 
   <section class="workspace-grid">
-    <aside class="control-rail">
-      <mat-card class="panel-card launch-card">
-        <header class="panel-header">
-          <div>
-            <span class="panel-kicker">Phase A</span>
-            <h2>Start Backtest</h2>
-          </div>
-          <span class="cost-pill">Est. ${{
-            estimatedCostUsd | number:'1.2-2'
-          }}</span>
-        </header>
-
-        <form [formGroup]="form" class="launch-form">
-          <mat-form-field appearance="outline">
-            <mat-label>Pipeline</mat-label>
-            <mat-select formControlName="pipelineId" (selectionChange)="onPipelineChanged()">
-              <mat-option *ngFor="let pipeline of pipelines" [value]="pipeline.id">
-                {{ pipeline.name }}
-              </mat-option>
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline">
-            <mat-label>Symbols</mat-label>
-            <input
-              matInput
-              formControlName="symbolsText"
-              placeholder="AAPL, SMCI, AMZN"
-            />
-          </mat-form-field>
-
-          <div class="form-row">
-            <mat-form-field appearance="outline">
-              <mat-label>Start date</mat-label>
-              <input matInput type="date" formControlName="startDate" />
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>End date</mat-label>
-              <input matInput type="date" formControlName="endDate" />
-            </mat-form-field>
-          </div>
-
-          <div class="form-row">
-            <mat-form-field appearance="outline">
-              <mat-label>Timeframe</mat-label>
-              <mat-select formControlName="timeframe">
-                <mat-option *ngFor="let timeframe of timeframes" [value]="timeframe">
-                  {{ timeframe }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Initial capital</mat-label>
-              <input matInput type="number" formControlName="initialCapital" />
-            </mat-form-field>
-          </div>
-
-          <div class="form-row">
-            <mat-form-field appearance="outline">
-              <mat-label>Slippage model</mat-label>
-              <mat-select formControlName="slippageModel">
-                <mat-option *ngFor="let model of slippageModels" [value]="model.value">
-                  {{ model.label }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Slippage value</mat-label>
-              <input matInput type="number" formControlName="slippageValue" />
-            </mat-form-field>
-          </div>
-
-          <div class="form-row">
-            <mat-form-field appearance="outline">
-              <mat-label>Commission model</mat-label>
-              <mat-select formControlName="commissionModel">
-                <mat-option *ngFor="let model of commissionModels" [value]="model.value">
-                  {{ model.label }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Commission value</mat-label>
-              <input matInput type="number" formControlName="commissionValue" />
-            </mat-form-field>
-          </div>
-
-          <mat-form-field appearance="outline">
-            <mat-label>Max LLM cost cap (optional)</mat-label>
-            <input matInput type="number" formControlName="maxCostUsd" />
-          </mat-form-field>
-
-          <p class="form-error" *ngIf="formHasDateError">
-            End date must be on or after the start date.
-          </p>
-
-          <button mat-flat-button color="primary" type="button" [disabled]="!canLaunch" (click)="launchBacktest()">
-            <mat-icon *ngIf="!launching">rocket_launch</mat-icon>
-            <mat-spinner *ngIf="launching" diameter="18"></mat-spinner>
-            <span>{{ launching ? 'Launching...' : 'Start Parity Backtest' }}</span>
-          </button>
-        </form>
-      </mat-card>
-
+    <aside class="history-rail">
       <mat-card class="panel-card runs-card">
         <header class="panel-header">
           <div>
@@ -147,7 +40,6 @@
             Refresh
           </button>
         </header>
-
         <div class="runs-list" *ngIf="!loadingRuns; else runsLoading">
           <button
             class="run-row"
@@ -171,7 +63,7 @@
           </button>
 
           <p class="empty-state" *ngIf="runs.length === 0">
-            No backtests yet. Launch a run to populate this workspace.
+            No backtests yet. Start a run to populate this workspace.
           </p>
         </div>
 
@@ -184,7 +76,8 @@
       </mat-card>
     </aside>
 
-    <section class="details-pane">
+    <section class="main-column">
+      <section class="details-pane">
       <ng-container *ngIf="selectedRun; else noSelection">
         <mat-card class="panel-card run-summary-card">
           <div class="run-summary-top">
@@ -201,6 +94,10 @@
               <span class="status-chip large" [ngClass]="statusClass(selectedRun.status)">
                 {{ statusLabel(selectedRun.status) }}
               </span>
+              <button mat-flat-button color="primary" type="button" (click)="openLaunchDialog()">
+                <mat-icon>add</mat-icon>
+                <span>New Run</span>
+              </button>
               <button
                 mat-stroked-button
                 color="warn"
@@ -216,6 +113,26 @@
 
           <mat-progress-bar mode="determinate" [value]="progressValue(selectedRun)"></mat-progress-bar>
 
+          <div class="virtual-clock-card">
+            <div class="virtual-clock-copy">
+              <span class="panel-kicker">Virtual Clock</span>
+              <div class="virtual-clock-line">
+                <mat-icon>schedule</mat-icon>
+                <strong>{{ selectedRun.progress['current_ts'] | localDate:'long' }}</strong>
+              </div>
+              <p>
+                Replay progress {{ progressValue(selectedRun) | number:'1.0-0' }}%
+                · {{ selectedRun.progress['current_bar'] || 0 }} / {{ selectedRun.progress['total_bars'] || 0 }} bars
+              </p>
+            </div>
+            <div class="virtual-clock-meta">
+              <span>Approx speed</span>
+              <strong>{{ virtualSpeedMultiplier }}</strong>
+              <span class="virtual-clock-secondary">Current symbol</span>
+              <strong>{{ selectedRun.progress['current_symbol'] || 'N/A' }}</strong>
+            </div>
+          </div>
+
           <div class="summary-grid">
             <article class="summary-metric">
               <span class="label">Current Timestamp</span>
@@ -230,12 +147,29 @@
               <strong>${{ selectedRun.actual_cost | number:'1.2-2' }}</strong>
             </article>
             <article class="summary-metric">
-              <span class="label">Trades</span>
-              <strong>{{ selectedRun.trades_count }}</strong>
+              <span class="label">Filled Orders</span>
+              <strong>{{ selectedRun.filled_orders_count }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Open Positions</span>
+              <strong>{{ selectedRun.open_positions_count }}</strong>
             </article>
             <article class="summary-metric">
               <span class="label">Executions</span>
               <strong>{{ selectedExecutions.length }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Account Equity</span>
+              <strong>${{ (selectedRun.account_equity ?? 0) | number:'1.2-2' }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Unrealized P&amp;L</span>
+              <strong
+                [class.positive]="(selectedRun.unrealized_pnl ?? 0) > 0"
+                [class.negative]="(selectedRun.unrealized_pnl ?? 0) < 0"
+              >
+                ${{ (selectedRun.unrealized_pnl ?? 0) | number:'1.2-2' }}
+              </strong>
             </article>
             <article class="summary-metric">
               <span class="label">Latest Error</span>
@@ -271,8 +205,34 @@
                 <ng-template #noChartData>
                   <div class="empty-state chart-empty">
                     <mat-icon>show_chart</mat-icon>
-                    <span>Equity curve will appear once the run records enough data.</span>
+                    <span>Equity curve will appear once the runtime records real equity samples.</span>
                   </div>
+                </ng-template>
+              </mat-card>
+
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Daily P&amp;L</span>
+                    <h3>End-of-day equity changes</h3>
+                  </div>
+                </header>
+                <div class="simple-table" *ngIf="hasDailyPnl; else noDailyPnl">
+                  <div class="table-head">
+                    <span>Date</span>
+                    <span>P&amp;L</span>
+                    <span>Equity</span>
+                  </div>
+                  <div class="table-row" *ngFor="let day of selectedRun?.daily_pnl">
+                    <span>{{ day.date }}</span>
+                    <span [class.positive]="day.pnl > 0" [class.negative]="day.pnl < 0">
+                      {{ day.pnl | number:'1.2-2' }}
+                    </span>
+                    <span>{{ day.equity | number:'1.2-2' }}</span>
+                  </div>
+                </div>
+                <ng-template #noDailyPnl>
+                  <p class="empty-state">Daily P&amp;L will appear once the run spans enough sampled equity data.</p>
                 </ng-template>
               </mat-card>
 
@@ -289,6 +249,36 @@
                     <strong>{{ metric.value }}</strong>
                   </article>
                 </div>
+              </mat-card>
+
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Open Positions</span>
+                    <h3>Live broker state inside the backtest</h3>
+                  </div>
+                </header>
+                <div class="simple-table" *ngIf="selectedRun.open_positions?.length; else noOpenPositions">
+                  <div class="table-head">
+                    <span>Symbol</span>
+                    <span>Side</span>
+                    <span>Qty</span>
+                    <span>Entry</span>
+                    <span>Stop</span>
+                    <span>Target</span>
+                  </div>
+                  <div class="table-row" *ngFor="let position of selectedRun.open_positions">
+                    <span>{{ position['symbol'] }}</span>
+                    <span>{{ position['action'] }}</span>
+                    <span>{{ position['qty'] }}</span>
+                    <span>{{ position['entry_price'] }}</span>
+                    <span>{{ position['stop_loss'] ?? '—' }}</span>
+                    <span>{{ position['take_profit'] ?? '—' }}</span>
+                  </div>
+                </div>
+                <ng-template #noOpenPositions>
+                  <p class="empty-state">No open positions right now.</p>
+                </ng-template>
               </mat-card>
 
               <mat-card class="panel-card">
@@ -318,9 +308,8 @@
                 </div>
                 <ng-template #noTrades>
                   <p class="empty-state">
-                    No closed trades yet. If cost is increasing without trades, inspect the
-                    execution and timeline tabs to see whether strategy, risk, or review is
-                    blocking entries.
+                    No closed trades yet. Filled orders can still be open and visible in the
+                    Open Positions section above.
                   </p>
                 </ng-template>
               </mat-card>
@@ -337,17 +326,71 @@
                   </div>
                 </header>
 
-                <div class="simple-table" *ngIf="selectedExecutions.length; else noExecutions">
+                <div class="execution-filters" *ngIf="selectedExecutions.length">
+                  <div class="execution-filter-chips">
+                    <button
+                      type="button"
+                      class="filter-chip"
+                      *ngFor="let filter of [
+                        ['all', 'All'],
+                        ['filled', 'Filled'],
+                        ['open', 'Open'],
+                        ['closed', 'Closed'],
+                        ['with_pnl', 'With P&L'],
+                        ['approved', 'Approved'],
+                        ['rejected', 'Rejected'],
+                        ['hold', 'Hold']
+                      ]"
+                      [class.active]="executionFilter === filter[0]"
+                      (click)="setExecutionFilter(filter[0])"
+                    >
+                      {{ filter[1] }}
+                    </button>
+                  </div>
+
+                  <div class="execution-filter-selects">
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>Symbol</mat-label>
+                      <mat-select [(value)]="executionSymbolFilter" (valueChange)="onExecutionSelectorChanged()">
+                        <mat-option value="all">All symbols</mat-option>
+                        <mat-option *ngFor="let symbol of executionSymbols" [value]="symbol">{{ symbol }}</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>Decision</mat-label>
+                      <mat-select [(value)]="executionDecisionFilter" (valueChange)="onExecutionSelectorChanged()">
+                        <mat-option value="all">All decisions</mat-option>
+                        <mat-option value="BUY">BUY</mat-option>
+                        <mat-option value="SELL">SELL</mat-option>
+                        <mat-option value="HOLD">HOLD</mat-option>
+                        <mat-option value="APPROVED">APPROVED</mat-option>
+                        <mat-option value="REJECTED">REJECTED</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <div class="simple-table" *ngIf="filteredExecutions.length; else noExecutions">
                   <div class="table-head executions-head">
-                    <span>Created</span>
+                    <span>Sim Time</span>
                     <span>Symbol</span>
                     <span>Status</span>
                     <span>Decision</span>
+                    <span>Trade</span>
+                    <span>Fill</span>
+                    <span>P&amp;L</span>
                     <span>Cost</span>
                     <span>Error</span>
                   </div>
-                  <div class="table-row executions-row" *ngFor="let execution of selectedExecutions">
-                    <span>{{ execution.created_at | localDate:'short' }}</span>
+                  <button
+                    class="table-row executions-row execution-row-button"
+                    *ngFor="let execution of filteredExecutions"
+                    type="button"
+                    [class.selected]="selectedExecution?.id === execution.id"
+                    (click)="selectExecution(execution)"
+                  >
+                    <span>{{ executionVirtualTs(execution) | localDate:'short' }}</span>
                     <span>{{ execution.symbol || 'N/A' }}</span>
                     <span>
                       <span class="status-chip" [ngClass]="statusClass(execution.status)">
@@ -355,15 +398,21 @@
                       </span>
                     </span>
                     <span>{{ latestDecision(execution) }}</span>
+                    <span>{{ executionTradeStatus(execution) }}</span>
+                    <span>{{ executionFilledPrice(execution) }}</span>
+                    <span>{{ executionPnl(execution) }}</span>
                     <span>${{ execution.cost | number:'1.2-2' }}</span>
                     <span>{{ execution.error_message || execution.result['trigger_reason'] || '—' }}</span>
-                  </div>
+                  </button>
                 </div>
 
                 <ng-template #noExecutions>
-                  <p class="empty-state">No executions recorded for this run yet.</p>
+                  <p class="empty-state">
+                    {{ selectedExecutions.length ? 'No executions match the current filters.' : 'No executions recorded for this run yet.' }}
+                  </p>
                 </ng-template>
               </mat-card>
+
             </div>
           </mat-tab>
 
@@ -472,10 +521,137 @@
             Launch a new run from the control rail or select an existing run to inspect
             progress, trades, execution-level visibility, and the generated report.
           </p>
+          <button mat-flat-button color="primary" type="button" (click)="openLaunchDialog()">
+            <mat-icon>rocket_launch</mat-icon>
+            <span>Start New Run</span>
+          </button>
         </mat-card>
       </ng-template>
+      </section>
     </section>
   </section>
 </main>
+
+<div
+  class="execution-drawer-backdrop"
+  *ngIf="selectedExecution"
+  (click)="closeExecutionDrawer()"
+>
+  <aside
+    class="execution-drawer"
+    [style.width.px]="executionDrawerWidth"
+    (click)="$event.stopPropagation()"
+  >
+    <button
+      class="execution-drawer-resize"
+      type="button"
+      aria-label="Resize execution drawer"
+      (mousedown)="startExecutionDrawerResize($event)"
+    ></button>
+    <header class="execution-drawer-header">
+      <div>
+        <span class="panel-kicker">Selected Execution</span>
+        <h3>Detailed reasoning and trade outcome</h3>
+      </div>
+      <button mat-icon-button type="button" aria-label="Close execution details" (click)="closeExecutionDrawer()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+
+    <div class="summary-grid compact">
+      <article class="summary-metric">
+        <span class="label">Sim Time</span>
+        <strong>{{ executionVirtualTs(selectedExecution) | localDate:'short' }}</strong>
+      </article>
+      <article class="summary-metric">
+        <span class="label">Decision</span>
+        <strong>{{ latestDecision(selectedExecution) }}</strong>
+      </article>
+      <article class="summary-metric">
+        <span class="label">Trade Status</span>
+        <strong>{{ executionTradeStatus(selectedExecution) }}</strong>
+      </article>
+      <article class="summary-metric">
+        <span class="label">Cost</span>
+        <strong>${{ selectedExecution.cost | number:'1.2-2' }}</strong>
+      </article>
+    </div>
+
+    <div class="execution-detail-grid">
+      <section class="execution-detail-card">
+        <div class="execution-card-header">
+          <h4>Bias Agent</h4>
+          <span class="analysis-chip">Context</span>
+        </div>
+        <p>{{ biasReasoning(selectedExecution) }}</p>
+        <div class="detail-list" *ngIf="biasDetails(selectedExecution).length">
+          <div class="detail-row" *ngFor="let item of biasDetails(selectedExecution)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="execution-detail-card">
+        <div class="execution-card-header">
+          <h4>Strategy Agent</h4>
+          <span class="analysis-chip">Setup</span>
+        </div>
+        <p>{{ strategyReasoning(selectedExecution) }}</p>
+        <div class="detail-list" *ngIf="strategyDetails(selectedExecution).length">
+          <div class="detail-row" *ngFor="let item of strategyDetails(selectedExecution)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="execution-detail-card">
+        <div class="execution-card-header">
+          <h4>Risk Manager</h4>
+          <span class="analysis-chip">Sizing</span>
+        </div>
+        <p>{{ riskReasoning(selectedExecution) }}</p>
+        <div class="detail-list" *ngIf="riskDetails(selectedExecution).length">
+          <div class="detail-row" *ngFor="let item of riskDetails(selectedExecution)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="execution-detail-card">
+        <div class="execution-card-header">
+          <h4>Trade Review</h4>
+          <span class="analysis-chip">Decision</span>
+        </div>
+        <p>{{ reviewReasoning(selectedExecution) }}</p>
+        <div class="detail-list" *ngIf="reviewDetails(selectedExecution).length">
+          <div class="detail-row" *ngFor="let item of reviewDetails(selectedExecution)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="execution-detail-card">
+        <div class="execution-card-header">
+          <h4>Trade Outcome</h4>
+          <span class="analysis-chip">Result</span>
+        </div>
+        <div class="detail-list" *ngIf="outcomeDetails(selectedExecution).length; else noTradeExecutionDetailsDrawer">
+          <div class="detail-row" *ngFor="let item of outcomeDetails(selectedExecution)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+        <ng-template #noTradeExecutionDetailsDrawer>
+          <p>No trade outcome recorded yet.</p>
+        </ng-template>
+      </section>
+    </div>
+
+  </aside>
+</div>
 
 <app-footer></app-footer>

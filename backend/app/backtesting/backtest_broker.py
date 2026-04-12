@@ -97,9 +97,11 @@ class BacktestBroker:
             "action": action,
             "qty": qty,
             "entry_price": fill_price,
+            "mark_price": fill_price,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
             "commission": commission,
+            "unrealized_pnl": 0.0,
             "execution_id": execution_id,
             "opened_at": datetime.utcnow().isoformat(),
             "metadata": metadata or {},
@@ -152,7 +154,10 @@ class BacktestBroker:
 
         trades_key = self._key("trades")
         trades = json.loads(self.redis.get(trades_key) or "[]")
-        trades.append(asdict(trade))
+        trade_record = asdict(trade)
+        trade_record["execution_id"] = position.get("execution_id")
+        trade_record["symbol"] = symbol
+        trades.append(trade_record)
         self.redis.set(trades_key, json.dumps(trades, default=str))
 
         account = self.get_account()
@@ -190,6 +195,11 @@ class BacktestBroker:
         account["equity"] = float(account.get("cash", self.initial_capital))
         unrealized = (close - float(position["entry_price"])) * float(position["qty"]) if action == "BUY" else (float(position["entry_price"]) - close) * float(position["qty"])
         account["equity"] += unrealized
+        position["mark_price"] = close
+        position["unrealized_pnl"] = unrealized
+        positions = self.get_positions()
+        positions[symbol] = position
+        self._save_positions(positions)
         self._save_account(account)
         return None
 

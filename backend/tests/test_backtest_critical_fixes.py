@@ -8,6 +8,7 @@ import pytest
 
 from app.backtesting.orchestrator import BacktestOrchestrator
 from app.backtesting.runtime_main import _start_embedded_signal_generator
+from app.agents.risk_manager_agent import RiskManagerAgent
 from app.models.backtest_run import BacktestRunStatus
 from app.config import settings
 
@@ -284,3 +285,46 @@ def test_orchestrator_replays_all_signal_types_when_pipeline_has_no_subscription
     assert signals == [{"signal_type": "distribution_signal"}]
     assert captured["json"]["signal_types"] == []
     assert captured["json"]["symbols"] == ["AAPL"]
+
+
+@pytest.mark.no_tool_mocks
+def test_risk_manager_uses_backtest_broker_account_info(monkeypatch):
+    class StubBacktestBroker:
+        def __init__(self, run_id: str, initial_capital: float, **_kwargs):
+            self.run_id = run_id
+            self.initial_capital = initial_capital
+
+        def get_account(self):
+            return {"cash": 8250.0, "equity": 10350.0}
+
+        def get_positions(self):
+            return {
+                "AAPL": {
+                    "symbol": "AAPL",
+                    "qty": 12,
+                    "entry_price": 245.5,
+                }
+            }
+
+    monkeypatch.setattr(
+        "app.agents.risk_manager_agent.BacktestBroker",
+        StubBacktestBroker,
+        raising=False,
+    )
+
+    agent = RiskManagerAgent.__new__(RiskManagerAgent)
+    agent.config = {"initial_capital": 100000.0}
+    agent.logger = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    agent.log = lambda *_args, **_kwargs: None
+    agent._get_broker_tool = lambda: (_ for _ in ()).throw(
+        AssertionError("live broker lookup should not run during backtests")
+    )
+
+    state = SimpleNamespace(mode="backtest", backtest_run_id="run-123", initial_capital=100000.0)
+
+    broker_info = agent._get_broker_account_info(state)
+
+    assert broker_info["source"] == "backtest_broker"
+    assert broker_info["buying_power"] == 8250.0
+    assert broker_info["equity"] == 10350.0
+    assert broker_info["positions"][0]["symbol"] == "AAPL"

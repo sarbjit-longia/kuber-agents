@@ -183,19 +183,31 @@ class RiskManagerAgent(BaseAgent):
             )
 
             # ── Portfolio-level gate (TP-009) ─────────────────────────────────
-            portfolio_rejection = self._portfolio_risk_check(state, broker_info, det["position_size"])
-            if portfolio_rejection:
+            portfolio_adjustment = self._portfolio_risk_check(state, broker_info, det["position_size"])
+            if portfolio_adjustment["rejected"]:
                 state.risk_assessment = RiskAssessment(
                     approved=False,
                     risk_score=1.0,
                     position_size=0.0,
                     max_loss_amount=0.0,
                     risk_reward_ratio=det["rr_ratio"],
-                    warnings=[portfolio_rejection],
-                    reasoning=f"Portfolio risk limit: {portfolio_rejection}",
+                    warnings=[portfolio_adjustment["reason"]],
+                    reasoning=f"Portfolio risk limit: {portfolio_adjustment['reason']}",
                 )
-                self.log(state, f"✗ Portfolio gate rejected trade: {portfolio_rejection}")
+                self.log(state, f"✗ Portfolio gate rejected trade: {portfolio_adjustment['reason']}")
                 return state
+
+            if portfolio_adjustment["adjusted_size"] < det["position_size"]:
+                original_size = det["position_size"]
+                det["position_size"] = portfolio_adjustment["adjusted_size"]
+                if strategy.stop_loss is not None:
+                    risk_per_share = abs(float(strategy.entry_price or 0) - float(strategy.stop_loss))
+                    det["max_loss"] = det["position_size"] * risk_per_share
+                self.log(
+                    state,
+                    f"⚠️ Exposure cap reduced size: {int(original_size)} → "
+                    f"{int(det['position_size'])} shares ({portfolio_adjustment['reason']})"
+                )
 
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
@@ -418,6 +430,39 @@ REASONING: <brief explanation of your calculation including the formula used>
     
     def _get_broker_account_info(self, state: PipelineState) -> Dict[str, Any]:
         """Query broker for account information."""
+        if state.mode == "backtest" and state.backtest_run_id:
+            try:
+                from app.backtesting.backtest_broker import BacktestBroker
+
+                initial_capital = float(
+                    getattr(state, "initial_capital", 0)
+                    or self.config.get("initial_capital")
+                    or 10000
+                )
+                broker = BacktestBroker(
+                    run_id=state.backtest_run_id,
+                    initial_capital=initial_capital,
+                )
+                account = broker.get_account()
+                positions = list(broker.get_positions().values())
+                cash = float(account.get("cash", initial_capital))
+                equity = float(account.get("equity", cash))
+                self.log(
+                    state,
+                    f"📊 Backtest account — equity: ${equity:.2f}, "
+                    f"buying power: ${cash:.2f}, cash: ${cash:.2f}"
+                )
+                return {
+                    "account_balance": equity,
+                    "buying_power": cash,
+                    "cash": cash,
+                    "equity": equity,
+                    "positions": positions,
+                    "source": "backtest_broker",
+                }
+            except Exception as e:
+                self.logger.warning(f"Failed to get backtest broker info: {e}")
+
         broker_tool = self._get_broker_tool()
         
         if not broker_tool:
@@ -650,12 +695,14 @@ MARKET CONDITIONS:
         state: PipelineState,
         broker_info: Dict[str, Any],
         det_size: float,
-    ) -> Optional[str]:
+    ) -> Dict[str, Any]:
         """
         Check portfolio-level constraints before approving a new trade.
 
-        Returns a rejection reason string if any constraint is violated,
-        or None if all checks pass.
+        Returns a dict with:
+        - rejected: whether the trade must be rejected
+        - adjusted_size: max permitted size after portfolio constraints
+        - reason: human-readable explanation
         """
         import re
 
@@ -668,10 +715,14 @@ MARKET CONDITIONS:
         # 1. Max concurrent positions
         max_pos = int(self.config.get("max_concurrent_positions", 5))
         if len(positions) >= max_pos:
-            return (
-                f"Max concurrent positions reached ({len(positions)}/{max_pos}). "
-                "Close an existing position before opening a new one."
-            )
+            return {
+                "rejected": True,
+                "adjusted_size": 0.0,
+                "reason": (
+                    f"Max concurrent positions reached ({len(positions)}/{max_pos}). "
+                    "Close an existing position before opening a new one."
+                ),
+            }
 
         # 2. Total exposure cap
         max_exposure_pct = float(self.config.get("max_total_exposure_pct", 0.90))
@@ -681,11 +732,26 @@ MARKET CONDITIONS:
         )
         new_trade_value = det_size * entry if entry > 0 else 0
         if equity > 0 and (current_exposure + new_trade_value) / equity > max_exposure_pct:
-            return (
-                f"Adding this position would bring total exposure to "
-                f"{(current_exposure + new_trade_value) / equity * 100:.0f}% of equity "
-                f"(limit: {max_exposure_pct * 100:.0f}%)."
-            )
+            remaining_exposure_value = max(0.0, equity * max_exposure_pct - current_exposure)
+            max_size_by_exposure = int(remaining_exposure_value / entry) if entry > 0 else 0
+            if max_size_by_exposure < 1:
+                return {
+                    "rejected": True,
+                    "adjusted_size": 0.0,
+                    "reason": (
+                        f"Adding this position would bring total exposure to "
+                        f"{(current_exposure + new_trade_value) / equity * 100:.0f}% of equity "
+                        f"(limit: {max_exposure_pct * 100:.0f}%)."
+                    ),
+                }
+            return {
+                "rejected": False,
+                "adjusted_size": float(min(det_size, max_size_by_exposure)),
+                "reason": (
+                    f"Position size reduced to respect total exposure cap of "
+                    f"{max_exposure_pct * 100:.0f}%."
+                ),
+            }
 
         # 3. Side imbalance — don't allow > 80% of open positions on one side
         if positions:
@@ -699,12 +765,20 @@ MARKET CONDITIONS:
                 short_pct = new_short / total
                 if long_pct > 0.80 or short_pct > 0.80:
                     dominant = "long" if long_pct > 0.80 else "short"
-                    return (
-                        f"Portfolio is >80% {dominant}-biased after this trade. "
-                        "Add some balance before adding more exposure."
-                    )
+                    return {
+                        "rejected": True,
+                        "adjusted_size": 0.0,
+                        "reason": (
+                            f"Portfolio is >80% {dominant}-biased after this trade. "
+                            "Add some balance before adding more exposure."
+                        ),
+                    }
 
-        return None  # All checks passed
+        return {
+            "rejected": False,
+            "adjusted_size": float(det_size),
+            "reason": "",
+        }
 
     def _calculate_fallback_position_size(
         self, state: PipelineState, strategy, broker_info: Dict[str, Any]

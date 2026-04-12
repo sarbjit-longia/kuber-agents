@@ -33,6 +33,11 @@ export interface BacktestRunSummary {
   progress: Record<string, any>;
   metrics?: Record<string, any> | null;
   trades_count: number;
+  filled_orders_count: number;
+  open_positions_count: number;
+  account_equity?: number | null;
+  cash_balance?: number | null;
+  unrealized_pnl?: number | null;
   estimated_cost?: number | null;
   actual_cost: number;
   failure_reason?: string | null;
@@ -43,7 +48,10 @@ export interface BacktestRunSummary {
 
 export interface BacktestRunResult extends BacktestRunSummary {
   equity_curve: number[];
+  equity_series: Array<{ ts: string; equity: number }>;
+  daily_pnl: Array<{ date: string; pnl: number; equity: number }>;
   trades: Record<string, any>[];
+  open_positions: Record<string, any>[];
 }
 
 export interface BacktestRunListResponse {
