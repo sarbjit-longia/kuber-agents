@@ -323,10 +323,100 @@ Be specific about which indicators you used, their exact values, and any custom 
             return state
             
         except Exception as e:
+            if self._is_nonfatal_tool_event_error(e):
+                fallback_bias = self._build_fallback_bias_result(state, str(e))
+                state.biases[fallback_bias.timeframe] = fallback_bias
+                self.log(
+                    state,
+                    f"Bias fallback applied after non-fatal tool event error: {fallback_bias.bias} ({fallback_bias.confidence:.0%}) on {fallback_bias.timeframe}",
+                    level="warning",
+                )
+                self.record_report(
+                    state,
+                    title="Market Bias Analysis (Fallback)",
+                    summary=f"{fallback_bias.bias} bias ({fallback_bias.confidence:.0%}) on {fallback_bias.timeframe}",
+                    status="warning",
+                    data={
+                        "Market Bias": fallback_bias.bias,
+                        "Confidence Level": f"{fallback_bias.confidence:.0%}",
+                        "Analyzed Timeframe": fallback_bias.timeframe,
+                        "Key Market Factors": ", ".join(fallback_bias.key_factors),
+                        "Detailed Analysis": fallback_bias.reasoning,
+                        "Fallback Reason": "Recovered from non-fatal CrewAI tool event validation error",
+                    },
+                )
+                return state
+
             error_msg = f"Bias analysis failed: {str(e)}"
             self.add_error(state, error_msg)
             logger.exception("bias_agent_failed", agent_id=self.agent_id, error=str(e))
             raise AgentProcessingError(error_msg) from e
+
+    @staticmethod
+    def _is_nonfatal_tool_event_error(error: Exception) -> bool:
+        message = str(error)
+        return "ToolUsageFinishedEvent" in message or "tool_args.dict" in message
+
+    def _build_fallback_bias_result(self, state: PipelineState, error_message: str) -> BiasResult:
+        timeframe = (state.timeframes[0] if state.timeframes else None) or next(
+            iter((state.market_data.timeframes or {}).keys()),
+            "5m",
+        )
+        latest = state.get_latest_candle(timeframe)
+
+        bias = "NEUTRAL"
+        confidence = 0.35
+        key_factors = ["Fallback path used after non-fatal CrewAI tool event validation error"]
+        reasoning = (
+            f"Bias agent fell back to deterministic interpretation because tool event tracing failed "
+            f"with a non-fatal validation error: {error_message}. "
+        )
+
+        if latest:
+            rsi = latest.rsi
+            macd = latest.macd
+            macd_signal = latest.macd_signal
+            if rsi is not None:
+                key_factors.append(f"RSI={rsi:.2f} on {timeframe}")
+            if macd is not None and macd_signal is not None:
+                key_factors.append(f"MACD={macd:.4f} vs signal={macd_signal:.4f}")
+
+            bullish_confirmed = (
+                rsi is not None and rsi >= 55 and macd is not None and macd_signal is not None and macd > macd_signal
+            )
+            bearish_confirmed = (
+                rsi is not None and rsi <= 45 and macd is not None and macd_signal is not None and macd < macd_signal
+            )
+
+            if bullish_confirmed:
+                bias = "BULLISH"
+                confidence = 0.55
+                reasoning += (
+                    f"Fallback indicators still support a bullish stance because RSI is {rsi:.2f} "
+                    f"and MACD is above its signal line."
+                )
+            elif bearish_confirmed:
+                bias = "BEARISH"
+                confidence = 0.55
+                reasoning += (
+                    f"Fallback indicators support a bearish stance because RSI is {rsi:.2f} "
+                    f"and MACD is below its signal line."
+                )
+            else:
+                reasoning += (
+                    f"Available fallback indicators on {timeframe} do not show aligned momentum, "
+                    f"so the bias remains neutral."
+                )
+        else:
+            reasoning += "No usable latest candle was available, so the fallback defaults to a neutral bias."
+
+        return BiasResult(
+            bias=bias,
+            confidence=confidence,
+            timeframe=timeframe,
+            reasoning=reasoning,
+            key_factors=key_factors,
+        )
 
     def _ensure_requested_indicators_in_key_factors(self, bias: BiasResult, instructions: str) -> BiasResult:
         """

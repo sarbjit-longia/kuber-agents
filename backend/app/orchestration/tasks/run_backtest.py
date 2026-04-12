@@ -7,6 +7,7 @@ from uuid import UUID
 import structlog
 
 from app.backtesting.snapshot import hydrate_pipeline_from_snapshot
+from app.backtesting.events import create_backtest_event
 from app.database import SessionLocal
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
 from app.models.pipeline import Pipeline
@@ -55,6 +56,15 @@ def execute_backtest_run(backtest_run_id: str):
             run.status = BacktestRunStatus.FAILED
             run.failure_reason = str(exc)
             run.completed_at = datetime.utcnow()
+            db.add(
+                create_backtest_event(
+                    run=run,
+                    event_type="run_failed",
+                    title="Backtest failed",
+                    message=str(exc),
+                    level="error",
+                )
+            )
             db.commit()
         raise
     finally:

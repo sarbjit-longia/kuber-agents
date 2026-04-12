@@ -45,6 +45,16 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'backtests',
+    loadComponent: () => import('./features/backtests/backtests-page.component').then(m => m.BacktestsPageComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'backtests/:id',
+    loadComponent: () => import('./features/backtests/backtests-page.component').then(m => m.BacktestsPageComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'pipeline-builder',
     loadComponent: () => import('./features/pipeline-builder-guided/pipeline-builder-guided.component').then(m => m.PipelineBuilderGuidedComponent),
     canActivate: [authGuard]

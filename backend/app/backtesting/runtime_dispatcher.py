@@ -165,6 +165,7 @@ def execute_runtime_matches(
         results.append(
             {
                 "ticker": ticker,
+                "signal_context": signal_context,
                 "result": result,
             }
         )

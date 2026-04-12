@@ -28,7 +28,6 @@ import {
   LiquidationConfirmDialogComponent,
   LiquidationDialogResult
 } from '../../shared/components/liquidation-confirm-dialog/liquidation-confirm-dialog.component';
-import { BacktestLaunchDialogComponent } from './backtest-launch-dialog/backtest-launch-dialog.component';
 
 @Component({
   selector: 'app-pipelines',
@@ -144,13 +143,7 @@ export class PipelinesComponent implements OnInit {
 
   openBacktest(pipeline: Pipeline, event: Event): void {
     event.stopPropagation();
-
-    this.dialog.open(BacktestLaunchDialogComponent, {
-      width: '980px',
-      maxWidth: 'calc(100vw - 24px)',
-      panelClass: 'backtest-launch-dialog-panel',
-      data: { pipeline }
-    });
+    this.router.navigate(['/backtests'], { queryParams: { pipelineId: pipeline.id } });
   }
 
   toggleActive(pipeline: Pipeline, event: Event): void {

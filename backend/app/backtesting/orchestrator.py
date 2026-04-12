@@ -17,7 +17,9 @@ from urllib3.util.retry import Retry
 
 from app.backtesting.analytics import PerformanceAnalytics
 from app.backtesting.backtest_broker import BacktestBroker
+from app.backtesting.events import create_backtest_event
 from app.config import settings
+from app.models.backtest_event import BacktestEvent
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
 
 if TYPE_CHECKING:
@@ -103,6 +105,12 @@ class BacktestOrchestrator:
     def run_backtest(self) -> Dict:
         self.run.status = BacktestRunStatus.RUNNING
         self.run.started_at = datetime.utcnow()
+        self._record_event(
+            event_type="run_started",
+            title="Backtest started",
+            message="Replay runtime started processing historical data.",
+            data={"symbols": self.symbols, "timeframe": self.timeframe},
+        )
         _flag_modified_if_present(self.run, "progress")
         self.db.commit()
 
@@ -119,6 +127,12 @@ class BacktestOrchestrator:
             self.run.status = BacktestRunStatus.FAILED
             self.run.failure_reason = "No historical candles found for requested range"
             self.run.completed_at = datetime.utcnow()
+            self._record_event(
+                event_type="run_failed",
+                title="No historical data",
+                message=self.run.failure_reason,
+                level="error",
+            )
             self.db.commit()
             return {"run_id": str(self.run.id), "status": self.run.status.value}
 
@@ -149,10 +163,17 @@ class BacktestOrchestrator:
                 signals = self._replay_signals_for_timestamp(ts, signal_types)
                 if signals:
                     self._signal_batches += 1
+                    self._record_event(
+                        event_type="signals_replayed",
+                        title="Signals replayed",
+                        message=f"Replayed {len(signals)} signal batch item(s) at {ts}.",
+                        data={"backtest_ts": ts, "signals": len(signals)},
+                    )
                     runtime_results = self._dispatch_signals_in_runtime(signals)
                     self._pipeline_executions += len(runtime_results)
                     for item in runtime_results:
                         self.run.actual_cost += float((item.get("result") or {}).get("cost") or 0.0)
+                        self._record_execution_event(item, ts)
                     if self._exceeds_cost_limit():
                         return self._finalize_cost_limit_exceeded(processed, total_bars, ts)
                 self._save_checkpoint(
@@ -211,6 +232,17 @@ class BacktestOrchestrator:
             "current_ts": timeline[-1],
         }
         self.run.metrics = self._augment_metrics(metrics, processed, total_bars)
+        self._record_event(
+            event_type="run_completed",
+            title="Backtest completed",
+            message=f"Replay completed with {len(self.run.trades)} closed trade(s).",
+            data={
+                "processed_bars": processed,
+                "total_bars": total_bars,
+                "trades_count": self.run.trades_count,
+                "actual_cost": self.run.actual_cost,
+            },
+        )
         _flag_modified_if_present(self.run, "metrics")
         _flag_modified_if_present(self.run, "equity_curve")
         _flag_modified_if_present(self.run, "trades")
@@ -247,7 +279,19 @@ class BacktestOrchestrator:
             allowed_tickers=self.symbols,
         )
         if not matched_by_ticker:
+            self._record_event(
+                event_type="signals_unmatched",
+                title="No pipeline matches",
+                message="Replayed signals did not match the selected pipeline subscriptions or symbol set.",
+                data={"signals": len(signals)},
+            )
             return []
+        self._record_event(
+            event_type="signals_matched",
+            title="Signals matched",
+            message=f"Matched {len(matched_by_ticker)} ticker(s) into pipeline execution.",
+            data={"matched_tickers": sorted(matched_by_ticker.keys())},
+        )
         return execute_runtime_matches(
             pipeline=self.pipeline,
             user_id=str(self.run.user_id),
@@ -301,6 +345,13 @@ class BacktestOrchestrator:
             "cancelled": True,
         }
         self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars)
+        self._record_event(
+            event_type="run_cancelled",
+            title="Backtest cancelled",
+            message="Replay stopped before completion.",
+            level="warning",
+            data={"processed_bars": processed, "total_bars": total_bars, "backtest_ts": current_ts},
+        )
         _flag_modified_if_present(self.run, "progress")
         _flag_modified_if_present(self.run, "metrics")
         self.db.commit()
@@ -323,6 +374,13 @@ class BacktestOrchestrator:
             "stopped_for_cost_limit": True,
         }
         self.run.metrics = self._augment_metrics(self.run.metrics or {}, processed, total_bars)
+        self._record_event(
+            event_type="cost_limit_exceeded",
+            title="Backtest stopped by cost cap",
+            message=self.run.failure_reason,
+            level="error",
+            data={"processed_bars": processed, "total_bars": total_bars, "backtest_ts": current_ts},
+        )
         _flag_modified_if_present(self.run, "progress")
         _flag_modified_if_present(self.run, "metrics")
         self.db.commit()
@@ -380,6 +438,53 @@ class BacktestOrchestrator:
 
     def _exceeds_cost_limit(self) -> bool:
         return self.max_cost_usd is not None and self.run.actual_cost > self.max_cost_usd
+
+    def _record_event(
+        self,
+        *,
+        event_type: str,
+        title: str,
+        message: str,
+        level: str = "info",
+        symbol: str | None = None,
+        execution_id: str | None = None,
+        data: Dict | None = None,
+    ) -> None:
+        event = create_backtest_event(
+            run=self.run,
+            event_type=event_type,
+            title=title,
+            message=message,
+            level=level,
+            symbol=symbol,
+            execution_id=execution_id,
+            data=data,
+        )
+        self.db.add(event)
+
+    def _record_execution_event(self, item: Dict, backtest_ts: str) -> None:
+        result = item.get("result") or {}
+        execution_id = result.get("execution_id")
+        status = str(result.get("status") or "UNKNOWN")
+        ticker = item.get("ticker")
+        signal_context = item.get("signal_context") or {}
+        event_type = "execution_completed" if status == "COMPLETED" else "execution_result"
+        level = "error" if status in {"FAILED", "CANCELLED"} else "info"
+        self._record_event(
+            event_type=event_type,
+            title=f"Execution {status.lower()}",
+            message=str(result.get("error_message") or result.get("trigger_reason") or "Pipeline execution finished."),
+            level=level,
+            symbol=ticker,
+            execution_id=execution_id,
+            data={
+                "backtest_ts": backtest_ts,
+                "signal_type": signal_context.get("signal_type"),
+                "timestamp": signal_context.get("timestamp"),
+                "cost": result.get("cost"),
+                "status": status,
+            },
+        )
 
     @staticmethod
     def _trade_from_dict(data: Dict) -> Trade:

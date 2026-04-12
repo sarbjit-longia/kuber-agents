@@ -2,28 +2,34 @@
 Backtesting API endpoints.
 """
 import os
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.backtesting.snapshot import build_backtest_runtime_snapshot
 from app.core.deps import get_current_active_user
 from app.database import get_db
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
+from app.models.backtest_event import BacktestEvent
+from app.models.execution import Execution
 from app.models.pipeline import Pipeline
 from app.models.user import User
 from app.backtesting.runtime_launcher import get_backtest_runtime_launcher
 from app.schemas.backtest import (
     BacktestCreate,
+    BacktestExecutionList,
     BacktestRunList,
+    BacktestReportResponse,
     BacktestRunResult,
     BacktestRunSummary,
     BacktestStartResponse,
+    BacktestTimelineEvent,
+    BacktestTimelineResponse,
 )
 from app.orchestration.tasks.launch_backtest_runtime import launch_backtest_runtime
 
@@ -71,6 +77,223 @@ def _snapshot_pipeline(pipeline: Pipeline) -> dict:
         "schedule_days": pipeline.schedule_days or [],
         "snapshot_created_at": datetime.utcnow().isoformat(),
     }
+
+
+def _execution_belongs_to_backtest(run_id: UUID):
+    return Execution.result["backtest_run_id"].as_string() == str(run_id)
+
+
+async def _get_backtest_or_404(run_id: UUID, current_user: User, db: AsyncSession) -> BacktestRun:
+    result = await db.execute(
+        select(BacktestRun).where(BacktestRun.id == run_id, BacktestRun.user_id == current_user.id)
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run not found")
+    return run
+
+
+def _safe_number(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _build_report_summary(
+    run: BacktestRun,
+    executions: list[Execution],
+    events: list[BacktestEvent],
+) -> dict[str, Any]:
+    trades = run.trades or []
+    net_pnl = sum(_safe_number(trade.get("net_pnl")) for trade in trades)
+    gross_pnl = sum(_safe_number(trade.get("gross_pnl")) for trade in trades)
+    winning_trades = [trade for trade in trades if _safe_number(trade.get("net_pnl")) > 0]
+    losing_trades = [trade for trade in trades if _safe_number(trade.get("net_pnl")) < 0]
+    rejected = [
+        ex for ex in executions
+        if (ex.reports or {}).get("node-trade_review_agent", {}).get("data", {}).get("decision") == "REJECTED"
+    ]
+    holds = [
+        ex for ex in executions
+        if ((ex.result or {}).get("strategy") or {}).get("action") == "HOLD"
+    ]
+    event_counts: dict[str, int] = {}
+    for event in events:
+        event_counts[event.event_type] = event_counts.get(event.event_type, 0) + 1
+    return {
+        "pipeline_name": run.pipeline_name,
+        "symbols": (run.config or {}).get("symbols", []),
+        "timeframe": (run.config or {}).get("timeframe"),
+        "date_range": {
+            "start": (run.config or {}).get("start_date"),
+            "end": (run.config or {}).get("end_date"),
+        },
+        "status": run.status.value,
+        "net_pnl": round(net_pnl, 2),
+        "gross_pnl": round(gross_pnl, 2),
+        "return_pct": round((net_pnl / _safe_number((run.config or {}).get("initial_capital") or 1)) * 100, 2),
+        "trade_count": len(trades),
+        "winning_trades": len(winning_trades),
+        "losing_trades": len(losing_trades),
+        "win_rate": round((len(winning_trades) / len(trades) * 100), 2) if trades else 0.0,
+        "execution_count": len(executions),
+        "review_rejections": len(rejected),
+        "strategy_holds": len(holds),
+        "actual_cost": run.actual_cost,
+        "max_drawdown": (run.metrics or {}).get("max_drawdown"),
+        "signal_batches": event_counts.get("signals_replayed", 0),
+        "matched_signal_batches": event_counts.get("signals_matched", 0),
+        "runtime_seconds": ((run.metrics or {}).get("runtime") or {}).get("runtime_seconds"),
+    }
+
+
+def _build_report_sections(
+    run: BacktestRun,
+    executions: list[Execution],
+    events: list[BacktestEvent],
+) -> list[dict[str, Any]]:
+    metrics = run.metrics or {}
+    trades = run.trades or []
+    rejection_reasons: dict[str, int] = {}
+    per_symbol: dict[str, dict[str, Any]] = {}
+    event_counts: dict[str, int] = {}
+
+    for event in events:
+        event_counts[event.event_type] = event_counts.get(event.event_type, 0) + 1
+
+    for execution in executions:
+        symbol = execution.symbol or "Unknown"
+        per_symbol.setdefault(
+            symbol,
+            {"executions": 0, "cost": 0.0, "completed": 0, "failed": 0, "trades": 0, "net_pnl": 0.0},
+        )
+        per_symbol[symbol]["executions"] += 1
+        per_symbol[symbol]["cost"] += _safe_number(execution.cost)
+        if execution.status.value == "COMPLETED":
+            per_symbol[symbol]["completed"] += 1
+        if execution.status.value == "FAILED":
+            per_symbol[symbol]["failed"] += 1
+
+        report = (execution.reports or {}).get("node-trade_review_agent", {})
+        decision = (report.get("data") or {}).get("decision")
+        if decision:
+            rejection_reasons[decision] = rejection_reasons.get(decision, 0) + 1
+
+    for trade in trades:
+        symbol = trade.get("symbol") or trade.get("ticker") or "Unknown"
+        per_symbol.setdefault(
+            symbol,
+            {"executions": 0, "cost": 0.0, "completed": 0, "failed": 0, "trades": 0, "net_pnl": 0.0},
+        )
+        per_symbol[symbol]["trades"] += 1
+        per_symbol[symbol]["net_pnl"] += _safe_number(trade.get("net_pnl"))
+
+    best_trade = max(trades, key=lambda trade: _safe_number(trade.get("net_pnl")), default=None)
+    worst_trade = min(trades, key=lambda trade: _safe_number(trade.get("net_pnl")), default=None)
+    runtime_metrics = metrics.get("runtime") or {}
+    top_symbols = sorted(
+        per_symbol.items(),
+        key=lambda item: (item[1]["net_pnl"], item[1]["completed"]),
+        reverse=True,
+    )
+
+    return [
+        {
+            "title": "Performance Overview",
+            "items": [
+                f"Net P&L: {_safe_number(sum(_safe_number(trade.get('net_pnl')) for trade in trades)):.2f}",
+                f"Trades closed: {len(trades)}",
+                f"Win rate: {metrics.get('win_rate', 0)}%",
+                f"Max drawdown: {metrics.get('max_drawdown', 'N/A')}",
+                f"Profit factor: {metrics.get('profit_factor', 'N/A')}",
+                f"Average winner: {metrics.get('avg_winner', 'N/A')}",
+                f"Average loser: {metrics.get('avg_loser', 'N/A')}",
+            ],
+        },
+        {
+            "title": "Execution Flow",
+            "items": [
+                f"Pipeline executions: {len(executions)}",
+                f"Backtest cost consumed: ${run.actual_cost:.2f}",
+                f"Completed executions: {sum(1 for ex in executions if ex.status.value == 'COMPLETED')}",
+                f"Failed executions: {sum(1 for ex in executions if ex.status.value == 'FAILED')}",
+                f"Signal batches replayed: {event_counts.get('signals_replayed', 0)}",
+                f"Signal batches matched: {event_counts.get('signals_matched', 0)}",
+                f"Runtime seconds: {runtime_metrics.get('runtime_seconds', 'N/A')}",
+            ],
+        },
+        {
+            "title": "Rejections and Holds",
+            "items": [
+                *(f"{reason}: {count}" for reason, count in sorted(rejection_reasons.items())),
+                f"Strategy HOLD decisions: {sum(1 for ex in executions if ((ex.result or {}).get('strategy') or {}).get('action') == 'HOLD')}",
+                f"Unmatched signal batches: {event_counts.get('signals_unmatched', 0)}",
+            ] or ["No review decisions or holds recorded."],
+        },
+        {
+            "title": "Symbol Breakdown",
+            "items": [
+                (
+                    f"{symbol}: {data['executions']} executions, {data['trades']} trades, "
+                    f"${data['cost']:.2f} cost, ${data['net_pnl']:.2f} net P&L, "
+                    f"{data['completed']} completed, {data['failed']} failed"
+                )
+                for symbol, data in top_symbols[:10]
+            ] or ["No symbol activity recorded."],
+        },
+        {
+            "title": "Best and Worst Trades",
+            "items": [
+                f"Best trade: {best_trade.get('id')} / {best_trade.get('net_pnl')}" if best_trade else "Best trade: N/A",
+                f"Worst trade: {worst_trade.get('id')} / {worst_trade.get('net_pnl')}" if worst_trade else "Worst trade: N/A",
+                f"Total commissions: {sum(_safe_number(trade.get('commission')) for trade in trades):.2f}",
+                f"Total slippage: {sum(_safe_number(trade.get('slippage')) for trade in trades):.2f}",
+            ],
+        },
+        {
+            "title": "Runtime Visibility",
+            "items": [
+                f"Bars processed: {runtime_metrics.get('processed_bars', run.progress.get('current_bar', 0))}",
+                f"Total bars planned: {runtime_metrics.get('total_bars', run.progress.get('total_bars', 0))}",
+                f"Progress commits: {runtime_metrics.get('progress_commits', 'N/A')}",
+                f"Current failure reason: {run.failure_reason or 'None'}",
+            ],
+        },
+    ]
+
+
+async def _generate_optional_llm_analysis(summary: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not settings.OPENAI_API_KEY:
+        return None
+
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+    prompt = (
+        "You are reviewing a completed trading backtest. Produce concise JSON with keys "
+        "`executive_summary`, `strengths`, `weaknesses`, and `recommendations`. "
+        "Ground everything only in the provided facts.\n\n"
+        f"SUMMARY:\n{summary}\n\nSECTIONS:\n{sections}"
+    )
+    try:
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            temperature=0.2,
+            max_tokens=700,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a trading performance analyst. Return valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        import json
+        return json.loads(content)
+    except Exception:
+        return None
+
+
+def _timeline_sort_key(event: BacktestTimelineEvent) -> tuple[str, str]:
+    return (event.ts, event.id)
 
 
 @router.post("", response_model=BacktestStartResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -215,13 +438,134 @@ async def get_backtest_results(
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    result = await db.execute(
-        select(BacktestRun).where(BacktestRun.id == run_id, BacktestRun.user_id == current_user.id)
-    )
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run not found")
+    run = await _get_backtest_or_404(run_id, current_user, db)
     return run
+
+
+@router.get("/{run_id}/executions", response_model=BacktestExecutionList)
+async def list_backtest_executions(
+    run_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    await _get_backtest_or_404(run_id, current_user, db)
+    result = await db.execute(
+        select(Execution)
+        .where(
+            Execution.user_id == current_user.id,
+            Execution.mode == "backtest",
+            _execution_belongs_to_backtest(run_id),
+        )
+        .order_by(desc(Execution.created_at))
+    )
+    executions = result.scalars().all()
+    return BacktestExecutionList(executions=executions, total=len(executions))
+
+
+@router.get("/{run_id}/timeline", response_model=BacktestTimelineResponse)
+async def get_backtest_timeline(
+    run_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    run = await _get_backtest_or_404(run_id, current_user, db)
+    event_result = await db.execute(
+        select(BacktestEvent)
+        .where(BacktestEvent.run_id == run.id, BacktestEvent.user_id == current_user.id)
+        .order_by(desc(BacktestEvent.created_at))
+    )
+    stored_events = event_result.scalars().all()
+
+    events: list[BacktestTimelineEvent] = [
+        BacktestTimelineEvent(
+            id=str(event.id),
+            ts=event.created_at.isoformat(),
+            type=event.event_type,
+            title=event.title,
+            message=event.message,
+            symbol=event.symbol,
+            execution_id=str(event.execution_id) if event.execution_id else None,
+            level=event.level,
+            data=event.data or {},
+        )
+        for event in stored_events
+    ]
+
+    if not events:
+        events.append(
+            BacktestTimelineEvent(
+                id=f"{run.id}-created",
+                ts=run.created_at.isoformat(),
+                type="run_created",
+                title="Backtest queued",
+                message=f"{run.pipeline_name or 'Pipeline'} queued for replay",
+                data={"status": run.status.value},
+            )
+        )
+        if run.started_at:
+            events.append(
+                BacktestTimelineEvent(
+                    id=f"{run.id}-started",
+                    ts=run.started_at.isoformat(),
+                    type="run_started",
+                    title="Backtest started",
+                    message="Replay runtime started processing historical data",
+                    data={"progress": run.progress or {}},
+                )
+            )
+        if run.completed_at:
+            events.append(
+                BacktestTimelineEvent(
+                    id=f"{run.id}-completed",
+                    ts=run.completed_at.isoformat(),
+                    type="run_completed",
+                    title=f"Backtest {run.status.value.lower()}",
+                    message=run.failure_reason or "Replay completed",
+                    level="error" if run.status == BacktestRunStatus.FAILED else "info",
+                    data={"metrics": run.metrics or {}, "trades_count": run.trades_count},
+                )
+            )
+
+    events.sort(key=_timeline_sort_key, reverse=True)
+    return BacktestTimelineResponse(events=events[:500])
+
+
+@router.get("/{run_id}/report", response_model=BacktestReportResponse)
+async def get_backtest_report(
+    run_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    run = await _get_backtest_or_404(run_id, current_user, db)
+    event_result = await db.execute(
+        select(BacktestEvent)
+        .where(BacktestEvent.run_id == run.id, BacktestEvent.user_id == current_user.id)
+        .order_by(BacktestEvent.created_at.asc())
+    )
+    events = event_result.scalars().all()
+    execution_result = await db.execute(
+        select(Execution)
+        .where(
+            Execution.user_id == current_user.id,
+            Execution.mode == "backtest",
+            _execution_belongs_to_backtest(run_id),
+        )
+        .order_by(desc(Execution.created_at))
+    )
+    executions = execution_result.scalars().all()
+
+    summary = _build_report_summary(run, executions, events)
+    sections = _build_report_sections(run, executions, events)
+    llm_analysis = None
+    if run.status == BacktestRunStatus.COMPLETED:
+        llm_analysis = await _generate_optional_llm_analysis(summary, sections)
+
+    return BacktestReportResponse(
+        generated_at=datetime.utcnow().isoformat(),
+        summary=summary,
+        sections=sections,
+        llm_analysis=llm_analysis,
+    )
 
 
 @router.post("/{run_id}/cancel", response_model=BacktestRunSummary)

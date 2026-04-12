@@ -16,6 +16,7 @@ from app.models.llm_model import LLMModel
 from app.models.user_device import UserDevice
 from app.models.sms_consent_log import SmsConsentLog
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
+from app.models.backtest_event import BacktestEvent
 
 __all__ = [
     "Base",
@@ -31,5 +32,6 @@ __all__ = [
     "UserDevice",
     "SmsConsentLog",
     "BacktestRun",
+    "BacktestEvent",
     "BacktestRunStatus",
 ]

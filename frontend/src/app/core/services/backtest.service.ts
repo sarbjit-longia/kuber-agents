@@ -5,10 +5,13 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   BacktestCreateRequest,
+  BacktestExecutionListResponse,
+  BacktestReportResponse,
   BacktestRunListResponse,
   BacktestRunResult,
   BacktestRunSummary,
   BacktestStartResponse,
+  BacktestTimelineResponse,
 } from '../models/backtest.model';
 
 @Injectable({
@@ -36,6 +39,18 @@ export class BacktestService {
 
   getBacktestResults(runId: string): Observable<BacktestRunResult> {
     return this.http.get<BacktestRunResult>(`${this.apiUrl}/${runId}/results`);
+  }
+
+  getBacktestExecutions(runId: string): Observable<BacktestExecutionListResponse> {
+    return this.http.get<BacktestExecutionListResponse>(`${this.apiUrl}/${runId}/executions`);
+  }
+
+  getBacktestTimeline(runId: string): Observable<BacktestTimelineResponse> {
+    return this.http.get<BacktestTimelineResponse>(`${this.apiUrl}/${runId}/timeline`);
+  }
+
+  getBacktestReport(runId: string): Observable<BacktestReportResponse> {
+    return this.http.get<BacktestReportResponse>(`${this.apiUrl}/${runId}/report`);
   }
 
   cancelBacktest(runId: string): Observable<BacktestRunSummary> {

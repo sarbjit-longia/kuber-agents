@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.backtest_run import BacktestRunStatus
+from app.models.execution import ExecutionStatus
 
 
 class BacktestCreate(BaseModel):
@@ -65,3 +66,52 @@ class BacktestRunResult(BacktestRunSummary):
 class BacktestStartResponse(BaseModel):
     run_id: UUID
     status: BacktestRunStatus
+
+
+class BacktestExecutionSummary(BaseModel):
+    id: UUID
+    pipeline_id: UUID
+    status: ExecutionStatus
+    mode: str
+    symbol: Optional[str] = None
+    cost: float
+    error_message: Optional[str] = None
+    execution_phase: Optional[str] = None
+    result: Dict[str, Any] = Field(default_factory=dict)
+    logs: List[Dict[str, Any]] = Field(default_factory=list)
+    agent_states: List[Dict[str, Any]] = Field(default_factory=list)
+    reports: Dict[str, Any] = Field(default_factory=dict)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BacktestExecutionList(BaseModel):
+    executions: List[BacktestExecutionSummary]
+    total: int
+
+
+class BacktestTimelineEvent(BaseModel):
+    id: str
+    ts: str
+    level: str = "info"
+    type: str
+    title: str
+    message: str
+    symbol: Optional[str] = None
+    execution_id: Optional[str] = None
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BacktestTimelineResponse(BaseModel):
+    events: List[BacktestTimelineEvent]
+
+
+class BacktestReportResponse(BaseModel):
+    generated_at: str
+    summary: Dict[str, Any]
+    sections: List[Dict[str, Any]]
+    llm_analysis: Optional[Dict[str, Any]] = None

@@ -47,6 +47,23 @@ class DataPlaneProvider(MarketDataProvider):
         "rsi", "macd", "sma", "ema", "bbands",
         "stoch", "atr", "adx", "cci", "mfi", "obv"
     }
+
+    _RESOLUTION_ALIASES: Dict[str, str] = {
+        "1": "1m",
+        "5": "5m",
+        "15": "15m",
+        "30": "30m",
+        "60": "1h",
+        "120": "2h",
+        "240": "4h",
+        "480": "8h",
+        "1d": "D",
+        "d": "D",
+        "1w": "W",
+        "w": "W",
+        "1mo": "M",
+        "mo": "M",
+    }
     
     def __init__(self, data_plane_url: str = "http://data-plane:8000"):
         """
@@ -81,6 +98,7 @@ class DataPlaneProvider(MarketDataProvider):
             DataFrame with columns: time, open, high, low, close, volume
         """
         try:
+            resolution = self._normalize_resolution(resolution)
             # Calculate how many candles we need based on lookback_days
             period_minutes = self._resolution_to_minutes(resolution)
             if period_minutes:
@@ -185,6 +203,7 @@ class DataPlaneProvider(MarketDataProvider):
             Dict with indicator values and metadata
         """
         try:
+            resolution = self._normalize_resolution(resolution)
             url = f"{self.data_plane_url}/api/v1/data/indicators/{symbol}"
             
             # Build query parameters
@@ -334,3 +353,13 @@ class DataPlaneProvider(MarketDataProvider):
             "M": None   # Monthly
         }
         return resolution_map.get(resolution)
+
+    def _normalize_resolution(self, resolution: str) -> str:
+        """Normalize numeric/data-vendor resolutions to the platform timeframe contract."""
+        normalized = self._RESOLUTION_ALIASES.get(str(resolution).strip(), resolution)
+        logger.debug(
+            "normalized_dataplane_resolution",
+            original_resolution=resolution,
+            normalized_resolution=normalized,
+        )
+        return normalized

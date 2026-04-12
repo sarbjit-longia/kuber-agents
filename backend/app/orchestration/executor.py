@@ -698,6 +698,44 @@ class PipelineExecutor:
                 return True
         
         return False
+
+    def _normalize_strategy_result_if_needed(self, state: PipelineState) -> None:
+        strategy = state.strategy
+        if not strategy:
+            return
+
+        action = (strategy.action or "").upper()
+        reasoning = (strategy.reasoning or "").lower()
+        hold_markers = [
+            "decision is to hold",
+            "decision: hold",
+            "action: hold",
+            "hold and wait",
+            "no trade",
+            "not advisable",
+            "no valid trade setup",
+            "no strategy generated",
+            "prudent to hold",
+            "wait for a clear directional bias",
+        ]
+
+        if action in {"BUY", "SELL"} and any(marker in reasoning for marker in hold_markers):
+            normalized_from = action
+            strategy.action = "HOLD"
+            strategy.confidence = 0.0
+            strategy.stop_loss = None
+            strategy.take_profit = None
+            strategy.position_size = None
+            strategy.strategy_spec = None
+            state.warnings.append(
+                f"Normalized contradictory strategy output from {normalized_from} to HOLD based on reasoning"
+            )
+            self.logger.warning(
+                "strategy_output_normalized_to_hold",
+                original_action=normalized_from,
+                execution_id=str(self.execution_id),
+                pipeline_id=str(self.pipeline.id),
+            )
     
     def execute_with_sync_db_tracking(self, db_session, execution):
         """
@@ -862,6 +900,8 @@ class PipelineExecutor:
                 
                 # Execute agent
                 state = agent.process(state)
+                if agent_type == "strategy_agent":
+                    self._normalize_strategy_result_if_needed(state)
                 
                 # Update agent state to completed
                 agent_states[i]["status"] = "completed"

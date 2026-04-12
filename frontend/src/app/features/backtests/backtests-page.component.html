@@ -1,0 +1,481 @@
+<app-navbar></app-navbar>
+
+<main class="backtests-shell">
+  <section class="hero">
+    <div>
+      <span class="eyebrow">Backtesting Workspace</span>
+      <h1>Launch, monitor, and review parity backtests.</h1>
+      <p>
+        This page runs the same production pipeline with simulated time, historical market data,
+        and a backtest broker. Costs reflect the real LLM path, so the monitor shows spend,
+        decisions, and trade outcomes together.
+      </p>
+    </div>
+    <div class="hero-stats">
+      <article class="hero-stat">
+        <span class="label">Runs</span>
+        <strong>{{ runs.length }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Active</span>
+        <strong>{{ activeRunCount }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Selected Cost</span>
+        <strong>${{ selectedRun?.actual_cost || 0 | number:'1.2-2' }}</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="workspace-grid">
+    <aside class="control-rail">
+      <mat-card class="panel-card launch-card">
+        <header class="panel-header">
+          <div>
+            <span class="panel-kicker">Phase A</span>
+            <h2>Start Backtest</h2>
+          </div>
+          <span class="cost-pill">Est. ${{
+            estimatedCostUsd | number:'1.2-2'
+          }}</span>
+        </header>
+
+        <form [formGroup]="form" class="launch-form">
+          <mat-form-field appearance="outline">
+            <mat-label>Pipeline</mat-label>
+            <mat-select formControlName="pipelineId" (selectionChange)="onPipelineChanged()">
+              <mat-option *ngFor="let pipeline of pipelines" [value]="pipeline.id">
+                {{ pipeline.name }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Symbols</mat-label>
+            <input
+              matInput
+              formControlName="symbolsText"
+              placeholder="AAPL, SMCI, AMZN"
+            />
+          </mat-form-field>
+
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Start date</mat-label>
+              <input matInput type="date" formControlName="startDate" />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>End date</mat-label>
+              <input matInput type="date" formControlName="endDate" />
+            </mat-form-field>
+          </div>
+
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Timeframe</mat-label>
+              <mat-select formControlName="timeframe">
+                <mat-option *ngFor="let timeframe of timeframes" [value]="timeframe">
+                  {{ timeframe }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Initial capital</mat-label>
+              <input matInput type="number" formControlName="initialCapital" />
+            </mat-form-field>
+          </div>
+
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Slippage model</mat-label>
+              <mat-select formControlName="slippageModel">
+                <mat-option *ngFor="let model of slippageModels" [value]="model.value">
+                  {{ model.label }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Slippage value</mat-label>
+              <input matInput type="number" formControlName="slippageValue" />
+            </mat-form-field>
+          </div>
+
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Commission model</mat-label>
+              <mat-select formControlName="commissionModel">
+                <mat-option *ngFor="let model of commissionModels" [value]="model.value">
+                  {{ model.label }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Commission value</mat-label>
+              <input matInput type="number" formControlName="commissionValue" />
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Max LLM cost cap (optional)</mat-label>
+            <input matInput type="number" formControlName="maxCostUsd" />
+          </mat-form-field>
+
+          <p class="form-error" *ngIf="formHasDateError">
+            End date must be on or after the start date.
+          </p>
+
+          <button mat-flat-button color="primary" type="button" [disabled]="!canLaunch" (click)="launchBacktest()">
+            <mat-icon *ngIf="!launching">rocket_launch</mat-icon>
+            <mat-spinner *ngIf="launching" diameter="18"></mat-spinner>
+            <span>{{ launching ? 'Launching...' : 'Start Parity Backtest' }}</span>
+          </button>
+        </form>
+      </mat-card>
+
+      <mat-card class="panel-card runs-card">
+        <header class="panel-header">
+          <div>
+            <span class="panel-kicker">Run History</span>
+            <h2>Recent Backtests</h2>
+          </div>
+          <button mat-button type="button" (click)="loadRuns(true)">
+            <mat-icon>refresh</mat-icon>
+            Refresh
+          </button>
+        </header>
+
+        <div class="runs-list" *ngIf="!loadingRuns; else runsLoading">
+          <button
+            class="run-row"
+            *ngFor="let run of runs; trackBy: trackByRunId"
+            type="button"
+            [class.selected]="run.id === selectedRunId"
+            (click)="selectRun(run.id)"
+          >
+            <div class="run-row-top">
+              <span class="run-name">{{ run.pipeline_name || 'Backtest run' }}</span>
+              <span class="status-chip" [ngClass]="statusClass(run.status)">
+                {{ statusLabel(run.status) }}
+              </span>
+            </div>
+            <div class="run-row-meta">
+              <span>{{ run.created_at | localDate:'short' }}</span>
+              <span>{{ run.config['timeframe'] || 'N/A' }}</span>
+              <span>${{ run.actual_cost | number:'1.2-2' }}</span>
+            </div>
+            <mat-progress-bar mode="determinate" [value]="progressValue(run)"></mat-progress-bar>
+          </button>
+
+          <p class="empty-state" *ngIf="runs.length === 0">
+            No backtests yet. Launch a run to populate this workspace.
+          </p>
+        </div>
+
+        <ng-template #runsLoading>
+          <div class="loading-state">
+            <mat-spinner diameter="28"></mat-spinner>
+            <span>Loading runs...</span>
+          </div>
+        </ng-template>
+      </mat-card>
+    </aside>
+
+    <section class="details-pane">
+      <ng-container *ngIf="selectedRun; else noSelection">
+        <mat-card class="panel-card run-summary-card">
+          <div class="run-summary-top">
+            <div>
+              <span class="panel-kicker">Selected Run</span>
+              <h2>{{ selectedRun.pipeline_name || 'Backtest run' }}</h2>
+              <p>
+                {{ selectedRun.config['start_date'] }} to {{ selectedRun.config['end_date'] }}
+                · {{ selectedRun.config['timeframe'] || 'N/A' }}
+                · {{ selectedSymbolsLabel }}
+              </p>
+            </div>
+            <div class="run-summary-actions">
+              <span class="status-chip large" [ngClass]="statusClass(selectedRun.status)">
+                {{ statusLabel(selectedRun.status) }}
+              </span>
+              <button
+                mat-stroked-button
+                color="warn"
+                type="button"
+                *ngIf="isActive(selectedRun.status)"
+                [disabled]="cancellingRunId === selectedRun.id"
+                (click)="cancelRun(selectedRun.id)"
+              >
+                {{ cancellingRunId === selectedRun.id ? 'Cancelling...' : 'Cancel Run' }}
+              </button>
+            </div>
+          </div>
+
+          <mat-progress-bar mode="determinate" [value]="progressValue(selectedRun)"></mat-progress-bar>
+
+          <div class="summary-grid">
+            <article class="summary-metric">
+              <span class="label">Current Timestamp</span>
+              <strong>{{ selectedRun.progress['current_ts'] || 'Pending' }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Current Symbol</span>
+              <strong>{{ selectedRun.progress['current_symbol'] || 'N/A' }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Cost So Far</span>
+              <strong>${{ selectedRun.actual_cost | number:'1.2-2' }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Trades</span>
+              <strong>{{ selectedRun.trades_count }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Executions</span>
+              <strong>{{ selectedExecutions.length }}</strong>
+            </article>
+            <article class="summary-metric">
+              <span class="label">Latest Error</span>
+              <strong>{{ selectedRun.failure_reason || 'None' }}</strong>
+            </article>
+          </div>
+        </mat-card>
+
+        <mat-tab-group class="results-tabs">
+          <mat-tab label="Overview">
+            <div class="tab-panel">
+              <mat-card class="panel-card chart-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Equity Curve</span>
+                    <h3>Account value over the run</h3>
+                  </div>
+                </header>
+
+                <div class="chart-frame" *ngIf="equityChartPath; else noChartData">
+                  <svg viewBox="0 0 720 220" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="rgba(16,185,129,0.35)"></stop>
+                        <stop offset="100%" stop-color="rgba(16,185,129,0.02)"></stop>
+                      </linearGradient>
+                    </defs>
+                    <path [attr.d]="equityChartAreaPath" class="equity-area"></path>
+                    <path [attr.d]="equityChartPath" class="equity-line"></path>
+                  </svg>
+                </div>
+
+                <ng-template #noChartData>
+                  <div class="empty-state chart-empty">
+                    <mat-icon>show_chart</mat-icon>
+                    <span>Equity curve will appear once the run records enough data.</span>
+                  </div>
+                </ng-template>
+              </mat-card>
+
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Metrics</span>
+                    <h3>Performance snapshot</h3>
+                  </div>
+                </header>
+                <div class="metrics-grid">
+                  <article class="metric-chip" *ngFor="let metric of metricEntries()">
+                    <span class="label">{{ metric.label }}</span>
+                    <strong>{{ metric.value }}</strong>
+                  </article>
+                </div>
+              </mat-card>
+
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Closed Trades</span>
+                    <h3>What the broker simulator recorded</h3>
+                  </div>
+                </header>
+                <div class="simple-table" *ngIf="selectedRun.trades?.length; else noTrades">
+                  <div class="table-head">
+                    <span>ID</span>
+                    <span>Action</span>
+                    <span>Entry</span>
+                    <span>Exit</span>
+                    <span>Net P&L</span>
+                  </div>
+                  <div class="table-row" *ngFor="let trade of selectedRun.trades">
+                    <span>{{ trade['id'] }}</span>
+                    <span>{{ trade['action'] }}</span>
+                    <span>{{ trade['entry_price'] }}</span>
+                    <span>{{ trade['exit_price'] }}</span>
+                    <span [class.positive]="trade['net_pnl'] > 0" [class.negative]="trade['net_pnl'] < 0">
+                      {{ trade['net_pnl'] }}
+                    </span>
+                  </div>
+                </div>
+                <ng-template #noTrades>
+                  <p class="empty-state">
+                    No closed trades yet. If cost is increasing without trades, inspect the
+                    execution and timeline tabs to see whether strategy, risk, or review is
+                    blocking entries.
+                  </p>
+                </ng-template>
+              </mat-card>
+            </div>
+          </mat-tab>
+
+          <mat-tab label="Executions">
+            <div class="tab-panel">
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Pipeline Executions</span>
+                    <h3>Every matched signal that entered the pipeline</h3>
+                  </div>
+                </header>
+
+                <div class="simple-table" *ngIf="selectedExecutions.length; else noExecutions">
+                  <div class="table-head executions-head">
+                    <span>Created</span>
+                    <span>Symbol</span>
+                    <span>Status</span>
+                    <span>Decision</span>
+                    <span>Cost</span>
+                    <span>Error</span>
+                  </div>
+                  <div class="table-row executions-row" *ngFor="let execution of selectedExecutions">
+                    <span>{{ execution.created_at | localDate:'short' }}</span>
+                    <span>{{ execution.symbol || 'N/A' }}</span>
+                    <span>
+                      <span class="status-chip" [ngClass]="statusClass(execution.status)">
+                        {{ statusLabel(execution.status) }}
+                      </span>
+                    </span>
+                    <span>{{ latestDecision(execution) }}</span>
+                    <span>${{ execution.cost | number:'1.2-2' }}</span>
+                    <span>{{ execution.error_message || execution.result['trigger_reason'] || '—' }}</span>
+                  </div>
+                </div>
+
+                <ng-template #noExecutions>
+                  <p class="empty-state">No executions recorded for this run yet.</p>
+                </ng-template>
+              </mat-card>
+            </div>
+          </mat-tab>
+
+          <mat-tab label="Timeline">
+            <div class="tab-panel">
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Visibility</span>
+                    <h3>Replay and execution timeline</h3>
+                  </div>
+                </header>
+
+                <div class="timeline" *ngIf="latestVisibleEvents.length; else noTimeline">
+                  <article class="timeline-row" *ngFor="let event of latestVisibleEvents; trackBy: trackByEventId">
+                    <div class="timeline-badge" [ngClass]="'level-' + event.level"></div>
+                    <div class="timeline-body">
+                      <div class="timeline-top">
+                        <strong>{{ event.title }}</strong>
+                        <span>{{ event.ts | localDate:'short' }}</span>
+                      </div>
+                      <p>{{ event.message }}</p>
+                      <div class="timeline-meta" *ngIf="event.symbol || event.execution_id">
+                        <span *ngIf="event.symbol">Symbol: {{ event.symbol }}</span>
+                        <span *ngIf="event.execution_id">Execution: {{ event.execution_id }}</span>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <ng-template #noTimeline>
+                  <p class="empty-state">Timeline events will appear once the run starts processing.</p>
+                </ng-template>
+              </mat-card>
+            </div>
+          </mat-tab>
+
+          <mat-tab label="Report">
+            <div class="tab-panel">
+              <mat-card class="panel-card">
+                <header class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Generated Report</span>
+                    <h3>Deterministic summary plus optional LLM analysis</h3>
+                  </div>
+                </header>
+
+                <div class="report-summary" *ngIf="selectedReport as report; else noReport">
+                  <div class="summary-grid compact">
+                    <article class="summary-metric" *ngFor="let item of report.summary | keyvalue">
+                      <span class="label">{{ item.key }}</span>
+                      <strong>{{ item.value }}</strong>
+                    </article>
+                  </div>
+
+                  <section class="report-section" *ngFor="let section of report.sections">
+                    <h4>{{ section.title }}</h4>
+                    <ul>
+                      <li *ngFor="let item of section.items">{{ item }}</li>
+                    </ul>
+                  </section>
+
+                  <section class="report-section llm-section" *ngIf="report.llm_analysis">
+                    <h4>LLM Analysis</h4>
+                    <p>{{ report.llm_analysis['executive_summary'] || 'No executive summary returned.' }}</p>
+                    <div class="report-columns">
+                      <div>
+                        <h5>Strengths</h5>
+                        <ul>
+                          <li *ngFor="let item of reportArrayItems(report.llm_analysis['strengths'])">{{ item }}</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5>Weaknesses</h5>
+                        <ul>
+                          <li *ngFor="let item of reportArrayItems(report.llm_analysis['weaknesses'])">{{ item }}</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5>Recommendations</h5>
+                        <ul>
+                          <li *ngFor="let item of reportArrayItems(report.llm_analysis['recommendations'])">{{ item }}</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <ng-template #noReport>
+                  <p class="empty-state">
+                    Report synthesis is not available yet for this run. It will populate once the
+                    run has enough execution data, and LLM analysis is optional based on backend configuration.
+                  </p>
+                </ng-template>
+              </mat-card>
+            </div>
+          </mat-tab>
+        </mat-tab-group>
+      </ng-container>
+
+      <ng-template #noSelection>
+        <mat-card class="panel-card empty-selection">
+          <mat-icon>insights</mat-icon>
+          <h2>Select a backtest run</h2>
+          <p>
+            Launch a new run from the control rail or select an existing run to inspect
+            progress, trades, execution-level visibility, and the generated report.
+          </p>
+        </mat-card>
+      </ng-template>
+    </section>
+  </section>
+</main>
+
+<app-footer></app-footer>
