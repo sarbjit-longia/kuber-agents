@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backend-backtest-job-manager
+  namespace: backtest
+  labels:
+    app.kubernetes.io/part-of: clovercharts
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-backtest-job-manager
+  namespace: backtest
+  labels:
+    app.kubernetes.io/part-of: clovercharts
+subjects:
+  - kind: ServiceAccount
+    name: backend-worker
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backend-backtest-job-manager

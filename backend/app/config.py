@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ENV: str = Field(default="development", description="Environment (development, staging, production)")
     DEBUG: bool = Field(default=True, description="Debug mode")
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
-    ALLOWED_ORIGINS: List[str] = Field(
+    ALLOWED_ORIGINS: str | List[str] = Field(
         default=["http://localhost:4200", "http://localhost:3000"],
         description="CORS allowed origins"
     )
@@ -81,6 +81,96 @@ class Settings(BaseSettings):
     DATA_PLANE_URL: str = Field(
         default="http://data-plane:8000",
         description="Data Plane service URL"
+    )
+    SIGNAL_GENERATOR_URL: str = Field(
+        default="http://signal-generator:8000",
+        description="Signal Generator service URL"
+    )
+    BACKTEST_KAFKA_BOOTSTRAP_SERVERS: str = Field(
+        default="kafka:9092",
+        description="Kafka bootstrap servers for backtest signal publication"
+    )
+    BACKTEST_KAFKA_SIGNAL_TOPIC: str = Field(
+        default="trading-signals-backtest",
+        description="Kafka topic for backtest signal publication"
+    )
+    BACKTEST_RUNTIME_MODE: str = Field(
+        default="legacy_shared",
+        description="Backtest launcher mode: legacy_shared, docker_container, or kubernetes_job"
+    )
+    BACKTEST_RUNTIME_IMAGE: Optional[str] = Field(
+        default=None,
+        description="Image used by the ephemeral backtest runtime launcher"
+    )
+    BACKTEST_RUNTIME_NAMESPACE: str = Field(
+        default="backtest",
+        description="Logical namespace used for backtest runtime isolation"
+    )
+    BACKTEST_RUNTIME_DOCKER_NETWORK: Optional[str] = Field(
+        default=None,
+        description="Docker network for ephemeral backtest runtime containers"
+    )
+    BACKTEST_RUNTIME_K8S_NAMESPACE: Optional[str] = Field(
+        default=None,
+        description="Kubernetes namespace used for ephemeral backtest runtime jobs"
+    )
+    BACKTEST_RUNTIME_K8S_SERVICE_ACCOUNT: Optional[str] = Field(
+        default=None,
+        description="Optional Kubernetes service account for backtest runtime jobs"
+    )
+    BACKTEST_RUNTIME_K8S_IMAGE_PULL_POLICY: str = Field(
+        default="IfNotPresent",
+        description="Image pull policy for Kubernetes backtest runtime jobs"
+    )
+    BACKTEST_RUNTIME_K8S_IMAGE_PULL_SECRETS: str | List[str] = Field(
+        default=[],
+        description="Image pull secrets for Kubernetes backtest runtime jobs"
+    )
+    BACKTEST_RUNTIME_K8S_JOB_TTL_SECONDS: int = Field(
+        default=3600,
+        description="TTL after Kubernetes backtest job completion"
+    )
+    BACKTEST_RUNTIME_K8S_ACTIVE_DEADLINE_SECONDS: int = Field(
+        default=21600,
+        description="Active deadline for Kubernetes backtest jobs"
+    )
+    BACKTEST_RUNTIME_ENV_PASSTHROUGH: str | List[str] = Field(
+        default=[
+            "DATABASE_URL",
+            "REDIS_URL",
+            "DATA_PLANE_URL",
+            "SIGNAL_GENERATOR_URL",
+            "BACKTEST_KAFKA_BOOTSTRAP_SERVERS",
+            "BACKTEST_KAFKA_SIGNAL_TOPIC",
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "OPENAI_MODEL",
+            "OPENAI_TEMPERATURE",
+            "LANGFUSE_SECRET_KEY",
+            "LANGFUSE_PUBLIC_KEY",
+            "LANGFUSE_BASE_URL",
+            "LANGFUSE_ENABLED",
+            "FINNHUB_API_KEY",
+            "TIINGO_API_KEY",
+            "ALPACA_API_KEY",
+            "ALPACA_SECRET_KEY",
+            "ALPACA_BASE_URL",
+            "OANDA_API_KEY",
+            "OANDA_ACCOUNT_TYPE",
+            "OANDA_ACCOUNT_ID",
+            "ENV",
+            "ENVIRONMENT",
+            "LOG_LEVEL",
+        ],
+        description="Environment variables forwarded into ephemeral backtest runtime containers"
+    )
+    BACKTEST_RUNTIME_EMBED_SIGNAL_GENERATOR: bool = Field(
+        default=True,
+        description="Run a sandbox-local signal-generator replay API inside the backtest runtime"
+    )
+    BACKTEST_RUNTIME_SIGNAL_GENERATOR_PORT: int = Field(
+        default=18007,
+        description="Port used by the sandbox-local signal-generator replay API"
     )
     
     # PDF Reports
@@ -152,13 +242,27 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
+
+    @validator("BACKTEST_RUNTIME_ENV_PASSTHROUGH", pre=True)
+    def parse_backtest_runtime_env_passthrough(cls, v):
+        """Parse runtime env passthrough from a comma-separated string or list."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+    @validator("BACKTEST_RUNTIME_K8S_IMAGE_PULL_SECRETS", pre=True)
+    def parse_backtest_runtime_k8s_pull_secrets(cls, v):
+        """Parse Kubernetes image pull secrets from a comma-separated string or list."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
     
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
 
 
 # Global settings instance
 settings = Settings()
-

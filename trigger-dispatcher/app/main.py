@@ -252,6 +252,17 @@ class TriggerDispatcher:
         matches: Dict[str, List[str]] = {}
         
         for signal in signals:
+            backtest_pipeline_id = signal.metadata.get('backtest_pipeline_id') if signal.metadata else None
+            if backtest_pipeline_id:
+                matches.setdefault(str(backtest_pipeline_id), []).append(str(signal.signal_id))
+                logger.debug(
+                    "backtest_signal_matched_directly",
+                    signal_id=str(signal.signal_id),
+                    pipeline_id=str(backtest_pipeline_id),
+                    signal_type=signal.signal_type
+                )
+                continue
+
             signal_tickers = signal.get_ticker_symbols()
             
             if not signal_tickers:
@@ -596,8 +607,13 @@ class TriggerDispatcher:
                 try:
                     # Get user_id from pipeline cache
                     pipeline_data = self.pipeline_cache.get(pipeline_id, {})
+                    # Get signal context for this ticker
+                    signal_context = signal_data_by_ticker.get(ticker)
+                    is_backtest = bool(signal_context and signal_context.get('metadata', {}).get('backtest_run_id'))
                     user_id = pipeline_data.get('user_id')
-                    
+                    if not user_id and signal_context:
+                        user_id = signal_context.get('metadata', {}).get('backtest_user_id')
+
                     if not user_id:
                         logger.error(
                             "pipeline_missing_user_id",
@@ -605,40 +621,44 @@ class TriggerDispatcher:
                         )
                         continue
                     
-                    # Get signal context for this ticker
-                    signal_context = signal_data_by_ticker.get(ticker)
-                    
                     # ⚠️ MARKET HOURS CHECK: Don't enqueue executions outside market hours
-                    try:
-                        from app.utils.market_hours import MarketHoursChecker
-                        if not MarketHoursChecker.is_ticker_tradeable(ticker):
-                            logger.info(
-                                "market_closed_skipping_execution",
-                                pipeline_id=pipeline_id,
+                    if not is_backtest:
+                        try:
+                            from app.utils.market_hours import MarketHoursChecker
+                            if not MarketHoursChecker.is_ticker_tradeable(ticker):
+                                logger.info(
+                                    "market_closed_skipping_execution",
+                                    pipeline_id=pipeline_id,
+                                    ticker=ticker,
+                                    reason="Market is closed for this ticker"
+                                )
+                                skipped_count += 1
+                                continue
+                        except Exception as e:
+                            logger.warning(
+                                "market_hours_check_failed",
+                                error=str(e),
                                 ticker=ticker,
-                                reason="Market is closed for this ticker"
+                                action="proceeding_with_execution"
                             )
-                            skipped_count += 1
-                            continue
-                    except Exception as e:
-                        logger.warning(
-                            "market_hours_check_failed",
-                            error=str(e),
-                            ticker=ticker,
-                            action="proceeding_with_execution"
-                        )
-                        # If market hours check fails, proceed (fail-safe)
+                            # If market hours check fails, proceed (fail-safe)
                     
                     # Enqueue Celery task with ticker-specific signal context
+                    send_kwargs = {
+                        'pipeline_id': pipeline_id,
+                        'user_id': str(user_id),
+                        'symbol': ticker,
+                        'mode': 'backtest' if is_backtest else 'paper',
+                        'signal_context': signal_context
+                    }
+                    send_options = {}
+                    if is_backtest:
+                        send_options["queue"] = "backtest_pipeline_execution"
+
                     celery_app.send_task(
                         'app.orchestration.tasks.execute_pipeline',
-                        kwargs={
-                            'pipeline_id': pipeline_id,
-                            'user_id': str(user_id),
-                            'symbol': ticker,  # ✅ CRITICAL: Pass the ticker as symbol
-                            'mode': 'paper',  # Signal-triggered pipelines use paper mode by default
-                            'signal_context': signal_context  # Pass signal data to pipeline
-                        }
+                        kwargs=send_kwargs,
+                        **send_options
                     )
                     
                     enqueued_count += 1
@@ -650,7 +670,7 @@ class TriggerDispatcher:
                         user_id=str(user_id),
                         ticker=ticker,
                         signal_type=signal_context.get('signal_type') if signal_context else None,
-                        mode='paper'
+                        mode='backtest' if is_backtest else 'paper'
                     )
                     
                 except Exception as e:
@@ -840,4 +860,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

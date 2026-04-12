@@ -106,7 +106,7 @@ async def health_check():
 
 
 # Include routers
-app.include_router(v1.router, prefix="/api/v1")
+app.include_router(v1.build_router(), prefix="/api/v1")
 
 
 # Global exception handler
@@ -144,4 +144,3 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower()
     )
-

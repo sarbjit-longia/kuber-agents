@@ -28,12 +28,18 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY backend/requirements.txt .
 COPY backend/requirements-dev.txt .
+COPY signal-generator/requirements.txt /tmp/signal-generator-requirements.txt
+COPY backend/scripts/patch_crewai_runtime.py /tmp/patch_crewai_runtime.py
 
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python /tmp/patch_crewai_runtime.py
 RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN pip install --no-cache-dir -r /tmp/signal-generator-requirements.txt
 
 # Copy application code (will be mounted as volume for hot-reload)
 COPY backend/ .
+COPY signal-generator/app /opt/signal-generator/app
+COPY signal-generator/config /opt/signal-generator/config
 
 # Expose port
 EXPOSE 8000
@@ -44,4 +50,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Development command with hot-reload
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-

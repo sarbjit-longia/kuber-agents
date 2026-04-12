@@ -81,6 +81,49 @@ This will create:
 ./run.sh deploy-ecs      # Update ECS services
 ```
 
+## Backtest Runtime Deployment
+
+The backend supports two production launcher modes for parity backtests:
+
+- `docker_container`
+  - use for self-hosted Docker deployments
+  - the backend worker launches one isolated runtime container per run
+- `kubernetes_job`
+  - use for Kubernetes deployments
+  - the backend worker creates one Job per run
+
+### Docker/self-hosted mode
+
+```bash
+BACKTEST_RUNTIME_MODE=docker_container
+BACKTEST_RUNTIME_IMAGE=clovercharts/backend:latest
+BACKTEST_RUNTIME_DOCKER_NETWORK=
+```
+
+Leave `BACKTEST_RUNTIME_DOCKER_NETWORK` blank to auto-detect the current worker
+network.
+
+### Kubernetes mode
+
+Apply the manifests in [deploy/kubernetes/backtest-runtime](./kubernetes/backtest-runtime):
+
+```bash
+kubectl apply -k deploy/kubernetes/backtest-runtime
+```
+
+Then configure the backend worker:
+
+```bash
+BACKTEST_RUNTIME_MODE=kubernetes_job
+BACKTEST_RUNTIME_IMAGE=ghcr.io/your-org/kuber-agents-backend:<tag>
+BACKTEST_RUNTIME_K8S_NAMESPACE=backtest
+BACKTEST_RUNTIME_K8S_SERVICE_ACCOUNT=backtest-runtime
+```
+
+Adjust the `RoleBinding` subject in
+`deploy/kubernetes/backtest-runtime/backend-job-manager-rbac.yaml` so it points
+at the actual backend worker service account.
+
 ## Script Commands
 
 ### Build & Deploy
@@ -349,4 +392,3 @@ For issues:
 
 **Last Updated**: October 2025  
 **Maintained By**: DevOps Team
-

@@ -236,6 +236,14 @@ def pytest_addoption(parser):
     )
 
 
+def pytest_configure(config):
+    """Register local custom markers when pytest is invoked from repo root."""
+    config.addinivalue_line(
+        "markers",
+        "no_tool_mocks: Skip global tool-mocking fixtures for lightweight tests",
+    )
+
+
 # ============================================================================
 # MOCKING FIXTURES - Make tests predictable and fast
 # ============================================================================
@@ -403,14 +411,16 @@ def mock_all_tools(mock_indicator_tools, mock_rsi_tool, mock_macd_tool):
 
 
 @pytest.fixture(autouse=True)
-def auto_mock_tools(mock_all_tools):
+def auto_mock_tools(request):
     """
     Automatically mock tools for ALL tests.
     
     This ensures tests never make real API calls unless explicitly disabled.
     To disable for a specific test, use:
-        @pytest.mark.integration
+        @pytest.mark.no_tool_mocks
         def test_with_real_apis():
             pass
     """
-    pass
+    if request.node.get_closest_marker("no_tool_mocks"):
+        return
+    request.getfixturevalue("mock_all_tools")

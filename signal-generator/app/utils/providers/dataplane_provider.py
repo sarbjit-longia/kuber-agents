@@ -20,6 +20,7 @@ from typing import Optional, Dict, List, Set
 from datetime import datetime, timedelta
 
 from app.utils.market_data_provider import MarketDataProvider
+from app.utils.backtest_context import get_backtest_ts
 
 logger = structlog.get_logger()
 
@@ -93,6 +94,9 @@ class DataPlaneProvider(MarketDataProvider):
                 "timeframe": resolution,
                 "limit": limit
             }
+            backtest_ts = get_backtest_ts()
+            if backtest_ts:
+                params["backtest_ts"] = backtest_ts
             
             logger.debug(
                 "fetching_candles_from_dataplane",
@@ -188,6 +192,9 @@ class DataPlaneProvider(MarketDataProvider):
                 "timeframe": resolution,
                 "indicators": indicator
             }
+            backtest_ts = get_backtest_ts()
+            if backtest_ts:
+                params["backtest_ts"] = backtest_ts
             
             # Add indicator-specific parameters
             if indicator == "rsi":

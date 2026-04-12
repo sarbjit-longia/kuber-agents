@@ -15,6 +15,7 @@ from app.models.cost_tracking import CostTracking, UserBudget
 from app.models.llm_model import LLMModel
 from app.models.user_device import UserDevice
 from app.models.sms_consent_log import SmsConsentLog
+from app.models.backtest_run import BacktestRun, BacktestRunStatus
 
 __all__ = [
     "Base",
@@ -29,5 +30,6 @@ __all__ = [
     "LLMModel",
     "UserDevice",
     "SmsConsentLog",
+    "BacktestRun",
+    "BacktestRunStatus",
 ]
-

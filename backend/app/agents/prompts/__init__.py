@@ -1,16 +1,33 @@
 """
 Prompt loader for agent system prompts.
 
-Loads .md files from this directory and caches them at import time.
+Loads .md files from this directory and supports scoped runtime overrides for
+backtests that need frozen prompt snapshots.
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
+
 import structlog
 
 logger = structlog.get_logger()
 
 _PROMPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _cache: dict[str, str] = {}
+_prompt_overrides: ContextVar[dict[str, str] | None] = ContextVar(
+    "agent_prompt_overrides",
+    default=None,
+)
+
+
+@contextmanager
+def use_prompt_overrides(overrides: dict[str, str] | None):
+    token = _prompt_overrides.set(overrides or None)
+    try:
+        yield
+    finally:
+        _prompt_overrides.reset(token)
 
 
 def load_prompt(agent_name: str) -> str:
@@ -23,6 +40,10 @@ def load_prompt(agent_name: str) -> str:
     Returns:
         The prompt text, or empty string if the file is not found.
     """
+    overrides = _prompt_overrides.get() or {}
+    if agent_name in overrides:
+        return overrides[agent_name]
+
     if agent_name in _cache:
         return _cache[agent_name]
 

@@ -58,6 +58,7 @@ services:
 
   # FastAPI Backend
   backend:
+    image: clovercharts/backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -71,6 +72,13 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATA_PLANE_URL=http://data-plane:8000
+      - SIGNAL_GENERATOR_URL=http://signal-generator:8007
+      - BACKTEST_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - BACKTEST_KAFKA_SIGNAL_TOPIC=trading-signals-backtest
+      - BACKTEST_RUNTIME_MODE=${BACKTEST_RUNTIME_MODE:-docker_container}
+      - BACKTEST_RUNTIME_IMAGE=${BACKTEST_RUNTIME_IMAGE:-clovercharts/backend:latest}
+      - BACKTEST_RUNTIME_DOCKER_NETWORK=${BACKTEST_RUNTIME_DOCKER_NETWORK:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
@@ -112,11 +120,12 @@ services:
 
   # Celery Worker
   celery-worker:
+    image: clovercharts/backend:latest
     build:
       context: .
       dockerfile: Dockerfile
     container_name: clovercharts-celery-worker
-    command: celery -A app.orchestration.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.orchestration.celery_app worker --loglevel=info --concurrency=2 -Q celery -n worker@%h
     ports:
       - "8002:8001"  # Prometheus metrics endpoint (different host port)
     environment:
@@ -124,6 +133,13 @@ services:
       - REDIS_URL=redis://redis:6379
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATA_PLANE_URL=http://data-plane:8000
+      - SIGNAL_GENERATOR_URL=http://signal-generator:8007
+      - BACKTEST_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - BACKTEST_KAFKA_SIGNAL_TOPIC=trading-signals-backtest
+      - BACKTEST_RUNTIME_MODE=${BACKTEST_RUNTIME_MODE:-docker_container}
+      - BACKTEST_RUNTIME_IMAGE=${BACKTEST_RUNTIME_IMAGE:-clovercharts/backend:latest}
+      - BACKTEST_RUNTIME_DOCKER_NETWORK=${BACKTEST_RUNTIME_DOCKER_NETWORK:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
@@ -140,6 +156,7 @@ services:
       - LOG_LEVEL=INFO
     volumes:
       - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,6 +172,7 @@ services:
 
   # Celery Beat (Scheduler)
   celery-beat:
+    image: clovercharts/backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -184,6 +202,7 @@ services:
 
   # Flower (Celery monitoring UI)
   flower:
+    image: clovercharts/backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -501,4 +520,3 @@ volumes:
   prometheus_data:
   grafana_data:
   file_storage:  # Local file storage for uploads (dev)
-

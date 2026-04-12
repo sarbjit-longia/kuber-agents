@@ -378,12 +378,12 @@ class TradeReviewAgent(BaseAgent):
         emoji_map = {"APPROVED": "✅", "REJECTED": "❌", "HOLD": "⏸️"}
         emoji = emoji_map.get(review.decision, "")
 
-        metrics = [
-            {"label": "Decision", "value": f"{emoji} {review.decision}"},
-            {"label": "Confidence", "value": f"{review.confidence:.0%}"},
-        ]
+        metrics = {
+            "Decision": f"{emoji} {review.decision}",
+            "Confidence": f"{review.confidence:.0%}",
+        }
         if state.risk_assessment:
-            metrics.append({"label": "R/R Ratio", "value": f"{state.risk_assessment.risk_reward_ratio:.2f}:1"})
+            metrics["R/R Ratio"] = f"{state.risk_assessment.risk_reward_ratio:.2f}:1"
 
         self.record_report(
             state,

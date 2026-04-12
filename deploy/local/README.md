@@ -161,6 +161,28 @@ Certbot auto-renews via systemd timer. Verify: `sudo certbot renew --dry-run`
 ./deploy/local/deploy.sh --skip-build
 ```
 
+### Enable production-parity backtests on self-hosted Docker
+
+Set these in `/opt/clovercharts/.env.prod`:
+
+```bash
+BACKTEST_RUNTIME_MODE=docker_container
+BACKTEST_RUNTIME_IMAGE=clovercharts/backend:latest
+BACKTEST_RUNTIME_DOCKER_NETWORK=
+```
+
+`BACKTEST_RUNTIME_DOCKER_NETWORK` may be left blank. The worker will infer its
+current Docker Compose network automatically.
+
+Requirements:
+
+- `celery-worker` must keep `/var/run/docker.sock` mounted
+- the backend image must include the backtest runtime code
+- run `alembic upgrade head` before the first backtest
+
+After deploying, backtests started from the API will spawn isolated runtime
+containers instead of using the legacy shared worker path.
+
 ### Rollback
 
 ```bash
@@ -177,6 +199,14 @@ cd /opt/clovercharts
 docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs -f celery-worker
 docker compose -f docker-compose.prod.yml logs --tail=100 signal-generator
+```
+
+### View active backtest runtimes
+
+```bash
+ssh quantum
+docker ps --filter "label=clovercharts.runtime=backtest"
+docker logs <backtest-container-name>
 ```
 
 ### Restart a service

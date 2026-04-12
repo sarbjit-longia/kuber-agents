@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      serviceAccountName: backend-worker
+      containers:
+        - name: backend-worker
+          env:
+            - name: BACKTEST_RUNTIME_MODE
+              value: kubernetes_job
+            - name: BACKTEST_RUNTIME_IMAGE
+              value: ghcr.io/your-org/kuber-agents-backend:latest
+            - name: BACKTEST_RUNTIME_K8S_NAMESPACE
+              value: backtest
+            - name: BACKTEST_RUNTIME_K8S_SERVICE_ACCOUNT
+              value: backtest-runtime

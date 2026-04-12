@@ -6,9 +6,13 @@ import json
 from datetime import datetime, timedelta
 from opentelemetry import metrics
 import asyncio
+from sqlalchemy import select, and_, text
 
 from app.providers.base import BaseProvider
 from app.services.indicator_calculator import IndicatorCalculator
+from app.services.timescale_writer import TIMEFRAME_TO_VIEW
+from app.database import TimescaleSessionLocal
+from app.models.ohlcv import OHLCV
 
 logger = structlog.get_logger()
 
@@ -76,6 +80,157 @@ class DataFetcher:
     def _get_candle_ttl(timeframe: str) -> int:
         """Return cache TTL in seconds for a given candle timeframe."""
         return CANDLE_TTL.get(timeframe, 3600)
+
+    @staticmethod
+    def _row_to_aggregated_candle(row, timeframe: str) -> Dict:
+        time_value = row.day if timeframe == "D" else row.bucket
+        if timeframe == "D":
+            time_value = datetime.combine(time_value, datetime.min.time())
+
+        return {
+            "time": time_value.isoformat(),
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+            "volume": int(row.volume),
+        }
+
+    async def _fetch_aggregated_candles_in_range(
+        self,
+        ticker: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        limit: int,
+    ) -> Optional[List[Dict]]:
+        view = TIMEFRAME_TO_VIEW.get(timeframe)
+        if view is None:
+            return None
+
+        async with TimescaleSessionLocal() as session:
+            if timeframe == "D":
+                result = await session.execute(
+                    text(f"""
+                        WITH daily_agg AS (
+                            SELECT bucket::date AS day, open, high, low, close, volume
+                            FROM {view}
+                            WHERE ticker = :ticker
+                              AND bucket::date >= :start_date
+                              AND bucket::date <= :end_date
+                        ),
+                        daily_seeded AS (
+                            SELECT timestamp::date AS day, open, high, low, close, volume
+                            FROM ohlcv
+                            WHERE ticker = :ticker
+                              AND timeframe = 'D'
+                              AND timestamp::date >= :start_date
+                              AND timestamp::date <= :end_date
+                              AND timestamp::date NOT IN (SELECT day FROM daily_agg)
+                        )
+                        SELECT day, open, high, low, close, volume
+                        FROM (
+                            SELECT * FROM daily_agg
+                            UNION ALL
+                            SELECT * FROM daily_seeded
+                        ) combined
+                        ORDER BY day ASC
+                        LIMIT :limit
+                    """),
+                    {
+                        "ticker": ticker,
+                        "start_date": start.date(),
+                        "end_date": end.date(),
+                        "limit": limit,
+                    },
+                )
+            else:
+                result = await session.execute(
+                    text(f"""
+                        SELECT bucket, open, high, low, close, volume
+                        FROM {view}
+                        WHERE ticker = :ticker
+                          AND bucket >= :start
+                          AND bucket <= :end
+                        ORDER BY bucket ASC
+                        LIMIT :limit
+                    """),
+                    {
+                        "ticker": ticker,
+                        "start": start,
+                        "end": end,
+                        "limit": limit,
+                    },
+                )
+
+            rows = result.fetchall()
+
+        return [self._row_to_aggregated_candle(row, timeframe) for row in rows]
+
+    async def _fetch_aggregated_candles_at_timestamp(
+        self,
+        ticker: str,
+        timeframe: str,
+        limit: int,
+        as_of_ts: datetime,
+    ) -> Optional[List[Dict]]:
+        view = TIMEFRAME_TO_VIEW.get(timeframe)
+        if view is None:
+            return None
+
+        async with TimescaleSessionLocal() as session:
+            if timeframe == "D":
+                result = await session.execute(
+                    text(f"""
+                        WITH daily_agg AS (
+                            SELECT bucket::date AS day, open, high, low, close, volume
+                            FROM {view}
+                            WHERE ticker = :ticker
+                              AND bucket::date <= :as_of_date
+                        ),
+                        daily_seeded AS (
+                            SELECT timestamp::date AS day, open, high, low, close, volume
+                            FROM ohlcv
+                            WHERE ticker = :ticker
+                              AND timeframe = 'D'
+                              AND timestamp::date <= :as_of_date
+                              AND timestamp::date NOT IN (SELECT day FROM daily_agg)
+                        )
+                        SELECT day, open, high, low, close, volume
+                        FROM (
+                            SELECT * FROM daily_agg
+                            UNION ALL
+                            SELECT * FROM daily_seeded
+                        ) combined
+                        ORDER BY day DESC
+                        LIMIT :limit
+                    """),
+                    {
+                        "ticker": ticker,
+                        "as_of_date": as_of_ts.date(),
+                        "limit": limit,
+                    },
+                )
+            else:
+                result = await session.execute(
+                    text(f"""
+                        SELECT bucket, open, high, low, close, volume
+                        FROM {view}
+                        WHERE ticker = :ticker
+                          AND bucket <= :as_of_ts
+                        ORDER BY bucket DESC
+                        LIMIT :limit
+                    """),
+                    {
+                        "ticker": ticker,
+                        "as_of_ts": as_of_ts,
+                        "limit": limit,
+                    },
+                )
+
+            rows = list(reversed(result.fetchall()))
+
+        return [self._row_to_aggregated_candle(row, timeframe) for row in rows]
 
     async def fetch_quotes_batch(self, tickers: List[str], ttl: int = 60):
         """Fetch quotes for multiple tickers and cache"""
@@ -198,6 +353,73 @@ class DataFetcher:
             )
             return []
 
+    async def fetch_candles_in_range(
+        self,
+        ticker: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        limit: int = 5000,
+    ) -> List[Dict]:
+        aggregate_rows = await self._fetch_aggregated_candles_in_range(
+            ticker=ticker,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            limit=limit,
+        )
+        if aggregate_rows is not None:
+            return aggregate_rows
+
+        async with TimescaleSessionLocal() as session:
+            result = await session.execute(
+                select(OHLCV)
+                .where(
+                    and_(
+                        OHLCV.ticker == ticker,
+                        OHLCV.timeframe == timeframe,
+                        OHLCV.timestamp >= start,
+                        OHLCV.timestamp <= end,
+                    )
+                )
+                .order_by(OHLCV.timestamp.asc())
+                .limit(limit)
+            )
+            rows = result.scalars().all()
+            return [row.to_dict() for row in rows]
+
+    async def fetch_candles_at_timestamp(
+        self,
+        ticker: str,
+        timeframe: str,
+        limit: int,
+        as_of_ts: datetime,
+    ) -> List[Dict]:
+        aggregate_rows = await self._fetch_aggregated_candles_at_timestamp(
+            ticker=ticker,
+            timeframe=timeframe,
+            limit=limit,
+            as_of_ts=as_of_ts,
+        )
+        if aggregate_rows is not None:
+            return aggregate_rows
+
+        async with TimescaleSessionLocal() as session:
+            result = await session.execute(
+                select(OHLCV)
+                .where(
+                    and_(
+                        OHLCV.ticker == ticker,
+                        OHLCV.timeframe == timeframe,
+                        OHLCV.timestamp <= as_of_ts,
+                    )
+                )
+                .order_by(OHLCV.timestamp.desc())
+                .limit(limit)
+            )
+            rows = list(reversed(result.scalars().all()))
+            return [row.to_dict() for row in rows]
+
     def _get_period_seconds(self, timeframe: str) -> int:
         """Get seconds per period for timeframe"""
         periods = {
@@ -218,7 +440,8 @@ class DataFetcher:
         ticker: str,
         timeframe: str,
         indicators: List[str],
-        params: Optional[Dict] = None
+        params: Optional[Dict] = None,
+        backtest_ts: Optional[datetime] = None,
     ) -> Dict:
         """
         Calculate technical indicators locally from candle data.
@@ -246,10 +469,12 @@ class DataFetcher:
         indicators_str = ",".join(sorted(indicators))
         params_str = json.dumps(params or {}, sort_keys=True)
         cache_key = f"indicators:{ticker}:{timeframe}:{indicators_str}:{params_str}"
+        if backtest_ts:
+            cache_key = f"{cache_key}:bt:{backtest_ts.isoformat()}"
 
         try:
             # Check cache first (5 minute TTL)
-            cached = await self.redis.get(cache_key)
+            cached = await self.redis.get(cache_key) if not backtest_ts else None
             if cached:
                 logger.debug(
                     "indicators_cache_hit",
@@ -269,7 +494,10 @@ class DataFetcher:
             )
 
             # Fetch candles (now hits Redis cache first)
-            candles = await self.fetch_candles(ticker, timeframe, limit=200)
+            if backtest_ts:
+                candles = await self.fetch_candles_at_timestamp(ticker, timeframe, limit=200, as_of_ts=backtest_ts)
+            else:
+                candles = await self.fetch_candles(ticker, timeframe, limit=200)
 
             if not candles:
                 logger.warning(
@@ -306,11 +534,12 @@ class DataFetcher:
             }
 
             # Cache for 5 minutes
-            await self.redis.setex(
-                cache_key,
-                300,  # 5 minutes
-                json.dumps(result)
-            )
+            if not backtest_ts:
+                await self.redis.setex(
+                    cache_key,
+                    300,  # 5 minutes
+                    json.dumps(result)
+                )
 
             # Metrics
             if self.meter:

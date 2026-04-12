@@ -1,4 +1,5 @@
 """Data Plane API endpoints"""
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Response
 from typing import List, Optional
 import json
@@ -107,7 +108,10 @@ async def get_quote(ticker: str):
 async def get_candles(
     ticker: str,
     timeframe: str = Query("5m", description="Timeframe: 1m, 5m, 15m, 1h, 1d, etc."),
-    limit: int = Query(100, description="Number of candles to return", ge=1, le=500)
+    limit: int = Query(100, description="Number of candles to return", ge=1, le=5000),
+    start: Optional[datetime] = Query(None),
+    end: Optional[datetime] = Query(None),
+    backtest_ts: Optional[datetime] = Query(None),
 ):
     """
     Get OHLCV candles for a ticker.
@@ -122,26 +126,31 @@ async def get_candles(
     from app.telemetry import get_meter
     
     logger.info("fetching_candles", ticker=ticker, timeframe=timeframe, limit=limit)
-    
-    # Determine provider based on ticker (forex pairs have underscore)
-    if "_" in ticker:
-        # Forex pair (e.g., EUR_USD)
-        if not settings.OANDA_API_KEY:
-            raise HTTPException(status_code=500, detail="OANDA API key not configured")
-        provider = OANDAProvider(
-            api_key=settings.OANDA_API_KEY,
-            account_type=settings.OANDA_ACCOUNT_TYPE
-        )
-        logger.debug("using_oanda_provider", ticker=ticker)
-    else:
-        # Stock ticker - uses configured stock provider (Tiingo or Finnhub)
-        provider = _get_stock_provider()
-    
     redis = await get_redis()
     meter = get_meter()
-    fetcher = DataFetcher(provider, redis, meter)
-    
-    candles = await fetcher.fetch_candles(ticker, timeframe, limit)
+    if start and end or backtest_ts:
+        fetcher = DataFetcher(None, redis, meter)
+        if start and end:
+            candles = await fetcher.fetch_candles_in_range(ticker, timeframe, start, end, limit)
+        else:
+            candles = await fetcher.fetch_candles_at_timestamp(ticker, timeframe, limit, backtest_ts)
+    else:
+        # Determine provider based on ticker (forex pairs have underscore)
+        if "_" in ticker:
+            # Forex pair (e.g., EUR_USD)
+            if not settings.OANDA_API_KEY:
+                raise HTTPException(status_code=500, detail="OANDA API key not configured")
+            provider = OANDAProvider(
+                api_key=settings.OANDA_API_KEY,
+                account_type=settings.OANDA_ACCOUNT_TYPE
+            )
+            logger.debug("using_oanda_provider", ticker=ticker)
+        else:
+            # Stock ticker - uses configured stock provider (Tiingo or Finnhub)
+            provider = _get_stock_provider()
+
+        fetcher = DataFetcher(provider, redis, meter)
+        candles = await fetcher.fetch_candles(ticker, timeframe, limit)
     
     return {
         "ticker": ticker,
@@ -156,6 +165,7 @@ async def get_indicators(
     ticker: str,
     timeframe: str = Query("D", description="Timeframe: 5m, 15m, 1h, 4h, D"),
     indicators: str = Query("sma,rsi", description="Comma-separated list of indicators"),
+    backtest_ts: Optional[datetime] = Query(None),
     sma_period: Optional[int] = Query(20, description="SMA period (20, 50, 200)"),
     ema_period: Optional[int] = Query(12, description="EMA period (12, 26)"),
     rsi_period: Optional[int] = Query(14, description="RSI period"),
@@ -228,7 +238,8 @@ async def get_indicators(
             ticker=ticker,
             timeframe=timeframe,
             indicators=indicator_list,
-            params=params
+            params=params,
+            backtest_ts=backtest_ts,
         )
         
         if indicator_data:

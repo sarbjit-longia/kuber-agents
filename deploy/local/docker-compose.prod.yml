@@ -114,6 +114,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - file_storage:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
         condition: service_healthy

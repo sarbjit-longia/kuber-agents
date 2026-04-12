@@ -16,7 +16,11 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies to a shared prefix (not --user which goes to /root/.local)
 COPY backend/requirements.txt .
+COPY signal-generator/requirements.txt /tmp/signal-generator-requirements.txt
+COPY backend/scripts/patch_crewai_runtime.py /tmp/patch_crewai_runtime.py
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN python /tmp/patch_crewai_runtime.py
+RUN pip install --no-cache-dir --prefix=/install -r /tmp/signal-generator-requirements.txt
 
 # Stage 2: Runtime
 FROM python:3.11-slim
@@ -45,6 +49,8 @@ ENV PATH=/usr/local/bin:$PATH
 
 # Copy application code
 COPY backend/ .
+COPY signal-generator/app /opt/signal-generator/app
+COPY signal-generator/config /opt/signal-generator/config
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

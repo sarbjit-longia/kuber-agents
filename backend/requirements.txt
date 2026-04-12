@@ -33,8 +33,11 @@ python-multipart>=0.0.6
 
 # External APIs & Brokers
 finnhub-python>=2.4.19
+kafka-python>=2.0.2
 alpaca-py>=0.43.0
 requests>=2.31.0  # For Oanda and Tradier broker APIs
+docker>=7.1.0
+kubernetes>=30.1.0
 
 # Utilities
 python-dotenv>=1.0.0

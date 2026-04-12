@@ -5,10 +5,13 @@ Main task for running a trading pipeline asynchronously.
 Handles preflight checks, broker validation, and pipeline execution.
 """
 import structlog
+from contextlib import nullcontext
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
+from app.agents.prompts import use_prompt_overrides
+from app.backtesting.snapshot import hydrate_pipeline_from_snapshot, prompt_overrides_from_runtime_snapshot
 from app.orchestration.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.pipeline import Pipeline
@@ -32,7 +35,9 @@ def execute_pipeline(
     mode: str = "paper",
     execution_id: Optional[str] = None,
     signal_context: Optional[Dict[str, Any]] = None,
-    symbol: Optional[str] = None
+    symbol: Optional[str] = None,
+    pipeline_snapshot: Optional[Dict[str, Any]] = None,
+    runtime_snapshot: Optional[Dict[str, Any]] = None,
 ):
     """
     Execute a trading pipeline asynchronously.
@@ -63,12 +68,25 @@ def execute_pipeline(
     try:
         # Create database session
         db = SessionLocal()
+        is_backtest = bool((signal_context or {}).get("metadata", {}).get("backtest_run_id")) or mode == "backtest"
+        if is_backtest:
+            mode = "backtest"
         
         try:
             # Load pipeline
-            pipeline = db.query(Pipeline).filter(Pipeline.id == UUID(pipeline_id)).first()
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
+            if pipeline_snapshot:
+                pipeline = hydrate_pipeline_from_snapshot(
+                    pipeline_snapshot,
+                    fallback_pipeline_id=pipeline_id,
+                    fallback_user_id=user_id,
+                )
+                pipeline.id = UUID(str(pipeline.id))
+                pipeline.user_id = UUID(str(pipeline.user_id))
+                pipeline.scanner_id = UUID(str(pipeline.scanner_id)) if pipeline.scanner_id else None
+            else:
+                pipeline = db.query(Pipeline).filter(Pipeline.id == UUID(pipeline_id)).first()
+                if not pipeline:
+                    raise ValueError(f"Pipeline {pipeline_id} not found")
             
             if str(pipeline.user_id) != user_id:
                 raise PermissionError("Pipeline does not belong to user")
@@ -117,7 +135,7 @@ def execute_pipeline(
                     Execution.symbol == execution_symbol_for_preflight
                 )
 
-            existing_active = preflight_query.first()
+            existing_active = None if is_backtest else preflight_query.first()
 
             if existing_active:
                 logger.info(
@@ -144,7 +162,7 @@ def execute_pipeline(
 
             # Preflight 2a: Cross-pipeline symbol guard — prevent duplicate MONITORING
             # for the same user+symbol across ALL pipelines (not just this one).
-            if execution_symbol:
+            if execution_symbol and not is_backtest:
                 existing_symbol_monitoring = db.query(Execution).filter(
                     Execution.user_id == UUID(user_id),
                     Execution.symbol == execution_symbol,
@@ -168,7 +186,7 @@ def execute_pipeline(
                         "existing_execution_id": str(existing_symbol_monitoring.id),
                     }
 
-            if broker_tool and execution_symbol:
+            if broker_tool and execution_symbol and not is_backtest:
                 try:
                     from app.services.brokers.factory import broker_factory
                     broker = broker_factory.from_tool_config(broker_tool)
@@ -259,7 +277,9 @@ def execute_pipeline(
                 execution_id=UUID(execution_id) if execution_id else None,
                 signal_context=signal_context,
                 symbol_override=symbol,  # Pass symbol override for scanner-based pipelines
-                db_session=db  # Pass database session to load scanner
+                db_session=db,  # Pass database session to load scanner
+                backtest_run_id=(signal_context or {}).get("metadata", {}).get("backtest_run_id"),
+                backtest_ts=(signal_context or {}).get("metadata", {}).get("backtest_ts"),
             )
             
             # Execute pipeline synchronously for Celery
@@ -275,6 +295,25 @@ def execute_pipeline(
                 logger.warning("using_scanner_ticker_fallback_in_task", 
                            execution_id=str(executor.execution_id),
                            symbol=execution_symbol)
+
+            terminal_backtest_statuses = {
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.CANCELLED,
+                ExecutionStatus.SKIPPED,
+                ExecutionStatus.AWAITING_APPROVAL,
+                ExecutionStatus.MONITORING,
+                ExecutionStatus.COMMUNICATION_ERROR,
+                ExecutionStatus.NEEDS_RECONCILIATION,
+            }
+            if is_backtest and execution and execution.status in terminal_backtest_statuses and execution.completed_at:
+                return {
+                    "status": "completed" if execution.status == ExecutionStatus.COMPLETED else execution.status.value.lower(),
+                    "execution_id": str(execution.id),
+                    "cost": execution.cost,
+                    "errors": execution.result.get("errors", []) if execution.result else [],
+                    "reused_execution": True,
+                }
             
             if not execution:
                 # Create new execution record
@@ -300,10 +339,14 @@ def execute_pipeline(
                 if not execution.started_at:
                     execution.started_at = datetime.utcnow()
                 db.commit()
-            
+
+            prompt_overrides = prompt_overrides_from_runtime_snapshot(runtime_snapshot)
+            prompt_context = use_prompt_overrides(prompt_overrides) if prompt_overrides else nullcontext()
+
             try:
                 # Execute pipeline with real-time DB updates using sync session
-                execution = executor.execute_with_sync_db_tracking(db, execution)
+                with prompt_context:
+                    execution = executor.execute_with_sync_db_tracking(db, execution)
                 
             except TriggerNotMetException as e:
                 # Ensure session is usable after any flush/commit errors inside executor tracking
@@ -415,10 +458,43 @@ def execute_pipeline(
             
         finally:
             db.close()
-            
+
     except Exception as exc:
         # Important: we intentionally do NOT auto-retry here. With `acks_late=True` tasks will
         # be re-queued if the worker dies; for logical errors we want a single failure and a clear
         # error surfaced in the execution record.
         logger.exception("celery_task_failed", task_id=self.request.id)
         raise
+
+
+def execute_pipeline_inline(
+    pipeline_id: str,
+    user_id: str,
+    mode: str = "paper",
+    execution_id: Optional[str] = None,
+    signal_context: Optional[Dict[str, Any]] = None,
+    symbol: Optional[str] = None,
+    pipeline_snapshot: Optional[Dict[str, Any]] = None,
+    runtime_snapshot: Optional[Dict[str, Any]] = None,
+):
+    """
+    Execute the existing task body inline for sandboxed backtest runtimes.
+
+    This reuses the same task implementation without going through the shared
+    Celery queue/worker path.
+    """
+    request_id = f"inline-{uuid4()}"
+    execute_pipeline.push_request(id=request_id)
+    try:
+        return execute_pipeline.run(
+            pipeline_id=pipeline_id,
+            user_id=user_id,
+            mode=mode,
+            execution_id=execution_id,
+            signal_context=signal_context,
+            symbol=symbol,
+            pipeline_snapshot=pipeline_snapshot,
+            runtime_snapshot=runtime_snapshot,
+        )
+    finally:
+        execute_pipeline.pop_request()

@@ -16,7 +16,19 @@ celery_app = Celery(
     "trading_platform",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.orchestration.tasks"]
+    include=[
+        "app.orchestration.tasks.execute_pipeline",
+        "app.orchestration.tasks.check_scheduled_pipelines",
+        "app.orchestration.tasks.reconciliation",
+        "app.orchestration.tasks.monitoring",
+        "app.orchestration.tasks.maintenance",
+        "app.orchestration.tasks.stop_execution",
+        "app.orchestration.tasks.approval",
+        "app.orchestration.tasks.liquidate_positions",
+        "app.orchestration.tasks.check_pipeline_schedules_active_hours",
+        "app.orchestration.tasks.launch_backtest_runtime",
+        "app.orchestration.tasks.run_backtest",
+    ]
 )
 
 # Celery configuration
@@ -110,4 +122,3 @@ def init_worker_telemetry(**kwargs):
         logger.info("Celery worker telemetry initialized")
     except Exception as e:
         logger.error(f"Failed to initialize Celery worker telemetry: {e}")
-

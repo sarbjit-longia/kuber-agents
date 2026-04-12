@@ -253,6 +253,8 @@ class PipelineState(BaseModel):
     # Trading context
     symbol: str
     mode: str = "paper"  # "live", "paper", "simulation", "validation"
+    backtest_run_id: Optional[str] = None
+    backtest_ts: Optional[datetime] = None
     timeframes: List[str] = Field(default_factory=list)  # Timeframes required by this pipeline (e.g., ["5m", "1h", "1d"])
     
     # Signal context (populated when triggered by signal)
@@ -451,4 +453,3 @@ class AgentMetadata(BaseModel):
                 }
             }
         }
-

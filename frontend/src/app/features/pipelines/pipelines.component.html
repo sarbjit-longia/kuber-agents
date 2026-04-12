@@ -165,6 +165,10 @@
                 <mat-icon>play_arrow</mat-icon>
                 <span>Execute Now</span>
               </button>
+              <button mat-menu-item (click)="openBacktest(pipeline, $event)">
+                <mat-icon>insights</mat-icon>
+                <span>Backtest</span>
+              </button>
               <button mat-menu-item (click)="toggleActive(pipeline, $event)">
                 <mat-icon>{{ pipeline.is_active ? 'toggle_on' : 'toggle_off' }}</mat-icon>
                 <span>{{ pipeline.is_active ? 'Deactivate' : 'Activate' }}</span>

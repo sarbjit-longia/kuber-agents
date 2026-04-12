@@ -7,6 +7,7 @@ or Kafka (Phase 2).
 """
 import asyncio
 import json
+import os
 import time
 from collections import deque
 from copy import deepcopy
@@ -51,6 +52,7 @@ from app.generators import (
 )
 from app.schemas.signal import Signal
 from app.telemetry import setup_telemetry
+from app.utils.backtest_context import use_backtest_ts
 
 
 # Configure structured logging
@@ -739,6 +741,122 @@ class SignalGeneratorService:
             count=len(self.generators),
             generators=[g["name"] for g in self.generators]
         )
+
+    def _prefixes_for_signal_types(self, signal_types: List[str]) -> set[str]:
+        mapping = {
+            "golden_cross": {"golden_cross"},
+            "death_cross": {"death_cross"},
+            "rsi_oversold": {"rsi"},
+            "rsi_overbought": {"rsi"},
+            "macd_bullish": {"macd"},
+            "macd_bearish": {"macd"},
+            "volume_spike": {"volume_spike"},
+            "bbands_upper_breakout": {"bollinger_bands"},
+            "bbands_lower_breakout": {"bollinger_bands"},
+            "bbands_upper_bounce": {"bollinger_bands"},
+            "bbands_lower_bounce": {"bollinger_bands"},
+            "stoch_bullish": {"stochastic"},
+            "stoch_bearish": {"stochastic"},
+            "adx_strong_trend": {"adx"},
+            "adx_weak_trend": {"adx"},
+            "ema_bullish_crossover": {"ema_crossover"},
+            "ema_bearish_crossover": {"ema_crossover"},
+            "atr_volatility_spike": {"atr"},
+            "atr_volatility_compression": {"atr"},
+            "cci_oversold": {"cci"},
+            "cci_overbought": {"cci"},
+            "cci_bullish_zero_cross": {"cci"},
+            "cci_bearish_zero_cross": {"cci"},
+            "stochrsi_oversold": {"stochrsi"},
+            "stochrsi_overbought": {"stochrsi"},
+            "stochrsi_bullish_cross": {"stochrsi"},
+            "stochrsi_bearish_cross": {"stochrsi"},
+            "willr_oversold": {"williams_r"},
+            "willr_overbought": {"williams_r"},
+            "willr_bullish_momentum": {"williams_r"},
+            "willr_bearish_momentum": {"williams_r"},
+            "aroon_uptrend": {"aroon"},
+            "aroon_downtrend": {"aroon"},
+            "aroon_bullish_cross": {"aroon"},
+            "aroon_bearish_cross": {"aroon"},
+            "aroon_consolidation": {"aroon"},
+            "mfi_oversold": {"mfi"},
+            "mfi_overbought": {"mfi"},
+            "obv_bullish_divergence": {"obv"},
+            "obv_bearish_divergence": {"obv"},
+            "obv_bullish_breakout": {"obv"},
+            "obv_bearish_breakdown": {"obv"},
+            "sar_bullish_reversal": {"sar"},
+            "sar_bearish_reversal": {"sar"},
+            "ema_200_bullish_crossover": {"ema_200_crossover"},
+            "ema_200_bearish_crossover": {"ema_200_crossover"},
+            "swing_point_break_bullish": {"swing_point_break"},
+            "swing_point_break_bearish": {"swing_point_break"},
+            "rsi_bullish_divergence": {"momentum_divergence"},
+            "rsi_bearish_divergence": {"momentum_divergence"},
+            "macd_bullish_divergence": {"momentum_divergence"},
+            "macd_bearish_divergence": {"momentum_divergence"},
+            "fvg_bullish": {"fair_value_gap"},
+            "fvg_bearish": {"fair_value_gap"},
+            "liquidity_sweep_bullish": {"liquidity_sweep"},
+            "liquidity_sweep_bearish": {"liquidity_sweep"},
+            "break_of_structure_bullish": {"break_of_structure"},
+            "break_of_structure_bearish": {"break_of_structure"},
+            "order_block_bullish": {"order_block"},
+            "order_block_bearish": {"order_block"},
+            "choch_bullish": {"change_of_character"},
+            "choch_bearish": {"change_of_character"},
+            "poc_break_bullish": {"volume_profile_poc"},
+            "poc_break_bearish": {"volume_profile_poc"},
+            "accumulation_signal": {"accumulation_distribution"},
+            "distribution_signal": {"accumulation_distribution"},
+            "htf_trend_aligned_bullish": {"htf_trend"},
+            "htf_trend_aligned_bearish": {"htf_trend"},
+        }
+        prefixes = set()
+        for signal_type in signal_types:
+            prefixes.update(mapping.get(signal_type, set()))
+        return prefixes
+
+    async def generate_backtest_signals(
+        self,
+        symbols: List[str],
+        backtest_ts: str,
+        signal_types: List[str],
+        backtest_run_id: str | None = None,
+        pipeline_id: str | None = None,
+        user_id: str | None = None,
+    ) -> List[dict]:
+        prefixes = self._prefixes_for_signal_types(signal_types)
+        selected = []
+        for item in self.generators:
+            name = item["name"]
+            if prefixes and not any(name.startswith(prefix) for prefix in prefixes):
+                continue
+            generator = item["generator"]
+            config = deepcopy(generator.config)
+            config["tickers"] = symbols
+            selected.append(generator.__class__(config))
+
+        replayed: List[dict] = []
+        with use_backtest_ts(backtest_ts):
+            for generator in selected:
+                try:
+                    generated = await generator.generate()
+                except Exception as e:
+                    logger.error("backtest_generator_failed", generator=generator.name, error=str(e), exc_info=True)
+                    continue
+                for signal in generated:
+                    signal.metadata = signal.metadata or {}
+                    signal.metadata["backtest_ts"] = backtest_ts
+                    if backtest_run_id:
+                        signal.metadata["backtest_run_id"] = backtest_run_id
+                    if pipeline_id:
+                        signal.metadata["backtest_pipeline_id"] = pipeline_id
+                    if user_id:
+                        signal.metadata["backtest_user_id"] = user_id
+                    replayed.append(signal.to_kafka_message())
+        return replayed
     
     async def run_generator(self, generator_info: dict):
         """
@@ -1152,7 +1270,7 @@ async def main():
         uvicorn.Config(
             app,
             host="0.0.0.0",
-            port=8007,
+            port=int(os.getenv("SIGNAL_GENERATOR_PORT", "8007")),
             log_level="info"
         )
     )
@@ -1161,12 +1279,18 @@ async def main():
         """Start the API server."""
         await api_server.serve()
     
-    # Start both API server and signal generation
+    api_only = os.getenv("SIGNAL_GENERATOR_API_ONLY", "").lower() in {"1", "true", "yes"}
+
+    # Start both API server and signal generation unless explicitly running in API-only mode
     try:
-        await asyncio.gather(
-            start_api(),
-            service.start()
-        )
+        if api_only:
+            logger.info("signal_generator_api_only_mode_enabled")
+            await start_api()
+        else:
+            await asyncio.gather(
+                start_api(),
+                service.start()
+            )
     except KeyboardInterrupt:
         logger.info("keyboard_interrupt_received")
         await service.stop()
@@ -1178,4 +1302,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

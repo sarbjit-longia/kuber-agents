@@ -112,6 +112,9 @@ class TradeManagerAgent(BaseAgent):
         Checks for duplicate positions and executes via webhook or broker.
         """
         self.log(state, "Phase 1: Executing trade")
+
+        if state.mode == "backtest" and state.backtest_run_id:
+            return self._execute_backtest_trade(state)
         
         # Validate only one broker is attached
         self._validate_single_broker()
@@ -1589,6 +1592,77 @@ class TradeManagerAgent(BaseAgent):
         
         # Webhook completes immediately (no monitoring)
         return state
+
+    def _execute_backtest_trade(self, state: PipelineState) -> PipelineState:
+        """Simulate trade entry through the backtest broker and complete immediately."""
+        from app.backtesting.backtest_broker import BacktestBroker
+
+        if not state.risk_assessment or not state.strategy:
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="skipped",
+                execution_time=datetime.utcnow(),
+                broker_response={"reason": "Missing risk assessment or strategy"},
+            )
+            state.should_complete = True
+            return state
+
+        strategy = state.strategy
+        risk = state.risk_assessment
+        if strategy.action == "HOLD" or not risk.approved:
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="skipped",
+                execution_time=datetime.utcnow(),
+                broker_response={"reason": "Trade not approved or HOLD action"},
+            )
+            state.should_complete = True
+            return state
+
+        broker = BacktestBroker(
+            run_id=state.backtest_run_id,
+            initial_capital=10_000.0,
+        )
+        if state.symbol in broker.get_positions():
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="skipped",
+                execution_time=datetime.utcnow(),
+                broker_response={"reason": f"Position already open for {state.symbol}"},
+            )
+            state.should_complete = True
+            return state
+        position = broker.open_position(
+            symbol=state.symbol,
+            action=strategy.action,
+            qty=risk.position_size,
+            entry_price=float(strategy.entry_price or (state.market_data.current_price if state.market_data else 0.0)),
+            stop_loss=strategy.stop_loss,
+            take_profit=strategy.take_profit,
+            execution_id=str(state.execution_id),
+            metadata={
+                "strategy_family": getattr(getattr(strategy, "strategy_spec", None), "strategy_family", ""),
+                "signal_entry_price": float(strategy.entry_price or 0.0),
+            },
+        )
+        state.trade_execution = TradeExecution(
+            order_id=str(state.execution_id),
+            status="filled",
+            filled_price=float(position["entry_price"]),
+            filled_quantity=float(position["qty"]),
+            commission=float(position["commission"]),
+            execution_time=datetime.utcnow(),
+            broker_response={"broker": "BacktestBroker", "symbol": state.symbol},
+        )
+        state.should_complete = True
+        self.record_report(
+            state,
+            title="Backtest trade executed",
+            summary=f"Simulated {strategy.action} for {state.symbol}",
+            status="completed",
+            data={"symbol": state.symbol, "backtest_run_id": state.backtest_run_id},
+        )
+        return state
     
     def _execute_broker_trade(self, state, strategy, risk, broker_tool) -> PipelineState:
         """Execute trade via broker and enter monitoring mode."""
@@ -2304,4 +2378,3 @@ class TradeManagerAgent(BaseAgent):
                 user_id=str(state.user_id) if state.user_id else None,
                 pipeline_id=str(state.pipeline_id) if state.pipeline_id else None
             )
-

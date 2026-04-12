@@ -7,6 +7,12 @@ This package contains the pipeline execution engine, including:
 - Execution state management
 """
 
-from app.orchestration.executor import PipelineExecutor
-
 __all__ = ["PipelineExecutor"]
+
+
+def __getattr__(name):
+    if name == "PipelineExecutor":
+        from app.orchestration.executor import PipelineExecutor
+
+        return PipelineExecutor
+    raise AttributeError(name)

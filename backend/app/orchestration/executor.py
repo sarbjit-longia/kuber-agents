@@ -63,7 +63,9 @@ class PipelineExecutor:
         execution_id: Optional[UUID] = None,
         signal_context: Optional[Dict[str, Any]] = None,
         symbol_override: Optional[str] = None,
-        db_session: Optional[Any] = None
+        db_session: Optional[Any] = None,
+        backtest_run_id: Optional[str] = None,
+        backtest_ts: Optional[str] = None,
     ):
         """
         Initialize the pipeline executor.
@@ -84,6 +86,8 @@ class PipelineExecutor:
         self.signal_context = signal_context
         self.symbol_override = symbol_override
         self.db_session = db_session
+        self.backtest_run_id = backtest_run_id
+        self.backtest_ts = backtest_ts
         
         self.registry = get_registry()
         self.logger = logger.bind(
@@ -314,9 +318,12 @@ class PipelineExecutor:
             ask = None
             
             for tf in timeframes:
+                params = {"timeframe": tf, "limit": 100}
+                if self.backtest_ts:
+                    params["backtest_ts"] = self.backtest_ts
                 candle_response = await client.get(
                     f"{data_plane_url}/api/v1/data/candles/{symbol}",
-                    params={"timeframe": tf, "limit": 100}
+                    params=params
                 )
                 candle_response.raise_for_status()
                 candle_data = candle_response.json()
@@ -400,7 +407,11 @@ class PipelineExecutor:
                 for tf in required_timeframes:
                     candle_response = requests.get(
                         f"{data_plane_url}/api/v1/data/candles/{state.symbol}",
-                        params={"timeframe": tf, "limit": 100},
+                        params={
+                            "timeframe": tf,
+                            "limit": 100,
+                            **({"backtest_ts": self.backtest_ts} if self.backtest_ts else {}),
+                        },
                         timeout=10.0
                     )
                     candle_response.raise_for_status()
@@ -540,6 +551,8 @@ class PipelineExecutor:
             user_id=self.user_id,
             symbol=execution_symbol,
             mode=self.mode,
+            backtest_run_id=self.backtest_run_id,
+            backtest_ts=signal_data.metadata.get("backtest_ts") if signal_data and signal_data.metadata else None,
             signal_data=signal_data
         )
         
@@ -749,6 +762,8 @@ class PipelineExecutor:
             user_id=self.user_id,
             symbol=execution_symbol,
             mode=self.mode,
+            backtest_run_id=self.backtest_run_id,
+            backtest_ts=signal_data.metadata.get("backtest_ts") if signal_data and signal_data.metadata else None,
             signal_data=signal_data
         )
         
@@ -987,6 +1002,8 @@ class PipelineExecutor:
         execution.result = {
             "trigger_met": state.trigger_met,
             "trigger_reason": state.trigger_reason,
+            "backtest_run_id": state.backtest_run_id,
+            "backtest_ts": state.backtest_ts.isoformat() if state.backtest_ts else None,
             "strategy": serialize_model(state.strategy),
             "risk_assessment": serialize_model(state.risk_assessment),
             "trade_execution": serialize_model(state.trade_execution),
@@ -1022,7 +1039,7 @@ class PipelineExecutor:
         )
         
         # Generate PDF report if execution completed successfully
-        if execution.status == ExecutionStatus.COMPLETED:
+        if execution.status == ExecutionStatus.COMPLETED and self.mode != "backtest":
             self._generate_pdf_report_sync(execution, db_session)
         
         # Persist full PipelineState snapshot so monitoring/reconciliation
