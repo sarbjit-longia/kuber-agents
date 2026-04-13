@@ -9,7 +9,6 @@ import json
 import re
 from typing import Dict, Any, List, Optional, Tuple
 from crewai import Agent, Task, Crew
-from openai import OpenAI
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.agents.prompts import load_prompt
@@ -18,6 +17,9 @@ from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import load_tools_for_agent
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.services.model_registry import model_registry
+from app.services.llm_provider import create_openai_client, get_llm_provider, resolve_chat_model
+from app.config import settings
+from app.database import SessionLocal
 
 logger = structlog.get_logger()
 
@@ -37,6 +39,12 @@ class StrategyAgent(BaseAgent):
     
     @classmethod
     def get_metadata(cls) -> AgentMetadata:
+        db = SessionLocal()
+        try:
+            model_choices = model_registry.get_model_choices_for_schema(db)
+        finally:
+            db.close()
+
         return AgentMetadata(
             agent_type="strategy_agent",
             name="AI Strategy Agent",
@@ -69,9 +77,9 @@ class StrategyAgent(BaseAgent):
                     "model": {
                         "type": "string",
                         "title": "AI Model",
-                        "description": "LLM model to use. OpenAI models use API credits. 'lm-studio' uses your local model (free).",
-                        "enum": ["lm-studio", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
-                        "default": "gpt-4o"
+                        "description": "LLM model to use from the configured provider",
+                        "enum": model_choices,
+                        "default": "gpt-4o" if "gpt-4o" in model_choices else (model_choices[0] if model_choices else "gpt-4o")
                     }
                 },
                 required=["instructions"]
@@ -82,25 +90,10 @@ class StrategyAgent(BaseAgent):
 
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        import os
 
-        model_name = config.get("model", "gpt-4o")
-        
-        # Route to OpenAI API for official OpenAI models, otherwise use local LM Studio
-        openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-turbo"]
-        
-        if model_name in openai_models:
-            # Use real OpenAI API (requires credits)
-            self.logger.info(f"Using OpenAI API for model: {model_name}")
-            # Strategy agent doesn't use CrewAI, so just store the model name
-            # It makes direct OpenAI API calls via openai.OpenAI client
-            self.model = model_name
-            self.use_openai_api = True
-        else:
-            # Use local LM Studio (free, uses loaded model)
-            self.logger.info(f"Using local LM Studio for model: {model_name}")
-            self.model = model_name
-            self.use_openai_api = False
+        model_name = config.get("model", settings.OPENAI_MODEL)
+        self.logger.info("using_llm_provider", provider=get_llm_provider(), model=model_name)
+        self.model = model_name
     
     def process(self, state: PipelineState) -> PipelineState:
         """Generate trading strategy using LLM + tools."""
@@ -1100,21 +1093,8 @@ Original analysis:
 
 Provide ONLY the cleaned, formatted analysis. Keep all specific prices and pattern descriptions intact."""
 
-            import os
-            
-            # Use appropriate base URL based on model selection
-            if hasattr(self, 'use_openai_api') and self.use_openai_api:
-                client = OpenAI(
-                    api_key=os.getenv("OPENAI_API_KEY"),
-                    base_url="https://api.openai.com/v1"
-                )
-                synthesis_model = "gpt-3.5-turbo"
-            else:
-                client = OpenAI(
-                    api_key=os.getenv("OPENAI_API_KEY"),
-                    base_url=os.getenv("OPENAI_BASE_URL", "http://host.docker.internal:1234/v1")
-                )
-                synthesis_model = self.model
+            client = create_openai_client()
+            synthesis_model = resolve_chat_model(self.model)
             
             response = client.chat.completions.create(
                 model=synthesis_model,

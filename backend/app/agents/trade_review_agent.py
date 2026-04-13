@@ -7,7 +7,6 @@ It does not call any tools — it reads the existing pipeline state and reasons 
 """
 import json
 import re
-import os
 import structlog
 from typing import Dict, Any, Optional
 
@@ -19,6 +18,8 @@ from app.schemas.pipeline_state import (
     AgentConfigSchema,
     TradeReview,
 )
+from app.services.llm_provider import create_openai_client, resolve_chat_model
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -253,10 +254,8 @@ class TradeReviewAgent(BaseAgent):
 
     def _llm_review(self, state: PipelineState) -> TradeReview:
         """Call the LLM to make the final review decision."""
-        from openai import OpenAI
-
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        model_id = self.config.get("model", "gpt-4o")
+        client = create_openai_client()
+        model_id = resolve_chat_model(self.config.get("model", settings.OPENAI_MODEL))
 
         system_prompt = load_prompt("trade_review_agent_system")
         trade_brief = self._build_trade_brief(state)

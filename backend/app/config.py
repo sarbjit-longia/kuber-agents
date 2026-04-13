@@ -56,14 +56,33 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
     JWT_EXPIRATION_MINUTES: int = Field(default=1440, description="JWT token expiration in minutes (24h)")
     
+    # LLM Provider
+    LLM_PROVIDER: str = Field(
+        default="openai",
+        description="Active OpenAI-compatible provider: openai or openrouter"
+    )
+
     # OpenAI
     OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
     OPENAI_BASE_URL: Optional[str] = Field(
         default=None, 
-        description="OpenAI API base URL (use http://host.docker.internal:1234/v1 for LM Studio)"
+        description="Optional OpenAI-compatible API base URL override"
     )
     OPENAI_MODEL: str = Field(default="gpt-4", description="Default OpenAI model")
     OPENAI_TEMPERATURE: float = Field(default=0.7, description="OpenAI temperature")
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None, description="OpenRouter API key")
+    OPENROUTER_BASE_URL: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="OpenRouter API base URL"
+    )
+    OPENROUTER_HTTP_REFERER: Optional[str] = Field(
+        default=None,
+        description="Optional HTTP-Referer header for OpenRouter requests"
+    )
+    OPENROUTER_APP_NAME: Optional[str] = Field(
+        default="CloverCharts",
+        description="Optional X-Title header for OpenRouter requests"
+    )
     
     # Langfuse (Tracing & Observability)
     LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, description="Langfuse secret key")
@@ -146,6 +165,11 @@ class Settings(BaseSettings):
             "OPENAI_BASE_URL",
             "OPENAI_MODEL",
             "OPENAI_TEMPERATURE",
+            "LLM_PROVIDER",
+            "OPENROUTER_API_KEY",
+            "OPENROUTER_BASE_URL",
+            "OPENROUTER_HTTP_REFERER",
+            "OPENROUTER_APP_NAME",
             "LANGFUSE_SECRET_KEY",
             "LANGFUSE_PUBLIC_KEY",
             "LANGFUSE_BASE_URL",

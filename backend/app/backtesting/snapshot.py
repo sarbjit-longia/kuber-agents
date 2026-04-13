@@ -21,14 +21,6 @@ PROMPT_AGENT_MAP = {
 }
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "agents" / "prompts"
-DEFAULT_AGENT_MODELS = {
-    "bias_agent": "gpt-4o",
-    "strategy_agent": "gpt-4o",
-    "risk_manager_agent": "gpt-4o",
-    "trade_review_agent": "gpt-4o",
-}
-
-
 def _sha256(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -71,7 +63,7 @@ def _snapshot_agent_configs(pipeline: Pipeline) -> Dict[str, Dict[str, Any]]:
         node_config = node.get("config") or {}
         snapshots[agent_type] = {
             "node_id": node.get("id"),
-            "model": node_config.get("model") or DEFAULT_AGENT_MODELS.get(agent_type) or settings.OPENAI_MODEL,
+            "model": node_config.get("model") or settings.OPENAI_MODEL,
             "instructions": node_config.get("instructions"),
             "raw_config": node_config,
         }
@@ -89,9 +81,11 @@ def build_backtest_runtime_snapshot(pipeline: Pipeline) -> Dict[str, Any]:
     return {
         "created_at": datetime.utcnow().isoformat(),
         "llm_settings": {
+            "provider": settings.LLM_PROVIDER,
             "openai_model": settings.OPENAI_MODEL,
             "openai_temperature": settings.OPENAI_TEMPERATURE,
             "openai_base_url": settings.OPENAI_BASE_URL,
+            "openrouter_base_url": settings.OPENROUTER_BASE_URL,
             "langfuse_enabled": settings.LANGFUSE_ENABLED,
         },
         "agent_configs": _snapshot_agent_configs(pipeline),

@@ -8,8 +8,7 @@ import structlog
 import re
 from typing import Dict, Any
 from datetime import datetime
-from crewai import Agent, Task, Crew, LLM
-from openai import OpenAI
+from crewai import Agent, Task, Crew
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.agents.prompts import load_prompt
@@ -17,7 +16,10 @@ from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
 from app.tools.crewai_tools import load_tools_for_agent
+from app.services.llm_provider import create_crewai_llm, create_openai_client, get_llm_provider, resolve_chat_model
+from app.config import settings
 from app.services.model_registry import model_registry
+from app.database import SessionLocal
 
 logger = structlog.get_logger()
 
@@ -38,6 +40,12 @@ class BiasAgent(BaseAgent):
     
     @classmethod
     def get_metadata(cls) -> AgentMetadata:
+        db = SessionLocal()
+        try:
+            model_choices = model_registry.get_model_choices_for_schema(db)
+        finally:
+            db.close()
+
         return AgentMetadata(
             agent_type="bias_agent",
             name="Bias Agent",
@@ -70,9 +78,9 @@ class BiasAgent(BaseAgent):
                     "model": {
                         "type": "string",
                         "title": "AI Model",
-                        "description": "LLM model to use. OpenAI models use API credits. 'lm-studio' uses your local model (free).",
-                        "enum": ["lm-studio", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
-                        "default": "gpt-4o"
+                        "description": "LLM model to use from the configured provider",
+                        "enum": model_choices,
+                        "default": "gpt-4o" if "gpt-4o" in model_choices else (model_choices[0] if model_choices else "gpt-4o")
                     }
                 },
                 required=["instructions"]
@@ -83,39 +91,11 @@ class BiasAgent(BaseAgent):
 
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        import os
 
-        model_name = config.get("model", "gpt-4o")
-        
-        # Route to OpenAI API for official OpenAI models, otherwise use local LM Studio
-        openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-turbo"]
-        
-        if model_name in openai_models:
-            # Use real OpenAI API (requires credits)
-            self.logger.info(f"Using OpenAI API for model: {model_name}")
-            self.model = LLM(
-                model=f"openai/{model_name}",
-                temperature=0.7,
-                timeout=45,
-                base_url="https://api.openai.com/v1",
-                api_key=os.getenv("OPENAI_API_KEY")
-            )
-            # Use gpt-4o for function calling (best tool execution)
-            self.function_calling_llm = LLM(
-                model="openai/gpt-4o",
-                temperature=0.0,
-                timeout=45,
-                base_url="https://api.openai.com/v1",
-                api_key=os.getenv("OPENAI_API_KEY")
-            )
-        else:
-            # Use local LM Studio (free, uses loaded model)
-            # The actual model name doesn't matter - LM Studio uses whatever is loaded
-            self.logger.info(f"Using local LM Studio (loaded model)")
-            # Use environment variables for LM Studio connection
-            self.model = model_name
-            # For local models, use same model for function calling
-            self.function_calling_llm = LLM(model=model_name, temperature=0.0, timeout=45)
+        model_name = config.get("model", settings.OPENAI_MODEL)
+        self.logger.info("using_llm_provider", provider=get_llm_provider(), model=model_name)
+        self.model = create_crewai_llm(model_name, temperature=0.7, timeout=45)
+        self.function_calling_llm = create_crewai_llm(model_name, temperature=0.0, timeout=45)
     
     def process(self, state: PipelineState) -> PipelineState:
         """
@@ -589,7 +569,6 @@ Be specific about which indicators you used, their exact values, and any custom 
         
         # Use LLM to synthesize clean reasoning
         try:
-            import os
             synthesis_prompt = f"""The following text contains technical artifacts from tool execution. 
 Please rewrite it as clean, professional market analysis suitable for traders and portfolio managers.
 
@@ -606,9 +585,9 @@ Original text:
 
 Provide ONLY the cleaned, professional analysis text. Do not add any preamble or explanation."""
 
-            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            client = create_openai_client()
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=resolve_chat_model(self.config.get("model", settings.OPENAI_MODEL)),
                 messages=[{"role": "user", "content": synthesis_prompt}],
                 temperature=0.3
             )

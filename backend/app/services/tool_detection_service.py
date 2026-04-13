@@ -7,13 +7,13 @@ which tools are required to execute the strategy.
 import structlog
 from typing import Dict, Any, List, Optional
 import json
-from openai import AsyncOpenAI
 
 from app.tools.strategy_tools_registry import (
     STRATEGY_TOOL_REGISTRY,
     format_strategy_tools_for_openai,
     get_strategy_tool_pricing
 )
+from app.services.llm_provider import create_openai_client, resolve_chat_model
 
 logger = structlog.get_logger()
 
@@ -23,7 +23,13 @@ class ToolDetectionService:
     Analyzes user instructions and detects required tools using LLM function calling.
     """
     
-    def __init__(self, openai_api_key: str, model: str = "gpt-4"):
+    def __init__(
+        self,
+        openai_api_key: str,
+        model: str = "gpt-4",
+        base_url: Optional[str] = None,
+        default_headers: Optional[Dict[str, str]] = None,
+    ):
         """
         Initialize the service.
         
@@ -31,8 +37,13 @@ class ToolDetectionService:
             openai_api_key: OpenAI API key
             model: Model to use (default: gpt-4 for better reasoning)
         """
-        self.client = AsyncOpenAI(api_key=openai_api_key)
-        self.model = model
+        client_kwargs: Dict[str, Any] = {"api_key": openai_api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        if default_headers:
+            client_kwargs["default_headers"] = default_headers
+        self.client = create_openai_client(async_client=True, **client_kwargs)
+        self.model = resolve_chat_model(model)
         self.tool_registry = STRATEGY_TOOL_REGISTRY
     
     async def detect_tools(
@@ -321,4 +332,3 @@ Respond in JSON:
         output_cost = (response.usage.completion_tokens / 1000) * output_cost_per_1k
         
         return input_cost + output_cost
-

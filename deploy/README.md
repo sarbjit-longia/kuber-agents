@@ -189,7 +189,13 @@ Key environment variables (stored in `.env`):
   - `REDIS_URL`: Redis connection string
 
 - **API Keys** (stored in AWS Secrets Manager)
+  - `LLM_PROVIDER`
   - `OPENAI_API_KEY`
+  - `OPENROUTER_API_KEY`
+  - `OPENROUTER_BASE_URL`
+  - `OPENROUTER_HTTP_REFERER`
+  - `OPENROUTER_APP_NAME`
+  - `OPENAI_MODEL`
   - `FINNHUB_API_KEY`
   - `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`
   - `JWT_SECRET`

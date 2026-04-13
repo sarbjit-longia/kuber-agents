@@ -123,6 +123,48 @@ DEFAULT_LLM_MODELS = [
         }
     },
     {
+        "model_id": "moonshotai/kimi-k2.5",
+        "provider": "openrouter",
+        "display_name": "Kimi K2.5",
+        "description": "Moonshot's reasoning and agentic tool-calling model via OpenRouter",
+        "max_tokens": 262000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.0003827,  # $0.3827 per 1M tokens
+        "cost_per_1k_output_tokens": 0.00172,  # $1.72 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.03,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "fast",
+            "recommended_for": ["reasoning", "agentic_tool_calling", "strategy"]
+        }
+    },
+    {
+        "model_id": "moonshotai/kimi-k2-thinking",
+        "provider": "openrouter",
+        "display_name": "Kimi K2 Thinking",
+        "description": "Moonshot's longer-horizon reasoning model via OpenRouter",
+        "max_tokens": 256000,
+        "supports_functions": True,
+        "supports_vision": False,
+        "cost_per_1k_input_tokens": 0.0015,
+        "cost_per_1k_output_tokens": 0.006,
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.05,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "medium",
+            "recommended_for": ["deep_reasoning", "review", "analysis"]
+        }
+    },
+    {
         "model_id": "o1-preview",
         "provider": "openai",
         "display_name": "O1 Preview",
@@ -169,7 +211,7 @@ DEFAULT_LLM_MODELS = [
         "model_id": "lmstudio-local",
         "provider": "local",
         "display_name": "LM Studio (Local)",
-        "description": "Local LLM running through LM Studio (free, but slower)",
+        "description": "Deprecated local model entry retained only to disable older configs",
         "max_tokens": 8192,
         "supports_functions": False,
         "supports_vision": False,
@@ -177,15 +219,12 @@ DEFAULT_LLM_MODELS = [
         "cost_per_1k_output_tokens": 0.0,  # Free
         "cost_per_1m_cached_tokens": 0.0,  # Free
         "typical_agent_cost": 0.0,
-        "is_active": True,
+        "is_active": False,
         "is_default": False,
         "environment": "development",
         "model_metadata": {
-            "quality": "variable",
-            "speed": "slow",
-            "recommended_for": ["development", "testing"],
-            "requires_local_setup": True,
-            "note": "Requires LM Studio running locally"
+            "deprecated": True,
+            "note": "LM Studio support removed"
         }
     }
 ]

@@ -5,10 +5,10 @@ Generates comprehensive, LLM-powered executive summaries of pipeline executions.
 """
 from typing import Dict, Any, Optional
 import structlog
-from openai import AsyncOpenAI
 
 from app.config import settings
 from app.services.langfuse_service import get_langfuse_client
+from app.services.llm_provider import create_openai_client, resolve_chat_model
 
 logger = structlog.get_logger(__name__)
 
@@ -22,11 +22,8 @@ class ExecutiveReportGenerator:
     """
     
     def __init__(self):
-        self.client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_BASE_URL
-        )
-        self.model = "gpt-3.5-turbo"
+        self.client = create_openai_client(async_client=True)
+        self.model = resolve_chat_model(settings.OPENAI_MODEL)
     
     async def generate_executive_summary(
         self,
@@ -270,4 +267,3 @@ RISK_NOTES:
 
 # Singleton instance
 executive_report_generator = ExecutiveReportGenerator()
-

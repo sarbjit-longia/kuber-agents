@@ -120,7 +120,10 @@ ssh quantum 'chmod 600 /opt/clovercharts/.env.prod'
 **Critical secrets to set:**
 - `POSTGRES_PASSWORD` — strong random password for the `kuber` PostgreSQL role
 - `JWT_SECRET` — generate with `openssl rand -hex 64`
-- `OPENAI_API_KEY` — your OpenAI key
+- `LLM_PROVIDER` — `openai` or `openrouter`
+- `OPENAI_API_KEY` — required when `LLM_PROVIDER=openai`
+- `OPENROUTER_API_KEY` — required when `LLM_PROVIDER=openrouter`
+- `OPENAI_MODEL` — default model id, e.g. `gpt-4o` or `moonshotai/kimi-k2.5`
 - `FINNHUB_API_KEY` — your Finnhub key
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — your Alpaca credentials
 - `FLOWER_BASIC_AUTH` — e.g., `admin:strongpassword`
@@ -229,8 +232,8 @@ ssh -L 5555:localhost:5555 quantum
 ### Prometheus
 
 ```bash
-ssh -L 9090:localhost:9090 quantum
-# Then open http://localhost:9090
+ssh -L 19090:localhost:19090 quantum
+# Then open http://localhost:19090
 ```
 
 ## Database Access

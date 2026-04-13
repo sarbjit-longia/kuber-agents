@@ -6,7 +6,6 @@ Endpoints for discovering and managing agents.
 from typing import List
 from fastapi import APIRouter, HTTPException, status, Depends
 import structlog
-import os
 from sqlalchemy.orm import Session
 
 from app.agents import get_registry
@@ -23,6 +22,8 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.services.model_registry import model_registry
 from app.database import SessionLocal
+from app.config import settings
+from app.services.llm_provider import get_llm_api_key, get_llm_base_url, get_llm_default_headers
 
 logger = structlog.get_logger()
 
@@ -224,18 +225,19 @@ async def validate_instructions(
     """
     
     try:
-        # Get OpenAI API key from environment
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key = get_llm_api_key()
         if not openai_api_key:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="OpenAI API key not configured"
+                detail="LLM API key not configured"
             )
         
         # Initialize detection service
         detection_service = ToolDetectionService(
             openai_api_key=openai_api_key,
-            model="gpt-4"
+            model=settings.OPENAI_MODEL,
+            base_url=get_llm_base_url(),
+            default_headers=get_llm_default_headers(),
         )
         
         # Detect tools
@@ -330,4 +332,3 @@ async def get_available_tools(current_user: User = Depends(get_current_user)):
         total_count=len(tools),
         categories=sorted(list(categories))
     )
-

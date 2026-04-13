@@ -360,7 +360,7 @@ services:
     container_name: clovercharts-prometheus
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:19090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./config/alerts.yml:/etc/prometheus/alerts.yml:ro

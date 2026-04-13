@@ -8,6 +8,7 @@ import os
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from app.models.llm_model import LLMModel
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -108,12 +109,16 @@ class ModelRegistry:
             query = query.filter(
                 (LLMModel.environment == "all") | (LLMModel.environment == "production")
             )
-        
+
+        active_provider = (settings.LLM_PROVIDER or "openai").lower()
+        query = query.filter(LLMModel.provider == active_provider)
+
         models = query.order_by(LLMModel.display_name).all()
         
         logger.debug(
             "models_listed",
             environment=current_env,
+            provider=active_provider,
             model_count=len(models),
             model_ids=[m.model_id for m in models]
         )
@@ -196,4 +201,3 @@ class ModelRegistry:
 
 # Singleton instance
 model_registry = ModelRegistry()
-

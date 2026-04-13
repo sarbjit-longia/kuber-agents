@@ -222,7 +222,7 @@ rate(batch_size_sum[5m]) / rate(batch_size_count[5m])
 ## Troubleshooting
 
 ### Dashboard shows "No data"
-1. **Check Prometheus targets**: http://localhost:9090/targets
+1. **Check Prometheus targets**: http://localhost:19090/targets
    - All services should show "UP"
 2. **Check metrics endpoints**:
    ```bash
@@ -314,4 +314,3 @@ docker-compose up --build -d prometheus grafana
 **Your dashboard is ready to use!** 🎉
 
 Just open http://localhost:3000 and you'll see your complete trading platform visualized in real-time.
-

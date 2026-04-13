@@ -89,7 +89,7 @@ llm_cost_dollars = Counter(
 )
 
 # Pre-initialize all label combinations so Prometheus shows 0 instead of "No data"
-_LLM_MODELS = ["gpt-4", "gpt-4o", "gpt-3.5-turbo", "lm-studio"]
+_LLM_MODELS = ["gpt-4", "gpt-4o", "gpt-3.5-turbo", "moonshotai/kimi-k2.5"]
 _AGENT_TYPES = ["bias_agent", "strategy_agent", "risk_manager_agent"]
 for _model in _LLM_MODELS:
     for _agent in _AGENT_TYPES:
@@ -443,5 +443,4 @@ def setup_system_metrics(meter: metrics.Meter):
     update_thread.start()
     
     logger.info("System metrics collection configured and background updater started")
-
 

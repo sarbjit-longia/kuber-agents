@@ -595,10 +595,10 @@ health_check() {
         fi
 
         # Prometheus
-        if curl -sf http://127.0.0.1:9090/-/healthy -o /dev/null --max-time 5 2>/dev/null; then
-            pass "Prometheus          (http://127.0.0.1:9090)"
+        if curl -sf http://127.0.0.1:19090/-/healthy -o /dev/null --max-time 5 2>/dev/null; then
+            pass "Prometheus          (http://127.0.0.1:19090)"
         else
-            fail "Prometheus          (http://127.0.0.1:9090)"
+            fail "Prometheus          (http://127.0.0.1:19090)"
         fi
 
         echo ""

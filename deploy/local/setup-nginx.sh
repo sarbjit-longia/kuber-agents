@@ -217,7 +217,7 @@ echo "Internal services (localhost only, use SSH tunnel from dev Mac):"
 echo "  Flower:       http://127.0.0.1:5555"
 echo "  Signals:      http://127.0.0.1:8007"
 echo "  Data Plane:   http://127.0.0.1:8005"
-echo "  Prometheus:   http://127.0.0.1:9090"
+echo "  Prometheus:   http://127.0.0.1:19090"
 echo ""
 if [[ "$SETUP_SSL" == "true" ]]; then
     echo "Internet access (after DNS + port forwarding):"

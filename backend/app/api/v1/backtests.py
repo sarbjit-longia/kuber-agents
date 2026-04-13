@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI, BadRequestError
+from openai import BadRequestError
 import json
 
 from app.config import settings
@@ -34,6 +34,7 @@ from app.schemas.backtest import (
     BacktestTimelineResponse,
 )
 from app.orchestration.tasks.launch_backtest_runtime import launch_backtest_runtime
+from app.services.llm_provider import create_openai_client, get_llm_api_key, resolve_chat_model
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
@@ -490,10 +491,10 @@ def _build_report_sections(
 
 
 async def _generate_optional_llm_analysis(summary: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not settings.OPENAI_API_KEY:
+    if not get_llm_api_key():
         return None
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+    client = create_openai_client(async_client=True)
     prompt = (
         "You are reviewing a completed trading backtest. Produce concise JSON with keys "
         "`executive_summary`, `strengths`, `weaknesses`, and `recommendations`. "
@@ -506,7 +507,7 @@ async def _generate_optional_llm_analysis(summary: dict[str, Any], sections: lis
     ]
     try:
         response = await client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=resolve_chat_model(settings.OPENAI_MODEL),
             temperature=0.2,
             max_tokens=700,
             response_format={"type": "json_object"},
@@ -519,7 +520,7 @@ async def _generate_optional_llm_analysis(summary: dict[str, Any], sections: lis
             return None
         try:
             fallback_response = await client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=resolve_chat_model(settings.OPENAI_MODEL),
                 temperature=0.2,
                 max_tokens=700,
                 messages=messages,

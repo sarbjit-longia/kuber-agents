@@ -79,8 +79,15 @@ services:
       - BACKTEST_RUNTIME_MODE=${BACKTEST_RUNTIME_MODE:-docker_container}
       - BACKTEST_RUNTIME_IMAGE=${BACKTEST_RUNTIME_IMAGE:-clovercharts/backend:latest}
       - BACKTEST_RUNTIME_DOCKER_NETWORK=${BACKTEST_RUNTIME_DOCKER_NETWORK:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE:-0.7}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-http://localhost:4200}
+      - OPENROUTER_APP_NAME=${OPENROUTER_APP_NAME:-CloverCharts}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
@@ -140,8 +147,15 @@ services:
       - BACKTEST_RUNTIME_MODE=${BACKTEST_RUNTIME_MODE:-docker_container}
       - BACKTEST_RUNTIME_IMAGE=${BACKTEST_RUNTIME_IMAGE:-clovercharts/backend:latest}
       - BACKTEST_RUNTIME_DOCKER_NETWORK=${BACKTEST_RUNTIME_DOCKER_NETWORK:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE:-0.7}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-http://localhost:4200}
+      - OPENROUTER_APP_NAME=${OPENROUTER_APP_NAME:-CloverCharts}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
@@ -468,7 +482,7 @@ services:
     image: prom/prometheus:v2.48.0
     container_name: clovercharts-prometheus
     ports:
-      - "9090:9090"
+      - "19090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
