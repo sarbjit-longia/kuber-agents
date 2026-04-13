@@ -8,7 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
+import json
 
 from app.config import settings
 from app.backtesting.backtest_broker import BacktestBroker
@@ -59,7 +60,7 @@ def _estimate_cost_usd(symbol_count: int, start_date, end_date) -> float:
     return round(est_executions * 0.075, 2)
 
 
-def _snapshot_pipeline(pipeline: Pipeline) -> dict:
+def _snapshot_pipeline(pipeline: Pipeline, *, user_timezone: str | None = None) -> dict:
     return {
         "id": str(pipeline.id),
         "user_id": str(pipeline.user_id),
@@ -76,6 +77,8 @@ def _snapshot_pipeline(pipeline: Pipeline) -> dict:
         "schedule_start_time": pipeline.schedule_start_time,
         "schedule_end_time": pipeline.schedule_end_time,
         "schedule_days": pipeline.schedule_days or [],
+        "liquidate_on_deactivation": pipeline.liquidate_on_deactivation,
+        "user_timezone": user_timezone or "America/New_York",
         "snapshot_created_at": datetime.utcnow().isoformat(),
     }
 
@@ -139,6 +142,59 @@ def _load_backtest_runtime_state(run: BacktestRun) -> dict[str, Any]:
         }
 
 
+def _load_backtest_runtime_trades(run: BacktestRun) -> list[dict[str, Any]]:
+    config = run.config or {}
+    initial_capital = _safe_number(config.get("initial_capital") or 10_000.0)
+    try:
+        broker = BacktestBroker(
+            run_id=str(run.id),
+            initial_capital=initial_capital,
+            slippage_model=config.get("slippage_model", "fixed"),
+            slippage_value=_safe_number(config.get("slippage_value") or 0.01),
+            commission_model=config.get("commission_model", "per_share"),
+            commission_value=_safe_number(config.get("commission_value") or 0.005),
+        )
+        return list(broker.get_closed_trades() or [])
+    except Exception:
+        return []
+
+
+def _attach_trade_execution_links(
+    trades: list[dict[str, Any]],
+    executions: list[Execution],
+) -> list[dict[str, Any]]:
+    if not trades:
+        return []
+
+    filled_executions = [
+        execution
+        for execution in sorted(executions, key=lambda item: item.created_at or datetime.min)
+        if ((execution.result or {}).get("trade_execution") or {}).get("status") == "filled"
+    ]
+
+    normalized: list[dict[str, Any]] = []
+    fallback_index = 0
+    for trade in trades:
+        trade_record = dict(trade)
+        if trade_record.get("execution_id"):
+            normalized.append(trade_record)
+            continue
+
+        if fallback_index < len(filled_executions):
+            execution = filled_executions[fallback_index]
+            trade_record["execution_id"] = str(execution.id)
+            trade_execution = (execution.result or {}).get("trade_execution") or {}
+            if not trade_record.get("symbol"):
+                trade_record["symbol"] = execution.symbol
+            if not trade_record.get("entry_price") and trade_execution.get("filled_price") is not None:
+                trade_record["entry_price"] = trade_execution.get("filled_price")
+            fallback_index += 1
+
+        normalized.append(trade_record)
+
+    return normalized
+
+
 def _load_backtest_checkpoint(run: BacktestRun) -> dict[str, Any]:
     try:
         broker = BacktestBroker(run_id=str(run.id), initial_capital=_safe_number((run.config or {}).get("initial_capital") or 10_000.0))
@@ -161,6 +217,8 @@ def _build_run_payload(run: BacktestRun, executions: list[Execution] | None = No
     runtime_state = _load_backtest_runtime_state(run)
     checkpoint = _load_backtest_checkpoint(run)
     executions = executions or []
+    runtime_trades = _load_backtest_runtime_trades(run)
+    trades = _attach_trade_execution_links(runtime_trades or list(run.trades or []), executions)
     filled_orders_count = _filled_orders_count(executions)
     equity_curve = list(run.equity_curve or checkpoint.get("equity_curve") or [])
     equity_series = list(((run.metrics or {}).get("runtime") or {}).get("equity_points") or checkpoint.get("equity_points") or [])
@@ -175,7 +233,7 @@ def _build_run_payload(run: BacktestRun, executions: list[Execution] | None = No
         "config": run.config or {},
         "progress": run.progress or {},
         "metrics": run.metrics or {},
-        "trades_count": len(run.trades or []),
+        "trades_count": len(trades),
         "filled_orders_count": filled_orders_count,
         "open_positions_count": runtime_state["open_positions_count"],
         "account_equity": runtime_state["account_equity"],
@@ -190,7 +248,7 @@ def _build_run_payload(run: BacktestRun, executions: list[Execution] | None = No
         "equity_curve": equity_curve,
         "equity_series": equity_series,
         "daily_pnl": daily_pnl,
-        "trades": run.trades or [],
+        "trades": trades,
         "open_positions": runtime_state["open_positions"],
     }
 
@@ -238,7 +296,7 @@ def _build_report_summary(
     executions: list[Execution],
     events: list[BacktestEvent],
 ) -> dict[str, Any]:
-    trades = run.trades or []
+    trades = _load_backtest_runtime_trades(run) or list(run.trades or [])
     net_pnl = sum(_safe_number(trade.get("net_pnl")) for trade in trades)
     gross_pnl = sum(_safe_number(trade.get("gross_pnl")) for trade in trades)
     winning_trades = [trade for trade in trades if _safe_number(trade.get("net_pnl")) > 0]
@@ -273,7 +331,7 @@ def _build_report_summary(
         "execution_count": len(executions),
         "review_rejections": len(rejected),
         "strategy_holds": len(holds),
-        "actual_cost": run.actual_cost,
+        "actual_cost": round(_safe_number(run.actual_cost), 2),
         "max_drawdown": (run.metrics or {}).get("max_drawdown"),
         "signal_batches": event_counts.get("signals_replayed", 0),
         "matched_signal_batches": event_counts.get("signals_matched", 0),
@@ -287,7 +345,10 @@ def _build_report_sections(
     events: list[BacktestEvent],
 ) -> list[dict[str, Any]]:
     metrics = run.metrics or {}
-    trades = run.trades or []
+    trades = _load_backtest_runtime_trades(run) or list(run.trades or [])
+    config = run.config or {}
+    pipeline_snapshot = config.get("pipeline_snapshot") or {}
+    runtime_snapshot = config.get("runtime_snapshot") or {}
     rejection_reasons: dict[str, int] = {}
     per_symbol: dict[str, dict[str, Any]] = {}
     event_counts: dict[str, int] = {}
@@ -330,8 +391,53 @@ def _build_report_sections(
         key=lambda item: (item[1]["net_pnl"], item[1]["completed"]),
         reverse=True,
     )
+    schedule_enabled = bool(pipeline_snapshot.get("schedule_enabled"))
+    schedule_days = pipeline_snapshot.get("schedule_days") or []
+    backtest_settings = [
+        f"Initial capital: {_safe_number(config.get('initial_capital')):.2f}",
+        f"Symbols: {', '.join(config.get('symbols') or []) or 'N/A'}",
+        f"Date range: {(config.get('start_date') or 'N/A')} to {(config.get('end_date') or 'N/A')}",
+        f"Timeframe: {config.get('timeframe') or 'N/A'}",
+        f"Slippage: {(config.get('slippage_model') or 'fixed')} / {_safe_number(config.get('slippage_value')):.4f}",
+        f"Commission: {(config.get('commission_model') or 'per_share')} / {_safe_number(config.get('commission_value')):.4f}",
+        f"Max LLM cost cap: {config.get('max_cost_usd') if config.get('max_cost_usd') is not None else 'Not set'}",
+    ]
+    pipeline_config_items = [
+        f"Pipeline name: {pipeline_snapshot.get('name') or run.pipeline_name or 'N/A'}",
+        f"Trigger mode: {pipeline_snapshot.get('trigger_mode') or 'N/A'}",
+        f"Require approval: {pipeline_snapshot.get('require_approval', False)}",
+        f"Approval modes: {', '.join(pipeline_snapshot.get('approval_modes') or []) or 'None'}",
+        f"Signal subscriptions: {', '.join((sub.get('signal_type') for sub in (pipeline_snapshot.get('signal_subscriptions') or []) if sub.get('signal_type'))) or 'All matched signals'}",
+        f"Scanner tickers: {', '.join(pipeline_snapshot.get('scanner_tickers') or []) or 'None'}",
+        f"Schedule enabled: {schedule_enabled}",
+        f"Schedule window: {pipeline_snapshot.get('schedule_start_time') or 'N/A'} to {pipeline_snapshot.get('schedule_end_time') or 'N/A'}",
+        f"Schedule days: {', '.join(str(day) for day in schedule_days) or 'Default weekdays'}",
+        f"Liquidate on deactivation: {pipeline_snapshot.get('liquidate_on_deactivation', False)}",
+        f"User timezone snapshot: {pipeline_snapshot.get('user_timezone') or 'America/New_York'}",
+    ]
+
+    agent_sections: list[dict[str, Any]] = []
+    agent_configs = runtime_snapshot.get("agent_configs") or {}
+    for agent_name, agent_config in agent_configs.items():
+        agent_sections.append(
+            {
+                "title": f"{agent_name.replace('_', ' ').title()} Snapshot",
+                "items": [
+                    f"Model: {agent_config.get('model') or 'N/A'}",
+                    f"Instructions: {agent_config.get('instructions') or 'None'}",
+                ],
+            }
+        )
 
     return [
+        {
+            "title": "Backtest Configuration",
+            "items": backtest_settings,
+        },
+        {
+            "title": "Pipeline Configuration",
+            "items": pipeline_config_items,
+        },
         {
             "title": "Performance Overview",
             "items": [
@@ -393,6 +499,7 @@ def _build_report_sections(
                 f"Current failure reason: {run.failure_reason or 'None'}",
             ],
         },
+        *agent_sections,
     ]
 
 
@@ -407,22 +514,52 @@ async def _generate_optional_llm_analysis(summary: dict[str, Any], sections: lis
         "Ground everything only in the provided facts.\n\n"
         f"SUMMARY:\n{summary}\n\nSECTIONS:\n{sections}"
     )
+    messages = [
+        {"role": "system", "content": "You are a trading performance analyst. Return valid JSON only."},
+        {"role": "user", "content": prompt},
+    ]
     try:
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             temperature=0.2,
             max_tokens=700,
             response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a trading performance analyst. Return valid JSON only."},
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
         )
         content = response.choices[0].message.content or "{}"
-        import json
         return json.loads(content)
+    except BadRequestError as exc:
+        if "response_format" not in str(exc):
+            return None
+        try:
+            fallback_response = await client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                temperature=0.2,
+                max_tokens=700,
+                messages=messages,
+            )
+            content = fallback_response.choices[0].message.content or "{}"
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                content = content[start:end + 1]
+            return json.loads(content)
+        except Exception:
+            return None
     except Exception:
         return None
+
+
+def _load_cached_report(run: BacktestRun) -> dict[str, Any] | None:
+    config = run.config or {}
+    cached = config.get("report_cache")
+    return cached if isinstance(cached, dict) else None
+
+
+def _store_cached_report(run: BacktestRun, report_payload: dict[str, Any]) -> None:
+    config = dict(run.config or {})
+    config["report_cache"] = report_payload
+    run.config = config
 
 
 def _timeline_sort_key(event: BacktestTimelineEvent) -> tuple[str, str]:
@@ -495,7 +632,10 @@ async def start_backtest(
         )
 
     run_config = payload.model_dump(mode="json")
-    run_config["pipeline_snapshot"] = _snapshot_pipeline(pipeline)
+    run_config["pipeline_snapshot"] = _snapshot_pipeline(
+        pipeline,
+        user_timezone=getattr(current_user, "timezone", None) or "America/New_York",
+    )
     run_config["runtime_snapshot"] = build_backtest_runtime_snapshot(pipeline)
     run_config["runtime"] = {
         "mode": "ephemeral_sandbox",
@@ -668,6 +808,11 @@ async def get_backtest_report(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     run = await _get_backtest_or_404(run_id, current_user, db)
+    if run.status == BacktestRunStatus.COMPLETED:
+        cached_report = _load_cached_report(run)
+        if cached_report:
+            return BacktestReportResponse.model_validate(cached_report)
+
     event_result = await db.execute(
         select(BacktestEvent)
         .where(BacktestEvent.run_id == run.id, BacktestEvent.user_id == current_user.id)
@@ -691,11 +836,22 @@ async def get_backtest_report(
     if run.status == BacktestRunStatus.COMPLETED:
         llm_analysis = await _generate_optional_llm_analysis(summary, sections)
 
+    report_payload = {
+        "generated_at": datetime.utcnow().isoformat(),
+        "summary": summary,
+        "sections": sections,
+        "llm_analysis": llm_analysis,
+    }
+
+    if run.status == BacktestRunStatus.COMPLETED:
+        _store_cached_report(run, report_payload)
+        await db.commit()
+
     return BacktestReportResponse(
-        generated_at=datetime.utcnow().isoformat(),
-        summary=summary,
-        sections=sections,
-        llm_analysis=llm_analysis,
+        generated_at=report_payload["generated_at"],
+        summary=report_payload["summary"],
+        sections=report_payload["sections"],
+        llm_analysis=report_payload["llm_analysis"],
     )
 
 

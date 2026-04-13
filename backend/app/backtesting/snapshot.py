@@ -127,5 +127,7 @@ def hydrate_pipeline_from_snapshot(snapshot: Dict[str, Any], *, fallback_pipelin
         schedule_start_time=snapshot.get("schedule_start_time"),
         schedule_end_time=snapshot.get("schedule_end_time"),
         schedule_days=deepcopy(snapshot.get("schedule_days") or []),
+        liquidate_on_deactivation=snapshot.get("liquidate_on_deactivation", False),
+        user_timezone=snapshot.get("user_timezone") or "America/New_York",
         runtime_snapshot=deepcopy(snapshot.get("runtime_snapshot") or {}),
     )

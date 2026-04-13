@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,11 +19,22 @@ class _ScalarResult:
     def scalar_one_or_none(self):
         return self._value
 
+    def scalars(self):
+        return self
+
+    def all(self):
+        if self._value is None:
+            return []
+        if isinstance(self._value, list):
+            return self._value
+        return [self._value]
+
 
 class FakeAsyncSession:
-    def __init__(self, *, pipeline=None, run=None, scalar_values=None):
+    def __init__(self, *, pipeline=None, run=None, executions=None, scalar_values=None):
         self.pipeline = pipeline
         self.run = run
+        self.executions = executions or []
         self.scalar_values = list(scalar_values or [])
         self.added = []
         self.committed = 0
@@ -33,7 +45,11 @@ class FakeAsyncSession:
             pipeline = self.pipeline
             self.pipeline = None
             return _ScalarResult(pipeline)
-        return _ScalarResult(self.run)
+        if self.run is not None:
+            run = self.run
+            self.run = None
+            return _ScalarResult(run)
+        return _ScalarResult(self.executions)
 
     async def scalar(self, _query):
         if not self.scalar_values:
@@ -82,9 +98,10 @@ async def test_start_backtest_creates_run_snapshot_and_launches(monkeypatch):
         schedule_start_time=None,
         schedule_end_time=None,
         schedule_days=[],
+        liquidate_on_deactivation=False,
     )
     db = FakeAsyncSession(pipeline=pipeline, scalar_values=[0, 0, 0])
-    current_user = SimpleNamespace(id=user_id)
+    current_user = SimpleNamespace(id=user_id, timezone="America/New_York")
     launch_calls = []
 
     monkeypatch.setattr(
@@ -111,6 +128,8 @@ async def test_start_backtest_creates_run_snapshot_and_launches(monkeypatch):
     assert db.added, "BacktestRun should be persisted"
     run = db.added[0]
     assert run.config["pipeline_snapshot"]["name"] == "Parity Pipeline"
+    assert run.config["pipeline_snapshot"]["user_timezone"] == "America/New_York"
+    assert run.config["pipeline_snapshot"]["liquidate_on_deactivation"] is False
     assert run.config["runtime_snapshot"]["agent_configs"]["bias_agent"]["instructions"] == "Bias rules"
     assert run.config["runtime"]["mode"] == "ephemeral_sandbox"
     assert launch_calls and launch_calls[0]["kwargs"]["backtest_run_id"] == str(run.id)
@@ -136,6 +155,7 @@ async def test_start_backtest_rejects_when_user_limit_reached():
         schedule_start_time=None,
         schedule_end_time=None,
         schedule_days=[],
+        liquidate_on_deactivation=False,
     )
     db = FakeAsyncSession(pipeline=pipeline, scalar_values=[2])
     current_user = SimpleNamespace(id=user_id)
@@ -163,12 +183,21 @@ async def test_cancel_backtest_marks_run_and_requests_runtime_stop(monkeypatch):
         id=run_id,
         user_id=user_id,
         pipeline_id=pipeline_id,
+        pipeline_name="Pipeline",
         status=BacktestRunStatus.RUNNING,
+        progress={},
+        metrics={},
+        trades=[],
+        equity_curve=[],
+        estimated_cost=None,
+        actual_cost=0.0,
         failure_reason=None,
+        created_at=datetime.utcnow(),
+        started_at=None,
         completed_at=None,
         config={"runtime": {"launch_details": {"container_name": "bt-123"}}},
     )
-    db = FakeAsyncSession(run=run)
+    db = FakeAsyncSession(run=run, executions=[])
     current_user = SimpleNamespace(id=user_id)
     stop_calls = []
 

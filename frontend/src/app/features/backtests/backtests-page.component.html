@@ -111,8 +111,6 @@
             </div>
           </div>
 
-          <mat-progress-bar mode="determinate" [value]="progressValue(selectedRun)"></mat-progress-bar>
-
           <div class="virtual-clock-card">
             <div class="virtual-clock-copy">
               <span class="panel-kicker">Virtual Clock</span>
@@ -120,10 +118,15 @@
                 <mat-icon>schedule</mat-icon>
                 <strong>{{ selectedRun.progress['current_ts'] | localDate:'long' }}</strong>
               </div>
-              <p>
-                Replay progress {{ progressValue(selectedRun) | number:'1.0-0' }}%
-                · {{ selectedRun.progress['current_bar'] || 0 }} / {{ selectedRun.progress['total_bars'] || 0 }} bars
-              </p>
+              <p class="virtual-clock-caption">Simulated market time for the current replay step.</p>
+            </div>
+            <div class="virtual-progress">
+              <div class="virtual-progress-copy">
+                <span>Replay Progress</span>
+                <strong>{{ progressValue(selectedRun) | number:'1.0-0' }}%</strong>
+              </div>
+              <mat-progress-bar mode="determinate" [value]="progressValue(selectedRun)"></mat-progress-bar>
+              <p>{{ selectedRun.progress['current_bar'] || 0 }} / {{ selectedRun.progress['total_bars'] || 0 }} bars</p>
             </div>
             <div class="virtual-clock-meta">
               <span>Approx speed</span>
@@ -134,14 +137,6 @@
           </div>
 
           <div class="summary-grid">
-            <article class="summary-metric">
-              <span class="label">Current Timestamp</span>
-              <strong>{{ selectedRun.progress['current_ts'] || 'Pending' }}</strong>
-            </article>
-            <article class="summary-metric">
-              <span class="label">Current Symbol</span>
-              <strong>{{ selectedRun.progress['current_symbol'] || 'N/A' }}</strong>
-            </article>
             <article class="summary-metric">
               <span class="label">Cost So Far</span>
               <strong>${{ selectedRun.actual_cost | number:'1.2-2' }}</strong>
@@ -181,60 +176,74 @@
         <mat-tab-group class="results-tabs">
           <mat-tab label="Overview">
             <div class="tab-panel">
-              <mat-card class="panel-card chart-card">
-                <header class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Equity Curve</span>
-                    <h3>Account value over the run</h3>
-                  </div>
-                </header>
+              <div class="overview-chart-row">
+                <mat-card class="panel-card chart-card">
+                  <header class="panel-header">
+                    <div>
+                      <span class="panel-kicker">Equity Curve</span>
+                      <h3>Account value over the run</h3>
+                    </div>
+                  </header>
 
-                <div class="chart-frame" *ngIf="equityChartPath; else noChartData">
-                  <svg viewBox="0 0 720 220" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="rgba(16,185,129,0.35)"></stop>
-                        <stop offset="100%" stop-color="rgba(16,185,129,0.02)"></stop>
-                      </linearGradient>
-                    </defs>
-                    <path [attr.d]="equityChartAreaPath" class="equity-area"></path>
-                    <path [attr.d]="equityChartPath" class="equity-line"></path>
-                  </svg>
-                </div>
+                  <div class="chart-frame chart-frame-large" *ngIf="equityChartModel as chart; else noChartData">
+                    <svg [attr.viewBox]="chart.viewBox" preserveAspectRatio="none">
+                      <g class="chart-grid">
+                        <line *ngFor="let tick of chart.yTicks" [attr.x1]="60" [attr.y1]="tick.y" x2="702" [attr.y2]="tick.y"></line>
+                      </g>
+                      <line x1="60" [attr.y1]="chart.baselineY" x2="702" [attr.y2]="chart.baselineY" class="chart-baseline"></line>
+                      <path [attr.d]="chart.positiveAreaPath" class="equity-area-positive"></path>
+                      <path [attr.d]="chart.negativeAreaPath" class="equity-area-negative"></path>
+                      <path [attr.d]="chart.linePath" class="equity-line"></path>
+                      <g class="chart-axis-labels">
+                        <text *ngFor="let tick of chart.yTicks" x="10" [attr.y]="tick.y + 4">{{ tick.label }}</text>
+                        <text *ngFor="let tick of chart.xTicks" [attr.x]="tick.x" y="252" text-anchor="middle">{{ tick.label }}</text>
+                      </g>
+                      <text x="696" [attr.y]="chart.baselineY - 8" text-anchor="end" class="chart-baseline-label">Start {{ chart.baselineLabel }}</text>
+                    </svg>
+                  </div>
 
-                <ng-template #noChartData>
-                  <div class="empty-state chart-empty">
-                    <mat-icon>show_chart</mat-icon>
-                    <span>Equity curve will appear once the runtime records real equity samples.</span>
-                  </div>
-                </ng-template>
-              </mat-card>
+                  <ng-template #noChartData>
+                    <div class="empty-state chart-empty">
+                      <mat-icon>show_chart</mat-icon>
+                      <span>Equity curve will appear once the runtime records real equity samples.</span>
+                    </div>
+                  </ng-template>
+                </mat-card>
 
-              <mat-card class="panel-card">
-                <header class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Daily P&amp;L</span>
-                    <h3>End-of-day equity changes</h3>
+                <mat-card class="panel-card chart-card">
+                  <header class="panel-header">
+                    <div>
+                      <span class="panel-kicker">Daily P&amp;L</span>
+                      <h3>End-of-day equity changes</h3>
+                    </div>
+                  </header>
+                  <div class="chart-frame chart-frame-large" *ngIf="dailyPnlChartModel as dailyChart; else noDailyPnl">
+                    <svg [attr.viewBox]="dailyChart.viewBox" preserveAspectRatio="none">
+                      <g class="chart-grid">
+                        <line *ngFor="let tick of dailyChart.yTicks" [attr.x1]="56" [attr.y1]="tick.y" x2="702" [attr.y2]="tick.y"></line>
+                      </g>
+                      <line x1="56" [attr.y1]="dailyChart.baselineY" x2="702" [attr.y2]="dailyChart.baselineY" class="chart-baseline"></line>
+                      <g *ngFor="let bar of dailyChart.bars">
+                        <rect
+                          [attr.x]="bar.x"
+                          [attr.y]="bar.y"
+                          [attr.width]="bar.width"
+                          [attr.height]="bar.height"
+                          [attr.class]="bar.positive ? 'report-bar positive-bar' : 'report-bar negative-bar'"
+                          rx="8"
+                        ></rect>
+                      </g>
+                      <g class="chart-axis-labels">
+                        <text *ngFor="let tick of dailyChart.yTicks" x="10" [attr.y]="tick.y + 4">{{ tick.label }}</text>
+                        <text *ngFor="let tick of dailyChart.xTicks" [attr.x]="tick.x" y="252" text-anchor="middle">{{ tick.label }}</text>
+                      </g>
+                    </svg>
                   </div>
-                </header>
-                <div class="simple-table" *ngIf="hasDailyPnl; else noDailyPnl">
-                  <div class="table-head">
-                    <span>Date</span>
-                    <span>P&amp;L</span>
-                    <span>Equity</span>
-                  </div>
-                  <div class="table-row" *ngFor="let day of selectedRun?.daily_pnl">
-                    <span>{{ day.date }}</span>
-                    <span [class.positive]="day.pnl > 0" [class.negative]="day.pnl < 0">
-                      {{ day.pnl | number:'1.2-2' }}
-                    </span>
-                    <span>{{ day.equity | number:'1.2-2' }}</span>
-                  </div>
-                </div>
-                <ng-template #noDailyPnl>
-                  <p class="empty-state">Daily P&amp;L will appear once the run spans enough sampled equity data.</p>
-                </ng-template>
-              </mat-card>
+                  <ng-template #noDailyPnl>
+                    <p class="empty-state">Daily P&amp;L will appear once the run spans enough sampled equity data.</p>
+                  </ng-template>
+                </mat-card>
+              </div>
 
               <mat-card class="panel-card">
                 <header class="panel-header">
@@ -270,10 +279,10 @@
                   <div class="table-row" *ngFor="let position of selectedRun.open_positions">
                     <span>{{ position['symbol'] }}</span>
                     <span>{{ position['action'] }}</span>
-                    <span>{{ position['qty'] }}</span>
-                    <span>{{ position['entry_price'] }}</span>
-                    <span>{{ position['stop_loss'] ?? '—' }}</span>
-                    <span>{{ position['take_profit'] ?? '—' }}</span>
+                    <span>{{ formatDisplayNumber(position['qty']) }}</span>
+                    <span>{{ formatDisplayNumber(position['entry_price']) }}</span>
+                    <span>{{ formatDisplayNumber(position['stop_loss']) }}</span>
+                    <span>{{ formatDisplayNumber(position['take_profit']) }}</span>
                   </div>
                 </div>
                 <ng-template #noOpenPositions>
@@ -299,10 +308,10 @@
                   <div class="table-row" *ngFor="let trade of selectedRun.trades">
                     <span>{{ trade['id'] }}</span>
                     <span>{{ trade['action'] }}</span>
-                    <span>{{ trade['entry_price'] }}</span>
-                    <span>{{ trade['exit_price'] }}</span>
+                    <span>{{ formatDisplayNumber(trade['entry_price']) }}</span>
+                    <span>{{ formatDisplayNumber(trade['exit_price']) }}</span>
                     <span [class.positive]="trade['net_pnl'] > 0" [class.negative]="trade['net_pnl'] < 0">
-                      {{ trade['net_pnl'] }}
+                      {{ formatDisplayNumber(trade['net_pnl']) }}
                     </span>
                   </div>
                 </div>
@@ -458,21 +467,99 @@
                     <span class="panel-kicker">Generated Report</span>
                     <h3>Deterministic summary plus optional LLM analysis</h3>
                   </div>
+                  <button mat-flat-button color="primary" type="button" *ngIf="selectedReport" (click)="exportReportPdf()">
+                    <mat-icon>download</mat-icon>
+                    <span>Export PDF</span>
+                  </button>
                 </header>
 
-                <div class="report-summary" *ngIf="selectedReport as report; else noReport">
-                  <div class="summary-grid compact">
-                    <article class="summary-metric" *ngFor="let item of report.summary | keyvalue">
-                      <span class="label">{{ item.key }}</span>
+                <div class="report-summary" *ngIf="selectedReport && selectedReportRunId === selectedRunId ? selectedReport : null as report; else noReport">
+                  <div class="report-metric-strip">
+                    <article class="report-metric-card" *ngFor="let item of reportVisualMetrics()" [class.positive]="item.tone === 'positive'" [class.negative]="item.tone === 'negative'">
+                      <span class="label">{{ item.label }}</span>
+                      <strong>{{ item.value }}</strong>
+                    </article>
+                  </div>
+
+                  <div class="report-layout">
+                    <section class="report-chart-card">
+                      <div class="report-chart-header">
+                        <div>
+                          <span class="panel-kicker">Equity Curve</span>
+                          <h4>Account value through the run</h4>
+                        </div>
+                      </div>
+                      <div class="chart-frame chart-frame-large" *ngIf="equityChartModel as chart; else noReportEquity">
+                        <svg [attr.viewBox]="chart.viewBox" preserveAspectRatio="none">
+                          <g class="chart-grid">
+                            <line *ngFor="let tick of chart.yTicks" [attr.x1]="60" [attr.y1]="tick.y" x2="702" [attr.y2]="tick.y"></line>
+                          </g>
+                          <line x1="60" [attr.y1]="chart.baselineY" x2="702" [attr.y2]="chart.baselineY" class="chart-baseline"></line>
+                          <path [attr.d]="chart.positiveAreaPath" class="equity-area-positive"></path>
+                          <path [attr.d]="chart.negativeAreaPath" class="equity-area-negative"></path>
+                          <path [attr.d]="chart.linePath" class="equity-line"></path>
+                          <g class="chart-axis-labels">
+                            <text *ngFor="let tick of chart.yTicks" x="10" [attr.y]="tick.y + 4">{{ tick.label }}</text>
+                            <text *ngFor="let tick of chart.xTicks" [attr.x]="tick.x" y="252" text-anchor="middle">{{ tick.label }}</text>
+                          </g>
+                          <text x="696" [attr.y]="chart.baselineY - 8" text-anchor="end" class="chart-baseline-label">Start {{ chart.baselineLabel }}</text>
+                        </svg>
+                      </div>
+                      <ng-template #noReportEquity>
+                        <p class="empty-state">Equity samples are not available for this run.</p>
+                      </ng-template>
+                    </section>
+
+                    <section class="report-chart-card">
+                      <div class="report-chart-header">
+                        <div>
+                          <span class="panel-kicker">Daily P&amp;L</span>
+                          <h4>Per-day result distribution</h4>
+                        </div>
+                      </div>
+                      <div class="chart-frame chart-frame-large" *ngIf="dailyPnlChartModel as dailyChart; else noReportDailyPnl">
+                        <svg [attr.viewBox]="dailyChart.viewBox" preserveAspectRatio="none">
+                          <g class="chart-grid">
+                            <line *ngFor="let tick of dailyChart.yTicks" [attr.x1]="56" [attr.y1]="tick.y" x2="702" [attr.y2]="tick.y"></line>
+                          </g>
+                          <line x1="56" [attr.y1]="dailyChart.baselineY" x2="702" [attr.y2]="dailyChart.baselineY" class="chart-baseline"></line>
+                          <g *ngFor="let bar of dailyChart.bars">
+                            <rect
+                              [attr.x]="bar.x"
+                              [attr.y]="bar.y"
+                              [attr.width]="bar.width"
+                              [attr.height]="bar.height"
+                              [attr.class]="bar.positive ? 'report-bar positive-bar' : 'report-bar negative-bar'"
+                              rx="8"
+                            ></rect>
+                          </g>
+                          <g class="chart-axis-labels">
+                            <text *ngFor="let tick of dailyChart.yTicks" x="10" [attr.y]="tick.y + 4">{{ tick.label }}</text>
+                            <text *ngFor="let tick of dailyChart.xTicks" [attr.x]="tick.x" y="252" text-anchor="middle">{{ tick.label }}</text>
+                          </g>
+                        </svg>
+                      </div>
+                      <ng-template #noReportDailyPnl>
+                        <p class="empty-state">Daily P&amp;L needs at least one completed trading day.</p>
+                      </ng-template>
+                    </section>
+                  </div>
+
+                  <div class="report-summary-grid">
+                    <article class="summary-metric" *ngFor="let item of reportSummaryEntries()">
+                      <span class="label">{{ item.label }}</span>
                       <strong>{{ item.value }}</strong>
                     </article>
                   </div>
 
                   <section class="report-section" *ngFor="let section of report.sections">
                     <h4>{{ section.title }}</h4>
-                    <ul>
-                      <li *ngFor="let item of section.items">{{ item }}</li>
-                    </ul>
+                    <div class="report-entry-grid">
+                      <article class="report-entry-card" *ngFor="let item of reportSectionEntries(section.items)">
+                        <span>{{ item.label }}</span>
+                        <strong>{{ item.value }}</strong>
+                      </article>
+                    </div>
                   </section>
 
                   <section class="report-section llm-section" *ngIf="report.llm_analysis">
@@ -502,10 +589,19 @@
                 </div>
 
                 <ng-template #noReport>
-                  <p class="empty-state">
-                    Report synthesis is not available yet for this run. It will populate once the
-                    run has enough execution data, and LLM analysis is optional based on backend configuration.
-                  </p>
+                  <div class="empty-state report-empty-state">
+                    <ng-container [ngSwitch]="reportState">
+                      <div *ngSwitchCase="'loading'" class="loading-state inline-loading">
+                        <mat-spinner diameter="24"></mat-spinner>
+                        <span>Loading report...</span>
+                      </div>
+                      <p *ngSwitchCase="'error'">{{ reportErrorMessage }}</p>
+                      <p *ngSwitchDefault>
+                        Report synthesis is not available yet for this run. It will populate once the
+                        run has enough execution data, and LLM analysis is optional based on backend configuration.
+                      </p>
+                    </ng-container>
+                  </div>
                 </ng-template>
               </mat-card>
             </div>
@@ -575,6 +671,15 @@
         <span class="label">Cost</span>
         <strong>${{ selectedExecution.cost | number:'1.2-2' }}</strong>
       </article>
+      <article class="summary-metric">
+        <span class="label">P&amp;L</span>
+        <strong
+          [class.positive]="(executionPnlValue(selectedExecution) ?? 0) > 0"
+          [class.negative]="(executionPnlValue(selectedExecution) ?? 0) < 0"
+        >
+          {{ executionPnl(selectedExecution) }}
+        </strong>
+      </article>
     </div>
 
     <div class="execution-detail-grid">
@@ -638,6 +743,15 @@
         <div class="execution-card-header">
           <h4>Trade Outcome</h4>
           <span class="analysis-chip">Result</span>
+        </div>
+        <div
+          class="outcome-pnl"
+          *ngIf="executionPnlValue(selectedExecution) !== null"
+          [class.positive]="(executionPnlValue(selectedExecution) ?? 0) > 0"
+          [class.negative]="(executionPnlValue(selectedExecution) ?? 0) < 0"
+        >
+          <span>P&amp;L</span>
+          <strong>{{ executionPnl(selectedExecution) }}</strong>
         </div>
         <div class="detail-list" *ngIf="outcomeDetails(selectedExecution).length; else noTradeExecutionDetailsDrawer">
           <div class="detail-row" *ngFor="let item of outcomeDetails(selectedExecution)">

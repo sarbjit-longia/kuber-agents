@@ -3,11 +3,12 @@ Backtest orchestrator for parity pipeline replay.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time as dt_time
 import json
 import os
 import time
 from typing import TYPE_CHECKING, Dict, List
+from zoneinfo import ZoneInfo
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -64,6 +65,7 @@ class BacktestOrchestrator:
         self._progress_commits = 0
         self._checkpoint_key = f"backtest:{self.run.id}:checkpoint"
         self.http = self._build_http_session()
+        self._last_seen_candles: Dict[str, Dict] = {}
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -151,16 +153,42 @@ class BacktestOrchestrator:
             equity_curve = [float(point.get("equity", self.initial_capital)) for point in equity_points]
         signal_types = [sub.get("signal_type") for sub in (self.pipeline.signal_subscriptions or []) if sub.get("signal_type")]
 
+        previous_inside_window = None
         for timeline_index, ts in enumerate(timeline):
             if checkpoint and timeline_index < int(checkpoint.get("timeline_index", 0)):
                 continue
             if self._refresh_cancel_status():
                 return self._finalize_cancelled(processed, total_bars, ts)
 
+            inside_window = self._is_inside_active_window(ts)
+            if previous_inside_window is None:
+                previous_inside_window = inside_window
+
+            if previous_inside_window and not inside_window:
+                self._record_event(
+                    event_type="schedule_deactivated",
+                    title="Schedule window closed",
+                    message=f"Replay moved outside the active schedule window at {ts}.",
+                    data={"backtest_ts": ts},
+                )
+                if getattr(self.pipeline, "liquidate_on_deactivation", False):
+                    liquidated = self._liquidate_open_positions(
+                        backtest_ts=ts,
+                        reason="schedule",
+                    )
+                    if liquidated:
+                        self._record_event(
+                            event_type="schedule_liquidated",
+                            title="Positions liquidated on deactivation",
+                            message=f"Closed {liquidated} open position(s) as the schedule window ended.",
+                            data={"backtest_ts": ts, "positions_closed": liquidated},
+                        )
+            previous_inside_window = inside_window
+
             checkpoint_at_current_ts = checkpoint if checkpoint and timeline_index == int(checkpoint.get("timeline_index", 0)) else None
             signals_already_dispatched = bool(checkpoint_at_current_ts and checkpoint_at_current_ts.get("signal_dispatch_completed"))
 
-            if not signals_already_dispatched:
+            if inside_window and not signals_already_dispatched:
                 signals = self._replay_signals_for_timestamp(ts, signal_types)
                 if signals:
                     self._signal_batches += 1
@@ -187,6 +215,23 @@ class BacktestOrchestrator:
                     equity_points=equity_points,
                     signal_dispatch_completed=True,
                 )
+            elif not inside_window and not signals_already_dispatched:
+                self._record_event(
+                    event_type="schedule_skipped",
+                    title="Outside active schedule",
+                    message="Skipped signal replay because the pipeline was outside its configured active window.",
+                    data={"backtest_ts": ts},
+                )
+                self._save_checkpoint(
+                    timeline_index=timeline_index,
+                    symbol_index=-1,
+                    processed=processed,
+                    total_bars=total_bars,
+                    backtest_ts=ts,
+                    equity_curve=equity_curve,
+                    equity_points=equity_points,
+                    signal_dispatch_completed=True,
+                )
 
             start_symbol_index = 0
             if checkpoint_at_current_ts:
@@ -201,6 +246,7 @@ class BacktestOrchestrator:
                 candle = bars_by_symbol_ts.get(symbol, {}).get(ts)
                 if not candle:
                     continue
+                self._last_seen_candles[symbol] = candle
                 processed += 1
                 self._update_progress(symbol, processed, total_bars, ts, force=False)
 
@@ -258,6 +304,54 @@ class BacktestOrchestrator:
         self.db.commit()
         self._clear_checkpoint()
         return {"run_id": str(self.run.id), "status": self.run.status.value}
+
+    def _is_inside_active_window(self, backtest_ts: str) -> bool:
+        if not getattr(self.pipeline, "schedule_enabled", False):
+            return True
+
+        start_time = getattr(self.pipeline, "schedule_start_time", None)
+        end_time = getattr(self.pipeline, "schedule_end_time", None)
+        if not start_time or not end_time:
+            return True
+
+        tz_name = getattr(self.pipeline, "user_timezone", None) or "America/New_York"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        ts = datetime.fromisoformat(backtest_ts.replace("Z", "+00:00")).astimezone(tz)
+        schedule_days = getattr(self.pipeline, "schedule_days", None) or [1, 2, 3, 4, 5]
+        if ts.isoweekday() not in schedule_days:
+            return False
+
+        current_time = ts.time().replace(second=0, microsecond=0)
+        start = dt_time.fromisoformat(start_time)
+        end = dt_time.fromisoformat(end_time)
+        return start <= current_time < end
+
+    def _liquidate_open_positions(self, *, backtest_ts: str, reason: str) -> int:
+        positions = self.broker.get_positions()
+        if not positions:
+            return 0
+
+        closed_count = 0
+        closed_at = datetime.fromisoformat(backtest_ts.replace("Z", "+00:00"))
+        for symbol in list(positions.keys()):
+            last_candle = self._last_seen_candles.get(symbol)
+            exit_price = None
+            if last_candle:
+                try:
+                    exit_price = float(last_candle.get("close"))
+                except (TypeError, ValueError):
+                    exit_price = None
+            if exit_price is None:
+                position = positions.get(symbol) or {}
+                exit_price = float(position.get("mark_price") or position.get("entry_price") or 0.0)
+            trade = self.broker.close_position(symbol, exit_price, reason, closed_at=closed_at)
+            if trade:
+                closed_count += 1
+        return closed_count
 
     def _replay_signals_for_timestamp(self, backtest_ts: str, signal_types: List[str]) -> List[Dict]:
         response = self.http.post(

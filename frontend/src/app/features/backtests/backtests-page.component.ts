@@ -65,6 +65,22 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 })
 export class BacktestsPageComponent implements OnInit, OnDestroy {
   private static readonly EXECUTION_DRAWER_WIDTH_KEY = 'backtests.executionDrawerWidth';
+  private static readonly EQUITY_CHART = {
+    width: 720,
+    height: 260,
+    leftPad: 60,
+    rightPad: 18,
+    topPad: 18,
+    bottomPad: 34,
+  };
+  private static readonly DAILY_PNL_CHART = {
+    width: 720,
+    height: 260,
+    leftPad: 56,
+    rightPad: 18,
+    topPad: 18,
+    bottomPad: 34,
+  };
   readonly timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
   readonly slippageModels = [
     { value: 'fixed', label: 'Fixed' },
@@ -98,8 +114,11 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   selectedExecution: BacktestExecutionSummary | null = null;
   selectedTimeline: BacktestTimelineEvent[] = [];
   selectedReport: BacktestReportResponse | null = null;
+  selectedReportRunId: string | null = null;
   selectedRunId: string | null = null;
   selectedPipelineId: string | null = null;
+  reportState: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  reportErrorMessage = '';
   executionFilter = 'all';
   executionSymbolFilter = 'all';
   executionDecisionFilter = 'all';
@@ -196,37 +215,124 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     return Number((estimatedExecutions * 0.075).toFixed(2));
   }
 
-  get equityChartPath(): string {
+  get equityChartModel(): {
+    viewBox: string;
+    linePath: string;
+    positiveAreaPath: string;
+    negativeAreaPath: string;
+    baselineY: number;
+    baselineLabel: string;
+    xTicks: Array<{ x: number; label: string }>;
+    yTicks: Array<{ y: number; label: string }>;
+  } | null {
     const series = this.selectedRun?.equity_series || [];
-    if (series.length < 2) {
-      return '';
+    if (!series.length) {
+      return null;
     }
-    const values = series.map(point => Number(point.equity));
-    const width = 720;
-    const height = 220;
+
+    const dims = BacktestsPageComponent.EQUITY_CHART;
+    const points = series
+      .map((point: Record<string, unknown>, index) => {
+        const ts = String(point['ts'] || point['date'] || '');
+        const equity = Number(point['equity']);
+        return Number.isFinite(equity)
+          ? { index, ts, equity }
+          : null;
+      })
+      .filter((point): point is { index: number; ts: string; equity: number } => point !== null);
+
+    if (points.length < 2) {
+      return null;
+    }
+
+    const baseline = Number(this.selectedRun?.config?.['initial_capital'] || points[0].equity || 0);
+    const values = points.map(point => point.equity).concat(baseline);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const range = Math.max(max - min, 1);
-    return values
-      .map((value, index) => {
-        const x = (index / Math.max(values.length - 1, 1)) * width;
-        const y = height - ((value - min) / range) * height;
-        return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .join(' ');
-  }
+    const padding = Math.max(Math.abs(max - min) * 0.12, baseline * 0.003, 25);
+    const domainMin = Math.min(min, baseline) - padding;
+    const domainMax = Math.max(max, baseline) + padding;
+    const plotWidth = dims.width - dims.leftPad - dims.rightPad;
+    const plotHeight = dims.height - dims.topPad - dims.bottomPad;
+    const valueRange = Math.max(domainMax - domainMin, 1);
+    const scaleX = (index: number) => dims.leftPad + (index / Math.max(points.length - 1, 1)) * plotWidth;
+    const scaleY = (value: number) => dims.topPad + (domainMax - value) / valueRange * plotHeight;
+    const baselineY = scaleY(baseline);
 
-  get equityChartAreaPath(): string {
-    if (!this.equityChartPath || !(this.selectedRun?.equity_series?.length)) {
-      return '';
-    }
-    const width = 720;
-    const height = 220;
-    return `${this.equityChartPath} L${width},${height} L0,${height} Z`;
+    const chartPoints = points.map(point => ({
+      ...point,
+      x: scaleX(point.index),
+      y: scaleY(point.equity),
+    }));
+
+    return {
+      viewBox: `0 0 ${dims.width} ${dims.height}`,
+      linePath: chartPoints.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' '),
+      positiveAreaPath: this.buildSignedAreaPath(chartPoints, baseline, 'positive'),
+      negativeAreaPath: this.buildSignedAreaPath(chartPoints, baseline, 'negative'),
+      baselineY,
+      baselineLabel: this.formatCurrencyLabel(baseline),
+      xTicks: this.buildEquityXTicks(chartPoints),
+      yTicks: this.buildEquityYTicks(domainMin, baseline, domainMax, scaleY),
+    };
   }
 
   get latestVisibleEvents(): BacktestTimelineEvent[] {
     return this.selectedTimeline.slice(0, 60);
+  }
+
+  get dailyPnlChartModel(): {
+    viewBox: string;
+    baselineY: number;
+    bars: Array<{ date: string; pnl: number; x: number; y: number; width: number; height: number; positive: boolean }>;
+    xTicks: Array<{ x: number; label: string }>;
+    yTicks: Array<{ y: number; label: string }>;
+  } | null {
+    const rows = this.selectedRun?.daily_pnl || [];
+    if (!rows.length) {
+      return null;
+    }
+
+    const dims = BacktestsPageComponent.DAILY_PNL_CHART;
+    const maxAbs = Math.max(...rows.map(item => Math.abs(Number(item.pnl) || 0)), 1);
+    const plotWidth = dims.width - dims.leftPad - dims.rightPad;
+    const plotHeight = dims.height - dims.topPad - dims.bottomPad;
+    const baselineY = dims.topPad + plotHeight / 2;
+    const step = plotWidth / Math.max(rows.length, 1);
+    const barWidth = Math.max(14, Math.min(44, step * 0.64));
+    const yScale = (Math.abs(plotHeight / 2 - 8)) / maxAbs;
+
+    const bars = rows.map((item, index) => {
+      const pnl = Number(item.pnl) || 0;
+      const scaled = Math.max(Math.abs(pnl) * yScale, 2);
+      const x = dims.leftPad + index * step + (step - barWidth) / 2;
+      const positive = pnl >= 0;
+      const y = positive ? baselineY - scaled : baselineY;
+      return {
+        date: item.date,
+        pnl,
+        x,
+        y,
+        width: barWidth,
+        height: scaled,
+        positive,
+      };
+    });
+
+    return {
+      viewBox: `0 0 ${dims.width} ${dims.height}`,
+      baselineY,
+      bars,
+      xTicks: bars.map(bar => ({
+        x: bar.x + bar.width / 2,
+        label: this.formatChartDate(bar.date),
+      })),
+      yTicks: [
+        { y: dims.topPad, label: this.formatCurrencyLabel(maxAbs) },
+        { y: baselineY, label: '$0' },
+        { y: dims.topPad + plotHeight, label: this.formatCurrencyLabel(-maxAbs) },
+      ],
+    };
   }
 
   get executionSymbols(): string[] {
@@ -435,8 +541,15 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     if (showSpinner) {
       this.loadingDetails = true;
     }
+    if (this.selectedReportRunId !== runId) {
+      this.reportState = 'loading';
+      this.reportErrorMessage = '';
+    }
     this.backtestService.getBacktestResults(runId).subscribe({
       next: (run) => {
+        if (this.selectedRunId !== runId) {
+          return;
+        }
         this.selectedRun = run;
         this.selectedRunSummary = run;
         if (run.pipeline_id && run.pipeline_id !== this.selectedPipelineId) {
@@ -461,7 +574,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     this.backtestService.getBacktestExecutions(runId).subscribe({
       next: (response) => {
         this.selectedExecutions = response.executions || [];
-        this.selectedExecution = this.filteredExecutions[0] || this.selectedExecutions[0] || null;
+        if (this.selectedExecution) {
+          this.selectedExecution =
+            this.selectedExecutions.find(execution => execution.id === this.selectedExecution?.id) || null;
+        } else {
+          this.selectedExecution = null;
+        }
       },
       error: () => {
         this.selectedExecutions = [];
@@ -482,12 +600,33 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   }
 
   loadReport(runId: string): void {
+    if (this.selectedReportRunId === runId && this.selectedReport) {
+      this.reportState = 'ready';
+      return;
+    }
+    this.reportState = 'loading';
+    this.reportErrorMessage = '';
     this.backtestService.getBacktestReport(runId).subscribe({
       next: (report) => {
+        if (this.selectedRunId !== runId) {
+          return;
+        }
         this.selectedReport = report;
+        this.selectedReportRunId = runId;
+        this.reportState = 'ready';
       },
       error: () => {
+        if (this.selectedRunId !== runId) {
+          return;
+        }
+        if (this.selectedReportRunId === runId && this.selectedReport) {
+          this.reportState = 'ready';
+          return;
+        }
         this.selectedReport = null;
+        this.selectedReportRunId = null;
+        this.reportState = 'error';
+        this.reportErrorMessage = 'Report could not be loaded right now. Refresh and try again.';
       },
     });
   }
@@ -631,6 +770,64 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     }));
   }
 
+  reportSummaryEntries(): Array<{ key: string; label: string; value: string }> {
+    const summary = this.selectedReport?.summary || {};
+    const preferredOrder = [
+      'status',
+      'date_range',
+      'symbols',
+      'timeframe',
+      'trade_count',
+      'winning_trades',
+      'losing_trades',
+      'win_rate',
+      'net_pnl',
+      'gross_pnl',
+      'return_pct',
+      'actual_cost',
+      'execution_count',
+      'matched_signal_batches',
+      'review_rejections',
+      'strategy_holds',
+      'runtime_seconds',
+      'max_drawdown',
+    ];
+
+    const keys = preferredOrder.filter(key => key in summary);
+    return keys.map(key => ({
+      key,
+      label: this.formatReportLabel(key),
+      value: this.formatReportValue(key, summary[key]),
+    }));
+  }
+
+  reportVisualMetrics(): Array<{ label: string; value: string; tone?: 'positive' | 'negative' | 'neutral' }> {
+    const summary = this.selectedReport?.summary || {};
+    const metrics = [
+      {
+        label: 'Net P&L',
+        value: this.formatReportValue('net_pnl', summary['net_pnl']),
+        tone: Number(summary['net_pnl'] || 0) > 0 ? 'positive' as const : Number(summary['net_pnl'] || 0) < 0 ? 'negative' as const : 'neutral' as const,
+      },
+      {
+        label: 'Win Rate',
+        value: this.formatReportValue('win_rate', summary['win_rate']),
+        tone: 'neutral' as const,
+      },
+      {
+        label: 'Executions',
+        value: this.formatReportValue('execution_count', summary['execution_count']),
+        tone: 'neutral' as const,
+      },
+      {
+        label: 'Review Rejections',
+        value: this.formatReportValue('review_rejections', summary['review_rejections']),
+        tone: 'neutral' as const,
+      },
+    ];
+    return metrics;
+  }
+
   latestDecision(execution: BacktestExecutionSummary): string {
     return this.executionStrategyDecision(execution);
   }
@@ -661,12 +858,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
 
   executionFilledPrice(execution: BacktestExecutionSummary): string {
     const value = execution.result?.['trade_execution']?.['filled_price'];
-    return value === null || value === undefined || value === '' ? '—' : String(value);
+    return this.formatDisplayNumber(value);
   }
 
   executionFilledQuantity(execution: BacktestExecutionSummary): string {
     const value = execution.result?.['trade_execution']?.['filled_quantity'];
-    return value === null || value === undefined || value === '' ? '—' : String(value);
+    return this.formatDisplayNumber(value);
   }
 
   biasReasoning(execution: BacktestExecutionSummary | null): string {
@@ -695,6 +892,26 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     }
 
     return '—';
+  }
+
+  executionPnlValue(execution: BacktestExecutionSummary | null): number | null {
+    if (!execution) {
+      return null;
+    }
+
+    const openPosition = this.getOpenPositionForExecution(execution);
+    if (openPosition) {
+      const unrealized = openPosition['unrealized_pnl'];
+      return unrealized === null || unrealized === undefined ? null : Number(unrealized);
+    }
+
+    const closedTrade = this.getClosedTradeForExecution(execution);
+    if (closedTrade) {
+      const netPnl = closedTrade['net_pnl'];
+      return netPnl === null || netPnl === undefined ? null : Number(netPnl);
+    }
+
+    return null;
   }
 
   private getOpenPositionForExecution(execution: BacktestExecutionSummary): Record<string, unknown> | null {
@@ -785,12 +1002,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const strategy = execution?.result?.['strategy'] || {};
     const entries = [
       ['Action', strategy['action']],
-      ['Confidence', strategy['confidence']],
+      ['Confidence', this.formatDisplayNumber(strategy['confidence'])],
       ['Pattern', strategy['pattern_detected']],
-      ['Entry Price', strategy['entry_price']],
-      ['Stop Loss', strategy['stop_loss']],
-      ['Take Profit', strategy['take_profit']],
-      ['Position Size', strategy['position_size']],
+      ['Entry Price', this.formatDisplayNumber(strategy['entry_price'])],
+      ['Stop Loss', this.formatDisplayNumber(strategy['stop_loss'])],
+      ['Take Profit', this.formatDisplayNumber(strategy['take_profit'])],
+      ['Position Size', this.formatDisplayNumber(strategy['position_size'])],
     ];
     return entries
       .filter(([, value]) => value !== null && value !== undefined && value !== '')
@@ -801,10 +1018,10 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const risk = execution?.result?.['risk_assessment'] || {};
     const entries = [
       ['Approved', risk['approved']],
-      ['Position Size', risk['position_size']],
-      ['Max Loss', risk['max_loss']],
-      ['Risk / Reward', risk['risk_reward_ratio']],
-      ['Portfolio Exposure', risk['total_exposure_pct']],
+      ['Position Size', this.formatDisplayNumber(risk['position_size'])],
+      ['Max Loss', this.formatDisplayNumber(risk['max_loss'])],
+      ['Risk / Reward', this.formatDisplayNumber(risk['risk_reward_ratio'])],
+      ['Portfolio Exposure', this.formatDisplayNumber(risk['total_exposure_pct'])],
     ];
     return entries
       .filter(([, value]) => value !== null && value !== undefined && value !== '')
@@ -815,8 +1032,8 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const review = execution?.result?.['trade_review'] || execution?.reports?.['node-trade_review_agent']?.['data'] || {};
     const entries = [
       ['Decision', review['decision']],
-      ['Confidence', review['confidence']],
-      ['Risk / Reward', review['risk_reward_ratio']],
+      ['Confidence', this.formatDisplayNumber(review['confidence'])],
+      ['Risk / Reward', this.formatDisplayNumber(review['risk_reward_ratio'])],
       ['Approval', review['approved']],
     ];
     return entries
@@ -837,13 +1054,13 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const tradeExecution = execution.result?.['trade_execution'] || {};
     const entries = [
       ['Trade Status', tradeExecution['status'] || this.executionTradeStatus(execution)],
-      ['Filled Price', tradeExecution['filled_price']],
-      ['Filled Quantity', tradeExecution['filled_quantity']],
+      ['Filled Price', this.formatDisplayNumber(tradeExecution['filled_price'])],
+      ['Filled Quantity', this.formatDisplayNumber(tradeExecution['filled_quantity'])],
       ['P&L', this.executionPnl(execution)],
       ['Open Position', openPosition ? 'Yes' : 'No'],
-      ['Unrealized P&L', openPosition?.['unrealized_pnl']],
-      ['Realized P&L', closedTrade?.['net_pnl']],
-      ['Commission', tradeExecution['commission']],
+      ['Unrealized P&L', this.formatDisplayNumber(openPosition?.['unrealized_pnl'])],
+      ['Realized P&L', this.formatDisplayNumber(closedTrade?.['net_pnl'])],
+      ['Commission', this.formatDisplayNumber(tradeExecution['commission'])],
       ['Trade ID', tradeExecution['trade_id']],
       ['Order ID', tradeExecution['order_id']],
       ['Execution Time', tradeExecution['execution_time']],
@@ -879,7 +1096,410 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   }
 
   reportArrayItems(values: unknown): string[] {
-    return Array.isArray(values) ? values.map(value => String(value)) : [];
+    if (!Array.isArray(values)) {
+      return [];
+    }
+
+    return values
+      .map(value => this.formatLlmValue(value))
+      .filter((value): value is string => Boolean(value));
+  }
+
+  llmSummaryText(value: unknown): string {
+    return this.formatLlmValue(value) || 'No executive summary returned.';
+  }
+
+  formatReportLabel(key: string): string {
+    return key
+      .split('_')
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  formatReportValue(key: string, value: unknown): string {
+    if (value === null || value === undefined || value === '') {
+      return 'N/A';
+    }
+
+    if (key === 'date_range' && typeof value === 'object') {
+      const start = (value as Record<string, unknown>)['start'];
+      const end = (value as Record<string, unknown>)['end'];
+      return `${start || 'N/A'} - ${end || 'N/A'}`;
+    }
+
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+
+    if (key === 'symbols') {
+      return Array.isArray(value) ? value.join(', ') : String(value);
+    }
+
+    if (['actual_cost', 'net_pnl', 'gross_pnl', 'max_drawdown'].includes(key)) {
+      const formatted = this.formatDisplayNumber(value);
+      return formatted === '—' ? 'N/A' : `$${formatted}`;
+    }
+
+    if (['win_rate', 'return_pct'].includes(key)) {
+      const formatted = this.formatDisplayNumber(value);
+      return formatted === '—' ? 'N/A' : `${formatted}%`;
+    }
+
+    if (key === 'runtime_seconds') {
+      const formatted = this.formatDisplayNumber(value);
+      return formatted === '—' ? 'N/A' : `${formatted}s`;
+    }
+
+    return this.formatDisplayNumber(value);
+  }
+
+  private buildEquityXTicks(points: Array<{ x: number; ts: string }>): Array<{ x: number; label: string }> {
+    if (points.length <= 3) {
+      return points.map(point => ({ x: point.x, label: this.formatChartDate(point.ts) }));
+    }
+
+    const indexes = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
+    return indexes.map(index => ({
+      x: points[index].x,
+      label: this.formatChartDate(points[index].ts),
+    }));
+  }
+
+  private buildEquityYTicks(min: number, baseline: number, max: number, scaleY: (value: number) => number): Array<{ y: number; label: string }> {
+    const values = Array.from(new Set([max, baseline, min])).sort((a, b) => b - a);
+    return values.map(value => ({
+      y: scaleY(value),
+      label: this.formatCurrencyLabel(value),
+    }));
+  }
+
+  private buildSignedAreaPath(
+    points: Array<{ x: number; y: number; equity: number }>,
+    baseline: number,
+    mode: 'positive' | 'negative',
+  ): string {
+    const segments: string[] = [];
+    const isPositive = mode === 'positive';
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const start = points[index];
+      const end = points[index + 1];
+      const startDiff = start.equity - baseline;
+      const endDiff = end.equity - baseline;
+      const baselineY = this.equityValueToY(baseline);
+
+      if ((isPositive && startDiff >= 0 && endDiff >= 0) || (!isPositive && startDiff <= 0 && endDiff <= 0)) {
+        segments.push(
+          `M${start.x.toFixed(2)},${baselineY.toFixed(2)} L${start.x.toFixed(2)},${start.y.toFixed(2)} L${end.x.toFixed(2)},${end.y.toFixed(2)} L${end.x.toFixed(2)},${baselineY.toFixed(2)} Z`,
+        );
+        continue;
+      }
+
+      if ((startDiff >= 0 && endDiff < 0) || (startDiff <= 0 && endDiff > 0)) {
+        const ratio = Math.abs(startDiff) / (Math.abs(startDiff) + Math.abs(endDiff));
+        const crossX = start.x + (end.x - start.x) * ratio;
+        const crossY = baselineY;
+        if ((isPositive && startDiff > 0) || (!isPositive && startDiff < 0)) {
+          segments.push(
+            `M${start.x.toFixed(2)},${baselineY.toFixed(2)} L${start.x.toFixed(2)},${start.y.toFixed(2)} L${crossX.toFixed(2)},${crossY.toFixed(2)} Z`,
+          );
+        }
+        if ((isPositive && endDiff > 0) || (!isPositive && endDiff < 0)) {
+          segments.push(
+            `M${crossX.toFixed(2)},${crossY.toFixed(2)} L${end.x.toFixed(2)},${end.y.toFixed(2)} L${end.x.toFixed(2)},${baselineY.toFixed(2)} Z`,
+          );
+        }
+      }
+    }
+
+    return segments.join(' ');
+  }
+
+  private equityValueToY(value: number): number {
+    const model = this.selectedRun?.equity_series || [];
+    if (!model.length) {
+      return 0;
+    }
+    const dims = BacktestsPageComponent.EQUITY_CHART;
+    const values = model.map(point => Number(point['equity'])).filter(valueItem => Number.isFinite(valueItem));
+    const baseline = Number(this.selectedRun?.config?.['initial_capital'] || values[0] || 0);
+    const min = Math.min(...values, baseline);
+    const max = Math.max(...values, baseline);
+    const padding = Math.max(Math.abs(max - min) * 0.12, baseline * 0.003, 25);
+    const domainMin = Math.min(min, baseline) - padding;
+    const domainMax = Math.max(max, baseline) + padding;
+    const plotHeight = dims.height - dims.topPad - dims.bottomPad;
+    const range = Math.max(domainMax - domainMin, 1);
+    return dims.topPad + (domainMax - value) / range * plotHeight;
+  }
+
+  private formatChartDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+  }
+
+  private formatCurrencyLabel(value: number): string {
+    if (!Number.isFinite(value)) {
+      return '$0';
+    }
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+
+  reportSectionEntries(items: string[]): Array<{ label: string; value: string }> {
+    return items.map(item => {
+      const separatorIndex = item.indexOf(':');
+      if (separatorIndex === -1) {
+        return { label: 'Note', value: item };
+      }
+
+      return {
+        label: item.slice(0, separatorIndex).trim(),
+        value: item.slice(separatorIndex + 1).trim(),
+      };
+    });
+  }
+
+  exportReportPdf(): void {
+    if (!this.selectedRun || !this.selectedReport || typeof window === 'undefined') {
+      return;
+    }
+
+    const popup = window.open('', '_blank', 'width=1200,height=900');
+    if (!popup) {
+      this.toast('Allow pop-ups to export the report as PDF', 'error');
+      return;
+    }
+
+    const summaryHtml = this.reportSummaryEntries()
+      .map(
+        item => `<div class="metric"><span>${item.label}</span><strong>${item.value}</strong></div>`,
+      )
+      .join('');
+
+    const sectionsHtml = (this.selectedReport.sections || [])
+      .map(section => {
+        const entries = this.reportSectionEntries(section.items || [])
+          .map(item => `<div class="entry"><span>${this.escapeHtml(item.label)}</span><strong>${this.escapeHtml(item.value)}</strong></div>`)
+          .join('');
+        return `<section class="section"><h2>${this.escapeHtml(section.title)}</h2><div class="entries">${entries}</div></section>`;
+      })
+      .join('');
+
+    const llmHtml = this.selectedReport.llm_analysis
+      ? `
+        <section class="section llm">
+          <h2>LLM Analysis</h2>
+          <p>${this.escapeHtml(this.selectedReport.llm_analysis['executive_summary'] || '')}</p>
+          <div class="columns">
+            <div>
+              <h3>Strengths</h3>
+              <ul>${this.reportArrayItems(this.selectedReport.llm_analysis['strengths']).map(item => `<li>${this.escapeHtml(item)}</li>`).join('')}</ul>
+            </div>
+            <div>
+              <h3>Weaknesses</h3>
+              <ul>${this.reportArrayItems(this.selectedReport.llm_analysis['weaknesses']).map(item => `<li>${this.escapeHtml(item)}</li>`).join('')}</ul>
+            </div>
+            <div>
+              <h3>Recommendations</h3>
+              <ul>${this.reportArrayItems(this.selectedReport.llm_analysis['recommendations']).map(item => `<li>${this.escapeHtml(item)}</li>`).join('')}</ul>
+            </div>
+          </div>
+        </section>`
+      : '';
+
+    const config = this.selectedRun.config || {};
+    const pipelineSnapshot = (config['pipeline_snapshot'] || {}) as Record<string, unknown>;
+    const runtimeSnapshot = (config['runtime_snapshot'] || {}) as Record<string, unknown>;
+    const configRows = [
+      ['Pipeline', String(this.selectedRun.pipeline_name || 'N/A')],
+      ['Symbols', this.selectedSymbolsLabel],
+      ['Date Range', `${config['start_date'] || 'N/A'} to ${config['end_date'] || 'N/A'}`],
+      ['Timeframe', String(config['timeframe'] || 'N/A')],
+      ['Initial Capital', `$${this.formatDisplayNumber(config['initial_capital'])}`],
+      ['Trigger Mode', String(pipelineSnapshot['trigger_mode'] || 'N/A')],
+      ['Schedule', pipelineSnapshot['schedule_enabled'] ? `${pipelineSnapshot['schedule_start_time'] || 'N/A'} - ${pipelineSnapshot['schedule_end_time'] || 'N/A'}` : 'Disabled'],
+      ['Liquidate on Deactivation', String(Boolean(pipelineSnapshot['liquidate_on_deactivation']))],
+      ['Timezone Snapshot', String(pipelineSnapshot['user_timezone'] || 'America/New_York')],
+    ];
+    const configHtml = configRows
+      .map(([label, value]) => `<div class="metric"><span>${this.escapeHtml(label)}</span><strong>${this.escapeHtml(value)}</strong></div>`)
+      .join('');
+
+    const agentSections = Object.entries((runtimeSnapshot['agent_configs'] || {}) as Record<string, Record<string, unknown>>)
+      .map(([agentName, agentConfig]) => {
+        const title = agentName.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+        return `
+          <section class="section">
+            <h2>${this.escapeHtml(title)}</h2>
+            <div class="entries single-column">
+              <div class="entry"><span>Model</span><strong>${this.escapeHtml(String(agentConfig['model'] || 'N/A'))}</strong></div>
+              <div class="entry code-block"><span>Instructions</span><strong>${this.escapeHtml(String(agentConfig['instructions'] || 'None'))}</strong></div>
+            </div>
+          </section>
+        `;
+      })
+      .join('');
+
+    const html = `
+      <html>
+        <head>
+          <title>${this.escapeHtml(this.selectedRun.pipeline_name || 'Backtest Report')} Report</title>
+          <style>
+            @page { size: A4; margin: 16mm; }
+            body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0; color: #111827; background: #ffffff; }
+            .page { max-width: 1100px; margin: 0 auto; }
+            h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.05; }
+            h2 { margin: 0 0 14px; font-size: 18px; line-height: 1.2; }
+            h3 { margin: 0 0 10px; font-size: 14px; line-height: 1.2; }
+            p.meta { color: #6b7280; margin: 0 0 24px; font-size: 13px; }
+            .hero { padding-bottom: 18px; margin-bottom: 22px; border-bottom: 2px solid #e5eef7; }
+            .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+            .metric, .entry, .section { border: 1px solid #dbe4ee; border-radius: 12px; padding: 14px; background: #ffffff; break-inside: avoid; }
+            .metric span, .entry span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 8px; font-weight: 700; }
+            .metric strong, .entry strong { font-size: 15px; line-height: 1.5; font-weight: 600; white-space: pre-wrap; }
+            .section { margin-bottom: 16px; }
+            .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+            .entries.single-column { grid-template-columns: 1fr; }
+            .columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+            ul { margin: 8px 0 0; padding-left: 18px; }
+            li { margin-bottom: 6px; line-height: 1.5; }
+            .code-block strong { font-family: "SF Mono", "Fira Code", Menlo, monospace; font-size: 12px; background: #f8fafc; border-radius: 8px; padding: 10px; display: block; }
+            .section-group { margin-bottom: 26px; }
+            .section-group > h2 { margin-bottom: 12px; }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .section, .metric, .entry { box-shadow: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <section class="hero">
+              <h1>${this.escapeHtml(this.selectedRun.pipeline_name || 'Backtest Report')}</h1>
+              <p class="meta">${this.escapeHtml(String(config['start_date'] || 'N/A'))} to ${this.escapeHtml(String(config['end_date'] || 'N/A'))} · ${this.escapeHtml(String(config['timeframe'] || 'N/A'))} · Generated ${this.escapeHtml(new Date().toLocaleString())}</p>
+            </section>
+
+            <section class="section-group">
+              <h2>Executive Summary</h2>
+              <div class="grid">${summaryHtml}</div>
+            </section>
+
+            <section class="section-group">
+              <h2>Backtest Context</h2>
+              <div class="grid">${configHtml}</div>
+            </section>
+
+            <section class="section-group">
+              <h2>Analysis</h2>
+              ${sectionsHtml}
+            </section>
+
+            <section class="section-group">
+              <h2>Agent Configuration</h2>
+              ${agentSections || '<section class="section"><h2>Agent Configuration</h2><div class="entries single-column"><div class="entry"><span>Status</span><strong>No runtime agent configuration was captured.</strong></div></div></section>'}
+            </section>
+
+            ${llmHtml}
+          </div>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const blobUrl = window.URL.createObjectURL(blob);
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      window.URL.revokeObjectURL(blobUrl);
+    };
+
+    popup.onload = () => {
+      window.setTimeout(() => {
+        try {
+          popup.focus();
+          popup.print();
+        } finally {
+          window.setTimeout(cleanup, 1000);
+        }
+      }, 300);
+    };
+    popup.onafterprint = cleanup;
+    popup.location.href = blobUrl;
+  }
+
+  private escapeHtml(value: unknown): string {
+    const normalized =
+      value === null || value === undefined
+        ? ''
+        : typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : JSON.stringify(value, null, 2);
+
+    return normalized
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private formatLlmValue(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map(item => this.formatLlmValue(item)).filter(Boolean).join(', ');
+    }
+
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if (typeof record['summary'] === 'string') {
+        return record['summary'];
+      }
+      if (typeof record['text'] === 'string') {
+        return record['text'];
+      }
+      if (typeof record['content'] === 'string') {
+        return record['content'];
+      }
+
+      const parts = Object.entries(record)
+        .map(([key, item]) => {
+          const formatted = this.formatLlmValue(item);
+          if (!formatted) {
+            return '';
+          }
+          const label = key
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, char => char.toUpperCase());
+          return `${label}: ${formatted}`;
+        })
+        .filter(Boolean);
+      return parts.join(' | ');
+    }
+
+    return String(value);
   }
 
   private resolveLaunchPipeline(): Pipeline | undefined {
@@ -948,5 +1568,22 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       BacktestsPageComponent.EXECUTION_DRAWER_WIDTH_KEY,
       String(Math.round(this.executionDrawerWidth)),
     );
+  }
+
+  formatDisplayNumber(value: unknown): string {
+    if (value === null || value === undefined || value === '') {
+      return '—';
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value.toFixed(2);
+    }
+
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && String(value).trim() !== '') {
+      return parsed.toFixed(2);
+    }
+
+    return String(value);
   }
 }

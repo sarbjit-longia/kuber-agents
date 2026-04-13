@@ -145,6 +145,8 @@ def execute_runtime_matches(
         "schedule_start_time": getattr(pipeline, "schedule_start_time", None),
         "schedule_end_time": getattr(pipeline, "schedule_end_time", None),
         "schedule_days": getattr(pipeline, "schedule_days", []) or [],
+        "liquidate_on_deactivation": getattr(pipeline, "liquidate_on_deactivation", False),
+        "user_timezone": getattr(pipeline, "user_timezone", "America/New_York"),
     }
     runtime_snapshot = getattr(pipeline, "runtime_snapshot", None) or {}
     for ticker, signal_context in matched_by_ticker.items():
