@@ -10,6 +10,7 @@ import structlog
 from app.api.v1.backtests import (
     _build_report_sections,
     _build_report_summary,
+    _execution_belongs_to_backtest,
     _generate_optional_llm_analysis,
     _load_cached_report,
     _store_cached_report,
@@ -67,7 +68,7 @@ def execute_backtest_run(backtest_run_id: str):
                 .filter(
                     Execution.user_id == run.user_id,
                     Execution.mode == "backtest",
-                    Execution.backtest_run_id == run.id,
+                    _execution_belongs_to_backtest(run.id),
                 )
                 .order_by(Execution.created_at.desc())
                 .all()

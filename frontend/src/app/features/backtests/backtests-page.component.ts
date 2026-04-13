@@ -17,7 +17,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatNativeDateModule } from '@angular/material/core';
-import { Subscription, interval } from 'rxjs';
+import { Subscription, combineLatest, interval } from 'rxjs';
 
 import {
   BacktestCreateRequest,
@@ -65,6 +65,7 @@ import { LocalDatePipe } from '../../shared/pipes/local-date.pipe';
 })
 export class BacktestsPageComponent implements OnInit, OnDestroy {
   private static readonly EXECUTION_DRAWER_WIDTH_KEY = 'backtests.executionDrawerWidth';
+  private static readonly SELECTED_PIPELINE_KEY = 'backtests.selectedPipelineId';
   private static readonly EQUITY_CHART = {
     width: 720,
     height: 260,
@@ -107,6 +108,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   });
 
   pipelines: Pipeline[] = [];
+  allRuns: BacktestRunSummary[] = [];
   runs: BacktestRunSummary[] = [];
   selectedRun: BacktestRunResult | null = null;
   selectedRunSummary: BacktestRunSummary | null = null;
@@ -117,6 +119,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   selectedReportRunId: string | null = null;
   selectedRunId: string | null = null;
   selectedPipelineId: string | null = null;
+  launcherPipelineId: string | null = null;
   reportState: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   reportErrorMessage = '';
   executionFilter = 'all';
@@ -147,9 +150,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.restoreExecutionDrawerWidth();
 
-    this.routeSub = this.route.paramMap.subscribe(params => {
+    this.routeSub = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, queryParams]) => {
       this.selectedRunId = params.get('id');
-      this.selectedPipelineId = this.route.snapshot.queryParamMap.get('pipelineId');
+      const scopedPipelineId = queryParams.get('pipelineId');
+      const restoredLaunchPipelineId = scopedPipelineId || this.restoreSelectedPipelineId();
+      this.selectedPipelineId = scopedPipelineId;
+      this.launcherPipelineId = restoredLaunchPipelineId;
       this.loadWorkspace();
     });
 
@@ -400,7 +406,161 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
   }
 
   get activeRunCount(): number {
-    return this.runs.filter(run => this.isActive(run.status)).length;
+    return this.allRuns.filter(run => this.isActive(run.status)).length;
+  }
+
+  get completedRunCount(): number {
+    return this.allRuns.filter(run => run.status === 'COMPLETED').length;
+  }
+
+  get failedRunCount(): number {
+    return this.allRuns.filter(run => run.status === 'FAILED').length;
+  }
+
+  get totalBacktestCost(): number {
+    return this.allRuns.reduce((sum, run) => sum + Number(run.actual_cost || 0), 0);
+  }
+
+  get totalFilledOrders(): number {
+    return this.allRuns.reduce((sum, run) => sum + Number(run.filled_orders_count || 0), 0);
+  }
+
+  get pipelineLaunchCards(): Array<{
+    pipeline: Pipeline;
+    runCount: number;
+    activeCount: number;
+    filledOrders: number;
+    totalCost: number;
+    latestRun: BacktestRunSummary | null;
+    symbolsLabel: string;
+  }> {
+    return this.pipelines.map(pipeline => {
+      const pipelineRuns = this.allRuns.filter(run => run.pipeline_id === pipeline.id);
+      return {
+        pipeline,
+        runCount: pipelineRuns.length,
+        activeCount: pipelineRuns.filter(run => this.isActive(run.status)).length,
+        filledOrders: pipelineRuns.reduce((sum, run) => sum + Number(run.filled_orders_count || 0), 0),
+        totalCost: pipelineRuns.reduce((sum, run) => sum + Number(run.actual_cost || 0), 0),
+        latestRun: pipelineRuns[0] || null,
+        symbolsLabel: this.defaultSymbolsForPipeline(pipeline).join(', ') || 'No default symbols',
+      };
+    });
+  }
+
+  get selectedLaunchCard():
+    | {
+        pipeline: Pipeline;
+        runCount: number;
+        activeCount: number;
+        filledOrders: number;
+        totalCost: number;
+        latestRun: BacktestRunSummary | null;
+        symbolsLabel: string;
+      }
+    | null {
+    return this.pipelineLaunchCards.find(item => item.pipeline.id === this.selectedLaunchPipelineId) || null;
+  }
+
+  get selectedWorkspaceCard():
+    | {
+        pipeline: Pipeline;
+        runCount: number;
+        activeCount: number;
+        filledOrders: number;
+        totalCost: number;
+        latestRun: BacktestRunSummary | null;
+        symbolsLabel: string;
+      }
+    | null {
+    if (!this.selectedPipelineId) {
+      return null;
+    }
+    return this.pipelineLaunchCards.find(item => item.pipeline.id === this.selectedPipelineId) || null;
+  }
+
+  get pipelineCostChartModel():
+    | {
+        viewBox: string;
+        bars: Array<{ x: number; y: number; width: number; height: number; label: string; valueLabel: string; selected: boolean }>;
+      }
+    | null {
+    const rows = this.pipelineLaunchCards.filter(item => item.totalCost > 0);
+    if (!rows.length) {
+      return null;
+    }
+
+    const width = 720;
+    const height = 240;
+    const left = 28;
+    const right = 20;
+    const top = 18;
+    const bottom = 44;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const maxValue = Math.max(...rows.map(item => item.totalCost), 1);
+    const step = plotWidth / rows.length;
+    const barWidth = Math.min(72, Math.max(28, step * 0.58));
+
+    return {
+      viewBox: `0 0 ${width} ${height}`,
+      bars: rows.map((item, index) => {
+        const heightValue = (item.totalCost / maxValue) * (plotHeight - 10);
+        const x = left + index * step + (step - barWidth) / 2;
+        const y = top + (plotHeight - heightValue);
+        return {
+          x,
+          y,
+          width: barWidth,
+          height: Math.max(heightValue, 8),
+          label: item.pipeline.name,
+          valueLabel: `$${item.totalCost.toFixed(2)}`,
+          selected: item.pipeline.id === this.selectedLaunchPipelineId,
+        };
+      }),
+    };
+  }
+
+  get pipelineOrdersChartModel():
+    | {
+        viewBox: string;
+        bars: Array<{ x: number; y: number; width: number; height: number; label: string; valueLabel: string; selected: boolean }>;
+      }
+    | null {
+    const rows = this.pipelineLaunchCards.filter(item => item.runCount > 0 || item.filledOrders > 0);
+    if (!rows.length) {
+      return null;
+    }
+
+    const width = 720;
+    const height = 240;
+    const left = 28;
+    const right = 20;
+    const top = 18;
+    const bottom = 44;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const maxValue = Math.max(...rows.map(item => item.filledOrders), 1);
+    const step = plotWidth / rows.length;
+    const barWidth = Math.min(72, Math.max(28, step * 0.58));
+
+    return {
+      viewBox: `0 0 ${width} ${height}`,
+      bars: rows.map((item, index) => {
+        const heightValue = (item.filledOrders / maxValue) * (plotHeight - 10);
+        const x = left + index * step + (step - barWidth) / 2;
+        const y = top + (plotHeight - heightValue);
+        return {
+          x,
+          y,
+          width: barWidth,
+          height: Math.max(heightValue, 8),
+          label: item.pipeline.name,
+          valueLabel: `${item.filledOrders}`,
+          selected: item.pipeline.id === this.selectedLaunchPipelineId,
+        };
+      }),
+    };
   }
 
   get selectedSymbolsLabel(): string {
@@ -415,9 +575,9 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
 
     const currentTsRaw = this.selectedRun.progress?.['current_ts'];
     const startDateRaw = this.selectedRun.config?.['start_date'];
-    const runtimeSeconds = Number(this.selectedRun.metrics?.['runtime']?.['runtime_seconds'] || 0);
+    const persistedRuntimeSeconds = Number(this.selectedRun.metrics?.['runtime']?.['runtime_seconds'] || 0);
 
-    if (!currentTsRaw || !startDateRaw || runtimeSeconds <= 0) {
+    if (!currentTsRaw || !startDateRaw) {
       return '—';
     }
 
@@ -429,6 +589,20 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
 
     const simulatedSeconds = (currentTs - startTs) / 1000;
     if (simulatedSeconds <= 0) {
+      return '—';
+    }
+
+    let runtimeSeconds = persistedRuntimeSeconds;
+    if (runtimeSeconds <= 0) {
+      const runtimeStartRaw = this.selectedRun.started_at || this.selectedRun.created_at;
+      const startedAt = new Date(String(runtimeStartRaw)).getTime();
+      const nowTs = Date.now();
+      if (Number.isFinite(startedAt) && nowTs > startedAt) {
+        runtimeSeconds = (nowTs - startedAt) / 1000;
+      }
+    }
+
+    if (runtimeSeconds <= 0) {
       return '—';
     }
 
@@ -451,10 +625,30 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     this.loadRuns(true);
   }
 
-  openLaunchDialog(): void {
-    const pipeline = this.resolveLaunchPipeline();
+  get selectedLaunchPipelineId(): string | null {
+    return (
+      this.form.controls.pipelineId.value ||
+      this.launcherPipelineId ||
+      null
+    );
+  }
+
+  get selectedLaunchPipeline(): Pipeline | undefined {
+    const explicitPipelineId = this.selectedLaunchPipelineId;
+    if (!explicitPipelineId) {
+      return undefined;
+    }
+    return this.pipelines.find(pipeline => pipeline.id === explicitPipelineId);
+  }
+
+  get selectedLaunchPipelineName(): string {
+    return this.selectedLaunchPipeline?.name || 'No pipeline selected';
+  }
+
+  openLaunchDialog(pipelineId?: string): void {
+    const pipeline = this.resolveLaunchPipeline(!pipelineId, pipelineId);
     if (!pipeline) {
-      this.toast('Load a pipeline before starting a backtest', 'error');
+      this.toast('Select a pipeline before starting a backtest', 'error');
       return;
     }
 
@@ -468,7 +662,8 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe((result?: { runId?: string }) => {
       if (result?.runId) {
         this.selectedPipelineId = pipeline.id;
-        this.router.navigate(['/backtests', result.runId], {
+        this.launcherPipelineId = pipeline.id;
+        this.router.navigate(['/backtests/workspace', result.runId], {
           queryParams: { pipelineId: pipeline.id },
         });
         return;
@@ -483,9 +678,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     this.pipelineService.loadPipelines().subscribe({
       next: (pipelines) => {
         this.pipelines = pipelines;
-        const pipelineId = this.selectedPipelineId || this.form.controls.pipelineId.value || pipelines[0]?.id || '';
+        const pipelineId = this.launcherPipelineId || this.form.controls.pipelineId.value || pipelines[0]?.id || '';
+        this.launcherPipelineId = pipelineId || null;
         this.form.patchValue({ pipelineId }, { emitEvent: false });
-        this.seedFormFromPipeline(pipelineId);
+        if (pipelineId) {
+          this.seedFormFromPipeline(pipelineId);
+        }
         this.loadingPipelines = false;
       },
       error: () => {
@@ -502,14 +700,23 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     this.backtestService.listBacktests(0, 100).subscribe({
       next: (response) => {
         const allRuns = response.backtests || [];
+        this.allRuns = allRuns;
         const pipelineId = this.activePipelineId();
         this.runs = pipelineId
           ? allRuns.filter(run => run.pipeline_id === pipelineId)
           : allRuns;
         if (this.selectedRunId) {
           this.loadSelectedRun(this.selectedRunId, false);
-        } else if (this.runs.length > 0) {
-          this.selectRun(this.runs[0].id, false);
+        } else {
+          this.selectedRun = null;
+          this.selectedRunSummary = null;
+          this.selectedExecutions = [];
+          this.selectedExecution = null;
+          this.selectedTimeline = [];
+          this.selectedReport = null;
+          this.selectedReportRunId = null;
+          this.reportState = 'idle';
+          this.reportErrorMessage = '';
         }
         this.loadingRuns = false;
       },
@@ -525,10 +732,12 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const run = this.runs.find(item => item.id === runId);
     if (run?.pipeline_id) {
       this.selectedPipelineId = run.pipeline_id;
+      this.launcherPipelineId = run.pipeline_id;
+      this.persistSelectedPipelineId(run.pipeline_id);
       this.form.patchValue({ pipelineId: run.pipeline_id }, { emitEvent: false });
     }
     if (navigate) {
-      this.router.navigate(['/backtests', runId], {
+      this.router.navigate(['/backtests/workspace', runId], {
         queryParams: {
           pipelineId: run?.pipeline_id || this.selectedPipelineId || this.form.controls.pipelineId.value || null,
         },
@@ -554,6 +763,8 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
         this.selectedRunSummary = run;
         if (run.pipeline_id && run.pipeline_id !== this.selectedPipelineId) {
           this.selectedPipelineId = run.pipeline_id;
+          this.launcherPipelineId = run.pipeline_id;
+          this.persistSelectedPipelineId(run.pipeline_id);
           this.form.patchValue({ pipelineId: run.pipeline_id }, { emitEvent: false });
           this.seedFormFromPipeline(run.pipeline_id);
           this.loadRuns(false);
@@ -658,7 +869,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.launching = false;
         this.toast('Backtest launched', 'success');
-        this.router.navigate(['/backtests', response.run_id], {
+        this.router.navigate(['/backtests/workspace', response.run_id], {
           queryParams: { pipelineId: payload.pipeline_id },
         });
       },
@@ -689,9 +900,32 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
 
   onPipelineChanged(): void {
     const pipelineId = this.form.controls.pipelineId.value ?? '';
-    this.selectedPipelineId = pipelineId;
+    this.launcherPipelineId = pipelineId;
+    this.persistSelectedPipelineId(pipelineId);
     this.seedFormFromPipeline(pipelineId);
-    this.router.navigate(['/backtests'], { queryParams: { pipelineId } });
+  }
+
+  openPipelineBacktests(pipelineId: string): void {
+    this.launcherPipelineId = pipelineId;
+    this.selectedPipelineId = pipelineId;
+    this.persistSelectedPipelineId(pipelineId);
+    this.form.patchValue({ pipelineId }, { emitEvent: false });
+    this.seedFormFromPipeline(pipelineId);
+    this.selectedRunId = null;
+    this.selectedRun = null;
+    this.selectedRunSummary = null;
+    this.selectedExecutions = [];
+    this.selectedExecution = null;
+    this.selectedTimeline = [];
+    this.selectedReport = null;
+    this.selectedReportRunId = null;
+    this.reportState = 'idle';
+    this.reportErrorMessage = '';
+    this.router.navigate(['/backtests/workspace'], { queryParams: { pipelineId } });
+  }
+
+  selectPipelineForBacktests(pipelineId: string): void {
+    this.openPipelineBacktests(pipelineId);
   }
 
   seedFormFromPipeline(pipelineId: string): void {
@@ -1063,7 +1297,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       ['Commission', this.formatDisplayNumber(tradeExecution['commission'])],
       ['Trade ID', tradeExecution['trade_id']],
       ['Order ID', tradeExecution['order_id']],
-      ['Execution Time', tradeExecution['execution_time']],
+      ['Execution Time', this.formatTimestampDisplay(tradeExecution['execution_time'])],
     ];
     return entries
       .filter(([, value]) => value !== null && value !== undefined && value !== '')
@@ -1079,7 +1313,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       ['Trade ID', tradeExecution['trade_id']],
       ['Order ID', tradeExecution['order_id']],
       ['Commission', tradeExecution['commission']],
-      ['Execution Time', tradeExecution['execution_time']],
+      ['Execution Time', this.formatTimestampDisplay(tradeExecution['execution_time'])],
       ['Broker Reason', tradeExecution?.['broker_response']?.['reason']],
     ];
     return entries
@@ -1502,21 +1736,31 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     return String(value);
   }
 
-  private resolveLaunchPipeline(): Pipeline | undefined {
-    const preferredPipelineId =
+  private resolveLaunchPipeline(
+    allowFallbackToFirst = true,
+    preferredId?: string | null,
+  ): Pipeline | undefined {
+    const resolvedPipelineId =
+      preferredId ||
       this.selectedRun?.pipeline_id ||
       this.selectedPipelineId ||
       this.form.controls.pipelineId.value ||
-      this.pipelines[0]?.id;
+      (allowFallbackToFirst ? this.pipelines[0]?.id : null);
 
-    return this.pipelines.find(pipeline => pipeline.id === preferredPipelineId) || this.pipelines[0];
+    if (!resolvedPipelineId) {
+      return allowFallbackToFirst ? this.pipelines[0] : undefined;
+    }
+
+    return (
+      this.pipelines.find(pipeline => pipeline.id === resolvedPipelineId) ||
+      (allowFallbackToFirst ? this.pipelines[0] : undefined)
+    );
   }
 
   private activePipelineId(): string | null {
     return (
       this.selectedPipelineId ||
       this.selectedRun?.pipeline_id ||
-      this.form.controls.pipelineId.value ||
       null
     );
   }
@@ -1536,6 +1780,27 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       duration: 3200,
       panelClass: [`toast-${panelClass}`],
     });
+  }
+
+  private restoreSelectedPipelineId(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return window.localStorage.getItem(BacktestsPageComponent.SELECTED_PIPELINE_KEY);
+  }
+
+  private persistSelectedPipelineId(pipelineId: string | null | undefined): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!pipelineId) {
+      window.localStorage.removeItem(BacktestsPageComponent.SELECTED_PIPELINE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(BacktestsPageComponent.SELECTED_PIPELINE_KEY, pipelineId);
   }
 
   private restoreExecutionDrawerWidth(): void {
@@ -1585,5 +1850,24 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     }
 
     return String(value);
+  }
+
+  formatTimestampDisplay(value: unknown): string {
+    if (!value) {
+      return '—';
+    }
+
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value);
+    }
+
+    return parsed.toLocaleString([], {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   }
 }

@@ -143,7 +143,7 @@ export class PipelinesComponent implements OnInit {
 
   openBacktest(pipeline: Pipeline, event: Event): void {
     event.stopPropagation();
-    this.router.navigate(['/backtests'], { queryParams: { pipelineId: pipeline.id } });
+    this.router.navigate(['/backtests/workspace'], { queryParams: { pipelineId: pipeline.id } });
   }
 
   toggleActive(pipeline: Pipeline, event: Event): void {

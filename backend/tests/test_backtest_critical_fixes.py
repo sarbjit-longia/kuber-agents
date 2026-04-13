@@ -8,6 +8,7 @@ import pytest
 
 from app.backtesting.orchestrator import BacktestOrchestrator
 from app.backtesting.runtime_main import _start_embedded_signal_generator
+from app.api.v1 import backtests as backtests_api
 from app.models.backtest_run import BacktestRunStatus
 from app.config import settings
 
@@ -475,3 +476,27 @@ def test_orchestrator_liquidates_positions_when_schedule_window_ends(monkeypatch
 
     assert orchestrator.broker.get_positions() == {}
     assert any(trade.get("exit_reason") == "schedule" for trade in run.trades)
+
+
+@pytest.mark.no_tool_mocks
+def test_backtest_trade_linking_does_not_guess_execution_matches():
+    executions = [
+        SimpleNamespace(
+            id="exec-filled",
+            created_at=None,
+            result={"trade_execution": {"status": "filled", "filled_price": 123.45}},
+            symbol="AAPL",
+        )
+    ]
+    trades = [
+        {
+            "id": "trade-1",
+            "symbol": "AAPL",
+            "net_pnl": 42.0,
+        }
+    ]
+
+    normalized = backtests_api._attach_trade_execution_links(trades, executions)
+
+    assert normalized[0]["id"] == "trade-1"
+    assert "execution_id" not in normalized[0]

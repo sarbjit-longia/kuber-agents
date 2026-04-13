@@ -46,11 +46,16 @@ export const routes: Routes = [
   },
   {
     path: 'backtests',
+    loadComponent: () => import('./features/backtests/home/backtests-home.component').then(m => m.BacktestsHomeComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'backtests/workspace',
     loadComponent: () => import('./features/backtests/backtests-page.component').then(m => m.BacktestsPageComponent),
     canActivate: [authGuard]
   },
   {
-    path: 'backtests/:id',
+    path: 'backtests/workspace/:id',
     loadComponent: () => import('./features/backtests/backtests-page.component').then(m => m.BacktestsPageComponent),
     canActivate: [authGuard]
   },

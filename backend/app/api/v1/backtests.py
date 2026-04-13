@@ -166,29 +166,15 @@ def _attach_trade_execution_links(
     if not trades:
         return []
 
-    filled_executions = [
-        execution
-        for execution in sorted(executions, key=lambda item: item.created_at or datetime.min)
-        if ((execution.result or {}).get("trade_execution") or {}).get("status") == "filled"
-    ]
-
     normalized: list[dict[str, Any]] = []
-    fallback_index = 0
+    valid_execution_ids = {str(execution.id) for execution in executions}
     for trade in trades:
         trade_record = dict(trade)
-        if trade_record.get("execution_id"):
-            normalized.append(trade_record)
-            continue
-
-        if fallback_index < len(filled_executions):
-            execution = filled_executions[fallback_index]
-            trade_record["execution_id"] = str(execution.id)
-            trade_execution = (execution.result or {}).get("trade_execution") or {}
-            if not trade_record.get("symbol"):
-                trade_record["symbol"] = execution.symbol
-            if not trade_record.get("entry_price") and trade_execution.get("filled_price") is not None:
-                trade_record["entry_price"] = trade_execution.get("filled_price")
-            fallback_index += 1
+        execution_id = trade_record.get("execution_id")
+        if execution_id:
+            trade_record["execution_id"] = str(execution_id)
+            if trade_record["execution_id"] not in valid_execution_ids:
+                trade_record.pop("execution_id", None)
 
         normalized.append(trade_record)
 

@@ -1,0 +1,131 @@
+<app-navbar></app-navbar>
+
+<main class="backtests-home-shell">
+  <section class="home-hero">
+    <div>
+      <span class="eyebrow">Backtesting Center</span>
+      <h1>Compare pipelines, review cost, and open a pipeline workspace.</h1>
+      <p>
+        Use this page as the main backtesting dashboard. Choose any pipeline to enter its dedicated
+        backtesting workspace and launch new parity runs there.
+      </p>
+    </div>
+
+    <div class="hero-stats">
+      <article class="hero-stat">
+        <span class="label">Pipelines</span>
+        <strong>{{ pipelines.length }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Active Runs</span>
+        <strong>{{ activeRunCount }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Completed</span>
+        <strong>{{ completedRunCount }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Filled Orders</span>
+        <strong>{{ totalFilledOrders }}</strong>
+      </article>
+      <article class="hero-stat">
+        <span class="label">Total Cost</span>
+        <strong>${{ totalCost | number:'1.2-2' }}</strong>
+      </article>
+    </div>
+  </section>
+
+  <ng-container *ngIf="!loading; else loadingState">
+    <section class="dashboard-grid">
+      <mat-card class="panel-card spotlight-card" *ngIf="pipelineCards[0] as spotlight">
+        <span class="eyebrow">Most Active Pipeline</span>
+        <h2>{{ spotlight.pipeline.name }}</h2>
+        <p>{{ spotlight.symbolsLabel }}</p>
+        <div class="spotlight-metrics">
+          <div>
+            <span>Runs</span>
+            <strong>{{ spotlight.runCount }}</strong>
+          </div>
+          <div>
+            <span>Orders</span>
+            <strong>{{ spotlight.filledOrders }}</strong>
+          </div>
+          <div>
+            <span>Cost</span>
+            <strong>${{ spotlight.totalCost | number:'1.2-2' }}</strong>
+          </div>
+        </div>
+        <button mat-flat-button color="primary" type="button" (click)="openPipelineWorkspace(spotlight.pipeline.id)">
+          <mat-icon>rocket_launch</mat-icon>
+          <span>Open Workspace</span>
+        </button>
+      </mat-card>
+
+      <mat-card class="panel-card chart-card">
+        <span class="eyebrow">Spend Snapshot</span>
+        <h2>Top pipeline costs</h2>
+        <div class="mini-bars" *ngIf="pipelineCards.length; else noPipelinesState">
+          <article class="mini-bar-row" *ngFor="let item of pipelineCards">
+            <div class="mini-bar-labels">
+              <strong>{{ item.pipeline.name }}</strong>
+              <span>${{ item.totalCost | number:'1.2-2' }}</span>
+            </div>
+            <div class="mini-bar-track">
+              <div class="mini-bar-fill" [style.width.%]="totalCost > 0 ? (item.totalCost / totalCost) * 100 : 0"></div>
+            </div>
+          </article>
+        </div>
+      </mat-card>
+    </section>
+
+    <mat-card class="panel-card launcher-card">
+      <header class="launcher-header">
+        <div>
+          <span class="eyebrow">Pipeline Launcher</span>
+          <h2>Open a pipeline-specific backtesting workspace</h2>
+        </div>
+        <button mat-button type="button" (click)="refresh()">
+          <mat-icon>refresh</mat-icon>
+          Refresh
+        </button>
+      </header>
+
+      <div class="pipeline-grid" *ngIf="pipelineCards.length; else noPipelinesState">
+        <button
+          class="pipeline-card"
+          type="button"
+          *ngFor="let item of pipelineCards"
+          (click)="openPipelineWorkspace(item.pipeline.id)"
+        >
+          <div class="pipeline-card-top">
+            <h3>{{ item.pipeline.name }}</h3>
+            <span class="status-pill">{{ item.runCount }} Runs</span>
+          </div>
+          <p>{{ item.symbolsLabel }}</p>
+          <div class="pipeline-card-meta">
+            <span>Trigger: {{ item.pipeline.trigger_mode || 'N/A' }}</span>
+            <span>Orders: {{ item.filledOrders }}</span>
+            <span>Cost: ${{ item.totalCost | number:'1.2-2' }}</span>
+          </div>
+          <div class="pipeline-card-footer">
+            <span>{{ item.latestRun?.created_at ? ('Latest ' + (item.latestRun!.created_at | localDate:'short')) : 'No runs yet' }}</span>
+            <strong>Open workspace</strong>
+          </div>
+        </button>
+      </div>
+    </mat-card>
+  </ng-container>
+
+  <ng-template #loadingState>
+    <div class="loading-state">
+      <mat-spinner diameter="32"></mat-spinner>
+      <span>Loading backtesting dashboard...</span>
+    </div>
+  </ng-template>
+
+  <ng-template #noPipelinesState>
+    <p class="empty-state">No pipelines are available yet.</p>
+  </ng-template>
+</main>
+
+<app-footer></app-footer>

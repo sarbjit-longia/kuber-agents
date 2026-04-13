@@ -222,6 +222,13 @@
               <mat-icon>visibility</mat-icon>
               Show All
             </button>
+            <button mat-stroked-button class="preset-btn"
+                    [class.active]="hideBacktestTimeline"
+                    (click)="hideBacktestTimeline = !hideBacktestTimeline"
+                    [matTooltip]="hideBacktestTimeline ? 'Show backtest bars in the timeline' : 'Hide backtest bars from the timeline'">
+              <mat-icon>{{ hideBacktestTimeline ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+              Hide Backtests
+            </button>
           </div>
         </div>
       </mat-card-title>

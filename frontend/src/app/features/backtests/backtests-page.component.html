@@ -21,8 +21,8 @@
         <strong>{{ activeRunCount }}</strong>
       </article>
       <article class="hero-stat">
-        <span class="label">Selected Cost</span>
-        <strong>${{ selectedRun?.actual_cost || 0 | number:'1.2-2' }}</strong>
+        <span class="label">{{ selectedRun ? 'Selected Cost' : 'Total Cost' }}</span>
+        <strong>${{ (selectedRun?.actual_cost ?? totalBacktestCost) | number:'1.2-2' }}</strong>
       </article>
     </div>
   </section>
@@ -610,18 +610,268 @@
       </ng-container>
 
       <ng-template #noSelection>
-        <mat-card class="panel-card empty-selection">
-          <mat-icon>insights</mat-icon>
-          <h2>Select a backtest run</h2>
-          <p>
-            Launch a new run from the control rail or select an existing run to inspect
-            progress, trades, execution-level visibility, and the generated report.
-          </p>
-          <button mat-flat-button color="primary" type="button" (click)="openLaunchDialog()">
-            <mat-icon>rocket_launch</mat-icon>
-            <span>Start New Run</span>
-          </button>
-        </mat-card>
+        <div class="home-dashboard" *ngIf="selectedWorkspaceCard as card; else dashboardLanding">
+          <mat-card class="panel-card launch-focus-card workspace-empty-card">
+            <header class="panel-header">
+              <div>
+                <span class="panel-kicker">Pipeline Workspace</span>
+                <h2>{{ card.pipeline.name }}</h2>
+                <p class="workspace-subtitle">
+                  Backtesting context for this pipeline only. Use the left rail for this pipeline’s runs,
+                  or launch a new run below.
+                </p>
+              </div>
+              <span class="status-chip" [ngClass]="card.activeCount ? 'status-running' : 'status-completed'">
+                {{ card.activeCount ? (card.activeCount + ' Active') : (card.runCount + ' Runs') }}
+              </span>
+            </header>
+
+            <div class="launch-focus-grid">
+              <article class="summary-metric">
+                <span class="label">Default Symbols</span>
+                <strong>{{ card.symbolsLabel }}</strong>
+              </article>
+              <article class="summary-metric">
+                <span class="label">Trigger</span>
+                <strong>{{ card.pipeline.trigger_mode || 'N/A' }}</strong>
+              </article>
+              <article class="summary-metric">
+                <span class="label">Pipeline Cost</span>
+                <strong>${{ card.totalCost | number:'1.2-2' }}</strong>
+              </article>
+              <article class="summary-metric">
+                <span class="label">Filled Orders</span>
+                <strong>{{ card.filledOrders }}</strong>
+              </article>
+              <article class="summary-metric">
+                <span class="label">Latest Run</span>
+                <strong>{{ card.latestRun?.created_at ? (card.latestRun!.created_at | localDate:'short') : 'No runs yet' }}</strong>
+              </article>
+            </div>
+
+            <div class="launch-focus-actions">
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                [disabled]="!selectedLaunchPipeline"
+                (click)="openLaunchDialog(selectedLaunchPipeline?.id)"
+              >
+                <mat-icon>rocket_launch</mat-icon>
+                <span>Start New Run</span>
+              </button>
+            </div>
+          </mat-card>
+        </div>
+
+        <ng-template #dashboardLanding>
+        <div class="home-dashboard">
+          <section class="home-top-grid">
+            <mat-card class="panel-card dashboard-summary-card">
+              <header class="panel-header">
+                <div>
+                  <span class="panel-kicker">Backtesting Home</span>
+                  <h2>Backtest demand, spend, and outcomes across pipelines</h2>
+                </div>
+              </header>
+
+              <div class="summary-grid">
+                <article class="summary-metric">
+                  <span class="label">Total Runs</span>
+                  <strong>{{ allRuns.length }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Active Runs</span>
+                  <strong>{{ activeRunCount }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Completed</span>
+                  <strong>{{ completedRunCount }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Failed</span>
+                  <strong>{{ failedRunCount }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Filled Orders</span>
+                  <strong>{{ totalFilledOrders }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Total LLM Cost</span>
+                  <strong>${{ totalBacktestCost | number:'1.2-2' }}</strong>
+                </article>
+              </div>
+            </mat-card>
+
+            <mat-card class="panel-card launch-focus-card" *ngIf="selectedLaunchCard as card">
+              <header class="panel-header">
+                <div>
+                  <span class="panel-kicker">Launch Context</span>
+                  <h3>{{ card.pipeline.name }}</h3>
+                </div>
+                <span class="status-chip" [ngClass]="card.activeCount ? 'status-running' : 'status-completed'">
+                  {{ card.activeCount ? (card.activeCount + ' Active') : (card.runCount + ' Runs') }}
+                </span>
+              </header>
+
+              <div class="launch-focus-grid">
+                <article class="summary-metric">
+                  <span class="label">Default Symbols</span>
+                  <strong>{{ card.symbolsLabel }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Trigger</span>
+                  <strong>{{ card.pipeline.trigger_mode || 'N/A' }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Pipeline Cost</span>
+                  <strong>${{ card.totalCost | number:'1.2-2' }}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="label">Filled Orders</span>
+                  <strong>{{ card.filledOrders }}</strong>
+                </article>
+              </div>
+
+              <p class="launch-focus-note">
+                Use this selected pipeline as the source for a new parity backtest run.
+              </p>
+
+              <div class="launch-focus-actions">
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  [disabled]="!selectedLaunchPipeline"
+                  (click)="openLaunchDialog(selectedLaunchPipeline?.id)"
+                >
+                  <mat-icon>rocket_launch</mat-icon>
+                  <span>Start New Run</span>
+                </button>
+              </div>
+            </mat-card>
+          </section>
+
+          <section class="landing-chart-row">
+            <mat-card class="panel-card chart-card">
+              <header class="panel-header">
+                <div>
+                  <span class="panel-kicker">Cost By Pipeline</span>
+                  <h3>LLM spend concentration</h3>
+                </div>
+              </header>
+              <div class="landing-mini-chart" *ngIf="pipelineCostChartModel as chart; else noPipelineCostChart">
+                <svg [attr.viewBox]="chart.viewBox" preserveAspectRatio="none">
+                  <g *ngFor="let bar of chart.bars">
+                    <rect
+                      [attr.x]="bar.x"
+                      [attr.y]="bar.y"
+                      [attr.width]="bar.width"
+                      [attr.height]="bar.height"
+                      [attr.class]="bar.selected ? 'mini-bar selected-bar' : 'mini-bar'"
+                      rx="10"
+                    ></rect>
+                    <text [attr.x]="bar.x + bar.width / 2" [attr.y]="bar.y - 8" text-anchor="middle" class="mini-bar-value">
+                      {{ bar.valueLabel }}
+                    </text>
+                    <text [attr.x]="bar.x + bar.width / 2" y="226" text-anchor="middle" class="mini-bar-label">
+                      {{ bar.label }}
+                    </text>
+                  </g>
+                </svg>
+              </div>
+              <ng-template #noPipelineCostChart>
+                <p class="empty-state">Cost bars will appear once pipelines have backtest spend.</p>
+              </ng-template>
+            </mat-card>
+
+            <mat-card class="panel-card chart-card">
+              <header class="panel-header">
+                <div>
+                  <span class="panel-kicker">Orders By Pipeline</span>
+                  <h3>Which pipelines actually trade</h3>
+                </div>
+              </header>
+              <div class="landing-mini-chart" *ngIf="pipelineOrdersChartModel as chart; else noPipelineOrdersChart">
+                <svg [attr.viewBox]="chart.viewBox" preserveAspectRatio="none">
+                  <g *ngFor="let bar of chart.bars">
+                    <rect
+                      [attr.x]="bar.x"
+                      [attr.y]="bar.y"
+                      [attr.width]="bar.width"
+                      [attr.height]="bar.height"
+                      [attr.class]="bar.selected ? 'mini-bar selected-bar secondary-bar' : 'mini-bar secondary-bar'"
+                      rx="10"
+                    ></rect>
+                    <text [attr.x]="bar.x + bar.width / 2" [attr.y]="bar.y - 8" text-anchor="middle" class="mini-bar-value">
+                      {{ bar.valueLabel }}
+                    </text>
+                    <text [attr.x]="bar.x + bar.width / 2" y="226" text-anchor="middle" class="mini-bar-label">
+                      {{ bar.label }}
+                    </text>
+                  </g>
+                </svg>
+              </div>
+              <ng-template #noPipelineOrdersChart>
+                <p class="empty-state">Order activity bars will appear once pipelines start filling orders.</p>
+              </ng-template>
+            </mat-card>
+          </section>
+
+          <mat-card class="panel-card pipeline-picker-card">
+            <header class="panel-header">
+              <div>
+                <span class="panel-kicker">Pipeline Launcher</span>
+                <h3>Pick a pipeline, then launch a new backtest</h3>
+                <p class="pipeline-launch-selection-banner">
+                  Selected:
+                  <strong>{{ selectedLaunchPipelineName }}</strong>
+                </p>
+              </div>
+            </header>
+
+            <div class="pipeline-launch-grid" *ngIf="pipelines.length; else noPipelines">
+              <button
+                class="pipeline-launch-card"
+                type="button"
+                *ngFor="let item of pipelineLaunchCards"
+                [class.selected]="selectedLaunchPipelineId === item.pipeline.id"
+                (click)="openPipelineBacktests(item.pipeline.id)"
+              >
+                <div class="pipeline-launch-top">
+                  <span class="pipeline-launch-name">{{ item.pipeline.name }}</span>
+                  <span class="status-chip" [ngClass]="item.activeCount ? 'status-running' : 'status-completed'">
+                    {{ item.activeCount ? (item.activeCount + ' Active') : (item.runCount + ' Runs') }}
+                  </span>
+                </div>
+                <div class="pipeline-launch-picked" *ngIf="selectedLaunchPipelineId === item.pipeline.id">
+                  <mat-icon>check_circle</mat-icon>
+                  <span>Selected pipeline</span>
+                </div>
+                <p class="pipeline-launch-symbols">{{ item.symbolsLabel }}</p>
+                <div class="pipeline-launch-meta">
+                  <span>Trigger: {{ item.pipeline.trigger_mode || 'N/A' }}</span>
+                  <span>Latest: {{ item.latestRun?.created_at ? (item.latestRun?.created_at | localDate:'short') : 'Never' }}</span>
+                </div>
+                <div class="pipeline-launch-footer">
+                  <span class="pipeline-launch-selection">
+                    Cost ${{ item.totalCost | number:'1.2-2' }} · Orders {{ item.filledOrders }}
+                  </span>
+                  <span class="pipeline-launch-open-hint">
+                    {{ selectedLaunchPipelineId === item.pipeline.id ? 'Viewing pipeline backtests' : 'Open pipeline backtests' }}
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            <ng-template #noPipelines>
+              <p class="empty-state">
+                No pipelines available yet. Create a pipeline first, then launch a parity backtest from here.
+              </p>
+            </ng-template>
+          </mat-card>
+        </div>
+        </ng-template>
       </ng-template>
       </section>
     </section>

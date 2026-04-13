@@ -75,6 +75,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     tooltip: string;
     category: string;
   }> = [];
+  hideBacktestTimeline = false;
 
   // Timeline filter toggles — which categories are visible
   timelineFilters: Record<string, boolean> = {
@@ -139,6 +140,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     { value: 'all', label: 'All Modes' },
     { value: 'paper', label: 'Paper' },
     { value: 'live', label: 'Live' },
+    { value: 'backtest', label: 'Backtest' },
     { value: 'simulation', label: 'Simulation' }
   ];
   
@@ -472,7 +474,12 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
 
   /** Get only the bars that pass the current timeline filters */
   get filteredBars() {
-    return this.executionBars.filter(bar => this.timelineFilters[bar.category]);
+    return this.executionBars.filter(bar => {
+      if (this.hideBacktestTimeline && String(bar.execution.mode || '').toLowerCase() === 'backtest') {
+        return false;
+      }
+      return this.timelineFilters[bar.category];
+    });
   }
 
   /** Toggle a timeline category on/off */
@@ -539,6 +546,7 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
     const colors: any = {
       'live': 'warn',
       'paper': 'primary',
+      'backtest': 'accent',
       'simulation': 'accent',
       'validation': 'default'
     };
