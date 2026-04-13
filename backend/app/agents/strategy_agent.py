@@ -8,15 +8,15 @@ import structlog
 import json
 import re
 from typing import Dict, Any, List, Optional, Tuple
-from crewai import Agent, Task, Crew
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetadata, AgentConfigSchema
 from app.services.langfuse_service import trace_agent_execution
-from app.tools.crewai_tools import load_tools_for_agent
+from app.tools.openai_tools import build_openai_tools
 from app.services.chart_annotation_builder import ChartAnnotationBuilder
 from app.services.model_registry import model_registry
+from app.services.agent_runner import AgentRunner
 from app.services.llm_provider import create_openai_client, get_llm_provider, resolve_chat_model
 from app.config import settings
 from app.database import SessionLocal
@@ -94,6 +94,7 @@ class StrategyAgent(BaseAgent):
         model_name = config.get("model", settings.OPENAI_MODEL)
         self.logger.info("using_llm_provider", provider=get_llm_provider(), model=model_name)
         self.model = model_name
+        self.runner = AgentRunner(model=model_name, temperature=0.7, timeout=45)
     
     def process(self, state: PipelineState) -> PipelineState:
         """Generate trading strategy using LLM + tools."""
@@ -233,7 +234,7 @@ class StrategyAgent(BaseAgent):
             ] if candles else []
 
             # Load tools declared in metadata — passes candle data so ICT tools are included
-            tools = load_tools_for_agent(
+            tools = build_openai_tools(
                 self.get_metadata().default_tools,
                 ticker=state.symbol,
                 candles=candle_dicts if candle_dicts else None
@@ -244,12 +245,8 @@ class StrategyAgent(BaseAgent):
             # STAGE 1: Call tools directly to get analysis data
             tool_results_text, tool_results_data = self._call_tools_and_format(tools, state, candle_dicts, price_precision)
             
-            # STAGE 2: Create agent WITHOUT tools, but WITH tool results in prompt
-            # System prompt defines behavior, user instructions define the task
-            strategist = Agent(
-                role="Trading Strategy Executor",
-                goal="Follow the user's trading instructions exactly and generate a trade signal with proper risk management.",
-                backstory=load_prompt("strategy_agent_system") + f"""
+            # STAGE 2: Run a single direct LLM call using the precomputed tool output.
+            system_prompt = load_prompt("strategy_agent_system") + f"""
 
 You are executing a trade strategy for {state.symbol}.
 
@@ -260,16 +257,9 @@ CORE PRINCIPLES:
 4. You format output as valid JSON only
 5. You keep reasoning concise unless user asks for detailed analysis
 
-Your job is to EXECUTE the user's strategy using the data provided, not second-guess it or re-analyze the market.""",
-                tools=[],  # Don't give tools to agent - we already called them
-                llm=self.model,
-                verbose=True,
-                allow_delegation=False
-            )
-            
-            # Create strategy task - clean separation of data and instructions
-            strategy_task = Task(
-                description=f"""Execute the following trading strategy for {state.symbol}.
+Your job is to EXECUTE the user's strategy using the data provided, not second-guess it or re-analyze the market."""
+
+            user_prompt = f"""Execute the following trading strategy for {state.symbol}.
 
 ═══════════════════════════════════════════════════════════
 USER'S TRADING INSTRUCTIONS:
@@ -333,50 +323,15 @@ JSON RULES:
 - NEVER leave entry_price, stop_loss, or take_profit blank/null
 - Calculate stop_loss and take_profit using the pip values from user instructions
 
-Remember: Follow the user's instructions literally. Keep reasoning brief unless they ask for detailed analysis.""",
-                agent=strategist,
-                expected_output="A complete, valid JSON object (and ONLY JSON) with all required fields: action, entry_price, stop_loss, take_profit, confidence, pattern_detected, and detailed reasoning. The reasoning should reference any tools used and their results."
-            )
-            
-            # Execute crew
-            crew = Crew(
-                agents=[strategist],
-                tasks=[strategy_task],
-                verbose=True  # Enable verbose to see what's happening with tool calls
-            )
+Remember: Follow the user's instructions literally. Keep reasoning brief unless they ask for detailed analysis."""
             
             self.log(state, "Executing strategy generation...")
-            crew_result = crew.kickoff()
-            
-            # Try to get task output instead of crew output
-            # The task output should have the final JSON, not just tool calls
-            final_output = None
-            
-            # First, try to get the task output directly
-            if hasattr(crew_result, 'tasks_output') and crew_result.tasks_output:
-                task_output = crew_result.tasks_output[0] if isinstance(crew_result.tasks_output, list) else crew_result.tasks_output
-                if hasattr(task_output, 'raw'):
-                    final_output = str(task_output.raw)
-                    self.log(state, "📝 Using tasks_output[0].raw")
-                elif hasattr(task_output, 'output'):
-                    final_output = str(task_output.output)
-                    self.log(state, "📝 Using tasks_output[0].output")
-                else:
-                    final_output = str(task_output)
-                    self.log(state, "📝 Using str(tasks_output[0])")
-            
-            # Fallback to crew result attributes
-            if not final_output or len(final_output) < 200:
-                self.log(state, "📝 Task output too short, trying crew result attributes...")
-                if hasattr(crew_result, 'raw'):
-                    final_output = str(crew_result.raw)
-                    self.log(state, "📝 Using crew_result.raw")
-                elif hasattr(crew_result, 'output'):
-                    final_output = str(crew_result.output)
-                    self.log(state, "📝 Using crew_result.output")
-                else:
-                    final_output = str(crew_result)
-                    self.log(state, "📝 Using str(crew_result)")
+            final_output = self.runner.run(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                trace=trace,
+                max_iterations=1,
+            ).content
             
             # Log raw result for debugging
             self.log(state, f"📝 Raw LLM result length: {len(final_output)} characters")

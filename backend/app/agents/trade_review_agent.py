@@ -18,7 +18,7 @@ from app.schemas.pipeline_state import (
     AgentConfigSchema,
     TradeReview,
 )
-from app.services.llm_provider import create_openai_client, resolve_chat_model
+from app.services.agent_runner import AgentRunner
 from app.config import settings
 
 logger = structlog.get_logger()
@@ -155,7 +155,7 @@ class TradeReviewAgent(BaseAgent):
 
         # --- LLM synthesis ---
         try:
-            review = self._llm_review(state)
+            review = self._llm_review(state, trace=trace)
             state.trade_review = review
             self.log(state, f"Trade review decision: {review.decision} (confidence={review.confidence:.2f})")
         except Exception as e:
@@ -182,6 +182,14 @@ class TradeReviewAgent(BaseAgent):
 
         self._record(state, state.trade_review)
         return state
+
+    def __init__(self, agent_id: str, config: Dict[str, Any]):
+        super().__init__(agent_id, config)
+        self.runner = AgentRunner(
+            model=self.config.get("model", settings.OPENAI_MODEL),
+            temperature=0.2,
+            timeout=30,
+        )
 
     # -------------------------------------------------------------------------
     # Internal helpers
@@ -252,25 +260,16 @@ class TradeReviewAgent(BaseAgent):
 
         return None
 
-    def _llm_review(self, state: PipelineState) -> TradeReview:
+    def _llm_review(self, state: PipelineState, trace: Any = None) -> TradeReview:
         """Call the LLM to make the final review decision."""
-        client = create_openai_client()
-        model_id = resolve_chat_model(self.config.get("model", settings.OPENAI_MODEL))
-
         system_prompt = load_prompt("trade_review_agent_system")
         trade_brief = self._build_trade_brief(state)
-
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": trade_brief},
-            ],
-            temperature=0.2,
-            timeout=30,
-        )
-
-        raw = response.choices[0].message.content.strip()
+        raw = self.runner.run(
+            system_prompt=system_prompt,
+            user_prompt=trade_brief,
+            trace=trace,
+            max_iterations=1,
+        ).content.strip()
         return self._parse_review(raw)
 
     def _build_trade_brief(self, state: PipelineState) -> str:

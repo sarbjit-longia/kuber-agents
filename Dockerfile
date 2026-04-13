@@ -29,10 +29,8 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt .
 COPY backend/requirements-dev.txt .
 COPY signal-generator/requirements.txt /tmp/signal-generator-requirements.txt
-COPY backend/scripts/patch_crewai_runtime.py /tmp/patch_crewai_runtime.py
 
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python /tmp/patch_crewai_runtime.py
 RUN pip install --no-cache-dir -r requirements-dev.txt
 RUN pip install --no-cache-dir -r /tmp/signal-generator-requirements.txt
 

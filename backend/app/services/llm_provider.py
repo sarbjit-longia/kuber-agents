@@ -4,8 +4,6 @@ Shared helpers for OpenAI-compatible LLM providers.
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-
-from crewai import LLM
 from openai import AsyncOpenAI, OpenAI
 
 from app.config import settings
@@ -55,30 +53,8 @@ def create_openai_client(*, async_client: bool = False, **overrides: Any) -> Ope
     return OpenAI(**kwargs)
 
 
-def normalize_openai_compatible_model(model_id: str) -> str:
-    if model_id.startswith("openai/"):
-        return model_id
-    return f"openai/{model_id}"
-
-
 def resolve_chat_model(model_id: str) -> str:
     provider = get_llm_provider()
     if provider == "openrouter" and "/" not in model_id:
         return f"openai/{model_id}"
     return model_id
-
-
-def create_crewai_llm(model_id: str, *, temperature: float, timeout: int = 45, **overrides: Any) -> LLM:
-    kwargs: Dict[str, Any] = {
-        "model": normalize_openai_compatible_model(model_id),
-        "temperature": temperature,
-        "timeout": timeout,
-    }
-    base_url = get_llm_base_url()
-    api_key = get_llm_api_key()
-    if base_url:
-        kwargs["base_url"] = base_url
-    if api_key:
-        kwargs["api_key"] = api_key
-    kwargs.update(overrides)
-    return LLM(**kwargs)

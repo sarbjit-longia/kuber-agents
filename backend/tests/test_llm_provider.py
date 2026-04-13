@@ -3,7 +3,6 @@ from app.services.llm_provider import (
     get_llm_api_key,
     get_llm_base_url,
     get_llm_default_headers,
-    normalize_openai_compatible_model,
     resolve_chat_model,
 )
 
@@ -31,13 +30,6 @@ def test_openrouter_provider_resolution(monkeypatch):
         "HTTP-Referer": "https://clovercharts.com",
         "X-Title": "CloverCharts",
     }
-
-
-def test_openai_compatible_model_normalization():
-    assert normalize_openai_compatible_model("gpt-4o") == "openai/gpt-4o"
-    assert normalize_openai_compatible_model("moonshotai/kimi-k2.5") == "openai/moonshotai/kimi-k2.5"
-    assert normalize_openai_compatible_model("openai/gpt-4o") == "openai/gpt-4o"
-
 
 def test_resolve_chat_model_for_openrouter(monkeypatch):
     monkeypatch.setattr(settings, "LLM_PROVIDER", "openrouter", raising=False)

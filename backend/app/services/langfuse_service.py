@@ -122,6 +122,33 @@ def trace_llm_call(
     safe_langfuse_operation("llm_generation", create_generation)
 
 
+def trace_tool_call(
+    trace: Any,
+    tool_name: str,
+    arguments: Dict[str, Any],
+    output: Any,
+) -> None:
+    """
+    Add a tool-call span to a trace when Langfuse is enabled.
+    """
+    if not trace:
+        return
+
+    def create_span():
+        if not hasattr(trace, "span"):
+            return None
+        span = trace.span(
+            name=f"tool_{tool_name}",
+            input=arguments,
+            metadata={"tool_name": tool_name},
+        )
+        if span and hasattr(span, "end"):
+            span.end(output=output)
+        return span
+
+    safe_langfuse_operation("tool_span", create_span)
+
+
 def safe_langfuse_operation(operation_name: str, func, *args, **kwargs) -> Optional[Any]:
     """
     Execute a Langfuse operation safely, catching all errors.
@@ -170,4 +197,3 @@ def flush_langfuse():
     client = get_langfuse_client()
     if client:
         safe_langfuse_operation("flush", client.flush)
-

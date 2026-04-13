@@ -575,14 +575,26 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
 
     const currentTsRaw = this.selectedRun.progress?.['current_ts'];
     const startDateRaw = this.selectedRun.config?.['start_date'];
+    const endDateRaw = this.selectedRun.config?.['end_date'];
     const persistedRuntimeSeconds = Number(this.selectedRun.metrics?.['runtime']?.['runtime_seconds'] || 0);
 
-    if (!currentTsRaw || !startDateRaw) {
+    if (!startDateRaw) {
       return '—';
     }
 
-    const currentTs = new Date(String(currentTsRaw)).getTime();
-    const startTs = new Date(`${String(startDateRaw)}T00:00:00Z`).getTime();
+    const startTs = this.parseBacktestDate(startDateRaw, false);
+    let currentTs = currentTsRaw ? new Date(String(currentTsRaw)).getTime() : NaN;
+
+    if ((!Number.isFinite(currentTs) || currentTs <= startTs) && endDateRaw) {
+      const endTs = this.parseBacktestDate(endDateRaw, true);
+      const currentBar = Number(this.selectedRun.progress?.['current_bar'] || 0);
+      const totalBars = Number(this.selectedRun.progress?.['total_bars'] || 0);
+      if (Number.isFinite(endTs) && endTs > startTs && totalBars > 0 && currentBar >= 0) {
+        const progressRatio = Math.max(0, Math.min(1, currentBar / totalBars));
+        currentTs = startTs + (endTs - startTs) * progressRatio;
+      }
+    }
+
     if (!Number.isFinite(currentTs) || !Number.isFinite(startTs) || currentTs <= startTs) {
       return '—';
     }
@@ -618,6 +630,20 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       return `${multiplier.toFixed(1)}x`;
     }
     return `${multiplier.toFixed(2)}x`;
+  }
+
+  private parseBacktestDate(value: unknown, endOfDay: boolean): number {
+    if (!value) {
+      return Number.NaN;
+    }
+
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+
+    const text = String(value);
+    const suffix = endOfDay ? 'T23:59:59Z' : 'T00:00:00Z';
+    return new Date(text.includes('T') ? text : `${text}${suffix}`).getTime();
   }
 
   loadWorkspace(): void {

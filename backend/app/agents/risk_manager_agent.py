@@ -10,6 +10,7 @@ from datetime import datetime
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, RiskAssessment
+from app.services.agent_runner import AgentRunner
 from app.config import settings
 
 
@@ -82,6 +83,14 @@ class RiskManagerAgent(BaseAgent):
             can_initiate_trades=False,
             can_close_positions=False
         )
+
+    def __init__(self, agent_id: str, config: Dict[str, Any]):
+        super().__init__(agent_id, config)
+        self.runner = AgentRunner(
+            model=self.config.get("model", settings.OPENAI_MODEL),
+            temperature=0.2,
+            timeout=45,
+        )
     
     def process(self, state: PipelineState) -> PipelineState:
         """
@@ -96,7 +105,6 @@ class RiskManagerAgent(BaseAgent):
         Raises:
             AgentProcessingError: If risk assessment fails
         """
-        from crewai import Agent, Task, Crew
         from app.services.langfuse_service import trace_agent_execution
         from app.services.model_registry import model_registry
         from app.database import SessionLocal
@@ -212,11 +220,7 @@ class RiskManagerAgent(BaseAgent):
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
             
-            # Create CrewAI agent - follows user's risk rules exactly
-            risk_analyst = Agent(
-                role="Risk Manager Executor",
-                goal="Follow the user's risk management instructions exactly and calculate position size.",
-                backstory=load_prompt("risk_manager_system") + """
+            system_prompt = load_prompt("risk_manager_system") + """
 
 CORE PRINCIPLES:
 1. You follow user's risk instructions EXACTLY - if they say "1% risk", use 1% not 2%
@@ -224,15 +228,9 @@ CORE PRINCIPLES:
 3. You calculate position size mathematically based on user's specifications
 4. You approve trades that meet user's rules, reject those that don't
 
-Your job is to EXECUTE the user's risk rules, not add your own "conservative" interpretations.""",
-                verbose=False,
-                allow_delegation=False,
-                llm=model_id
-            )
+Your job is to EXECUTE the user's risk rules, not add your own "conservative" interpretations."""
             
-            # Create task
-            task = Task(
-                description=f"""
+            user_prompt = f"""
 ═══════════════════════════════════════════════════════════
 USER'S RISK MANAGEMENT INSTRUCTIONS:
 ═══════════════════════════════════════════════════════════
@@ -284,19 +282,14 @@ RISK_SCORE: <0.0 to 1.0>
 MAX_LOSS: <dollar amount>
 WARNINGS: <list any warnings, or "None">
 REASONING: <brief explanation of your calculation including the formula used>
-                """,
-                agent=risk_analyst,
-                expected_output="Risk decision with position size calculation following user's exact specifications"
-            )
+                """
             
-            # Execute
-            crew = Crew(
-                agents=[risk_analyst],
-                tasks=[task],
-                verbose=False
-            )
-            
-            result = crew.kickoff()
+            result = self.runner.run(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                trace=trace,
+                max_iterations=1,
+            ).content
             
             # Parse LLM response — use LLM for approval decision + narrative only
             risk_decision = self._parse_risk_decision(str(result), strategy)

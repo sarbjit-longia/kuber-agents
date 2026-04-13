@@ -321,78 +321,12 @@ def mock_indicator_tools(monkeypatch):
 
 @pytest.fixture
 def mock_rsi_tool(monkeypatch, mock_indicator_tools):
-    """
-    Mock RSI tool to return predictable output without calling Data Plane.
-    
-    This makes RSI tool tests fast and deterministic.
-    """
-    def mock_run(self, timeframe="1h", period=14, threshold_oversold=30, threshold_overbought=70):
-        """Mocked RSI calculation."""
-        # Use predictable RSI values based on timeframe
-        rsi_values = {
-            "5m": 52.3,
-            "15m": 48.7,
-            "1h": 45.2,
-            "4h": 58.6,
-            "1d": 42.8
-        }
-        current_rsi = rsi_values.get(timeframe, 50.0)
-        previous_rsi = current_rsi - 2.5
-        
-        # Determine status based on thresholds
-        if current_rsi < threshold_oversold:
-            status = f"OVERSOLD (RSI < {threshold_oversold})"
-            interpretation = "Potential BUY signal (oversold)"
-        elif current_rsi > threshold_overbought:
-            status = f"OVERBOUGHT (RSI > {threshold_overbought})"
-            interpretation = "Potential SELL signal (overbought)"
-        else:
-            status = "neutral"
-            interpretation = "Neutral momentum"
-        
-        return (
-            f"RSI Analysis for {self.ticker} on {timeframe}:\n"
-            f"  Current RSI: {current_rsi:.2f}\n"
-            f"  Previous RSI: {previous_rsi:.2f}\n"
-            f"  Status: {status}\n"
-            f"  Thresholds: Oversold={threshold_oversold}, Overbought={threshold_overbought}\n"
-            f"\nInterpretation: {interpretation}"
-        )
-    
-    # Patch the _run method
-    monkeypatch.setattr(
-        "app.tools.crewai_tools.RSITool._run",
-        mock_run
-    )
+    return mock_indicator_tools
 
 
 @pytest.fixture
 def mock_macd_tool(monkeypatch, mock_indicator_tools):
-    """Mock MACD tool to return predictable output."""
-    def mock_run(self, timeframe="1h", fast_period=12, slow_period=26, signal_period=9):
-        """Mocked MACD calculation."""
-        macd_values = {
-            "5m": {"macd": 0.8, "signal": 0.6, "histogram": 0.2},
-            "1h": {"macd": -0.3, "signal": -0.1, "histogram": -0.2},
-            "1d": {"macd": 1.2, "signal": 0.9, "histogram": 0.3}
-        }
-        values = macd_values.get(timeframe, {"macd": 0.0, "signal": 0.0, "histogram": 0.0})
-        
-        crossover = "bullish" if values["histogram"] > 0 else "bearish"
-        
-        return (
-            f"MACD Analysis for {self.ticker} on {timeframe}:\n"
-            f"  MACD Line: {values['macd']:.2f}\n"
-            f"  Signal Line: {values['signal']:.2f}\n"
-            f"  Histogram: {values['histogram']:.2f}\n"
-            f"  Crossover: {crossover}\n"
-            f"\nInterpretation: {'Bullish momentum (MACD above signal)' if crossover == 'bullish' else 'Bearish momentum (MACD below signal)'}"
-        )
-    
-    monkeypatch.setattr(
-        "app.tools.crewai_tools.MACDTool._run",
-        mock_run
-    )
+    return mock_indicator_tools
 
 
 @pytest.fixture

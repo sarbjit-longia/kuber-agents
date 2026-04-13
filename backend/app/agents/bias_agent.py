@@ -7,16 +7,15 @@ and automatically selects appropriate tools to complete the analysis.
 import structlog
 import re
 from typing import Dict, Any
-from datetime import datetime
-from crewai import Agent, Task, Crew
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
 from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
-from app.tools.crewai_tools import load_tools_for_agent
-from app.services.llm_provider import create_crewai_llm, create_openai_client, get_llm_provider, resolve_chat_model
+from app.tools.openai_tools import build_openai_tools, tool_handler_map, tool_schemas
+from app.services.agent_runner import AgentRunner
+from app.services.llm_provider import create_openai_client, get_llm_provider, resolve_chat_model
 from app.config import settings
 from app.services.model_registry import model_registry
 from app.database import SessionLocal
@@ -94,8 +93,8 @@ class BiasAgent(BaseAgent):
 
         model_name = config.get("model", settings.OPENAI_MODEL)
         self.logger.info("using_llm_provider", provider=get_llm_provider(), model=model_name)
-        self.model = create_crewai_llm(model_name, temperature=0.7, timeout=45)
-        self.function_calling_llm = create_crewai_llm(model_name, temperature=0.0, timeout=45)
+        self.model_name = model_name
+        self.runner = AgentRunner(model=model_name, temperature=0.7, timeout=45)
     
     def process(self, state: PipelineState) -> PipelineState:
         """
@@ -136,30 +135,17 @@ class BiasAgent(BaseAgent):
             market_context = self._prepare_market_context(state)
             
             # Load tools declared in metadata (indicator tools only — no candles at bias stage)
-            tools = load_tools_for_agent(
+            tools = build_openai_tools(
                 self.get_metadata().default_tools,
                 ticker=state.symbol,
                 candles=None  # Bias agent uses indicator tools that don't need candle data
             )
             
             self.log(state, f"Available tools: {[t.name for t in tools]}")
-            
-            # Create single analyst agent with user instructions
-            analyst = Agent(
-                role="Market Bias Analyst",
-                goal=instructions,  # User's natural language instructions!
-                backstory=load_prompt("bias_agent_system") + f"\n\nYou are analyzing {state.symbol}. Use the available tools to gather data and apply the framework above to determine bias.",
-                tools=tools,
-                llm=self.model,
-                function_calling_llm=self.function_calling_llm,  # Dedicated LLM for tool calling!
-                max_iter=30,  # Increased for complex multi-indicator analysis with local models
-                verbose=True,
-                allow_delegation=False
+            system_prompt = load_prompt("bias_agent_system") + (
+                f"\n\nYou are analyzing {state.symbol}. Use the available tools to gather data and apply the framework above to determine bias."
             )
-            
-            # Create analysis task
-            analysis_task = Task(
-                description=f"""Analyze {state.symbol} and determine the market bias.
+            user_prompt = f"""Analyze {state.symbol} and determine the market bias.
                 
 CURRENT MARKET DATA:
 {market_context}
@@ -229,20 +215,17 @@ Example of GOOD reasoning when instructions override standard analysis:
 Example of BAD reasoning (DO NOT DO THIS):
 "commentary to=tool.rsi_calculator json {{...}} The market shows..."
 
-Be specific about which indicators you used, their exact values, and any custom thresholds or overrides provided in the instructions.""",
-                agent=analyst,
-                expected_output="JSON with bias determination, confidence, clean professional reasoning (no tool artifacts), and key factors"
-            )
-            
-            # Execute crew
-            crew = Crew(
-                agents=[analyst],
-                tasks=[analysis_task],
-                verbose=False
-            )
+Be specific about which indicators you used, their exact values, and any custom thresholds or overrides provided in the instructions."""
             
             self.log(state, "Executing bias analysis...")
-            result = crew.kickoff()
+            result = self.runner.run(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                trace=trace,
+                tools=tool_schemas(tools),
+                tool_handlers=tool_handler_map(tools),
+                max_iterations=8,
+            ).content
             
             # Parse result
             bias_result = self._parse_bias_result(result, state)
@@ -308,7 +291,7 @@ Be specific about which indicators you used, their exact values, and any custom 
                 state.biases[fallback_bias.timeframe] = fallback_bias
                 self.log(
                     state,
-                    f"Bias fallback applied after non-fatal tool event error: {fallback_bias.bias} ({fallback_bias.confidence:.0%}) on {fallback_bias.timeframe}",
+                    f"Bias fallback applied after non-fatal tool/runtime error: {fallback_bias.bias} ({fallback_bias.confidence:.0%}) on {fallback_bias.timeframe}",
                     level="warning",
                 )
                 self.record_report(
@@ -322,7 +305,7 @@ Be specific about which indicators you used, their exact values, and any custom 
                         "Analyzed Timeframe": fallback_bias.timeframe,
                         "Key Market Factors": ", ".join(fallback_bias.key_factors),
                         "Detailed Analysis": fallback_bias.reasoning,
-                        "Fallback Reason": "Recovered from non-fatal CrewAI tool event validation error",
+                        "Fallback Reason": "Recovered from non-fatal agent runtime/tool execution error",
                     },
                 )
                 return state
@@ -335,7 +318,12 @@ Be specific about which indicators you used, their exact values, and any custom 
     @staticmethod
     def _is_nonfatal_tool_event_error(error: Exception) -> bool:
         message = str(error)
-        return "ToolUsageFinishedEvent" in message or "tool_args.dict" in message
+        return (
+            "ToolUsageFinishedEvent" in message
+            or "tool_args.dict" in message
+            or "tool" in message.lower()
+            or "max_iterations" in message.lower()
+        )
 
     def _build_fallback_bias_result(self, state: PipelineState, error_message: str) -> BiasResult:
         timeframe = (state.timeframes[0] if state.timeframes else None) or next(

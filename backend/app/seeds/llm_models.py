@@ -165,6 +165,111 @@ DEFAULT_LLM_MODELS = [
         }
     },
     {
+        "model_id": "qwen/qwen3-14b",
+        "provider": "openrouter",
+        "display_name": "Qwen3 14B",
+        "description": "Cost-efficient general-purpose reasoning and tool-use model via OpenRouter",
+        "max_tokens": 40960,
+        "supports_functions": True,
+        "supports_vision": False,
+        "cost_per_1k_input_tokens": 0.00006,  # $0.06 per 1M tokens
+        "cost_per_1k_output_tokens": 0.00024,  # $0.24 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.008,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "very_good",
+            "speed": "fast",
+            "recommended_for": ["high_volume", "bias_analysis", "cost_sensitive"]
+        }
+    },
+    {
+        "model_id": "qwen/qwen3-32b:nitro",
+        "provider": "openrouter",
+        "display_name": "Qwen3 32B (Nitro)",
+        "description": "Strong value reasoning and tool-use model via OpenRouter Nitro routing",
+        "max_tokens": 40960,
+        "supports_functions": True,
+        "supports_vision": False,
+        "cost_per_1k_input_tokens": 0.00008,  # $0.08 per 1M tokens
+        "cost_per_1k_output_tokens": 0.00024,  # $0.24 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.012,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "fast",
+            "recommended_for": ["strategy", "trade_review", "all_purpose"]
+        }
+    },
+    {
+        "model_id": "google/gemini-2.5-flash-lite:nitro",
+        "provider": "openrouter",
+        "display_name": "Gemini 2.5 Flash-Lite (Nitro)",
+        "description": "Ultra-low-latency and low-cost Gemini model via OpenRouter Nitro routing",
+        "max_tokens": 1048576,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.0001,  # $0.10 per 1M tokens
+        "cost_per_1k_output_tokens": 0.0004,  # $0.40 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.01,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "good",
+            "speed": "very_fast",
+            "recommended_for": ["high_volume", "cheap_backtests", "quick_analysis"]
+        }
+    },
+    {
+        "model_id": "google/gemini-2.5-flash",
+        "provider": "openrouter",
+        "display_name": "Gemini 2.5 Flash",
+        "description": "Balanced reasoning and workhorse execution model via OpenRouter",
+        "max_tokens": 1048576,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.0003,  # $0.30 per 1M tokens
+        "cost_per_1k_output_tokens": 0.0025,  # $2.50 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.03,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "fast",
+            "recommended_for": ["strategy", "balanced_quality", "production_default"]
+        }
+    },
+    {
+        "model_id": "minimax/minimax-m2.5",
+        "provider": "openrouter",
+        "display_name": "MiniMax M2.5",
+        "description": "Higher-end productivity and agentic model via OpenRouter",
+        "max_tokens": 196608,
+        "supports_functions": True,
+        "supports_vision": False,
+        "cost_per_1k_input_tokens": 0.000118,  # $0.118 per 1M tokens
+        "cost_per_1k_output_tokens": 0.00099,  # $0.99 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.02,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "fast",
+            "recommended_for": ["premium_experiments", "agentic_reasoning", "comparison_runs"]
+        }
+    },
+    {
         "model_id": "o1-preview",
         "provider": "openai",
         "display_name": "O1 Preview",
