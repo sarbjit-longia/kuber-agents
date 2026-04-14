@@ -28,6 +28,7 @@ import {
   LiquidationConfirmDialogComponent,
   LiquidationDialogResult
 } from '../../shared/components/liquidation-confirm-dialog/liquidation-confirm-dialog.component';
+import { ClonePipelineDialogComponent } from './clone-pipeline-dialog/clone-pipeline-dialog.component';
 
 @Component({
   selector: 'app-pipelines',
@@ -139,6 +140,32 @@ export class PipelinesComponent implements OnInit {
         }
       });
     }
+  }
+
+  clonePipeline(pipeline: Pipeline, event: Event): void {
+    event.stopPropagation();
+
+    const dialogRef = this.dialog.open(ClonePipelineDialogComponent, {
+      width: '460px',
+      data: { pipelineName: pipeline.name },
+    });
+
+    dialogRef.afterClosed().subscribe((cloneName?: string) => {
+      const trimmedName = cloneName?.trim();
+      if (!trimmedName) {
+        return;
+      }
+
+      this.pipelineService.clonePipeline(pipeline.id, { name: trimmedName }).subscribe({
+        next: (cloned) => {
+          this.showNotification(`Pipeline cloned as "${cloned.name}"`, 'success');
+          this.loadPipelines();
+        },
+        error: () => {
+          this.showNotification('Failed to clone pipeline', 'error');
+        }
+      });
+    });
   }
 
   openBacktest(pipeline: Pipeline, event: Event): void {

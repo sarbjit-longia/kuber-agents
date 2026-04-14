@@ -103,6 +103,38 @@ BACKTEST_RUNTIME_DOCKER_NETWORK=
 Leave `BACKTEST_RUNTIME_DOCKER_NETWORK` blank to auto-detect the current worker
 network.
 
+### Optional Langfuse self-hosting
+
+For self-hosted Docker deployments, the compose files now include an optional
+`langfuse` profile with:
+
+- `langfuse-web`
+- `langfuse-worker`
+- `langfuse-postgres`
+- `langfuse-clickhouse`
+- `langfuse-minio`
+
+To enable it locally:
+
+```bash
+docker compose --profile langfuse up -d
+```
+
+To enable it on the self-hosted production stack:
+
+```bash
+docker compose -f deploy/local/docker-compose.prod.yml --profile langfuse up -d
+```
+
+When using self-hosted Langfuse from the application containers, set:
+
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_BASE_URL=http://langfuse-web:3000
+```
+
+For Langfuse Cloud, keep `LANGFUSE_BASE_URL=https://cloud.langfuse.com`.
+
 ### Kubernetes mode
 
 Apply the manifests in [deploy/kubernetes/backtest-runtime](./kubernetes/backtest-runtime):

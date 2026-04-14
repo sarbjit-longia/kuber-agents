@@ -128,6 +128,7 @@ ssh quantum 'chmod 600 /opt/clovercharts/.env.prod'
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — your Alpaca credentials
 - `FLOWER_BASIC_AUTH` — e.g., `admin:strongpassword`
 - `GF_SECURITY_ADMIN_PASSWORD` — Grafana admin password
+- `LANGFUSE_*` — only if you want Langfuse tracing; use cloud credentials or self-hosted secrets
 
 ### 7. SSL certificates
 
@@ -185,6 +186,38 @@ Requirements:
 
 After deploying, backtests started from the API will spawn isolated runtime
 containers instead of using the legacy shared worker path.
+
+### Enable self-hosted Langfuse
+
+The production compose file includes an optional `langfuse` profile based on
+Langfuse's Docker Compose architecture (web, worker, Postgres, ClickHouse,
+Redis cache, and S3-compatible storage). Enable it only if you want to run
+Langfuse locally on the same server.
+
+Set these in `/opt/clovercharts/.env.prod`:
+
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_BASE_URL=http://langfuse-web:3000
+LANGFUSE_SELF_HOST_URL=https://langfuse.clovercharts.com
+LANGFUSE_DB_PASSWORD=...
+LANGFUSE_CLICKHOUSE_PASSWORD=...
+LANGFUSE_NEXTAUTH_SECRET=...
+LANGFUSE_SALT=...
+LANGFUSE_ENCRYPTION_KEY=...
+LANGFUSE_S3_ACCESS_KEY_ID=minio
+LANGFUSE_S3_SECRET_ACCESS_KEY=...
+LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
+```
+
+Then start the extra profile:
+
+```bash
+ssh quantum 'cd /opt/clovercharts && docker compose -f docker-compose.prod.yml --profile langfuse up -d'
+```
+
+The Langfuse UI will be available on `127.0.0.1:3300` inside the server. Put
+it behind Nginx if you want a public hostname like `langfuse.clovercharts.com`.
 
 ### Rollback
 

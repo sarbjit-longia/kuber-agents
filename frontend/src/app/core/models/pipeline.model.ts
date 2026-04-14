@@ -133,6 +133,10 @@ export interface PipelineUpdate {
   liquidate_on_deactivation?: boolean;
 }
 
+export interface PipelineCloneRequest {
+  name?: string;
+}
+
 export enum ExecutionStatus {
   PENDING = 'pending',
   RUNNING = 'running',
@@ -174,4 +178,3 @@ export interface WebSocketMessage {
   data?: any;
   user_id?: string;
 }
-

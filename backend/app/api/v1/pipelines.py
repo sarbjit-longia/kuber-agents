@@ -7,9 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.pipeline import Pipeline, PipelineCreate, PipelineUpdate, PipelineList
+from app.schemas.pipeline import (
+    Pipeline,
+    PipelineCloneRequest,
+    PipelineCreate,
+    PipelineList,
+    PipelineUpdate,
+)
 from app.models.user import User
 from app.services.pipeline_service import (
+    clone_pipeline,
     get_pipeline_by_id,
     get_user_pipelines,
     create_pipeline,
@@ -64,6 +71,28 @@ async def create_new_pipeline(
         Created pipeline object
     """
     pipeline = await create_pipeline(db, pipeline_in, current_user.id)
+    return pipeline
+
+
+@router.post("/{pipeline_id}/clone", response_model=Pipeline, status_code=status.HTTP_201_CREATED)
+async def clone_existing_pipeline(
+    pipeline_id: UUID,
+    clone_request: PipelineCloneRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Clone a pipeline for the current user."""
+    pipeline = await clone_pipeline(
+        db,
+        pipeline_id=pipeline_id,
+        user_id=current_user.id,
+        name=clone_request.name,
+    )
+    if not pipeline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pipeline not found",
+        )
     return pipeline
 
 
@@ -219,4 +248,3 @@ async def delete_existing_pipeline(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pipeline not found",
         )
-

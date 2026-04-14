@@ -123,6 +123,69 @@ DEFAULT_LLM_MODELS = [
         }
     },
     {
+        "model_id": "gpt-5",
+        "provider": "openai",
+        "display_name": "GPT-5",
+        "description": "Current GPT-5 reasoning model for coding and agentic tasks",
+        "max_tokens": 400000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.00125,  # $1.25 per 1M tokens
+        "cost_per_1k_output_tokens": 0.01,  # $10 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.125,  # $0.125 per 1M cached tokens
+        "typical_agent_cost": 0.035,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "medium",
+            "recommended_for": ["strategy", "agentic_reasoning", "complex_review"]
+        }
+    },
+    {
+        "model_id": "gpt-5-mini",
+        "provider": "openai",
+        "display_name": "GPT-5 Mini",
+        "description": "Faster and cheaper GPT-5 variant for well-defined trading tasks",
+        "max_tokens": 400000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.00025,  # $0.25 per 1M tokens
+        "cost_per_1k_output_tokens": 0.002,  # $2 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.025,  # $0.025 per 1M cached tokens
+        "typical_agent_cost": 0.012,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "very_good",
+            "speed": "fast",
+            "recommended_for": ["bias_analysis", "risk_management", "high_volume"]
+        }
+    },
+    {
+        "model_id": "gpt-5-nano",
+        "provider": "openai",
+        "display_name": "GPT-5 Nano",
+        "description": "Fastest and cheapest GPT-5 variant for lightweight structured tasks",
+        "max_tokens": 400000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.00005,  # $0.05 per 1M tokens
+        "cost_per_1k_output_tokens": 0.0004,  # $0.40 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.005,  # $0.005 per 1M cached tokens
+        "typical_agent_cost": 0.004,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "good",
+            "speed": "very_fast",
+            "recommended_for": ["classification", "reporting", "cheap_backtests"]
+        }
+    },
+    {
         "model_id": "moonshotai/kimi-k2.5",
         "provider": "openrouter",
         "display_name": "Kimi K2.5",
@@ -162,6 +225,69 @@ DEFAULT_LLM_MODELS = [
             "quality": "excellent",
             "speed": "medium",
             "recommended_for": ["deep_reasoning", "review", "analysis"]
+        }
+    },
+    {
+        "model_id": "openai/gpt-5.4",
+        "provider": "openrouter",
+        "display_name": "GPT-5.4",
+        "description": "OpenAI's GPT-5.4 frontier model via OpenRouter",
+        "max_tokens": 1050000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.0025,  # $2.50 per 1M tokens
+        "cost_per_1k_output_tokens": 0.015,  # $15 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.06,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "excellent",
+            "speed": "medium",
+            "recommended_for": ["frontier_reasoning", "coding", "complex_strategy"]
+        }
+    },
+    {
+        "model_id": "openai/gpt-5.4-mini",
+        "provider": "openrouter",
+        "display_name": "GPT-5.4 Mini",
+        "description": "OpenAI's GPT-5.4 Mini via OpenRouter",
+        "max_tokens": 400000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.00075,  # $0.75 per 1M tokens
+        "cost_per_1k_output_tokens": 0.0045,  # $4.50 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.025,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "very_good",
+            "speed": "fast",
+            "recommended_for": ["balanced_quality", "tool_use", "production_backtests"]
+        }
+    },
+    {
+        "model_id": "openai/gpt-5.4-nano",
+        "provider": "openrouter",
+        "display_name": "GPT-5.4 Nano",
+        "description": "OpenAI's GPT-5.4 Nano via OpenRouter",
+        "max_tokens": 400000,
+        "supports_functions": True,
+        "supports_vision": True,
+        "cost_per_1k_input_tokens": 0.0002,  # $0.20 per 1M tokens
+        "cost_per_1k_output_tokens": 0.00125,  # $1.25 per 1M tokens
+        "cost_per_1m_cached_tokens": 0.0,
+        "typical_agent_cost": 0.01,
+        "is_active": True,
+        "is_default": False,
+        "environment": "all",
+        "model_metadata": {
+            "quality": "good",
+            "speed": "very_fast",
+            "recommended_for": ["cheap_backtests", "classification", "sub_agents"]
         }
     },
     {

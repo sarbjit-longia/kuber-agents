@@ -154,6 +154,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
 
   /** Currently selected LLM model per agent (tracked for cost estimation) */
   agentSelectedModel: Record<string, string> = {};
+  bulkModelSelection = '';
 
   // Signal filter catalog
   readonly SIGNAL_TIMEFRAMES: Array<{ value: string; label: string }> = [
@@ -649,6 +650,89 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     return meta?.config_schema?.properties?.['model']?.default || '';
   }
 
+  hasModelConfig(agentType: string): boolean {
+    return Boolean(this.agentMetaByType.get(agentType)?.config_schema?.properties?.['model']);
+  }
+
+  getBulkModelAgentTypes(): string[] {
+    return this.slots
+      .map(slot => slot.agent_type)
+      .filter(agentType => this.hasModelConfig(agentType));
+  }
+
+  getBulkModelChoices(): string[] {
+    const models = new Set<string>();
+
+    for (const agentType of this.getBulkModelAgentTypes()) {
+      const modelSchema = this.agentMetaByType.get(agentType)?.config_schema?.properties?.['model'] || {};
+      const enumerated = Array.isArray(modelSchema.enum) ? modelSchema.enum : [];
+      for (const modelId of enumerated) {
+        if (typeof modelId === 'string' && modelId.trim()) {
+          models.add(modelId);
+        }
+      }
+
+      const configuredModel = this.agentNodes[agentType]?.config?.['model'];
+      if (typeof configuredModel === 'string' && configuredModel.trim()) {
+        models.add(configuredModel);
+      }
+
+      const defaultModel = modelSchema.default;
+      if (typeof defaultModel === 'string' && defaultModel.trim()) {
+        models.add(defaultModel);
+      }
+    }
+
+    return Array.from(models);
+  }
+
+  getBulkModelAgentTitles(): string {
+    return this.slots
+      .filter(slot => this.hasModelConfig(slot.agent_type))
+      .map(slot => slot.title.replace(' Agent', ''))
+      .join(', ');
+  }
+
+  applyBulkModelSelection(): void {
+    if (!this.bulkModelSelection) {
+      this.showNotification('Choose a model first', 'warning');
+      return;
+    }
+
+    const targetAgentTypes = this.getBulkModelAgentTypes();
+    if (targetAgentTypes.length === 0) {
+      this.showNotification('No LLM agents available in this pipeline', 'warning');
+      return;
+    }
+
+    this.flushRightPaneEditsToSelectedNode();
+
+    for (const agentType of targetAgentTypes) {
+      const node = this.agentNodes[agentType];
+      if (!node) continue;
+      node.config = {
+        ...(node.config || {}),
+        model: this.bulkModelSelection
+      };
+      this.agentSelectedModel[agentType] = this.bulkModelSelection;
+    }
+
+    const selectedAgentType = this.getSelectedAgentType();
+    if (selectedAgentType && targetAgentTypes.includes(selectedAgentType)) {
+      this.editingConfig = {
+        ...this.editingConfig,
+        model: this.bulkModelSelection
+      };
+    }
+
+    this.recomputeEstimatedPipelineCost();
+    this.showNotification(`Applied ${this.bulkModelSelection} to ${targetAgentTypes.length} LLM agents`, 'success');
+
+    if (this.currentPipelineId) {
+      this.savePipeline(false);
+    }
+  }
+
   getStaticAgentCost(agentType: string): number {
     const meta = this.agentMetaByType.get(agentType);
     return meta?.pricing_rate || 0;
@@ -1068,4 +1152,3 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     });
   }
 }
-

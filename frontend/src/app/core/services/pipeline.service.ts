@@ -8,7 +8,7 @@ import { Injectable } from '@angular/core';
 import { Observable, BehaviorSubject } from 'rxjs';
 import { tap, map } from 'rxjs/operators';
 import { ApiService } from './api.service';
-import { Pipeline, PipelineCreate, PipelineUpdate } from '../models/pipeline.model';
+import { Pipeline, PipelineCloneRequest, PipelineCreate, PipelineUpdate } from '../models/pipeline.model';
 
 @Injectable({
   providedIn: 'root'
@@ -83,6 +83,19 @@ export class PipelineService {
   }
 
   /**
+   * Clone an existing pipeline
+   */
+  clonePipeline(id: string, data: PipelineCloneRequest): Observable<Pipeline> {
+    return this.apiService.post<Pipeline>(`/api/v1/pipelines/${id}/clone`, data).pipe(
+      tap(cloned => {
+        const current = this.pipelinesSubject.value;
+        this.pipelinesSubject.next([cloned, ...current]);
+        this.currentPipelineSubject.next(cloned);
+      })
+    );
+  }
+
+  /**
    * Delete a pipeline
    */
   deletePipeline(id: string): Observable<void> {
@@ -129,4 +142,3 @@ export class PipelineService {
     return this.currentPipelineSubject.value;
   }
 }
-

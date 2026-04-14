@@ -158,12 +158,12 @@
               <strong>${{ (selectedRun.account_equity ?? 0) | number:'1.2-2' }}</strong>
             </article>
             <article class="summary-metric">
-              <span class="label">Unrealized P&amp;L</span>
+              <span class="label">Total P&amp;L</span>
               <strong
-                [class.positive]="(selectedRun.unrealized_pnl ?? 0) > 0"
-                [class.negative]="(selectedRun.unrealized_pnl ?? 0) < 0"
+                [class.positive]="(totalRunPnl() ?? 0) > 0"
+                [class.negative]="(totalRunPnl() ?? 0) < 0"
               >
-                ${{ (selectedRun.unrealized_pnl ?? 0) | number:'1.2-2' }}
+                {{ totalRunPnl() === null ? 'N/A' : ('$' + (totalRunPnl()! | number:'1.2-2')) }}
               </strong>
             </article>
             <article class="summary-metric">
@@ -268,21 +268,28 @@
                   </div>
                 </header>
                 <div class="simple-table" *ngIf="selectedRun.open_positions?.length; else noOpenPositions">
-                  <div class="table-head">
+                  <div class="table-head open-positions-head">
                     <span>Symbol</span>
                     <span>Side</span>
                     <span>Qty</span>
                     <span>Entry</span>
                     <span>Stop</span>
                     <span>Target</span>
+                    <span>Unrealized P&amp;L</span>
                   </div>
-                  <div class="table-row" *ngFor="let position of selectedRun.open_positions">
+                  <div class="table-row open-positions-row" *ngFor="let position of selectedRun.open_positions">
                     <span>{{ position['symbol'] }}</span>
                     <span>{{ position['action'] }}</span>
                     <span>{{ formatDisplayNumber(position['qty']) }}</span>
                     <span>{{ formatDisplayNumber(position['entry_price']) }}</span>
                     <span>{{ formatDisplayNumber(position['stop_loss']) }}</span>
                     <span>{{ formatDisplayNumber(position['take_profit']) }}</span>
+                    <span
+                      [class.positive]="(position['unrealized_pnl'] ?? 0) > 0"
+                      [class.negative]="(position['unrealized_pnl'] ?? 0) < 0"
+                    >
+                      {{ formatDisplayNumber(position['unrealized_pnl']) }}
+                    </span>
                   </div>
                 </div>
                 <ng-template #noOpenPositions>

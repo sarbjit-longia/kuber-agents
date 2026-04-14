@@ -161,6 +161,10 @@
                 <mat-icon>edit</mat-icon>
                 <span>Edit</span>
               </button>
+              <button mat-menu-item (click)="clonePipeline(pipeline, $event)">
+                <mat-icon>content_copy</mat-icon>
+                <span>Clone</span>
+              </button>
               <button mat-menu-item (click)="executePipeline(pipeline, $event)">
                 <mat-icon>play_arrow</mat-icon>
                 <span>Execute Now</span>

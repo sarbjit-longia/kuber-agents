@@ -607,7 +607,7 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     let runtimeSeconds = persistedRuntimeSeconds;
     if (runtimeSeconds <= 0) {
       const runtimeStartRaw = this.selectedRun.started_at || this.selectedRun.created_at;
-      const startedAt = new Date(String(runtimeStartRaw)).getTime();
+      const startedAt = this.parseServerDateTime(runtimeStartRaw);
       const nowTs = Date.now();
       if (Number.isFinite(startedAt) && nowTs > startedAt) {
         runtimeSeconds = (nowTs - startedAt) / 1000;
@@ -644,6 +644,24 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
     const text = String(value);
     const suffix = endOfDay ? 'T23:59:59Z' : 'T00:00:00Z';
     return new Date(text.includes('T') ? text : `${text}${suffix}`).getTime();
+  }
+
+  private parseServerDateTime(value: unknown): number {
+    if (!value) {
+      return Number.NaN;
+    }
+
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+
+    const text = String(value).trim();
+    if (!text) {
+      return Number.NaN;
+    }
+
+    const normalized = /[zZ]|[+-]\d{2}:\d{2}$/.test(text) ? text : `${text}Z`;
+    return new Date(normalized).getTime();
   }
 
   loadWorkspace(): void {
@@ -1028,6 +1046,21 @@ export class BacktestsPageComponent implements OnInit, OnDestroy {
       label: String(label),
       value: value === null || value === undefined || value === '' ? 'N/A' : String(value),
     }));
+  }
+
+  totalRunPnl(): number | null {
+    const run = this.selectedRun;
+    if (!run) {
+      return null;
+    }
+
+    const equity = run.account_equity;
+    const initialCapital = run.config?.['initial_capital'];
+    if (equity === null || equity === undefined || initialCapital === null || initialCapital === undefined) {
+      return null;
+    }
+
+    return Number(equity) - Number(initialCapital);
   }
 
   reportSummaryEntries(): Array<{ key: string; label: string; value: string }> {

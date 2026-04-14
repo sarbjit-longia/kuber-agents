@@ -477,6 +477,158 @@ services:
       retries: 3
       start_period: 30s
 
+  # Langfuse (optional self-hosted tracing stack)
+  langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: clovercharts-langfuse-postgres
+    profiles: ['langfuse']
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse}
+      TZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clovercharts-langfuse-clickhouse
+    profiles: ['langfuse']
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      TZ: UTC
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user default --password ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse} --query 'SELECT 1'"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+    restart: unless-stopped
+
+  langfuse-minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: clovercharts-langfuse-minio
+    profiles: ['langfuse']
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${LANGFUSE_S3_ACCESS_KEY_ID:-minio}
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_S3_SECRET_ACCESS_KEY:-miniosecret}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:9091:9001"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  langfuse-minio-init:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    container_name: clovercharts-langfuse-minio-init
+    profiles: ['langfuse']
+    depends_on:
+      langfuse-minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://langfuse-minio:9000 ${LANGFUSE_S3_ACCESS_KEY_ID:-minio} ${LANGFUSE_S3_SECRET_ACCESS_KEY:-miniosecret} &&
+        mc mb -p local/${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse} || true &&
+        exit 0
+    restart: "no"
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: clovercharts-langfuse-web
+    profiles: ['langfuse']
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse-minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "3300:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/langfuse
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ""
+      NEXTAUTH_URL: ${LANGFUSE_SELF_HOST_URL:-http://localhost:3300}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-change-me-langfuse-nextauth-secret}
+      SALT: ${LANGFUSE_SALT:-change-me-langfuse-salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_ACCESS_KEY_ID:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_SECRET_ACCESS_KEY:-miniosecret}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
+      LANGFUSE_DISABLE_SIGNUP: ${LANGFUSE_DISABLE_SIGNUP:-false}
+      TELEMETRY_ENABLED: "false"
+      TZ: UTC
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 8
+      start_period: 40s
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: ghcr.io/langfuse/langfuse-worker:3
+    container_name: clovercharts-langfuse-worker
+    profiles: ['langfuse']
+    depends_on:
+      langfuse-web:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/langfuse
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ""
+      NEXTAUTH_URL: ${LANGFUSE_SELF_HOST_URL:-http://localhost:3300}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-change-me-langfuse-nextauth-secret}
+      SALT: ${LANGFUSE_SALT:-change-me-langfuse-salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_ACCESS_KEY_ID:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_SECRET_ACCESS_KEY:-miniosecret}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
+      TELEMETRY_ENABLED: "false"
+      TZ: UTC
+    restart: unless-stopped
+
   # Prometheus - Metrics Storage & Aggregation
   prometheus:
     image: prom/prometheus:v2.48.0
@@ -531,6 +683,9 @@ volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_minio_data:
   prometheus_data:
   grafana_data:
   file_storage:  # Local file storage for uploads (dev)

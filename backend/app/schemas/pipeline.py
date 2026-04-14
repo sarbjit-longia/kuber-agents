@@ -70,6 +70,11 @@ class PipelineCreate(PipelineBase):
     pass
 
 
+class PipelineCloneRequest(BaseModel):
+    """Schema for cloning an existing pipeline."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+
+
 class PipelineUpdate(BaseModel):
     """Schema for updating a pipeline."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -131,4 +136,3 @@ class PipelineList(BaseModel):
     """Schema for list of pipelines."""
     pipelines: List[Pipeline]
     total: int
-

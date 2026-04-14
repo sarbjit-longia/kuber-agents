@@ -156,6 +156,43 @@
               placeholder="Optional: what does this pipeline do?"
             ></textarea>
           </mat-form-field>
+
+          <div class="bulk-model-card" *ngIf="getBulkModelAgentTypes().length > 0">
+            <div class="section-title bulk-model-title">
+              <mat-icon>model_training</mat-icon>
+              Bulk model switch
+            </div>
+
+            <div class="section-hint">
+              Apply one model across all LLM-driven agents before saving or backtesting this pipeline.
+            </div>
+
+            <div class="bulk-model-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Model for all LLM agents</mat-label>
+                <mat-select [(ngModel)]="bulkModelSelection">
+                  <mat-option *ngFor="let modelId of getBulkModelChoices()" [value]="modelId">
+                    {{ modelId }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <button
+                mat-raised-button
+                color="primary"
+                type="button"
+                [disabled]="!bulkModelSelection"
+                (click)="applyBulkModelSelection()"
+              >
+                <mat-icon>swap_horiz</mat-icon>
+                Apply to all LLM agents
+              </button>
+            </div>
+
+            <div class="bulk-model-targets">
+              Targets: {{ getBulkModelAgentTitles() }}
+            </div>
+          </div>
         </div>
 
         <!-- Broker settings -->

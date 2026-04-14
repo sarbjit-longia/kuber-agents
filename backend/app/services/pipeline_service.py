@@ -1,6 +1,7 @@
 """
 Pipeline service for pipeline-related business logic.
 """
+from copy import deepcopy
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,6 +83,49 @@ async def create_pipeline(
     return pipeline
 
 
+async def clone_pipeline(
+    db: AsyncSession, pipeline_id: UUID, user_id: UUID, name: Optional[str] = None
+) -> Optional[Pipeline]:
+    """
+    Clone an existing pipeline for the same user.
+
+    The cloned pipeline is created inactive by default so users can safely
+    adjust the copied configuration before activating it.
+    """
+    source = await get_pipeline_by_id(db, pipeline_id, user_id)
+    if not source:
+        return None
+
+    clone_name = (name or f"{source.name} Copy").strip()
+    pipeline = Pipeline(
+        user_id=user_id,
+        name=clone_name,
+        description=source.description,
+        config=deepcopy(source.config or {}),
+        is_active=False,
+        trigger_mode=source.trigger_mode,
+        scanner_id=source.scanner_id,
+        signal_subscriptions=deepcopy(source.signal_subscriptions or []),
+        scanner_tickers=deepcopy(source.scanner_tickers or []),
+        notification_enabled=source.notification_enabled,
+        notification_events=deepcopy(source.notification_events or []),
+        require_approval=source.require_approval,
+        approval_modes=deepcopy(source.approval_modes or []),
+        approval_timeout_minutes=source.approval_timeout_minutes,
+        approval_channels=deepcopy(source.approval_channels or []),
+        approval_phone=source.approval_phone,
+        schedule_enabled=source.schedule_enabled,
+        schedule_start_time=source.schedule_start_time,
+        schedule_end_time=source.schedule_end_time,
+        schedule_days=deepcopy(source.schedule_days or []),
+        liquidate_on_deactivation=source.liquidate_on_deactivation,
+    )
+    db.add(pipeline)
+    await db.commit()
+    await db.refresh(pipeline)
+    return pipeline
+
+
 async def update_pipeline(
     db: AsyncSession, pipeline_id: UUID, pipeline_update: PipelineUpdate, user_id: UUID
 ) -> Optional[Pipeline]:
@@ -140,4 +184,3 @@ async def delete_pipeline(db: AsyncSession, pipeline_id: UUID, user_id: UUID) ->
     await db.delete(pipeline)
     await db.commit()
     return True
-
