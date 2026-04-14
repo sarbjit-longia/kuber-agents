@@ -13,6 +13,7 @@ from app.tools.strategy_tools_registry import (
     format_strategy_tools_for_openai,
     get_strategy_tool_pricing
 )
+from app.services.skill_registry import skill_registry
 from app.services.llm_provider import create_openai_client, resolve_chat_model
 
 logger = structlog.get_logger()
@@ -49,7 +50,8 @@ class ToolDetectionService:
     async def detect_tools(
         self,
         instructions: str,
-        agent_type: str = "strategy"
+        agent_type: str = "strategy",
+        attached_skills: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Analyze instructions and determine required tools.
@@ -87,7 +89,7 @@ class ToolDetectionService:
         
         try:
             # Build the analysis prompt
-            prompt = self._build_detection_prompt(instructions, agent_type)
+            prompt = self._build_detection_prompt(instructions, agent_type, attached_skills or [])
             
             # Call LLM with function calling
             response = await self.client.chat.completions.create(
@@ -186,8 +188,20 @@ class ToolDetectionService:
                 "total_cost": 0.0
             }
     
-    def _build_detection_prompt(self, instructions: str, agent_type: str) -> str:
+    def _build_detection_prompt(self, instructions: str, agent_type: str, attached_skills: List[str]) -> str:
         """Build the prompt for tool detection."""
+        skill_hints: List[str] = []
+        for skill_id in attached_skills:
+            skill = skill_registry.get_skill(skill_id)
+            if not skill or agent_type not in skill.agent_types:
+                continue
+            tools = ", ".join(skill.recommended_tools) if skill.recommended_tools else "none"
+            guardrails = "; ".join(skill.guardrails[:2]) if skill.guardrails else "none"
+            skill_hints.append(
+                f"- {skill.name}: {skill.description} Recommended tools: {tools}. Guardrails: {guardrails}"
+            )
+
+        skill_section = "\n".join(skill_hints) if skill_hints else "None"
         
         return f"""
 Analyze the following trading strategy and determine which tool functions you need to call.
@@ -213,6 +227,11 @@ YOU MUST call the appropriate tool functions to gather the information needed fo
 - Day trading: 1h
 - Swing trading: 4h or D
 - Default for ICT: 1h
+
+**Attached Skills**:
+{skill_section}
+
+If attached skills are present, prefer their recommended tools and respect their guardrails.
 
 Based on the strategy above, call the appropriate tool functions NOW with their required parameters.
 """

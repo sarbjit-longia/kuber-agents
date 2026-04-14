@@ -29,45 +29,6 @@ Examples:
     </button>
   </div>
 
-  <!-- PDF Upload -->
-  <div class="file-upload-section">
-    <div class="upload-header">
-      <span class="upload-label">Or upload a strategy document (PDF)</span>
-    </div>
-    
-    <div class="upload-controls">
-      <input 
-        #fileInput 
-        type="file" 
-        accept=".pdf" 
-        (change)="onFileSelected($event)"
-        style="display: none"
-      >
-      
-      <button 
-        mat-stroked-button 
-        (click)="fileInput.click()"
-        [disabled]="uploading"
-      >
-        <mat-icon>attach_file</mat-icon>
-        {{ uploadedFileName ? 'Change Document' : 'Upload PDF' }}
-      </button>
-
-      <span *ngIf="uploading" class="uploading-indicator">
-        <mat-spinner diameter="20"></mat-spinner>
-        <span>Uploading...</span>
-      </span>
-
-      <span *ngIf="uploadedFileName && !uploading" class="uploaded-file">
-        <mat-icon>description</mat-icon>
-        {{ uploadedFileName }}
-        <button mat-icon-button (click)="removeDocument()" matTooltip="Remove document">
-          <mat-icon>close</mat-icon>
-        </button>
-      </span>
-    </div>
-  </div>
-
   <!-- Tool Detection Status -->
   <div *ngIf="detecting" class="detection-status detecting">
     <mat-spinner diameter="20"></mat-spinner>
@@ -141,21 +102,21 @@ Examples:
   <!-- Cost Estimate (always shown when there's an estimate, independent of tool detection) -->
   <div class="cost-summary standalone" *ngIf="estimatedLLMCost && estimatedLLMCost.totalLLMCost > 0">
     <div class="cost-row" *ngIf="staticAgentCost > 0">
-      <span>Static Agent Cost:</span>
+      <span class="cost-label">Static Agent Cost</span>
       <span class="cost-value">${{ staticAgentCost.toFixed(4) }}/run</span>
     </div>
     <div class="cost-row" *ngIf="totalCost > 0">
-      <span>Tools Cost:</span>
+      <span class="cost-label">Tools Cost</span>
       <span class="cost-value">${{ totalCost.toFixed(4) }}/run</span>
     </div>
     <div class="cost-row">
-      <span>Est. LLM Cost ({{ estimatedLLMCost.inputTokens | number }} in / {{ estimatedLLMCost.outputTokens | number }} out tokens):</span>
+      <span class="cost-label">Est. LLM Cost</span>
+      <span class="cost-meta">{{ estimatedLLMCost.inputTokens | number }} in / {{ estimatedLLMCost.outputTokens | number }} out tokens</span>
       <span class="cost-value">~${{ estimatedLLMCost.totalLLMCost.toFixed(4) }}/run</span>
     </div>
     <div class="cost-row total">
-      <span><strong>Estimated Total:</strong></span>
+      <span class="cost-label"><strong>Estimated Total</strong></span>
       <span class="cost-value"><strong>~${{ totalEstimatedCost.toFixed(4) }}/run</strong></span>
     </div>
   </div>
 </div>
-

@@ -18,6 +18,7 @@ from app.schemas.tool_detection import (
 )
 from app.services.tool_detection_service import ToolDetectionService
 from app.tools.strategy_tools_registry import STRATEGY_TOOL_REGISTRY
+from app.services.skill_registry import skill_registry
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.services.model_registry import model_registry
@@ -243,7 +244,8 @@ async def validate_instructions(
         # Detect tools
         result = await detection_service.detect_tools(
             instructions=request.instructions,
-            agent_type=request.agent_type
+            agent_type=request.agent_type,
+            attached_skills=request.attached_skills,
         )
         
         # Filter tools based on agent's supported tools
@@ -252,6 +254,10 @@ async def validate_instructions(
         
         if agent_metadata and agent_metadata.supported_tools:
             supported = set(agent_metadata.supported_tools)
+            for skill_id in request.attached_skills:
+                skill = skill_registry.get_skill(skill_id)
+                if skill and request.agent_type in skill.agent_types:
+                    supported.update(skill.recommended_tools)
             detected_tools = result.get("tools", [])
             
             # Filter to only supported tools

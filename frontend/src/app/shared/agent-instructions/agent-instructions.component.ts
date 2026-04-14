@@ -12,7 +12,6 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { ToolDetectionService, DetectedTool, ValidateInstructionsResponse } from '../../core/services/tool-detection.service';
-import { FileUploadService, FileUploadResponse } from '../../core/services/file-upload.service';
 import { CostEstimationService, LLMCostEstimate } from '../../core/services/cost-estimation.service';
 
 @Component({
@@ -35,23 +34,20 @@ import { CostEstimationService, LLMCostEstimate } from '../../core/services/cost
 export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges {
   @Input() agentType: string = 'strategy';
   @Input() initialInstructions: string = '';
-  @Input() initialDocumentUrl: string = '';
   @Input() autoDetect: boolean = true;
   @Input() showDetectButton: boolean = false;
   @Input() selectedModel: string = '';
   @Input() staticAgentCost: number = 0;
+  @Input() attachedSkillIds: string[] = [];
   
   @Output() instructionsChange = new EventEmitter<{
     instructions: string;
-    documentUrl: string;
     detectedTools: DetectedTool[];
     totalCost: number;
     llmCost: number;
   }>();
 
   instructions: string = '';
-  documentUrl: string = '';
-  uploadedFileName: string = '';
   
   detecting: boolean = false;
   detectedTools: DetectedTool[] = [];
@@ -63,22 +59,18 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
   confidence: number = 0;
   detectionStatus: 'success' | 'partial' | 'error' | 'none' = 'none';
   errorMessage: string = '';
-  
-  uploading: boolean = false;
-  
+
   private destroy$ = new Subject<void>();
   private instructionsChanged$ = new Subject<string>();
 
   constructor(
     private toolDetectionService: ToolDetectionService,
-    private fileUploadService: FileUploadService,
     private costEstimationService: CostEstimationService
   ) {}
 
   ngOnInit(): void {
     // Initialize with existing values
     this.instructions = this.initialInstructions;
-    this.documentUrl = this.initialDocumentUrl;
 
     // Compute initial cost estimate if model + instructions are already set
     this.recomputeLocalLLMCost();
@@ -112,12 +104,6 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     // Update instructions when initialInstructions input changes
     if (changes['initialInstructions'] && !changes['initialInstructions'].firstChange) {
       this.instructions = changes['initialInstructions'].currentValue || '';
-    }
-
-    // Update document URL when initialDocumentUrl input changes
-    if (changes['initialDocumentUrl'] && !changes['initialDocumentUrl'].firstChange) {
-      this.documentUrl = changes['initialDocumentUrl'].currentValue || '';
-      this.uploadedFileName = this.documentUrl ? this.documentUrl.split('/').pop() || '' : '';
     }
 
     // Recalculate LLM cost when model changes (including first render)
@@ -164,7 +150,7 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
     this.detecting = true;
     this.detectionStatus = 'none';
 
-    this.toolDetectionService.validateInstructions(this.instructions, this.agentType)
+    this.toolDetectionService.validateInstructions(this.instructions, this.agentType, this.attachedSkillIds)
       .subscribe({
         next: (response: ValidateInstructionsResponse) => {
           this.detecting = false;
@@ -211,68 +197,6 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
       });
   }
 
-  onFileSelected(event: any): void {
-    const file: File = event.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (file.type !== 'application/pdf') {
-      alert('Only PDF files are supported');
-      return;
-    }
-
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      alert('File too large. Maximum size: 10MB');
-      return;
-    }
-
-    this.uploading = true;
-
-    this.fileUploadService.uploadFile(file, true).subscribe({
-      next: (response: FileUploadResponse) => {
-        this.uploading = false;
-        this.documentUrl = response.file_url;
-        this.uploadedFileName = response.filename;
-
-        // If PDF text was extracted, append to instructions
-        if (response.extracted_text) {
-          if (this.instructions) {
-            this.instructions += '\n\n--- Strategy Document ---\n' + response.extracted_text;
-          } else {
-            this.instructions = response.extracted_text;
-          }
-
-          // Trigger tool detection
-          this.instructionsChanged$.next(this.instructions);
-        }
-
-        this.emitChanges();
-      },
-      error: (error) => {
-        this.uploading = false;
-        console.error('File upload failed:', error);
-        alert('File upload failed: ' + (error.error?.detail || 'Unknown error'));
-      }
-    });
-  }
-
-  removeDocument(): void {
-    if (this.documentUrl) {
-      this.fileUploadService.deleteFile(this.documentUrl).subscribe({
-        next: () => {
-          this.documentUrl = '';
-          this.uploadedFileName = '';
-          this.emitChanges();
-        },
-        error: (error) => {
-          console.error('File deletion failed:', error);
-        }
-      });
-    }
-  }
-
   private recomputeLocalLLMCost(): void {
     if (this.selectedModel && this.instructions) {
       this.estimatedLLMCost = this.costEstimationService.estimateLLMCost(
@@ -296,7 +220,6 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
   private emitChanges(): void {
     this.instructionsChange.emit({
       instructions: this.instructions,
-      documentUrl: this.documentUrl,
       detectedTools: this.detectedTools,
       totalCost: this.totalCost,
       llmCost: this.estimatedLLMCost?.totalLLMCost || this.llmCost
@@ -349,4 +272,3 @@ export class AgentInstructionsComponent implements OnInit, OnDestroy, OnChanges 
       .join(', ');
   }
 }
-

@@ -7,6 +7,7 @@ Ensures all required tools are attached and configuration is valid.
 import structlog
 from typing import Dict, Any, List, Tuple
 from app.agents import get_registry
+from app.services.skill_registry import skill_registry
 
 logger = structlog.get_logger()
 
@@ -127,6 +128,16 @@ class PipelineValidator:
                     errors.append(
                         f"Agent '{metadata.name}': Missing required configuration field '{field}'"
                     )
+
+        skills = config.get("skills", [])
+        if skills:
+            if not getattr(metadata, "supports_skills", False):
+                errors.append(f"Agent '{metadata.name}' does not support attached skills")
+            else:
+                errors.extend(
+                    f"Agent '{metadata.name}': {err}"
+                    for err in skill_registry.validate_attachments(skills, agent_type)
+                )
         
         return errors
     
@@ -176,4 +187,3 @@ class PipelineValidator:
                 )
         
         return errors
-

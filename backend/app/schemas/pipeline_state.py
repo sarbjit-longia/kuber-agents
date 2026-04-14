@@ -423,6 +423,8 @@ class AgentMetadata(BaseModel):
     # Tools Support
     supported_tools: List[str] = Field(default_factory=list)  # e.g., ["alpaca_broker", "webhook_notifier"]
     default_tools: List[str] = Field(default_factory=list)  # CrewAI tools loaded at runtime (e.g., ["fvg_detector", "rsi_calculator"])
+    supports_skills: bool = False
+    supported_skill_categories: List[str] = Field(default_factory=list)
 
     # Capabilities
     can_initiate_trades: bool = False

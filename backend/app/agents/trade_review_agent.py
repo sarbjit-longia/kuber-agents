@@ -41,6 +41,9 @@ class TradeReviewAgent(BaseAgent):
         db = SessionLocal()
         try:
             model_choices = model_registry.get_model_choices_for_schema(db)
+        except Exception:
+            logger.warning("trade_review_agent_model_choices_fallback", exc_info=True)
+            model_choices = ["gpt-4o"]
         finally:
             db.close()
 

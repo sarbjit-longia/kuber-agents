@@ -26,6 +26,7 @@ export interface ValidateInstructionsResponse {
 export interface ValidateInstructionsRequest {
   instructions: string;
   agent_type: string;
+  attached_skills?: string[];
 }
 
 @Injectable({
@@ -41,11 +42,13 @@ export class ToolDetectionService {
    */
   validateInstructions(
     instructions: string,
-    agentType: string = 'strategy'
+    agentType: string = 'strategy',
+    attachedSkills: string[] = []
   ): Observable<ValidateInstructionsResponse> {
     const request: ValidateInstructionsRequest = {
       instructions,
-      agent_type: agentType
+      agent_type: agentType,
+      attached_skills: attachedSkills
     };
 
     return this.http.post<ValidateInstructionsResponse>(
@@ -61,4 +64,3 @@ export class ToolDetectionService {
     return this.http.get(`${this.apiUrl}/tools/available`);
   }
 }
-

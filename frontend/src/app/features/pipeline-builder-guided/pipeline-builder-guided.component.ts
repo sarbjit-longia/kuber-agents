@@ -31,6 +31,7 @@ import { PipelineService } from '../../core/services/pipeline.service';
 import { ExecutionService } from '../../core/services/execution.service';
 import { Agent, Pipeline, PipelineConfig, PipelineNode, TriggerMode } from '../../core/models/pipeline.model';
 import { ToolMetadata, ToolService } from '../../core/services/tool.service';
+import { AgentSkillAttachment, SkillService, SkillSummary } from '../../core/services/skill.service';
 
 import { AgentInstructionsComponent } from '../../shared/agent-instructions/agent-instructions.component';
 import { ToolSelectorComponent, ToolInstance } from '../../shared/tool-selector/tool-selector.component';
@@ -144,6 +145,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   private agentMetaByType = new Map<string, any>();
   private agentAdditionalSchemaByType = new Map<string, any | null>();
   private agentSupportedToolsByType = new Map<string, string[]>();
+  private agentSkillsByType = new Map<string, SkillSummary[]>();
 
   // Pipeline-level broker configuration (injected into Risk/Trade managers)
   pipelineBrokerTool: ToolInstance | null = null;
@@ -272,6 +274,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     private executionService: ExecutionService,
     private scannerService: ScannerService,
     private toolService: ToolService,
+    private skillService: SkillService,
     private costEstimationService: CostEstimationService
   ) {}
 
@@ -284,6 +287,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         this.agents = agents;
         this.buildAgentCaches();
         this.initEmptyNodes();
+        this.loadSkillCatalog();
         this.recomputeEstimatedPipelineCost();
         this.loadBrokerTools();
         this.loadPipelineSetupData();
@@ -316,12 +320,15 @@ export class PipelineBuilderGuidedComponent implements OnInit {
 
     for (const slot of this.slots) {
       const nodeId = `node-${slot.agent_type}`;
-      this.agentNodes[slot.agent_type] = {
-        id: nodeId,
-        agent_type: slot.agent_type,
-        config: defaults[slot.agent_type] || {}
-      };
-    }
+        this.agentNodes[slot.agent_type] = {
+          id: nodeId,
+          agent_type: slot.agent_type,
+          config: {
+            ...(defaults[slot.agent_type] || {}),
+            skills: []
+          }
+        };
+      }
 
     this.selectItem(this.selectedItemKey);
   }
@@ -567,6 +574,23 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     return raw;
   }
 
+  private loadSkillCatalog(): void {
+    for (const agent of this.agents) {
+      if (!agent.supports_skills) {
+        this.agentSkillsByType.set(agent.agent_type, []);
+        continue;
+      }
+
+      this.skillService.listSkills(agent.agent_type).subscribe({
+        next: (skills) => this.agentSkillsByType.set(agent.agent_type, skills || []),
+        error: (err) => {
+          console.error(`Failed to load skills for ${agent.agent_type}`, err);
+          this.agentSkillsByType.set(agent.agent_type, []);
+        }
+      });
+    }
+  }
+
   private buildAgentCaches(): void {
     this.agentMetaByType.clear();
     this.agentAdditionalSchemaByType.clear();
@@ -587,7 +611,6 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     // Avoid duplicate "instructions" UI: instructions + document URL are handled by AgentInstructionsComponent
     const hiddenKeys = new Set([
       'instructions',
-      'strategy_document_url',
       'auto_detected_tools',
       'estimated_tool_cost',
       'tools'
@@ -617,9 +640,6 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   onInstructionsChange(evt: any): void {
     // Keep current editing config in sync; saving happens via explicit Save.
     this.editingConfig['instructions'] = evt?.instructions ?? this.editingConfig['instructions'];
-    if (evt?.documentUrl !== undefined) {
-      this.editingConfig['strategy_document_url'] = evt.documentUrl;
-    }
 
     // Wire tool detection results into config so they can be saved & shown in ToolSelector
     if (Array.isArray(evt?.detectedTools)) {
@@ -754,7 +774,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
 
   onConfigChange(data: any): void {
     // Merge additional-schema fields into existing config so that fields managed by
-    // other sub-components (instructions, tools, strategy_document_url, etc.) are preserved.
+    // other sub-components (instructions, tools, etc.) are preserved.
     this.editingConfig = { ...this.editingConfig, ...(data || {}) };
     this.recomputeEstimatedPipelineCost();
   }
@@ -762,6 +782,68 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   onToolsChange(tools: ToolInstance[]): void {
     this.editingConfig['tools'] = tools || [];
     this.recomputeEstimatedPipelineCost();
+  }
+
+  getAvailableSkills(agentType: string): SkillSummary[] {
+    return this.agentSkillsByType.get(agentType) || [];
+  }
+
+  getAttachedSkills(agentType: string): AgentSkillAttachment[] {
+    const source = this.getSelectedAgentType() === agentType
+      ? this.editingConfig
+      : this.agentNodes[agentType]?.config;
+    return Array.isArray(source?.['skills']) ? source['skills'] : [];
+  }
+
+  getAttachedSkillDetails(agentType: string): SkillSummary[] {
+    const attachedIds = new Set(this.getAttachedSkills(agentType).map(skill => skill.skill_id));
+    return this.getAvailableSkills(agentType).filter(skill => attachedIds.has(skill.skill_id));
+  }
+
+  getEnabledSkillIds(agentType: string): string[] {
+    return this.getAttachedSkills(agentType)
+      .filter(skill => skill.enabled)
+      .map(skill => skill.skill_id);
+  }
+
+  isSkillEnabled(agentType: string, skillId: string): boolean {
+    return this.getAttachedSkills(agentType).some(
+      skill => skill.skill_id === skillId && skill.enabled
+    );
+  }
+
+  canAddSkill(agentType: string, skillId: string): boolean {
+    return !this.getAttachedSkills(agentType).some(skill => skill.skill_id === skillId);
+  }
+
+  addSkill(agentType: string, skill: SkillSummary): void {
+    if (!this.canAddSkill(agentType, skill.skill_id)) return;
+
+    const currentSkills = this.getAttachedSkills(agentType);
+    this.editingConfig['skills'] = [
+      ...currentSkills,
+      {
+        skill_id: skill.skill_id,
+        version: skill.version,
+        enabled: true,
+        overrides: {}
+      }
+    ];
+  }
+
+  removeSkill(agentType: string, skillId: string): void {
+    this.editingConfig['skills'] = this.getAttachedSkills(agentType)
+      .filter(skill => skill.skill_id !== skillId);
+  }
+
+  toggleSkillEnabled(agentType: string, skillId: string): void {
+    this.editingConfig['skills'] = this.getAttachedSkills(agentType).map(skill => (
+      skill.skill_id === skillId ? { ...skill, enabled: !skill.enabled } : skill
+    ));
+  }
+
+  agentSupportsSkills(agentType: string): boolean {
+    return Boolean(this.agentMetaByType.get(agentType)?.supports_skills);
   }
 
   /**

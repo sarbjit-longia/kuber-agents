@@ -717,7 +717,7 @@
           <app-agent-instructions
             [agentType]="at"
             [initialInstructions]="editingConfig['instructions'] || ''"
-            [initialDocumentUrl]="editingConfig['strategy_document_url'] || ''"
+            [attachedSkillIds]="getEnabledSkillIds(at)"
             [autoDetect]="false"
             [showDetectButton]="true"
             [selectedModel]="getSelectedModelForAgent(at)"
@@ -743,6 +743,57 @@
             (modelChange)="onModelChange($event)"
           >
           </app-json-schema-form>
+        </div>
+
+        <mat-divider *ngIf="agentSupportsSkills(at) || getSupportedTools(at).length > 0"></mat-divider>
+
+        <div class="section" *ngIf="agentSupportsSkills(at)">
+          <div class="section-title">
+            <mat-icon>auto_awesome</mat-icon>
+            Skills
+          </div>
+
+          <div class="skills-list" *ngIf="getAttachedSkillDetails(at).length > 0; else noSkillsAttached">
+            <div class="skill-card" *ngFor="let skill of getAttachedSkillDetails(at)">
+              <div class="skill-copy">
+                <div class="skill-name-row">
+                  <span class="skill-name">{{ skill.name }}</span>
+                  <span class="status-pill" [attr.data-status]="isSkillEnabled(at, skill.skill_id) ? 'active' : 'disabled'">
+                    {{ isSkillEnabled(at, skill.skill_id) ? 'active' : 'disabled' }}
+                  </span>
+                </div>
+                <div class="skill-desc">{{ skill.description }}</div>
+                <div class="skill-meta" *ngIf="skill.recommended_tools.length > 0">
+                  Recommends: {{ skill.recommended_tools.join(', ') }}
+                </div>
+              </div>
+              <div class="skill-actions">
+                <button mat-stroked-button type="button" (click)="toggleSkillEnabled(at, skill.skill_id)">
+                  {{ isSkillEnabled(at, skill.skill_id) ? 'Disable' : 'Enable' }}
+                </button>
+                <button mat-button type="button" color="warn" (click)="removeSkill(at, skill.skill_id)">Remove</button>
+              </div>
+            </div>
+          </div>
+
+          <ng-template #noSkillsAttached>
+            <div class="empty-state-copy">No skills attached to this agent yet.</div>
+          </ng-template>
+
+          <div class="skill-catalog" *ngIf="getAvailableSkills(at).length > 0">
+            <div class="subsection-label">Available catalog skills</div>
+            <div class="skill-catalog-list">
+              <button
+                mat-stroked-button
+                type="button"
+                *ngFor="let skill of getAvailableSkills(at)"
+                [disabled]="!canAddSkill(at, skill.skill_id)"
+                (click)="addSkill(at, skill)"
+              >
+                {{ skill.name }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <mat-divider *ngIf="getSupportedTools(at).length > 0"></mat-divider>

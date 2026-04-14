@@ -27,6 +27,7 @@ def build_router() -> APIRouter:
     from app.api.v1.circuit_breaker import router as circuit_breaker_router
     from app.api.v1.portfolio import router as portfolio_router
     from app.api.v1.backtests import router as backtests_router
+    from app.api.v1.skills import router as skills_router
 
     router.include_router(health_router)
     router.include_router(auth_router)
@@ -46,6 +47,7 @@ def build_router() -> APIRouter:
     router.include_router(circuit_breaker_router)
     router.include_router(portfolio_router)
     router.include_router(backtests_router)
+    router.include_router(skills_router)
     return router
 
 

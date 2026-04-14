@@ -4,6 +4,7 @@ Risk Manager Agent
 Instruction-driven risk management and position sizing using LLM.
 Queries broker for account state and calculates safe position sizes.
 """
+import structlog
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -12,6 +13,8 @@ from app.agents.prompts import load_prompt
 from app.schemas.pipeline_state import PipelineState, AgentMetadata, AgentConfigSchema, RiskAssessment
 from app.services.agent_runner import AgentRunner
 from app.config import settings
+
+logger = structlog.get_logger()
 
 
 class RiskManagerAgent(BaseAgent):
@@ -43,6 +46,9 @@ class RiskManagerAgent(BaseAgent):
         db = SessionLocal()
         try:
             model_choices = model_registry.get_model_choices_for_schema(db)
+        except Exception:
+            logger.warning("risk_manager_agent_model_choices_fallback", exc_info=True)
+            model_choices = ["gpt-4o"]
         finally:
             db.close()
         

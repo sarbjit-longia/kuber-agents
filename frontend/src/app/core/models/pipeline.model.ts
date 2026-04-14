@@ -17,6 +17,8 @@ export interface Agent {
   requires_market_data: boolean;
   requires_position: boolean;
   config_schema: AgentConfigSchema;
+  supports_skills?: boolean;
+  supported_skill_categories?: string[];
 }
 
 export interface AgentConfigSchema {

@@ -20,6 +20,7 @@ from app.services.agent_runner import AgentRunner
 from app.services.llm_provider import create_openai_client, get_llm_provider, resolve_chat_model
 from app.config import settings
 from app.database import SessionLocal
+from app.services.skill_registry import skill_registry
 
 logger = structlog.get_logger()
 
@@ -42,6 +43,9 @@ class StrategyAgent(BaseAgent):
         db = SessionLocal()
         try:
             model_choices = model_registry.get_model_choices_for_schema(db)
+        except Exception:
+            logger.warning("strategy_agent_model_choices_fallback", exc_info=True)
+            model_choices = ["gpt-4o"]
         finally:
             db.close()
 
@@ -64,6 +68,8 @@ class StrategyAgent(BaseAgent):
                 "fvg_detector", "liquidity_analyzer", "market_structure_analyzer",
                 "premium_discount_analyzer", "rsi_calculator", "macd_calculator", "sma_crossover"
             ],
+            supports_skills=True,
+            supported_skill_categories=["ict", "bias", "confluence"],
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Strategy Agent Configuration",
@@ -237,9 +243,20 @@ class StrategyAgent(BaseAgent):
                 for c in candles
             ] if candles else []
 
-            # Load tools declared in metadata — passes candle data so ICT tools are included
+            resolved_skills = skill_registry.resolve_for_agent(
+                agent_type=self.metadata.agent_type,
+                attachments=self.config.get("skills", []),
+                base_runtime_tools=self.get_metadata().default_tools,
+            )
+            if resolved_skills["skills"]:
+                self.log(
+                    state,
+                    "Active skills: " + ", ".join(skill.name for skill in resolved_skills["skills"]),
+                )
+
+            # Load base tools plus any skill-recommended runtime tools.
             tools = build_openai_tools(
-                self.get_metadata().default_tools,
+                resolved_skills["runtime_tools"],
                 ticker=state.symbol,
                 candles=candle_dicts if candle_dicts else None
             )
@@ -250,7 +267,11 @@ class StrategyAgent(BaseAgent):
             tool_results_text, tool_results_data = self._call_tools_and_format(tools, state, candle_dicts, price_precision)
             
             # STAGE 2: Run a single direct LLM call using the precomputed tool output.
-            system_prompt = load_prompt("strategy_agent_system") + f"""
+            skill_prompt = ""
+            if resolved_skills["instruction_fragments"]:
+                skill_prompt = "\n\nACTIVE SKILLS:\n- " + "\n- ".join(resolved_skills["instruction_fragments"])
+
+            system_prompt = load_prompt("strategy_agent_system") + skill_prompt + f"""
 
 You are executing a trade strategy for {state.symbol}.
 
@@ -284,6 +305,9 @@ Bias: {bias_context}
 
 Technical Analysis:
 {tool_results_text}
+
+Attached Skills:
+{', '.join(skill.skill_id for skill in resolved_skills['skills']) if resolved_skills['skills'] else 'None'}
 
 ═══════════════════════════════════════════════════════════
 YOUR TASK:

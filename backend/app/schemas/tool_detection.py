@@ -21,6 +21,11 @@ class ValidateInstructionsRequest(BaseModel):
         pattern="^(strategy_agent|bias_agent|risk_manager_agent|trade_manager_agent)$"
     )
 
+    attached_skills: List[str] = Field(
+        default_factory=list,
+        description="Optional attached skill IDs to bias tool detection toward skill-recommended tools"
+    )
+
 
 class DetectedTool(BaseModel):
     """Information about a detected tool."""
@@ -98,4 +103,3 @@ class AvailableToolsResponse(BaseModel):
     tools: List[ToolInfo]
     total_count: int
     categories: List[str]
-

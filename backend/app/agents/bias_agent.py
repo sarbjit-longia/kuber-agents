@@ -19,6 +19,7 @@ from app.services.llm_provider import create_openai_client, get_llm_provider, re
 from app.config import settings
 from app.services.model_registry import model_registry
 from app.database import SessionLocal
+from app.services.skill_registry import skill_registry
 
 logger = structlog.get_logger()
 
@@ -42,6 +43,9 @@ class BiasAgent(BaseAgent):
         db = SessionLocal()
         try:
             model_choices = model_registry.get_model_choices_for_schema(db)
+        except Exception:
+            logger.warning("bias_agent_model_choices_fallback", exc_info=True)
+            model_choices = ["gpt-4o"]
         finally:
             db.close()
 
@@ -64,6 +68,8 @@ class BiasAgent(BaseAgent):
                 "rsi_calculator", "macd_calculator", "sma_crossover",
                 "fvg_detector", "liquidity_analyzer", "market_structure_analyzer", "premium_discount_analyzer"
             ],
+            supports_skills=True,
+            supported_skill_categories=["bias", "ict", "confluence"],
             config_schema=AgentConfigSchema(
                 type="object",
                 title="Bias Agent Configuration",
@@ -137,16 +143,31 @@ class BiasAgent(BaseAgent):
             
             # Prepare market context
             market_context = self._prepare_market_context(state)
+
+            resolved_skills = skill_registry.resolve_for_agent(
+                agent_type=self.metadata.agent_type,
+                attachments=self.config.get("skills", []),
+                base_runtime_tools=self.get_metadata().default_tools,
+            )
+            if resolved_skills["skills"]:
+                self.log(
+                    state,
+                    "Active skills: " + ", ".join(skill.name for skill in resolved_skills["skills"]),
+                )
             
             # Load tools declared in metadata (indicator tools only — no candles at bias stage)
             tools = build_openai_tools(
-                self.get_metadata().default_tools,
+                resolved_skills["runtime_tools"],
                 ticker=state.symbol,
                 candles=None  # Bias agent uses indicator tools that don't need candle data
             )
             
             self.log(state, f"Available tools: {[t.name for t in tools]}")
-            system_prompt = load_prompt("bias_agent_system") + (
+            skill_prompt = ""
+            if resolved_skills["instruction_fragments"]:
+                skill_prompt = "\n\nACTIVE SKILLS:\n- " + "\n- ".join(resolved_skills["instruction_fragments"])
+
+            system_prompt = load_prompt("bias_agent_system") + skill_prompt + (
                 f"\n\nYou are analyzing {state.symbol}. Use the available tools to gather data and apply the framework above to determine bias."
             )
             user_prompt = f"""Analyze {state.symbol} and determine the market bias.
@@ -156,6 +177,9 @@ CURRENT MARKET DATA:
 
 YOUR INSTRUCTIONS (FOLLOW THESE EXACTLY):
 {instructions}
+
+ATTACHED SKILLS:
+{', '.join(skill.skill_id for skill in resolved_skills['skills']) if resolved_skills['skills'] else 'None'}
 
 CRITICAL INSTRUCTION ENFORCEMENT RULES:
 1. Your instructions above take ABSOLUTE PRECEDENCE over ALL technical analysis conventions
