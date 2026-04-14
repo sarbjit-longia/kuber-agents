@@ -105,6 +105,8 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   scheduleEndTime = '16:00';
   scheduleDays: number[] = [1, 2, 3, 4, 5]; // Mon-Fri
   liquidateOnDeactivation = false;
+  noEntryAfter = '';
+  noEntrySessions: string[] = ['lunch', 'after_hours', 'pre_market'];
 
   readonly DAY_OPTIONS = [
     { value: 1, label: 'Mon' },
@@ -114,6 +116,14 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     { value: 5, label: 'Fri' },
     { value: 6, label: 'Sat' },
     { value: 7, label: 'Sun' },
+  ];
+
+  readonly SESSION_POLICY_OPTIONS = [
+    { value: 'pre_market', label: 'Pre-market' },
+    { value: 'lunch', label: 'Lunch' },
+    { value: 'after_hours', label: 'After-hours' },
+    { value: 'power_hour', label: 'Power Hour' },
+    { value: 'regular', label: 'Regular Session' },
   ];
 
   // Trade approval settings
@@ -298,7 +308,10 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         min_strategy_confidence: 0.65,
         min_risk_reward: 1.5
       },
-      trade_manager_agent: {}
+      trade_manager_agent: {
+        no_entry_sessions: ['lunch', 'after_hours', 'pre_market'],
+        no_entry_after: ''
+      }
     };
 
     for (const slot of this.slots) {
@@ -403,6 +416,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
             };
           }
         }
+        this.loadTradeManagerExecutionPolicyConfig(nodesByType.get('trade_manager_agent')?.config);
 
         // Back-compat inference: if broker_tool is missing, infer from Trade Manager tools (if present)
         const inferredBrokerTool =
@@ -830,6 +844,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   private buildConfigForSave(): PipelineConfig {
     // Ensure broker enforcement before snapshotting config
     this.pipelineBrokerTool = this.buildPipelineBrokerTool();
+    this.syncTradeManagerExecutionPolicyConfig();
     this.enforceBrokerOnAgents();
 
     const nodes: PipelineNode[] = this.slots.map(slot => ({
@@ -1008,6 +1023,15 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   }
 
+  toggleNoEntrySession(session: string): void {
+    const idx = this.noEntrySessions.indexOf(session);
+    if (idx >= 0) {
+      this.noEntrySessions = this.noEntrySessions.filter(s => s !== session);
+    } else {
+      this.noEntrySessions = [...this.noEntrySessions, session];
+    }
+  }
+
   getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'): 'READY' | 'SETUP' | 'TODO' {
     if (key === 'pipeline_settings') {
       if (this.triggerMode === TriggerMode.SIGNAL && !this.scannerId) return 'SETUP';
@@ -1150,5 +1174,29 @@ export class PipelineBuilderGuidedComponent implements OnInit {
       verticalPosition: 'top',
       panelClass: [`snackbar-${type}`]
     });
+  }
+
+  private loadTradeManagerExecutionPolicyConfig(config: any): void {
+    const blocked = Array.isArray(config?.no_entry_sessions)
+      ? config.no_entry_sessions.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+      : ['lunch', 'after_hours', 'pre_market'];
+    this.noEntrySessions = blocked.length ? blocked : ['lunch', 'after_hours', 'pre_market'];
+    this.noEntryAfter = typeof config?.no_entry_after === 'string' ? config.no_entry_after : '';
+  }
+
+  private syncTradeManagerExecutionPolicyConfig(): void {
+    const tradeManagerNode = this.agentNodes['trade_manager_agent'];
+    if (!tradeManagerNode) return;
+
+    const mergedConfig = {
+      ...(tradeManagerNode.config || {}),
+      no_entry_sessions: [...this.noEntrySessions],
+      no_entry_after: this.noEntryAfter || ''
+    };
+    tradeManagerNode.config = mergedConfig;
+
+    if (this.getSelectedAgentType() === 'trade_manager_agent') {
+      this.editingConfig = { ...mergedConfig };
+    }
   }
 }

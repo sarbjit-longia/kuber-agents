@@ -432,6 +432,54 @@
               </div>
             </div>
           </ng-container>
+
+          <div class="approval-section-card">
+            <div class="approval-section-header">
+              <mat-icon>block</mat-icon>
+              <span>Trade Entry Session Policy</span>
+            </div>
+            <div class="approval-section-desc">
+              Control when the Trade Manager is allowed to open new positions. These settings map directly to the backend session policy used in live and backtest execution.
+            </div>
+
+            <div class="schedule-subsection">
+              <div class="schedule-subsection-title">Blocked Sessions</div>
+              <div class="approval-section-desc">New entries will be skipped during the selected ET market sessions.</div>
+              <div class="schedule-day-chips">
+                <button
+                  *ngFor="let session of SESSION_POLICY_OPTIONS"
+                  mat-stroked-button
+                  type="button"
+                  class="day-chip"
+                  [class.selected]="noEntrySessions.includes(session.value)"
+                  (click)="toggleNoEntrySession(session.value)"
+                >
+                  {{ session.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="schedule-subsection">
+              <div class="schedule-subsection-title">No New Entries After</div>
+              <div class="approval-section-desc">Optional ET cutoff after which the Trade Manager will stop opening new positions, even if the pipeline is still active.</div>
+              <div class="schedule-time-row single-field">
+                <mat-form-field appearance="outline" class="time-field">
+                  <mat-label>Cutoff Time</mat-label>
+                  <input matInput type="time" [(ngModel)]="noEntryAfter" />
+                  <button
+                    *ngIf="noEntryAfter"
+                    mat-icon-button
+                    matSuffix
+                    type="button"
+                    aria-label="Clear cutoff time"
+                    (click)="noEntryAfter = ''"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </mat-form-field>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Notification Settings -->

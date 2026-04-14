@@ -29,10 +29,83 @@ from app.orchestration.validator import PipelineValidator
 from app.services.executive_report_generator import executive_report_generator
 from app.services.trade_analysis_generator import trade_analysis_generator
 from app.services.langfuse_service import get_langfuse_client
+from app.backtesting.backtest_broker import BacktestBroker
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
+
+
+def _enrich_backtest_result(
+    result: dict,
+    execution_id: str,
+    runtime_trades: list[dict],
+    runtime_positions: dict[str, dict],
+) -> dict:
+    enriched = dict(result or {})
+    if enriched.get("final_pnl") is not None and enriched.get("trade_outcome"):
+        return enriched
+
+    closed_trade = next(
+        (trade for trade in runtime_trades if str(trade.get("execution_id") or "") == execution_id),
+        None,
+    )
+    if closed_trade:
+        entry_price = closed_trade.get("entry_price")
+        exit_price = closed_trade.get("exit_price")
+        net_pnl = closed_trade.get("net_pnl")
+        pnl_percent = None
+        try:
+            entry = float(entry_price) if entry_price is not None else None
+            exit_ = float(exit_price) if exit_price is not None else None
+            if entry and exit_:
+                direction = str(closed_trade.get("action") or "").upper()
+                pnl_percent = ((entry - exit_) / entry) * 100 if direction == "SELL" else ((exit_ - entry) / entry) * 100
+        except (TypeError, ValueError):
+            pnl_percent = None
+
+        enriched["final_pnl"] = net_pnl
+        enriched["final_pnl_percent"] = pnl_percent
+        enriched["trade_outcome"] = {
+            "status": "executed",
+            "pnl": net_pnl,
+            "pnl_percent": pnl_percent,
+            "exit_reason": closed_trade.get("exit_reason"),
+            "exit_price": exit_price,
+            "entry_price": entry_price,
+            "closed_at": closed_trade.get("exit_time"),
+        }
+        return enriched
+
+    open_position = next(
+        (position for position in runtime_positions.values() if str(position.get("execution_id") or "") == execution_id),
+        None,
+    )
+    if open_position:
+        unrealized = open_position.get("unrealized_pnl")
+        entry_price = open_position.get("entry_price")
+        mark_price = open_position.get("mark_price")
+        pnl_percent = None
+        try:
+            entry = float(entry_price) if entry_price is not None else None
+            mark = float(mark_price) if mark_price is not None else None
+            if entry and mark:
+                direction = str(open_position.get("action") or "").upper()
+                pnl_percent = ((entry - mark) / entry) * 100 if direction == "SELL" else ((mark - entry) / entry) * 100
+        except (TypeError, ValueError):
+            pnl_percent = None
+
+        enriched["trade_outcome"] = {
+            "status": "executed",
+            "pnl": unrealized,
+            "pnl_percent": pnl_percent,
+            "exit_reason": "Position still open in backtest broker",
+            "exit_price": mark_price,
+            "entry_price": entry_price,
+            "closed_at": None,
+        }
+
+    return enriched
 
 
 @router.post("/", response_model=ExecutionInDB, status_code=status.HTTP_202_ACCEPTED)
@@ -389,6 +462,7 @@ async def list_executions(
     all_rows = list(active_rows) + [r for r in hist_rows if r[0].id not in active_ids]
     
     summaries = []
+    backtest_runtime_cache: dict[str, dict] = {}
     for execution, pipeline_name, trigger_mode, scanner_name in all_rows:
         duration_seconds = None
         if execution.started_at and execution.completed_at:
@@ -403,16 +477,35 @@ async def list_executions(
         strategy_confidence = None
         trade_outcome = None
         
-        if execution.result and isinstance(execution.result, dict):
-            strategy = execution.result.get('strategy')
+        result_data = dict(execution.result or {}) if execution.result and isinstance(execution.result, dict) else {}
+        if execution.mode == "backtest":
+            backtest_run_id = result_data.get("backtest_run_id")
+            if backtest_run_id:
+                runtime = backtest_runtime_cache.get(backtest_run_id)
+                if runtime is None:
+                    broker = BacktestBroker(run_id=str(backtest_run_id), initial_capital=10_000.0)
+                    runtime = {
+                        "trades": list(broker.get_closed_trades() or []),
+                        "positions": broker.get_positions() or {},
+                    }
+                    backtest_runtime_cache[backtest_run_id] = runtime
+                result_data = _enrich_backtest_result(
+                    result_data,
+                    str(execution.id),
+                    runtime["trades"],
+                    runtime["positions"],
+                )
+
+        if result_data:
+            strategy = result_data.get('strategy')
             if strategy:
                 strategy_action = strategy.get('action')
                 strategy_confidence = strategy.get('confidence')
             
             # Determine trade outcome
-            trade_execution = execution.result.get('trade_execution')
-            risk_assessment = execution.result.get('risk_assessment')
-            trade_outcome_obj = execution.result.get('trade_outcome')  # From monitoring completion
+            trade_execution = result_data.get('trade_execution')
+            risk_assessment = result_data.get('risk_assessment')
+            trade_outcome_obj = result_data.get('trade_outcome')  # From monitoring completion
             
             # Step 1: Check if monitoring completed (has final trade_outcome from agent)
             if trade_outcome_obj and isinstance(trade_outcome_obj, dict):
@@ -435,7 +528,7 @@ async def list_executions(
                     trade_outcome = exec_status or 'unknown'
             
             # Step 3: Check for preflight-skipped executions
-            if not trade_outcome and execution.result.get('skipped'):
+            if not trade_outcome and result_data.get('skipped'):
                 trade_outcome = 'skipped'
 
             # Step 4: Fallback based on what pipeline produced
@@ -475,7 +568,7 @@ async def list_executions(
             # trade_execution.status was never updated from 'accepted'.
             if execution.status == ExecutionStatus.COMPLETED and trade_outcome in ('pending', 'accepted'):
                 has_real_pnl = False
-                result = execution.result or {}
+                result = result_data or {}
                 
                 # Check final_pnl (top-level)
                 final_pnl = result.get('final_pnl')
@@ -523,7 +616,7 @@ async def list_executions(
             strategy_action=strategy_action,
             strategy_confidence=strategy_confidence,
             trade_outcome=trade_outcome,
-            result=execution.result,  # Include full result for P&L
+            result=result_data,  # Include full result for P&L
             reports=execution.reports  # Include reports for monitoring P&L
         ))
     
@@ -1883,4 +1976,3 @@ async def get_candles(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to fetch candles from data plane: {str(e)}",
         )
-

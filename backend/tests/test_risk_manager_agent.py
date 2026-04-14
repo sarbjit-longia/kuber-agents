@@ -501,3 +501,109 @@ class TestRiskManagerCalculations:
         assert result["rejected"] is False
         assert result["adjusted_size"] == 10.0
         assert "reduced" in result["reason"].lower() or "exposure cap" in result["reason"].lower()
+
+    @pytest.mark.unit
+    def test_llm_position_size_is_used_without_prompt_parsing(self, state_with_strategy, monkeypatch):
+        """Prompt interpretation should come from the LLM output, not regex parsing in code."""
+        registry = get_registry()
+        agent = registry.create_agent(
+            agent_type="risk_manager_agent",
+            agent_id="test-risk-llm-size",
+            config={
+                "instructions": "Do not risk more than 30% of capital.",
+                "account_balance": 100000,
+                "buying_power": 500000,
+            }
+        )
+
+        class FakeResult:
+            content = (
+                "APPROVED: Yes\n"
+                "POSITION_SIZE: 700\n"
+                "RISK_SCORE: 0.1\n"
+                "MAX_LOSS: 301\n"
+                "WARNINGS: None\n"
+                "REASONING: User requested 30% risk and this sizing follows that instruction."
+            )
+
+        monkeypatch.setattr(agent.runner, "run", lambda **kwargs: FakeResult())
+
+        result = agent.process(state_with_strategy)
+
+        assert result.risk_assessment is not None
+        assert result.risk_assessment.approved is True
+        assert result.risk_assessment.position_size == 700.0
+        assert "30% risk" in result.risk_assessment.reasoning
+
+    @pytest.mark.unit
+    def test_no_broker_uses_explicit_config_account_values(self):
+        """Explicit config balances should be used when no broker is attached."""
+        registry = get_registry()
+        agent = registry.create_agent(
+            agent_type="risk_manager_agent",
+            agent_id="test-risk-config-account",
+            config={
+                "instructions": "Risk 1% per trade.",
+                "account_balance": 100000,
+                "buying_power": 85000,
+                "cash": 50000,
+            }
+        )
+
+        broker_info = agent._config_account_info()
+
+        assert broker_info is not None
+        assert broker_info["equity"] == 100000
+        assert broker_info["buying_power"] == 85000
+        assert broker_info["cash"] == 50000
+        assert broker_info["source"] == "config"
+
+    @pytest.mark.unit
+    def test_broker_error_does_not_silently_fallback_to_10k(self, state_with_strategy, monkeypatch):
+        """Attached broker failures should reject, not silently size off a fake 10k account."""
+        registry = get_registry()
+        agent = registry.create_agent(
+            agent_type="risk_manager_agent",
+            agent_id="test-risk-broker-error",
+            config={
+                "instructions": "Do not risk more than 30% of capital.",
+                "tools": [{"tool_type": "tradier_broker", "config": {"api_token": "x", "account_id": "bad"}}],
+            }
+        )
+
+        monkeypatch.setattr(
+            agent,
+            "_get_broker_account_info",
+            lambda state: {"error": "404 - Resource not found", "source": "broker_error", "positions": []},
+        )
+
+        result = agent.process(state_with_strategy)
+
+        assert result.risk_assessment is not None
+        assert result.risk_assessment.approved is False
+        assert result.risk_assessment.position_size == 0.0
+        assert "could not be retrieved" in result.risk_assessment.reasoning.lower()
+
+    @pytest.mark.unit
+    def test_exposure_cap_not_applied_unless_configured(self, state_with_strategy):
+        """Unconfigured exposure caps should not downsize trades."""
+        registry = get_registry()
+        agent = registry.create_agent(
+            agent_type="risk_manager_agent",
+            agent_id="test-risk-no-exposure-default",
+            config={"instructions": "Risk 1% per trade."}
+        )
+
+        result = agent._portfolio_risk_check(
+            state_with_strategy,
+            broker_info={
+                "equity": 10000,
+                "buying_power": 10000,
+                "positions": [{"market_value": 8000}],
+            },
+            det_size=20,
+        )
+
+        assert result["rejected"] is False
+        assert result["adjusted_size"] == 20.0
+        assert result["reason"] == ""

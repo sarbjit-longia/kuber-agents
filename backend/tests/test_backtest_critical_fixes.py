@@ -6,11 +6,13 @@ from uuid import uuid4
 
 import pytest
 
+from app.agents.trade_manager_agent import TradeManagerAgent
 from app.backtesting.orchestrator import BacktestOrchestrator
 from app.backtesting.runtime_main import _start_embedded_signal_generator
 from app.api.v1 import backtests as backtests_api
 from app.models.backtest_run import BacktestRunStatus
 from app.config import settings
+from app.schemas.pipeline_state import PipelineState, RiskAssessment, StrategyResult, TradeReview
 
 
 class FakeRedis:
@@ -378,6 +380,67 @@ def test_risk_manager_uses_backtest_broker_account_info(monkeypatch):
     assert broker_info["buying_power"] == 8250.0
     assert broker_info["equity"] == 10350.0
     assert broker_info["positions"][0]["symbol"] == "AAPL"
+
+
+@pytest.mark.no_tool_mocks
+def test_backtest_trade_manager_respects_trade_review_rejection(monkeypatch):
+    class StubBacktestBroker:
+        def __init__(self, *_args, **_kwargs):
+            self._positions = {}
+
+        def get_positions(self):
+            return dict(self._positions)
+
+        def open_position(self, **_kwargs):
+            raise AssertionError("Backtest broker should not open a position when trade review rejects")
+
+    monkeypatch.setattr(
+        "app.agents.trade_manager_agent.BacktestBroker",
+        StubBacktestBroker,
+        raising=False,
+    )
+
+    agent = TradeManagerAgent("trade_manager_agent", {"enable_execution": True})
+    state = PipelineState(
+        pipeline_id=uuid4(),
+        execution_id=uuid4(),
+        user_id=uuid4(),
+        symbol="SPY",
+        mode="backtest",
+        backtest_run_id=str(uuid4()),
+    )
+    state.strategy = StrategyResult(
+        action="SELL",
+        confidence=0.66,
+        entry_price=654.0,
+        stop_loss=655.35,
+        take_profit=651.0,
+        reasoning="Short setup",
+    )
+    state.risk_assessment = RiskAssessment(
+        approved=True,
+        risk_score=0.2,
+        position_size=10.0,
+        max_loss_amount=135.0,
+        risk_reward_ratio=2.22,
+        warnings=[],
+        reasoning="Approved by risk manager",
+    )
+    state.trade_review = TradeReview(
+        decision="REJECTED",
+        confidence=0.58,
+        reasoning="Dual low confidence rule triggered.",
+        key_concerns=["Low conviction"],
+        key_strengths=["Direction alignment is clean"],
+    )
+
+    result = agent.process(state)
+
+    assert result.trade_execution is not None
+    assert result.trade_execution.status == "rejected"
+    assert result.trade_outcome is not None
+    assert result.trade_outcome.status == "rejected"
+    assert result.should_complete is True
 
 
 @pytest.mark.no_tool_mocks

@@ -308,12 +308,13 @@ export class MonitoringComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Apply trade outcome filter to historical table only
     if (this.filters.tradeOutcome !== 'all') {
-      historical = historical.filter(e => e.trade_outcome === this.filters.tradeOutcome);
       if (this.filters.tradeOutcome === 'executed') {
         historical = historical.filter(e => {
           const pnl = this.getPnL(e);
           return pnl.value !== null && pnl.value !== undefined && pnl.value !== 0;
         });
+      } else {
+        historical = historical.filter(e => e.trade_outcome === this.filters.tradeOutcome);
       }
     }
 

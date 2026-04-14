@@ -21,6 +21,7 @@ from app.backtesting.backtest_broker import BacktestBroker
 from app.backtesting.events import create_backtest_event
 from app.config import settings
 from app.models.backtest_event import BacktestEvent
+from app.models.execution import Execution
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
 
 if TYPE_CHECKING:
@@ -66,6 +67,55 @@ class BacktestOrchestrator:
         self._checkpoint_key = f"backtest:{self.run.id}:checkpoint"
         self.http = self._build_http_session()
         self._last_seen_candles: Dict[str, Dict] = {}
+
+    def _persist_closed_trade_outcome(self, trade_record: Dict) -> None:
+        execution_id = trade_record.get("execution_id")
+        if not execution_id:
+            return
+
+        execution = self.db.execute(
+            select(Execution).where(Execution.id == execution_id)
+        ).scalar_one_or_none()
+        if not execution:
+            return
+
+        result = dict(execution.result or {})
+        entry_price = float(trade_record.get("entry_price") or 0.0) or None
+        exit_price = float(trade_record.get("exit_price") or 0.0) or None
+        net_pnl = float(trade_record.get("net_pnl") or 0.0)
+        pnl_percent = None
+        if entry_price and exit_price:
+            direction = str(trade_record.get("action") or "").upper()
+            pnl_percent = (
+                ((entry_price - exit_price) / entry_price) * 100
+                if direction == "SELL"
+                else ((exit_price - entry_price) / entry_price) * 100
+            )
+
+        result["final_pnl"] = net_pnl
+        result["final_pnl_percent"] = pnl_percent
+        result["trade_outcome"] = {
+            "status": "executed",
+            "pnl": net_pnl,
+            "pnl_percent": pnl_percent,
+            "exit_reason": trade_record.get("exit_reason"),
+            "exit_price": exit_price,
+            "entry_price": entry_price,
+            "closed_at": trade_record.get("exit_time"),
+        }
+        execution.result = result
+        _flag_modified_if_present(execution, "result")
+        self.db.commit()
+
+    def _sync_new_closed_trades(self, seen_trade_count: int) -> int:
+        closed_trades = list(self.broker.get_closed_trades() or [])
+        if len(closed_trades) <= seen_trade_count:
+            return len(closed_trades)
+
+        for trade_record in closed_trades[seen_trade_count:]:
+            self._persist_closed_trade_outcome(trade_record)
+
+        return len(closed_trades)
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -145,6 +195,7 @@ class BacktestOrchestrator:
         total_bars = sum(len(bars) for bars in symbol_bars.values())
         checkpoint = self._load_checkpoint()
         processed = int(checkpoint.get("processed_bars", 0)) if checkpoint else 0
+        closed_trade_count = len(self.broker.get_closed_trades() or [])
         if checkpoint and checkpoint.get("actual_cost") is not None:
             self.run.actual_cost = float(checkpoint["actual_cost"])
         equity_curve: List[float] = list(checkpoint.get("equity_curve") or []) if checkpoint else []
@@ -176,6 +227,7 @@ class BacktestOrchestrator:
                         backtest_ts=ts,
                         reason="schedule",
                     )
+                    closed_trade_count = self._sync_new_closed_trades(closed_trade_count)
                     if liquidated:
                         self._record_event(
                             event_type="schedule_liquidated",
@@ -251,6 +303,7 @@ class BacktestOrchestrator:
                 self._update_progress(symbol, processed, total_bars, ts, force=False)
 
                 self.broker.evaluate_bar(symbol, candle)
+                closed_trade_count = self._sync_new_closed_trades(closed_trade_count)
                 current_equity = self.broker.get_equity()
                 equity_curve.append(current_equity)
                 if equity_points and equity_points[-1].get("ts") == ts:

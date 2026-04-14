@@ -92,7 +92,11 @@ class BiasAgent(BaseAgent):
         super().__init__(agent_id, config)
 
         model_name = config.get("model", settings.OPENAI_MODEL)
-        self.logger.info("using_llm_provider", provider=get_llm_provider(), model=model_name)
+        self.logger.info(
+            "using_llm_provider provider=%s model=%s",
+            get_llm_provider(),
+            model_name,
+        )
         self.model_name = model_name
         self.runner = AgentRunner(model=model_name, temperature=0.7, timeout=45)
     

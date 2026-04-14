@@ -1209,6 +1209,10 @@
   margin-top: 8px;
 }
 
+.schedule-time-row.single-field {
+  justify-content: flex-start;
+}
+
 .time-field {
   flex: 1;
 }
@@ -1224,6 +1228,19 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
+.schedule-subsection {
+  margin-top: 20px;
+}
+
+.schedule-subsection-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
 }
 
 .day-chip {

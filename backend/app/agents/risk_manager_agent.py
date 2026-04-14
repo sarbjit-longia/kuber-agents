@@ -4,7 +4,7 @@ Risk Manager Agent
 Instruction-driven risk management and position sizing using LLM.
 Queries broker for account state and calculates safe position sizes.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
@@ -180,42 +180,35 @@ class RiskManagerAgent(BaseAgent):
             
             # Get broker account info
             broker_info = self._get_broker_account_info(state)
-
-            # ── Deterministic sizing (always runs first, TP-008) ──────────────
-            risk_pct = self._extract_risk_pct(instructions)
-            det      = self._deterministic_size(strategy, broker_info, risk_pct)
-            self.log(
-                state,
-                f"📐 Deterministic size: {int(det['position_size'])} shares "
-                f"({risk_pct*100:.1f}% risk, R/R={det['rr_ratio']:.2f})"
-            )
-
-            # ── Portfolio-level gate (TP-009) ─────────────────────────────────
-            portfolio_adjustment = self._portfolio_risk_check(state, broker_info, det["position_size"])
-            if portfolio_adjustment["rejected"]:
+            broker_error = broker_info.get("error")
+            if broker_error:
+                reason = (
+                    "Risk assessment blocked because broker account information could not be "
+                    f"retrieved: {broker_error}"
+                )
                 state.risk_assessment = RiskAssessment(
                     approved=False,
                     risk_score=1.0,
                     position_size=0.0,
                     max_loss_amount=0.0,
-                    risk_reward_ratio=det["rr_ratio"],
-                    warnings=[portfolio_adjustment["reason"]],
-                    reasoning=f"Portfolio risk limit: {portfolio_adjustment['reason']}",
+                    risk_reward_ratio=0.0,
+                    warnings=[reason],
+                    reasoning=reason,
                 )
-                self.log(state, f"✗ Portfolio gate rejected trade: {portfolio_adjustment['reason']}")
-                return state
-
-            if portfolio_adjustment["adjusted_size"] < det["position_size"]:
-                original_size = det["position_size"]
-                det["position_size"] = portfolio_adjustment["adjusted_size"]
-                if strategy.stop_loss is not None:
-                    risk_per_share = abs(float(strategy.entry_price or 0) - float(strategy.stop_loss))
-                    det["max_loss"] = det["position_size"] * risk_per_share
-                self.log(
+                self.log(state, f"✗ {reason}")
+                self.record_report(
                     state,
-                    f"⚠️ Exposure cap reduced size: {int(original_size)} → "
-                    f"{int(det['position_size'])} shares ({portfolio_adjustment['reason']})"
+                    title="Risk Assessment Blocked",
+                    summary="Broker account lookup failed — trade rejected",
+                    status="rejected",
+                    data={
+                        "Decision": "❌ REJECTED",
+                        "Broker Error": broker_error,
+                        "Account Info": f"Source: {broker_info.get('source', 'unknown')}",
+                        "Risk Analysis": reason,
+                    },
                 )
+                return state
 
             # Prepare context for LLM
             context = self._prepare_risk_context(state, broker_info)
@@ -293,21 +286,14 @@ REASONING: <brief explanation of your calculation including the formula used>
             
             # Parse LLM response — use LLM for approval decision + narrative only
             risk_decision = self._parse_risk_decision(str(result), strategy)
+            llm_warnings = list(risk_decision["warnings"])
 
-            # ── Always use deterministic size (TP-008) ────────────────────────
-            # LLM approval flag is respected; LLM size is DISCARDED in favour of
-            # the deterministic calculation which is reproducible and safe.
-            if risk_decision["approved"]:
-                llm_size = risk_decision["position_size"]
-                risk_decision["position_size"] = det["position_size"]
-                risk_decision["max_loss"]       = det["max_loss"]
-                risk_decision["rr_ratio"]       = det["rr_ratio"]
-                if llm_size != det["position_size"]:
-                    risk_decision["warnings"].append(
-                        f"Position size set deterministically to {int(det['position_size'])} shares "
-                        f"({risk_pct*100:.1f}% risk rule). LLM suggested {int(llm_size)}."
-                    )
-            
+            if risk_decision["approved"] and risk_decision["position_size"] <= 0:
+                reason = "Risk manager approved the trade but did not return a valid position size."
+                risk_decision["approved"] = False
+                risk_decision["warnings"].append(reason)
+                risk_decision["reasoning"] = reason
+
             # HARD SAFETY CAP: position value must not exceed buying power
             # This prevents LLM hallucinations from causing absurd orders
             if (risk_decision["approved"]
@@ -334,6 +320,49 @@ REASONING: <brief explanation of your calculation including the formula used>
                         f"⚠️ Position size capped: {int(original_size)} → {int(risk_decision['position_size'])} shares "
                         f"(${total_position_value:,.2f} > buying power ${buying_power:,.2f})"
                     )
+
+            if risk_decision["approved"]:
+                portfolio_adjustment = self._portfolio_risk_check(
+                    state, broker_info, risk_decision["position_size"]
+                )
+                if portfolio_adjustment["rejected"]:
+                    risk_decision["approved"] = False
+                    risk_decision["position_size"] = 0.0
+                    risk_decision["max_loss"] = 0.0
+                    risk_decision["warnings"] = [portfolio_adjustment["reason"]]
+                    risk_decision["reasoning"] = f"Portfolio risk limit: {portfolio_adjustment['reason']}"
+                    self.log(state, f"✗ Portfolio gate rejected trade: {portfolio_adjustment['reason']}")
+                elif portfolio_adjustment["adjusted_size"] < risk_decision["position_size"]:
+                    original_size = risk_decision["position_size"]
+                    risk_decision["position_size"] = portfolio_adjustment["adjusted_size"]
+                    if strategy.stop_loss is not None:
+                        risk_per_share = abs(float(strategy.entry_price or 0) - float(strategy.stop_loss))
+                        risk_decision["max_loss"] = risk_decision["position_size"] * risk_per_share
+                    self.log(
+                        state,
+                        f"⚠️ Exposure cap reduced size: {int(original_size)} → "
+                        f"{int(risk_decision['position_size'])} shares ({portfolio_adjustment['reason']})"
+                    )
+
+            if risk_decision["approved"]:
+                entry = float(strategy.entry_price or 0)
+                stop = float(strategy.stop_loss or 0) if strategy.stop_loss is not None else 0.0
+                if stop and entry:
+                    risk_decision["max_loss"] = risk_decision["position_size"] * abs(entry - stop)
+                risk_decision["warnings"] = self._build_final_warnings(
+                    broker_info=broker_info,
+                    llm_warnings=llm_warnings,
+                    final_size=risk_decision["position_size"],
+                    final_max_loss=risk_decision["max_loss"],
+                )
+                risk_decision["reasoning"] = self._build_final_reasoning(
+                    broker_info=broker_info,
+                    strategy=strategy,
+                    llm_reasoning=risk_decision["reasoning"],
+                    final_size=risk_decision["position_size"],
+                    final_max_loss=risk_decision["max_loss"],
+                    rr_ratio=risk_decision["rr_ratio"],
+                )
             
             # Create risk assessment
             state.risk_assessment = RiskAssessment(
@@ -459,6 +488,14 @@ REASONING: <brief explanation of your calculation including the formula used>
         broker_tool = self._get_broker_tool()
         
         if not broker_tool:
+            config_account = self._config_account_info()
+            if config_account:
+                self.log(
+                    state,
+                    f"📊 Config account — equity: ${config_account['equity']:.2f}, "
+                    f"buying power: ${config_account['buying_power']:.2f}, cash: ${config_account['cash']:.2f}"
+                )
+                return config_account
             self.log(state, "⚠️ No broker attached, using default account info")
             return {
                 "account_balance": 10000,
@@ -477,13 +514,15 @@ REASONING: <brief explanation of your calculation including the formula used>
             
             if "error" in account_info:
                 self.log(state, f"⚠️ Broker returned error: {account_info['error']}")
+                config_account = self._config_account_info()
+                if config_account:
+                    config_account["source"] = "config_fallback"
+                    config_account["broker_error"] = account_info["error"]
+                    return config_account
                 return {
-                    "account_balance": 10000,
-                    "buying_power": 10000,
-                    "cash": 10000,
-                    "equity": 10000,
                     "positions": [],
-                    "source": "fallback"
+                    "source": "broker_error",
+                    "error": account_info["error"],
                 }
             
             # Normalize keys: different brokers return different key names
@@ -519,13 +558,15 @@ REASONING: <brief explanation of your calculation including the formula used>
             
         except Exception as e:
             self.logger.warning(f"Failed to get broker info: {e}")
+            config_account = self._config_account_info()
+            if config_account:
+                config_account["source"] = "config_fallback"
+                config_account["broker_error"] = str(e)
+                return config_account
             return {
-                "account_balance": 10000,
-                "buying_power": 10000,
-                "cash": 10000,
-                "equity": 10000,
                 "positions": [],
-                "source": "fallback"
+                "source": "broker_error",
+                "error": str(e),
             }
     
     def _get_broker_tool(self):
@@ -539,6 +580,28 @@ REASONING: <brief explanation of your calculation including the formula used>
                 return tool
         
         return None
+
+    def _config_account_info(self) -> Optional[Dict[str, Any]]:
+        """Use explicit config balances when no broker lookup is available."""
+        raw_equity = (
+            self.config.get("account_balance")
+            or self.config.get("equity")
+            or self.config.get("portfolio_value")
+        )
+        if raw_equity in (None, ""):
+            return None
+
+        equity = float(raw_equity)
+        buying_power = float(self.config.get("buying_power") or equity)
+        cash = float(self.config.get("cash") or buying_power)
+        return {
+            "account_balance": equity,
+            "buying_power": buying_power,
+            "cash": cash,
+            "equity": equity,
+            "positions": list(self.config.get("positions", [])),
+            "source": "config",
+        }
     
     def _prepare_risk_context(self, state: PipelineState, broker_info: Dict[str, Any]) -> str:
         """Prepare context string for LLM."""
@@ -610,76 +673,6 @@ MARKET CONDITIONS:
         return context
     
     # ------------------------------------------------------------------
-    # Deterministic risk engine (TP-008)
-    # ------------------------------------------------------------------
-
-    def _extract_risk_pct(self, instructions: str) -> float:
-        """
-        Extract the user's risk percentage from natural language instructions.
-        Looks for patterns like "1% risk", "risk 2%", "0.5 percent".
-        Defaults to 2% if not found.
-        """
-        import re
-        patterns = [
-            r"(\d+(?:\.\d+)?)\s*%\s*(?:risk|of\s+(?:account|equity|balance|capital))",
-            r"risk\s+(?:of\s+)?(\d+(?:\.\d+)?)\s*%",
-            r"(\d+(?:\.\d+)?)\s+percent\s+(?:risk|of\s+(?:account|equity))",
-        ]
-        for pat in patterns:
-            m = re.search(pat, instructions, re.IGNORECASE)
-            if m:
-                pct = float(m.group(1)) / 100
-                return max(0.001, min(0.10, pct))  # Clamp between 0.1% and 10%
-        return 0.02  # 2% default
-
-    def _deterministic_size(
-        self,
-        strategy,
-        broker_info: Dict[str, Any],
-        risk_pct: float = 0.02,
-    ) -> Dict[str, Any]:
-        """
-        Calculate position size, R/R ratio, and max loss purely from math.
-
-        This is the PRIMARY sizing path (TP-008). The result always overrides
-        any LLM-generated position size.
-
-        Returns a dict with keys: position_size, max_loss, rr_ratio, risk_pct_used.
-        """
-        equity       = float(broker_info.get("equity", broker_info.get("account_balance", 10000)))
-        buying_power = float(broker_info.get("buying_power", equity))
-        entry        = float(strategy.entry_price or 0)
-        stop         = strategy.stop_loss
-        target       = strategy.take_profit
-
-        if entry <= 0:
-            return {"position_size": 1.0, "max_loss": 0.0, "rr_ratio": 0.0, "risk_pct_used": risk_pct}
-
-        max_affordable = max(1, int(buying_power / entry))
-
-        # Primary: risk-based sizing
-        if stop is not None and stop != 0:
-            risk_per_unit = abs(entry - float(stop))
-            if risk_per_unit > 0:
-                risk_amount = equity * risk_pct
-                raw_size    = risk_amount / risk_per_unit
-                size        = max(1, min(int(raw_size), max_affordable))
-                max_loss    = size * risk_per_unit
-
-                # R/R ratio
-                rr = 0.0
-                if target is not None and target != 0:
-                    reward = abs(float(target) - entry)
-                    rr     = reward / risk_per_unit if risk_per_unit > 0 else 0.0
-
-                return {"position_size": float(size), "max_loss": max_loss, "rr_ratio": rr, "risk_pct_used": risk_pct}
-
-        # Fallback: dollar allocation (1% of equity)
-        size     = max(1, min(int((equity * 0.01) / entry), max_affordable))
-        max_loss = size * entry * 0.02  # Estimate 2% price risk
-        return {"position_size": float(size), "max_loss": max_loss, "rr_ratio": 0.0, "risk_pct_used": risk_pct}
-
-    # ------------------------------------------------------------------
     # Portfolio-level risk controls (TP-009)
     # ------------------------------------------------------------------
 
@@ -718,7 +711,14 @@ MARKET CONDITIONS:
             }
 
         # 2. Total exposure cap
-        max_exposure_pct = float(self.config.get("max_total_exposure_pct", 0.90))
+        max_exposure_pct = self.config.get("max_total_exposure_pct")
+        if max_exposure_pct is None:
+            return {
+                "rejected": False,
+                "adjusted_size": float(det_size),
+                "reason": "",
+            }
+        max_exposure_pct = float(max_exposure_pct)
         current_exposure = sum(
             abs(float(p.get("market_value", 0) or p.get("qty", 0) * float(p.get("avg_entry_price", 0) or 0)))
             for p in positions
@@ -773,12 +773,91 @@ MARKET CONDITIONS:
             "reason": "",
         }
 
+    def _build_final_warnings(
+        self,
+        broker_info: Dict[str, Any],
+        llm_warnings: List[str],
+        final_size: float,
+        final_max_loss: float,
+    ) -> List[str]:
+        """Build stable warnings that match the final deterministic result."""
+        warnings: List[str] = []
+        source = broker_info.get("source")
+        if source == "config_fallback" and broker_info.get("broker_error"):
+            warnings.append(
+                "Broker account lookup failed; sizing used explicit configured account values "
+                f"instead ({broker_info['broker_error']})."
+            )
+        elif source == "config":
+            warnings.append("Broker lookup was not used; sizing used explicit configured account values.")
+
+        for warning in llm_warnings:
+            lower = warning.lower()
+            if "confidence" in lower or "volatility" in lower:
+                warnings.append(warning)
+
+        if not warnings and source == "broker":
+            return []
+
+        # Remove duplicates while keeping order.
+        deduped: List[str] = []
+        seen = set()
+        for warning in warnings:
+            if warning not in seen:
+                deduped.append(warning)
+                seen.add(warning)
+        return deduped
+
+    def _build_final_reasoning(
+        self,
+        broker_info: Dict[str, Any],
+        strategy,
+        llm_reasoning: str,
+        final_size: float,
+        final_max_loss: float,
+        rr_ratio: float,
+    ) -> str:
+        """Append system-enforced mechanics to the LLM's policy interpretation."""
+        entry = float(strategy.entry_price or 0)
+        stop = float(strategy.stop_loss or 0) if strategy.stop_loss is not None else 0.0
+        equity = float(broker_info.get("equity", broker_info.get("account_balance", 0)) or 0)
+        buying_power = float(broker_info.get("buying_power", equity) or 0)
+        max_affordable = int(buying_power / entry) if entry > 0 else 0
+        position_value = final_size * entry if entry > 0 else 0.0
+        actual_risk_pct = (final_max_loss / equity * 100) if equity > 0 else 0.0
+
+        source = broker_info.get("source", "unknown")
+        source_note = {
+            "broker": "Broker-reported account values were used.",
+            "config": "Configured account values were used.",
+            "config_fallback": "Configured account values were used because broker lookup failed.",
+            "backtest_broker": "Backtest broker account values were used.",
+            "default": "Default account values were used because no broker or explicit account values were configured.",
+        }.get(source, f"Account values came from {source}.")
+
+        summary_parts = [source_note]
+        if max_affordable > 0:
+            summary_parts.append(
+                f"System buying-power cap = floor(${buying_power:,.2f} / ${entry:,.2f}) = {max_affordable} shares."
+            )
+        summary_parts.append(
+            f"Final approved size = {int(final_size)} shares (${position_value:,.2f} notional), "
+            f"max loss = ${final_max_loss:,.2f} ({actual_risk_pct:.2f}% of equity), "
+            f"R/R = {rr_ratio:.2f}:1."
+        )
+        if llm_reasoning:
+            return f"{llm_reasoning}\n\nSystem enforcement summary: {' '.join(summary_parts)}"
+        return " ".join(summary_parts)
+
     def _calculate_fallback_position_size(
         self, state: PipelineState, strategy, broker_info: Dict[str, Any]
     ) -> float:
-        """Kept for backwards compatibility — delegates to _deterministic_size."""
-        result = self._deterministic_size(strategy, broker_info, risk_pct=0.02)
-        return result["position_size"]
+        """Kept for backwards compatibility."""
+        entry = float(strategy.entry_price or 0)
+        if entry <= 0:
+            return 0.0
+        buying_power = float(broker_info.get("buying_power", broker_info.get("equity", 0)) or 0)
+        return float(max(1, int(buying_power / entry))) if buying_power > 0 else 0.0
     
     def _parse_risk_decision(self, llm_response: str, strategy) -> Dict[str, Any]:
         """Parse LLM response into structured risk decision."""

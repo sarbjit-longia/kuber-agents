@@ -1596,6 +1596,7 @@ class TradeManagerAgent(BaseAgent):
     def _execute_backtest_trade(self, state: PipelineState) -> PipelineState:
         """Simulate trade entry through the backtest broker and complete immediately."""
         from app.backtesting.backtest_broker import BacktestBroker
+        from app.schemas.pipeline_state import TradeOutcome
 
         if not state.risk_assessment or not state.strategy:
             state.trade_execution = TradeExecution(
@@ -1604,17 +1605,70 @@ class TradeManagerAgent(BaseAgent):
                 execution_time=datetime.utcnow(),
                 broker_response={"reason": "Missing risk assessment or strategy"},
             )
+            state.trade_outcome = TradeOutcome(
+                status="skipped",
+                pnl=None,
+                pnl_percent=None,
+                exit_reason="Missing risk assessment or strategy",
+                entry_price=None,
+                exit_price=None,
+                closed_at=datetime.utcnow(),
+            )
             state.should_complete = True
             return state
 
         strategy = state.strategy
         risk = state.risk_assessment
+        if state.trade_review is not None and state.trade_review.decision == "REJECTED":
+            state.trade_execution = TradeExecution(
+                order_id=None,
+                status="rejected",
+                execution_time=datetime.utcnow(),
+                broker_response={
+                    "reason": f"Rejected by senior trader review: {state.trade_review.reasoning}"
+                },
+            )
+            state.trade_outcome = TradeOutcome(
+                status="rejected",
+                pnl=None,
+                pnl_percent=None,
+                exit_reason="Rejected by senior trader review",
+                entry_price=float(strategy.entry_price) if strategy.entry_price is not None else None,
+                exit_price=None,
+                closed_at=datetime.utcnow(),
+            )
+            self.log(
+                state,
+                f"❌ Senior trader review rejected backtest trade: {state.trade_review.reasoning[:100]}",
+            )
+            self.record_report(
+                state,
+                title="Backtest trade rejected by senior trader review",
+                summary=state.trade_review.reasoning,
+                status="warning",
+                data={
+                    "decision": state.trade_review.decision,
+                    "key_concerns": state.trade_review.key_concerns,
+                },
+            )
+            state.should_complete = True
+            return state
+
         if strategy.action == "HOLD" or not risk.approved:
             state.trade_execution = TradeExecution(
                 order_id=None,
                 status="skipped",
                 execution_time=datetime.utcnow(),
                 broker_response={"reason": "Trade not approved or HOLD action"},
+            )
+            state.trade_outcome = TradeOutcome(
+                status="skipped",
+                pnl=None,
+                pnl_percent=None,
+                exit_reason="Trade not approved or HOLD action",
+                entry_price=float(strategy.entry_price) if strategy.entry_price is not None else None,
+                exit_price=None,
+                closed_at=datetime.utcnow(),
             )
             state.should_complete = True
             return state
@@ -1629,6 +1683,15 @@ class TradeManagerAgent(BaseAgent):
                 status="skipped",
                 execution_time=datetime.utcnow(),
                 broker_response={"reason": f"Position already open for {state.symbol}"},
+            )
+            state.trade_outcome = TradeOutcome(
+                status="skipped",
+                pnl=None,
+                pnl_percent=None,
+                exit_reason=f"Position already open for {state.symbol}",
+                entry_price=float(strategy.entry_price) if strategy.entry_price is not None else None,
+                exit_price=None,
+                closed_at=datetime.utcnow(),
             )
             state.should_complete = True
             return state
@@ -1653,6 +1716,15 @@ class TradeManagerAgent(BaseAgent):
             commission=float(position["commission"]),
             execution_time=datetime.utcnow(),
             broker_response={"broker": "BacktestBroker", "symbol": state.symbol},
+        )
+        state.trade_outcome = TradeOutcome(
+            status="executed",
+            pnl=None,
+            pnl_percent=None,
+            exit_reason="Position opened in backtest broker",
+            entry_price=float(position["entry_price"]),
+            exit_price=None,
+            closed_at=None,
         )
         state.should_complete = True
         self.record_report(
