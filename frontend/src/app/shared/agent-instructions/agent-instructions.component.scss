@@ -9,16 +9,38 @@
     width: 100%;
   }
 
-  .manual-detect {
-    margin: -2px 0 14px 0;
-    display: flex;
-    justify-content: flex-end;
-  }
-
   .instructions-textarea {
     font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
     font-size: 13px;
     line-height: 1.65;
+  }
+
+  .instructions-note {
+    margin: -2px 0 14px 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(86, 194, 255, 0.16);
+    background: rgba(86, 194, 255, 0.06);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      color: var(--accent-primary);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    strong {
+      color: var(--text-primary);
+      font-weight: 700;
+    }
   }
 
   .detection-status {
@@ -162,10 +184,10 @@
         }
       }
 
-      .cost-summary {
-        padding: 13px 16px;
-        background: rgba(255, 255, 255, 0.02);
-        border-top: 1px solid var(--border-subtle);
+  .cost-summary {
+    padding: 13px 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid var(--border-subtle);
 
         .cost-row {
           display: grid;
@@ -278,6 +300,55 @@
           font-style: italic;
         }
       }
+    }
+  }
+
+  .cost-summary.standalone {
+    margin-top: 16px;
+    border-radius: 16px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 14px 16px;
+
+    .cost-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 16px;
+      align-items: start;
+      padding: 8px 0;
+      font-size: 13px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border-subtle);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &.total {
+        margin-top: 4px;
+        padding-top: 12px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+    }
+
+    .cost-label {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .cost-meta {
+      grid-column: 1 / 2;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    .cost-value {
+      color: var(--text-primary);
+      font-weight: 700;
+      white-space: nowrap;
+      text-align: right;
     }
   }
 }

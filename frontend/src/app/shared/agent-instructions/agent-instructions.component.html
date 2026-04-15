@@ -17,16 +17,13 @@ Examples:
     ></textarea>
     <mat-hint>
       <span *ngIf="autoDetect">Enter at least 20 characters for tool detection</span>
-      <span *ngIf="!autoDetect">Write instructions, then click “Detect tools”</span>
+      <span *ngIf="!autoDetect">Write the agent logic here. Attach any required tools in the separate Tools section.</span>
     </mat-hint>
   </mat-form-field>
 
-  <!-- Manual tool detection -->
-  <div class="manual-detect" *ngIf="showDetectButton">
-    <button mat-stroked-button type="button" (click)="detectTools()" [disabled]="detecting || !instructions || instructions.length < 20">
-      <mat-icon>search</mat-icon>
-      Detect tools
-    </button>
+  <div class="instructions-note" *ngIf="!autoDetect">
+    <mat-icon>info</mat-icon>
+    <span>Use this section for prompt logic. Use the <strong>Tools</strong> card to explicitly attach the capabilities this agent needs.</span>
   </div>
 
   <!-- Tool Detection Status -->
@@ -111,12 +108,12 @@ Examples:
     </div>
     <div class="cost-row">
       <span class="cost-label">Est. LLM Cost</span>
-      <span class="cost-meta">{{ estimatedLLMCost.inputTokens | number }} in / {{ estimatedLLMCost.outputTokens | number }} out tokens</span>
+      <span class="cost-meta">{{ estimatedLLMCost.inputTokens | number }} input / {{ estimatedLLMCost.outputTokens | number }} output tokens</span>
       <span class="cost-value">~${{ estimatedLLMCost.totalLLMCost.toFixed(4) }}/run</span>
     </div>
     <div class="cost-row total">
-      <span class="cost-label"><strong>Estimated Total</strong></span>
-      <span class="cost-value"><strong>~${{ totalEstimatedCost.toFixed(4) }}/run</strong></span>
+      <span class="cost-label">Estimated Total</span>
+      <span class="cost-value">~${{ totalEstimatedCost.toFixed(4) }}/run</span>
     </div>
   </div>
 </div>

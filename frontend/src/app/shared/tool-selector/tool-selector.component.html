@@ -1,15 +1,7 @@
 <div class="tool-selector">
   <div class="tool-selector-header">
     <h6>Attached Tools</h6>
-    <button 
-      mat-mini-fab 
-      color="primary"
-      [matMenuTriggerFor]="addToolMenu"
-      [disabled]="getAvailableToolsForMenu().length === 0"
-      matTooltip="Add Tool"
-      class="add-tool-btn">
-      <mat-icon>add</mat-icon>
-    </button>
+    <div class="tool-count">{{ attachedTools.length }} attached</div>
   </div>
 
   <!-- Tool chips (tags style) -->
@@ -35,25 +27,46 @@
       <mat-icon>build_circle</mat-icon>
     </div>
     <p class="empty-title">No tools attached yet</p>
-    <small class="empty-subtitle">Click the + button to add tools</small>
+    <small class="empty-subtitle">Choose one from the available tools list below.</small>
   </div>
 
-  <!-- Add tool menu -->
-  <mat-menu #addToolMenu="matMenu" class="tool-menu">
-    <button 
-      mat-menu-item 
-      *ngFor="let tool of getAvailableToolsForMenu()"
-      (click)="addTool(tool.tool_type)"
-      [disabled]="isToolDisabled(tool.tool_type)"
-      [matTooltip]="getDisabledTooltip(tool.tool_type)"
-      [matTooltipDisabled]="!isToolDisabled(tool.tool_type)"
-      class="tool-menu-item">
-      <mat-icon [class.disabled-icon]="isToolDisabled(tool.tool_type)">{{tool.icon || 'extension'}}</mat-icon>
-      <span [class.disabled-text]="isToolDisabled(tool.tool_type)">{{tool.name}}</span>
-      <mat-icon *ngIf="isToolDisabled(tool.tool_type)" class="warning-icon">warning</mat-icon>
-    </button>
-    <div *ngIf="getAvailableToolsForMenu().length === 0" class="no-tools-message">
-      <small>All supported tools already attached</small>
+  <div class="available-tools-section">
+    <div class="available-tools-header">
+      <h6>Available Tools</h6>
+      <div class="available-tools-hint">Attach only the tools this agent should be allowed to use.</div>
     </div>
-  </mat-menu>
+
+    <div class="available-tools-grid" *ngIf="getAvailableToolsForMenu().length > 0; else noToolsAvailable">
+      <button
+        type="button"
+        class="available-tool-card"
+        *ngFor="let tool of getAvailableToolsForMenu()"
+        (click)="addTool(tool.tool_type)"
+        [disabled]="isToolDisabled(tool.tool_type)"
+        [matTooltip]="getDisabledTooltip(tool.tool_type)"
+        [matTooltipDisabled]="!isToolDisabled(tool.tool_type)"
+      >
+        <div class="available-tool-main">
+          <div class="available-tool-icon">
+            <mat-icon>{{ tool.icon || 'extension' }}</mat-icon>
+          </div>
+          <div class="available-tool-copy">
+            <div class="available-tool-name">{{ tool.name }}</div>
+            <div class="available-tool-type">{{ formatToolType(tool.tool_type) }}</div>
+          </div>
+        </div>
+        <div class="available-tool-action">
+          <mat-icon *ngIf="!isToolDisabled(tool.tool_type)">add</mat-icon>
+          <mat-icon *ngIf="isToolDisabled(tool.tool_type)">block</mat-icon>
+        </div>
+      </button>
+    </div>
+
+    <ng-template #noToolsAvailable>
+      <div class="no-tools-message">
+        <small *ngIf="getHasSupportedTools()">All supported tools are already attached.</small>
+        <small *ngIf="!getHasSupportedTools()">This agent does not expose any manually attachable tools.</small>
+      </div>
+    </ng-template>
+  </div>
 </div>

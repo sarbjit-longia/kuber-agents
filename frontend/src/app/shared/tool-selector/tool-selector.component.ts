@@ -59,6 +59,9 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['supportedTools'] && this.allTools.length > 0) {
+      this.buildAvailableTools();
+    }
     if (changes['attachedTools'] && this.availableTools.length > 0) {
       this.enrichToolMetadata();
     }
@@ -71,10 +74,7 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
         console.log('All tools from API:', tools);
         console.log('Supported tools for this agent:', this.supportedTools);
         this.allTools = tools;
-        // Filter to only show supported tools
-        this.availableTools = tools.filter(tool => 
-          this.supportedTools.includes(tool.tool_type)
-        );
+        this.buildAvailableTools();
         console.log('Filtered available tools:', this.availableTools);
         this.enrichToolMetadata();
         this.loading = false;
@@ -96,6 +96,49 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
       }
     });
     console.log('Attached tools after enrichment:', this.attachedTools);
+  }
+
+  private buildAvailableTools(): void {
+    const uniqueSupported = Array.from(new Set(this.supportedTools || []));
+    this.availableTools = uniqueSupported.map((toolType) => {
+      return this.allTools.find((tool) => tool.tool_type === toolType) || this.buildFallbackMetadata(toolType);
+    });
+  }
+
+  private buildFallbackMetadata(toolType: string): ToolMetadata {
+    const iconMap: Record<string, string> = {
+      fvg_detector: 'show_chart',
+      liquidity_analyzer: 'waterfall_chart',
+      market_structure_analyzer: 'schema',
+      market_structure: 'schema',
+      premium_discount_analyzer: 'percent',
+      premium_discount: 'percent',
+      rsi_calculator: 'timeline',
+      rsi: 'timeline',
+      macd_calculator: 'multiline_chart',
+      macd: 'multiline_chart',
+      sma_crossover: 'moving',
+      bollinger_bands: 'data_usage',
+      market_data: 'candlestick_chart',
+      webhook_notifier: 'notifications',
+      email_notifier: 'email'
+    };
+
+    return {
+      tool_type: toolType,
+      name: this.formatToolType(toolType),
+      description: 'Manual attachment for this supported tool.',
+      category: 'analysis',
+      version: '1.0.0',
+      icon: iconMap[toolType] || 'extension',
+      requires_credentials: false,
+      config_schema: {
+        type: 'object',
+        title: `${this.formatToolType(toolType)} Configuration`,
+        properties: {},
+        required: []
+      }
+    };
   }
 
   formatToolType(toolType: string): string {
@@ -174,6 +217,10 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
     //console.log('Available tools for menu:', available);
     //console.log('Already attached tools:', this.attachedTools.map(t => t.tool_type));
     return available;
+  }
+
+  getHasSupportedTools(): boolean {
+    return (this.supportedTools || []).length > 0;
   }
 
   /**

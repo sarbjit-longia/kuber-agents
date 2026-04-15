@@ -49,6 +49,12 @@ interface GuidedAgentSlot {
   icon: string;
 }
 
+interface DetailHelpItem {
+  icon: string;
+  title: string;
+  body: string;
+}
+
 @Component({
   selector: 'app-pipeline-builder-guided',
   standalone: true,
@@ -139,7 +145,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   signalSubscriptions: any[] | null = null; // backend shape: {signal_type,timeframe?,min_confidence?}[] | null
 
   agents: Agent[] = [];
-  selectedItemKey: string = 'agent:market_data_agent';
+  selectedItemKey: string = 'pipeline_settings';
 
   // Cache agent metadata-derived values to avoid expensive re-renders / schema identity churn
   private agentMetaByType = new Map<string, any>();
@@ -226,42 +232,18 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   ];
 
-  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'; title: string; subtitle: string; icon: string }> = [
+  readonly setupItems: Array<{ key: 'pipeline_settings' | 'signal_filters'; title: string; subtitle: string; icon: string }> = [
     {
       key: 'pipeline_settings',
       title: 'Pipeline settings',
-      subtitle: 'Trigger mode + scanner selection',
+      subtitle: 'Trigger, broker, schedule, notifications, approval',
       icon: 'settings'
-    },
-    {
-      key: 'broker_settings',
-      title: 'Broker',
-      subtitle: 'Configure broker once (used by Risk + Trade)',
-      icon: 'account_balance'
     },
     {
       key: 'signal_filters',
       title: 'Signal filters',
       subtitle: 'Choose which signal types to accept',
       icon: 'tune'
-    },
-    {
-      key: 'schedule_settings',
-      title: 'Active Hours',
-      subtitle: 'Daily schedule for auto activate/deactivate',
-      icon: 'schedule'
-    },
-    {
-      key: 'notification_settings',
-      title: 'Notifications',
-      subtitle: 'Telegram alerts for trades + events',
-      icon: 'notifications'
-    },
-    {
-      key: 'approval_settings',
-      title: 'Trade Approval',
-      subtitle: 'Require manual approval before trades',
-      icon: 'verified_user'
     }
   ];
 
@@ -1114,27 +1096,26 @@ export class PipelineBuilderGuidedComponent implements OnInit {
     }
   }
 
-  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'): 'READY' | 'SETUP' | 'TODO' {
+  getSetupItemStatus(key: 'pipeline_settings' | 'signal_filters' | 'broker_settings' | 'notification_settings' | 'approval_settings' | 'schedule_settings'): 'READY' | 'SETUP' | 'TODO' | 'OPTIONAL' {
     if (key === 'pipeline_settings') {
       if (this.triggerMode === TriggerMode.SIGNAL && !this.scannerId) return 'SETUP';
+      if (!this.isPipelineBrokerConfigured()) return 'SETUP';
       return 'READY';
     }
     if (key === 'broker_settings') {
       return this.isPipelineBrokerConfigured() ? 'READY' : 'SETUP';
     }
     if (key === 'signal_filters') {
-      if (this.triggerMode !== TriggerMode.SIGNAL) return 'TODO';
-      return (this.signalSubscriptions && this.signalSubscriptions.length > 0) ? 'READY' : 'SETUP';
+      return (this.signalSubscriptions && this.signalSubscriptions.length > 0) ? 'READY' : 'OPTIONAL';
     }
     if (key === 'schedule_settings') {
-      return this.scheduleEnabled ? 'READY' : 'SETUP';
+      return this.scheduleEnabled ? 'READY' : 'OPTIONAL';
     }
     if (key === 'notification_settings') {
-      // Notification settings are optional, so always return READY if enabled or SETUP if disabled
-      return this.notificationEnabled ? 'READY' : 'SETUP';
+      return this.notificationEnabled ? 'READY' : 'OPTIONAL';
     }
     if (key === 'approval_settings') {
-      return this.requireApproval ? 'READY' : 'SETUP';
+      return this.requireApproval ? 'READY' : 'OPTIONAL';
     }
     return 'TODO';
   }
@@ -1142,12 +1123,234 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   getSlotStatus(agentType: string): 'READY' | 'SETUP' | 'TODO' {
     const cfg = this.agentNodes[agentType]?.config || {};
     if (agentType === 'market_data_agent') return 'READY';
-    if (agentType === 'trade_manager_agent') return (this.isPipelineBrokerConfigured() ? 'READY' : 'TODO');
+    if (agentType === 'trade_manager_agent') return (this.isPipelineBrokerConfigured() ? 'READY' : 'SETUP');
+    if (agentType === 'trade_review_agent') {
+      return this.hasTradeReviewConfig(cfg) ? 'READY' : 'SETUP';
+    }
     if (agentType === 'bias_agent' || agentType === 'strategy_agent' || agentType === 'risk_manager_agent') {
       const hasInstr = !!((cfg as any)?.['instructions'] && String((cfg as any)?.['instructions']).trim().length > 0);
       return hasInstr ? 'READY' : 'SETUP';
     }
     return 'TODO';
+  }
+
+  getDetailsTitle(): string {
+    if (this.selectedItemKey === 'pipeline_settings') return 'Pipeline Settings';
+    if (this.selectedItemKey === 'signal_filters') return 'Signal Filters';
+    const selectedAgentType = this.getSelectedAgentType();
+    if (!selectedAgentType) return 'Setup';
+    return this.getAgentMetadata(selectedAgentType)?.name || selectedAgentType;
+  }
+
+  getDetailsSubtitle(): string {
+    if (this.selectedItemKey === 'pipeline_settings') {
+      return 'Configure how the pipeline runs and what operational controls apply.';
+    }
+    if (this.selectedItemKey === 'signal_filters') {
+      return 'Choose which incoming signal types and confidence thresholds this pipeline accepts.';
+    }
+    const selectedAgentType = this.getSelectedAgentType();
+    if (!selectedAgentType) return 'Configure the selected item.';
+    const slot = this.slots.find(item => item.agent_type === selectedAgentType);
+    return slot?.subtitle || 'Configure this agent.';
+  }
+
+  getAgentSummary(agentType: string): string {
+    const cfg = this.agentNodes[agentType]?.config || {};
+
+    if (agentType === 'market_data_agent') {
+      return 'Always included as the first step in the guided chain.';
+    }
+    if (agentType === 'trade_manager_agent') {
+      return this.isPipelineBrokerConfigured()
+        ? 'Uses the pipeline broker and execution policy defined in Pipeline Settings.'
+        : 'Waiting for a broker in Pipeline Settings.';
+    }
+    if (agentType === 'trade_review_agent') {
+      return this.hasTradeReviewConfig(cfg)
+        ? 'Quality gate thresholds are configured.'
+        : 'Review thresholds need attention.';
+    }
+
+    const instructions = String(cfg?.['instructions'] || '').trim();
+    if (instructions) {
+      return instructions.length > 120 ? `${instructions.slice(0, 117)}...` : instructions;
+    }
+    return 'Add guidance, tools, and advanced settings for this agent.';
+  }
+
+  getAgentIcon(agentType: string): string {
+    return this.slots.find((slot) => slot.agent_type === agentType)?.icon || 'smart_toy';
+  }
+
+  getDetailsHelpTitle(): string {
+    if (this.selectedItemKey === 'pipeline_settings') return 'How to Configure This Pipeline';
+    if (this.selectedItemKey === 'signal_filters') return 'How Signal Filtering Works';
+
+    const agentType = this.getSelectedAgentType();
+    if (agentType === 'market_data_agent') return 'What This Agent Does';
+    if (agentType === 'bias_agent') return 'Bias Guidance';
+    if (agentType === 'strategy_agent') return 'Strategy Guidance';
+    if (agentType === 'risk_manager_agent') return 'Risk Guidance';
+    if (agentType === 'trade_review_agent') return 'Review Guidance';
+    if (agentType === 'trade_manager_agent') return 'Execution Guidance';
+    return 'Help';
+  }
+
+  getDetailsHelpItems(): DetailHelpItem[] {
+    if (this.selectedItemKey === 'pipeline_settings') {
+      return [
+        {
+          icon: 'playlist_play',
+          title: 'Start with execution',
+          body: 'Choose trigger mode first. Signal-triggered pipelines usually need scanner and filter setup, while periodic pipelines can run without subscriptions.'
+        },
+        {
+          icon: 'account_balance',
+          title: 'Broker drives execution',
+          body: 'Broker configuration is the only required pipeline-level execution input. Trade-side agents inherit it automatically, so you do not need to duplicate broker setup elsewhere.'
+        },
+        {
+          icon: 'tune',
+          title: 'Optional controls stay optional',
+          body: 'Active hours, notifications, and approval are operational overlays. Leave them off for a simpler automated pipeline, or enable them when you need tighter operational control.'
+        }
+      ];
+    }
+
+    if (this.selectedItemKey === 'signal_filters') {
+      return [
+        {
+          icon: 'filter_alt',
+          title: 'Filters only apply in signal mode',
+          body: 'If trigger mode is not SIGNAL, this screen becomes informational and the pipeline accepts its normal trigger path instead.'
+        },
+        {
+          icon: 'bolt',
+          title: 'Subscribe narrowly',
+          body: 'Pick only the signal types and timeframes the strategy is built to handle. Narrow subscriptions reduce noisy downstream analysis.'
+        },
+        {
+          icon: 'percent',
+          title: 'Use confidence intentionally',
+          body: 'Minimum confidence is a coarse gate. Start with higher thresholds for tighter pipelines and lower them only when you need more candidate flow.'
+        }
+      ];
+    }
+
+    const agentType = this.getSelectedAgentType();
+    if (agentType === 'market_data_agent') {
+      return [
+        {
+          icon: 'candlestick_chart',
+          title: 'Foundation step',
+          body: 'This agent prepares candles and market context for the rest of the chain. It is usually ready by default because later agents depend on its structured output more than freeform instructions.'
+        },
+        {
+          icon: 'layers',
+          title: 'Think in downstream needs',
+          body: 'If you adjust this step, make sure Bias and Strategy still receive the timeframes and context they expect.'
+        }
+      ];
+    }
+
+    if (agentType === 'bias_agent') {
+      return [
+        {
+          icon: 'explore',
+          title: 'Set directional context',
+          body: 'Bias should define when the market context is bullish, bearish, or neutral before Strategy starts looking for entries.'
+        },
+        {
+          icon: 'rule',
+          title: 'Keep rules explicit',
+          body: 'Describe what confirms bias, what invalidates it, and how the agent should behave when evidence is mixed.'
+        },
+        {
+          icon: 'build',
+          title: 'Use skills for repeatable frameworks',
+          body: 'If the bias logic follows a named method, attach a skill so the behavior stays reusable and consistent across pipelines.'
+        }
+      ];
+    }
+
+    if (agentType === 'strategy_agent') {
+      return [
+        {
+          icon: 'psychology',
+          title: 'Turn context into a plan',
+          body: 'This agent should only propose trades when entry conditions, invalidation, and confluence are all clearly defined.'
+        },
+        {
+          icon: 'checklist',
+          title: 'Spell out the checklist',
+          body: 'Strong strategy prompts define what must be true before an idea is valid and what should cause the setup to be skipped.'
+        },
+        {
+          icon: 'extension',
+          title: 'Tool access should be deliberate',
+          body: 'Attach only the tools needed for the exact strategy workflow. Extra tools broaden behavior and make outputs less predictable.'
+        }
+      ];
+    }
+
+    if (agentType === 'risk_manager_agent') {
+      return [
+        {
+          icon: 'shield',
+          title: 'Protect capital first',
+          body: 'Use this step for hard constraints like size limits, minimum risk-reward, invalidation quality, and position eligibility.'
+        },
+        {
+          icon: 'functions',
+          title: 'Prefer structured controls',
+          body: 'Thresholds and sizing rules are better expressed in advanced settings than buried in long prompt text.'
+        }
+      ];
+    }
+
+    if (agentType === 'trade_review_agent') {
+      return [
+        {
+          icon: 'gavel',
+          title: 'Final quality gate',
+          body: 'This agent exists to reject low-quality or low-confidence ideas before execution, even when earlier steps produced a candidate trade.'
+        },
+        {
+          icon: 'balance',
+          title: 'Use clear minimums',
+          body: 'Set minimum confidence and reward thresholds that reflect how selective the final review should be.'
+        }
+      ];
+    }
+
+    if (agentType === 'trade_manager_agent') {
+      return [
+        {
+          icon: 'currency_exchange',
+          title: 'Execution and monitoring',
+          body: 'This step converts approved plans into orders and follows operational rules like session blocks and execution behavior.'
+        },
+        {
+          icon: 'schedule',
+          title: 'Coordinate with pipeline settings',
+          body: 'Broker, active hours, and trade approval settings all shape how this agent behaves, so treat them as one system.'
+        }
+      ];
+    }
+
+    return [
+      {
+        icon: 'info',
+        title: 'Configuration guidance',
+        body: 'Use this screen to define how the selected part of the pipeline should behave and what constraints it must follow.'
+      }
+    ];
+  }
+
+  private hasTradeReviewConfig(cfg: any): boolean {
+    return [cfg?.min_bias_confidence, cfg?.min_strategy_confidence, cfg?.min_risk_reward]
+      .every(value => value !== undefined && value !== null && value !== '');
   }
 
   private loadBrokerTools(): void {

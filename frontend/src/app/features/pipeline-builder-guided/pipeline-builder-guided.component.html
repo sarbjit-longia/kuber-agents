@@ -39,8 +39,9 @@
     <!-- Center: fixed chain -->
     <div class="core">
       <div class="core-header">
+        <div class="core-eyebrow">Guided Builder</div>
         <div class="core-title">Pipeline core</div>
-        <div class="core-subtitle">Fixed agent chain — click a block to configure it</div>
+        <div class="core-subtitle">Build the workflow from left to right. Start with pipeline settings, then configure each agent in the chain.</div>
       </div>
 
       <div class="sidebar-section">
@@ -104,9 +105,12 @@
     <!-- Right: details pane -->
     <div class="details">
       <div class="details-header">
-        <div class="details-title">
-          <mat-icon>tune</mat-icon>
-          Setup
+        <div class="details-heading">
+          <div class="details-title">
+            <mat-icon>tune</mat-icon>
+            {{ getDetailsTitle() }}
+          </div>
+          <div class="details-subtitle">{{ getDetailsSubtitle() }}</div>
         </div>
         <button mat-raised-button color="primary" (click)="applyRightPaneChanges()">
           <mat-icon>save</mat-icon>
@@ -117,6 +121,8 @@
       <mat-divider></mat-divider>
 
       <div class="details-body">
+        <div class="details-layout">
+          <div class="details-main">
         <!-- Pipeline settings -->
         <div class="section" *ngIf="selectedItemKey === 'pipeline_settings'">
           <div class="section-title">
@@ -124,73 +130,473 @@
             Pipeline settings
           </div>
 
-          <div class="section-hint">Define how this pipeline runs, which scanner it uses, and what this workflow is intended to do.</div>
+          <div class="section-hint">Pipeline-level controls are grouped here so operations and execution settings live in one place.</div>
 
-          <div class="pipeline-setup-grid">
-            <mat-form-field appearance="outline">
-              <mat-label>Trigger mode</mat-label>
-              <mat-select [(ngModel)]="triggerMode">
-                <mat-option [value]="TriggerMode.PERIODIC">Periodic</mat-option>
-                <mat-option [value]="TriggerMode.SIGNAL">Signal</mat-option>
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Scanner {{ triggerMode === TriggerMode.SIGNAL ? '*' : '(optional)' }}</mat-label>
-              <mat-select [(ngModel)]="scannerId">
-                <mat-option [value]="null">None</mat-option>
-                <mat-option *ngFor="let sc of scanners" [value]="sc.id">
-                  {{ sc.name }}
-                </mat-option>
-              </mat-select>
-              <mat-hint *ngIf="triggerMode === TriggerMode.SIGNAL">Required for signal-triggered pipelines</mat-hint>
-            </mat-form-field>
+          <div class="summary-strip">
+            <div class="summary-item">
+              <span class="summary-label">Execution</span>
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus('pipeline_settings')">
+                {{ getSetupItemStatus('pipeline_settings') }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Broker</span>
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus('broker_settings')">
+                {{ getSetupItemStatus('broker_settings') }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Hours</span>
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus('schedule_settings')">
+                {{ getSetupItemStatus('schedule_settings') }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Notifications</span>
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus('notification_settings')">
+                {{ getSetupItemStatus('notification_settings') }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Approval</span>
+              <span class="status-pill" [attr.data-status]="getSetupItemStatus('approval_settings')">
+                {{ getSetupItemStatus('approval_settings') }}
+              </span>
+            </div>
           </div>
 
-          <mat-form-field appearance="outline" class="pipeline-description">
-            <mat-label>Description</mat-label>
-            <textarea
-              matInput
-              [(ngModel)]="pipelineDescription"
-              rows="3"
-              placeholder="Optional: what does this pipeline do?"
-            ></textarea>
-          </mat-form-field>
+          <div class="pipeline-settings-layout">
+            <div class="pipeline-settings-column">
+              <div class="settings-card">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>play_circle</mat-icon>
+                    <span class="card-title">Execution setup</span>
+                  </div>
+                  <span class="status-pill" [attr.data-status]="getSetupItemStatus('pipeline_settings')">
+                    {{ getSetupItemStatus('pipeline_settings') }}
+                  </span>
+                </div>
+                <div class="card-description">Choose how the pipeline starts, which scanner it uses, and what this workflow is for.</div>
 
-          <div class="bulk-model-card" *ngIf="getBulkModelAgentTypes().length > 0">
-            <div class="section-title bulk-model-title">
-              <mat-icon>model_training</mat-icon>
-              Bulk model switch
+                <div class="pipeline-setup-grid">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Trigger mode</mat-label>
+                    <mat-select [(ngModel)]="triggerMode">
+                      <mat-option [value]="TriggerMode.PERIODIC">Periodic</mat-option>
+                      <mat-option [value]="TriggerMode.SIGNAL">Signal</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Scanner {{ triggerMode === TriggerMode.SIGNAL ? '*' : '(optional)' }}</mat-label>
+                    <mat-select [(ngModel)]="scannerId">
+                      <mat-option [value]="null">None</mat-option>
+                      <mat-option *ngFor="let sc of scanners" [value]="sc.id">
+                        {{ sc.name }}
+                      </mat-option>
+                    </mat-select>
+                    <mat-hint *ngIf="triggerMode === TriggerMode.SIGNAL">Required for signal-triggered pipelines</mat-hint>
+                  </mat-form-field>
+                </div>
+
+                <mat-form-field appearance="outline" class="pipeline-description">
+                  <mat-label>Description</mat-label>
+                  <textarea
+                    matInput
+                    [(ngModel)]="pipelineDescription"
+                    rows="3"
+                    placeholder="Optional: what does this pipeline do?"
+                  ></textarea>
+                </mat-form-field>
+              </div>
+
+              <div class="settings-card">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>schedule</mat-icon>
+                    <span class="card-title">Active hours</span>
+                  </div>
+                  <span class="status-pill" [attr.data-status]="getSetupItemStatus('schedule_settings')">
+                    {{ getSetupItemStatus('schedule_settings') }}
+                  </span>
+                </div>
+                <div class="card-description">Control daily activation windows and new-entry session rules.</div>
+
+                <div class="approval-toggle-card">
+                  <div class="approval-toggle-left">
+                    <div class="approval-toggle-icon" [class.active]="scheduleEnabled">
+                      <mat-icon>schedule</mat-icon>
+                    </div>
+                    <div class="approval-toggle-text">
+                      <div class="approval-toggle-title">Enable schedule</div>
+                      <div class="approval-toggle-desc">{{ scheduleEnabled ? 'Pipeline follows the active window below' : 'Pipeline activation is manual' }}</div>
+                    </div>
+                  </div>
+                  <mat-slide-toggle [(ngModel)]="scheduleEnabled"></mat-slide-toggle>
+                </div>
+
+                <div class="settings-subgrid" *ngIf="scheduleEnabled">
+                  <div class="approval-section-card">
+                    <div class="approval-section-header">
+                      <mat-icon>access_time</mat-icon>
+                      <span>Active window</span>
+                    </div>
+                    <div class="approval-section-desc">Pipeline activates and deactivates automatically during this time range.</div>
+                    <div class="schedule-time-row">
+                      <mat-form-field appearance="outline" class="time-field">
+                        <mat-label>Start Time</mat-label>
+                        <input matInput type="time" [(ngModel)]="scheduleStartTime" />
+                      </mat-form-field>
+                      <span class="time-separator">to</span>
+                      <mat-form-field appearance="outline" class="time-field">
+                        <mat-label>End Time</mat-label>
+                        <input matInput type="time" [(ngModel)]="scheduleEndTime" />
+                      </mat-form-field>
+                    </div>
+                  </div>
+
+                  <div class="approval-section-card">
+                    <div class="approval-section-header">
+                      <mat-icon>date_range</mat-icon>
+                      <span>Active days</span>
+                    </div>
+                    <div class="approval-section-desc">Choose the weekdays on which the schedule is active.</div>
+                    <div class="schedule-day-chips">
+                      <button
+                        *ngFor="let day of DAY_OPTIONS"
+                        mat-stroked-button
+                        type="button"
+                        class="day-chip"
+                        [class.selected]="scheduleDays.includes(day.value)"
+                        (click)="toggleScheduleDay(day.value)"
+                      >
+                        {{ day.label }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="approval-section-card compact-card">
+                  <div class="approval-section-header">
+                    <mat-icon>block</mat-icon>
+                    <span>Trade entry policy</span>
+                  </div>
+                  <div class="approval-section-desc">Control when the Trade Manager is allowed to open new positions.</div>
+
+                  <div class="schedule-subsection">
+                    <div class="schedule-subsection-title">Blocked sessions</div>
+                    <div class="schedule-day-chips">
+                      <button
+                        *ngFor="let session of SESSION_POLICY_OPTIONS"
+                        mat-stroked-button
+                        type="button"
+                        class="day-chip"
+                        [class.selected]="noEntrySessions.includes(session.value)"
+                        (click)="toggleNoEntrySession(session.value)"
+                      >
+                        {{ session.label }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="schedule-subsection">
+                    <div class="schedule-subsection-title">No new entries after</div>
+                    <div class="schedule-time-row single-field">
+                      <mat-form-field appearance="outline" class="time-field">
+                        <mat-label>Cutoff Time</mat-label>
+                        <input matInput type="time" [(ngModel)]="noEntryAfter" />
+                        <button
+                          *ngIf="noEntryAfter"
+                          mat-icon-button
+                          matSuffix
+                          type="button"
+                          aria-label="Clear cutoff time"
+                          (click)="noEntryAfter = ''"
+                        >
+                          <mat-icon>close</mat-icon>
+                        </button>
+                      </mat-form-field>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-card" *ngIf="getBulkModelAgentTypes().length > 0">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>model_training</mat-icon>
+                    <span class="card-title">Bulk model switch</span>
+                  </div>
+                </div>
+                <div class="card-description">Apply one model across all LLM-driven agents before saving or backtesting this pipeline.</div>
+
+                <div class="bulk-model-grid">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Model for all LLM agents</mat-label>
+                    <mat-select [(ngModel)]="bulkModelSelection">
+                      <mat-option *ngFor="let modelId of getBulkModelChoices()" [value]="modelId">
+                        {{ modelId }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    type="button"
+                    [disabled]="!bulkModelSelection"
+                    (click)="applyBulkModelSelection()"
+                  >
+                    <mat-icon>swap_horiz</mat-icon>
+                    Apply to all LLM agents
+                  </button>
+                </div>
+
+                <div class="bulk-model-targets">
+                  Targets: {{ getBulkModelAgentTitles() }}
+                </div>
+              </div>
             </div>
 
-            <div class="section-hint">
-              Apply one model across all LLM-driven agents before saving or backtesting this pipeline.
-            </div>
+            <div class="pipeline-settings-column">
+              <div class="settings-card">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>account_balance</mat-icon>
+                    <span class="card-title">Broker</span>
+                  </div>
+                  <span class="status-pill" [attr.data-status]="getSetupItemStatus('broker_settings')">
+                    {{ getSetupItemStatus('broker_settings') }}
+                  </span>
+                </div>
+                <div class="card-description">Configure the broker once. Risk Manager and Trade Manager inherit it automatically.</div>
 
-            <div class="bulk-model-grid">
-              <mat-form-field appearance="outline">
-                <mat-label>Model for all LLM agents</mat-label>
-                <mat-select [(ngModel)]="bulkModelSelection">
-                  <mat-option *ngFor="let modelId of getBulkModelChoices()" [value]="modelId">
-                    {{ modelId }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
+                <mat-form-field appearance="outline" class="broker-type">
+                  <mat-label>Broker</mat-label>
+                  <mat-select [(ngModel)]="brokerToolType" (selectionChange)="onBrokerToolTypeChange($event.value)">
+                    <mat-option [value]="null">Select…</mat-option>
+                    <mat-option *ngFor="let bt of brokerTools" [value]="bt.tool_type">
+                      {{ bt.name || bt.tool_type }}
+                    </mat-option>
+                  </mat-select>
+                </mat-form-field>
 
-              <button
-                mat-raised-button
-                color="primary"
-                type="button"
-                [disabled]="!bulkModelSelection"
-                (click)="applyBulkModelSelection()"
-              >
-                <mat-icon>swap_horiz</mat-icon>
-                Apply to all LLM agents
-              </button>
-            </div>
+                <div class="broker-form" *ngIf="getSelectedBrokerMeta() as bmeta">
+                  <app-json-schema-form
+                    [schema]="bmeta.config_schema"
+                    [data]="brokerToolConfig"
+                    [rebuildKey]="'broker:' + (brokerToolType || '') + ':' + brokerSetupRebuildKey"
+                    (dataChange)="onBrokerConfigChange($event)"
+                  >
+                  </app-json-schema-form>
+                </div>
+              </div>
 
-            <div class="bulk-model-targets">
-              Targets: {{ getBulkModelAgentTitles() }}
+              <div class="settings-card">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>notifications</mat-icon>
+                    <span class="card-title">Notifications</span>
+                  </div>
+                  <span class="status-pill" [attr.data-status]="getSetupItemStatus('notification_settings')">
+                    {{ getSetupItemStatus('notification_settings') }}
+                  </span>
+                </div>
+                <div class="card-description">Send Telegram alerts for important pipeline and trading events.</div>
+
+                <div class="approval-toggle-card">
+                  <div class="approval-toggle-left">
+                    <div class="approval-toggle-icon" [class.active]="notificationEnabled">
+                      <mat-icon>{{ notificationEnabled ? 'notifications_active' : 'notifications_off' }}</mat-icon>
+                    </div>
+                    <div class="approval-toggle-text">
+                      <div class="approval-toggle-title">Enable notifications</div>
+                      <div class="approval-toggle-desc">{{ notificationEnabled ? 'You will be notified of selected events' : 'Notifications are disabled' }}</div>
+                    </div>
+                  </div>
+                  <mat-slide-toggle [(ngModel)]="notificationEnabled"></mat-slide-toggle>
+                </div>
+
+                <div class="approval-info-banner compact-banner" *ngIf="notificationEnabled">
+                  <div class="approval-info-icon">
+                    <mat-icon>telegram</mat-icon>
+                  </div>
+                  <div class="approval-info-text">
+                    <strong>Telegram setup required</strong>
+                    <span>Configure your Telegram bot token and chat ID in <a routerLink="/settings">User Settings</a>.</span>
+                  </div>
+                </div>
+
+                <div class="approval-section-card compact-card" *ngIf="notificationEnabled">
+                  <div class="approval-section-header">
+                    <mat-icon>event</mat-icon>
+                    <span>Notification events</span>
+                  </div>
+                  <div class="approval-section-desc">Choose which pipeline events trigger a Telegram notification.</div>
+                  <div class="notif-event-grid">
+                    <div class="notif-event-option"
+                         *ngFor="let event of availableNotificationEvents"
+                         [class.selected]="notificationEvents.includes(event.value)"
+                         (click)="toggleNotificationEvent(event.value)">
+                      <div class="notif-event-icon" [ngClass]="event.value">
+                        <mat-icon>{{ event.icon }}</mat-icon>
+                      </div>
+                      <div class="notif-event-text">
+                        <span class="notif-event-title">{{ event.label }}</span>
+                        <span class="notif-event-desc" [ngSwitch]="event.value">
+                          <ng-container *ngSwitchCase="'trade_executed'">When a trade is successfully placed</ng-container>
+                          <ng-container *ngSwitchCase="'position_closed'">When a position is closed or exits</ng-container>
+                          <ng-container *ngSwitchCase="'pipeline_failed'">When a pipeline encounters an error</ng-container>
+                          <ng-container *ngSwitchCase="'risk_rejected'">When risk manager blocks a trade</ng-container>
+                        </span>
+                      </div>
+                      <mat-icon class="notif-event-check">{{ notificationEvents.includes(event.value) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="card-header">
+                  <div class="card-title-row">
+                    <mat-icon>verified_user</mat-icon>
+                    <span class="card-title">Trade approval</span>
+                  </div>
+                  <span class="status-pill" [attr.data-status]="getSetupItemStatus('approval_settings')">
+                    {{ getSetupItemStatus('approval_settings') }}
+                  </span>
+                </div>
+                <div class="card-description">Add a human approval step before trades are executed.</div>
+
+                <div class="approval-toggle-card">
+                  <div class="approval-toggle-left">
+                    <div class="approval-toggle-icon" [class.active]="requireApproval">
+                      <mat-icon>{{ requireApproval ? 'verified_user' : 'shield' }}</mat-icon>
+                    </div>
+                    <div class="approval-toggle-text">
+                      <div class="approval-toggle-title">Require manual approval</div>
+                      <div class="approval-toggle-desc">{{ requireApproval ? 'Trades will wait for your approval' : 'Trades execute automatically' }}</div>
+                    </div>
+                  </div>
+                  <mat-slide-toggle [(ngModel)]="requireApproval"></mat-slide-toggle>
+                </div>
+
+                <div class="settings-subgrid" *ngIf="requireApproval">
+                  <div class="approval-section-card">
+                    <div class="approval-section-header">
+                      <mat-icon>speed</mat-icon>
+                      <span>Execution modes</span>
+                    </div>
+                    <div class="approval-section-desc">Select which execution modes require approval before trading.</div>
+                    <div class="approval-mode-grid">
+                      <div class="approval-mode-option"
+                           [class.selected]="approvalModes.includes('live')"
+                           (click)="toggleApprovalMode('live')">
+                        <div class="mode-option-icon live">
+                          <mat-icon>flash_on</mat-icon>
+                        </div>
+                        <div class="mode-option-text">
+                          <span class="mode-option-title">Live</span>
+                          <span class="mode-option-desc">Real money trades</span>
+                        </div>
+                        <mat-icon class="mode-check">{{ approvalModes.includes('live') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      </div>
+                      <div class="approval-mode-option"
+                           [class.selected]="approvalModes.includes('paper')"
+                           (click)="toggleApprovalMode('paper')">
+                        <div class="mode-option-icon paper">
+                          <mat-icon>description</mat-icon>
+                        </div>
+                        <div class="mode-option-text">
+                          <span class="mode-option-title">Paper</span>
+                          <span class="mode-option-desc">Simulated trades</span>
+                        </div>
+                        <mat-icon class="mode-check">{{ approvalModes.includes('paper') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      </div>
+                      <div class="approval-mode-option"
+                           [class.selected]="approvalModes.includes('simulation')"
+                           (click)="toggleApprovalMode('simulation')">
+                        <div class="mode-option-icon simulation">
+                          <mat-icon>science</mat-icon>
+                        </div>
+                        <div class="mode-option-text">
+                          <span class="mode-option-title">Simulation</span>
+                          <span class="mode-option-desc">Backtest mode</span>
+                        </div>
+                        <mat-icon class="mode-check">{{ approvalModes.includes('simulation') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="approval-section-card">
+                    <div class="approval-section-header">
+                      <mat-icon>timer</mat-icon>
+                      <span>Approval timeout</span>
+                    </div>
+                    <div class="approval-section-desc">Trade auto-rejects if no response arrives within this time.</div>
+                    <div class="approval-timeout-row">
+                      <mat-form-field appearance="outline" class="timeout-field">
+                        <mat-label>Minutes</mat-label>
+                        <input matInput type="number" [(ngModel)]="approvalTimeoutMinutes" min="1" max="1440" />
+                      </mat-form-field>
+                      <div class="timeout-presets">
+                        <button mat-stroked-button type="button" class="timeout-preset"
+                                [class.active]="approvalTimeoutMinutes === 5" (click)="approvalTimeoutMinutes = 5">5m</button>
+                        <button mat-stroked-button type="button" class="timeout-preset"
+                                [class.active]="approvalTimeoutMinutes === 15" (click)="approvalTimeoutMinutes = 15">15m</button>
+                        <button mat-stroked-button type="button" class="timeout-preset"
+                                [class.active]="approvalTimeoutMinutes === 30" (click)="approvalTimeoutMinutes = 30">30m</button>
+                        <button mat-stroked-button type="button" class="timeout-preset"
+                                [class.active]="approvalTimeoutMinutes === 60" (click)="approvalTimeoutMinutes = 60">1h</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="approval-section-card">
+                    <div class="approval-section-header">
+                      <mat-icon>notifications_active</mat-icon>
+                      <span>Notification channels</span>
+                    </div>
+                    <div class="approval-section-desc">How you are notified when approval is needed.</div>
+                    <div class="approval-channel-grid">
+                      <div class="approval-channel-option"
+                           [class.selected]="approvalChannels.includes('web')"
+                           (click)="toggleApprovalChannel('web')">
+                        <div class="channel-option-icon web">
+                          <mat-icon>monitor</mat-icon>
+                        </div>
+                        <div class="channel-option-text">
+                          <span class="channel-option-title">Web</span>
+                          <span class="channel-option-desc">Monitoring page</span>
+                        </div>
+                        <mat-icon class="channel-check">{{ approvalChannels.includes('web') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      </div>
+                      <div class="approval-channel-option"
+                           [class.selected]="approvalChannels.includes('sms')"
+                           (click)="toggleApprovalChannel('sms')">
+                        <div class="channel-option-icon sms">
+                          <mat-icon>sms</mat-icon>
+                        </div>
+                        <div class="channel-option-text">
+                          <span class="channel-option-title">SMS</span>
+                          <span class="channel-option-desc">Via Twilio</span>
+                        </div>
+                        <mat-icon class="channel-check">{{ approvalChannels.includes('sms') ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      </div>
+                    </div>
+
+                    <div class="approval-phone-card" *ngIf="approvalChannels.includes('sms')">
+                      <mat-icon class="phone-icon">phone</mat-icon>
+                      <mat-form-field appearance="outline" class="phone-field">
+                        <mat-label>Phone Number (E.164)</mat-label>
+                        <input matInput [(ngModel)]="approvalPhone" placeholder="+15551234567" />
+                        <mat-hint>e.g. +15551234567</mat-hint>
+                      </mat-form-field>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -240,12 +646,17 @@
           </div>
 
           <ng-container *ngIf="triggerMode === TriggerMode.SIGNAL">
-            <div class="hint">Click a tag to subscribe (defaults to 80% confidence). Leave empty to accept all.</div>
+            <div class="signal-toolbar">
+              <mat-form-field appearance="outline" class="signal-search">
+                <mat-label>Search signals</mat-label>
+                <input matInput [formControl]="signalSearchCtrl" placeholder="e.g. fvg, rsi, liquidity, macd" />
+              </mat-form-field>
 
-            <mat-form-field appearance="outline" class="signal-search">
-              <mat-label>Search signals</mat-label>
-              <input matInput [formControl]="signalSearchCtrl" placeholder="e.g. fvg, rsi, liquidity, macd" />
-            </mat-form-field>
+              <div class="signal-toolbar-meta">
+                <div class="signal-toolbar-label">Selected</div>
+                <div class="signal-toolbar-value">{{ signalSubscriptions?.length || 0 }}</div>
+              </div>
+            </div>
 
             <div class="signal-two-col">
               <!-- Left: Catalog -->
@@ -280,22 +691,30 @@
               <!-- Right: Selected -->
               <div class="signal-col">
                 <div class="col-title">Selected</div>
-                <div class="selected-filters" *ngIf="signalSubscriptions && signalSubscriptions.length > 0; else acceptAllFilters">
-                  <div class="selected-header">
-                    <div class="selected-title">Selected ({{ signalSubscriptions.length }})</div>
-                    <div class="selected-actions">
-                      <div class="bulk-conf">
-                        <label class="bulk-label">Set all Min %</label>
-                        <input class="num-input" type="number" [formControl]="bulkSelectedMinConfidenceCtrl" min="0" max="100" />
-                      </div>
-                      <button mat-stroked-button type="button" (click)="applyBulkSelectedMinConfidence()">
-                        Apply
-                      </button>
-                      <button mat-button type="button" (click)="clearAllSignalSubscriptions()">
-                        Clear all
-                      </button>
-                    </div>
+                <div class="selected-panel">
+                  <div class="selected-panel-header">
+                    <button
+                      mat-button
+                      type="button"
+                      class="selected-clear"
+                      *ngIf="signalSubscriptions && signalSubscriptions.length > 0"
+                      (click)="clearAllSignalSubscriptions()"
+                    >
+                      Clear all
+                    </button>
                   </div>
+
+                  <div class="selected-panel-toolbar" *ngIf="signalSubscriptions && signalSubscriptions.length > 0">
+                    <div class="bulk-conf">
+                      <label class="bulk-label">Set all Min %</label>
+                      <input class="num-input" type="number" [formControl]="bulkSelectedMinConfidenceCtrl" min="0" max="100" />
+                    </div>
+                    <button mat-stroked-button type="button" (click)="applyBulkSelectedMinConfidence()">
+                      Apply
+                    </button>
+                  </div>
+
+                <div class="selected-filters" *ngIf="signalSubscriptions && signalSubscriptions.length > 0; else acceptAllFilters">
                   <div class="filter-row" *ngFor="let sub of signalSubscriptions; let i = index">
                     <div class="filter-left">
                       <mat-icon class="row-icon">{{ getSignalTypeMeta(sub.signal_type)?.icon || 'bolt' }}</mat-icon>
@@ -330,6 +749,7 @@
                     Accepting all signal types
                   </div>
                 </ng-template>
+                </div>
               </div>
             </div>
           </ng-container>
@@ -695,123 +1115,146 @@
 
         <!-- Agent settings -->
         <ng-container *ngIf="getSelectedAgentType() as at">
-          <div class="meta agent-meta-card">
-          <div class="meta-row">
-            <span class="k">Agent</span>
-            <span class="v">{{ getAgentMetadata(at)?.name || at }}</span>
-          </div>
-          <div class="meta-row">
-            <span class="k">Type</span>
-            <span class="v monospace">{{ at }}</span>
-          </div>
-        </div>
-
-        <mat-divider></mat-divider>
-
-        <!-- Instructions (only for relevant agents) -->
-        <div class="section" *ngIf="agentNeedsInstructions(at)">
-          <div class="section-title">
-            <mat-icon>psychology</mat-icon>
-            Instructions
-          </div>
-          <app-agent-instructions
-            [agentType]="at"
-            [initialInstructions]="editingConfig['instructions'] || ''"
-            [attachedSkillIds]="getEnabledSkillIds(at)"
-            [autoDetect]="false"
-            [showDetectButton]="true"
-            [selectedModel]="getSelectedModelForAgent(at)"
-            [staticAgentCost]="getStaticAgentCost(at)"
-            (instructionsChange)="onInstructionsChange($event)"
-          >
-          </app-agent-instructions>
-        </div>
-
-        <mat-divider></mat-divider>
-
-        <!-- Extra config schema (if any) -->
-        <div class="section" *ngIf="getAgentAdditionalSchema(at) as addSchema">
-          <div class="section-title">
-            <mat-icon>settings</mat-icon>
-            Additional settings
-          </div>
-          <app-json-schema-form
-            [schema]="addSchema"
-            [data]="editingConfig"
-            [rebuildKey]="selectedItemKey"
-            (dataChange)="onConfigChange($event)"
-            (modelChange)="onModelChange($event)"
-          >
-          </app-json-schema-form>
-        </div>
-
-        <mat-divider *ngIf="agentSupportsSkills(at) || getSupportedTools(at).length > 0"></mat-divider>
-
-        <div class="section" *ngIf="agentSupportsSkills(at)">
-          <div class="section-title">
-            <mat-icon>auto_awesome</mat-icon>
-            Skills
-          </div>
-
-          <div class="skills-list" *ngIf="getAttachedSkillDetails(at).length > 0; else noSkillsAttached">
-            <div class="skill-card" *ngFor="let skill of getAttachedSkillDetails(at)">
-              <div class="skill-copy">
-                <div class="skill-name-row">
-                  <span class="skill-name">{{ skill.name }}</span>
-                  <span class="status-pill" [attr.data-status]="isSkillEnabled(at, skill.skill_id) ? 'active' : 'disabled'">
-                    {{ isSkillEnabled(at, skill.skill_id) ? 'active' : 'disabled' }}
-                  </span>
+          <div class="agent-config-grid">
+            <div class="settings-card" *ngIf="agentNeedsInstructions(at)">
+              <div class="card-header">
+                <div class="card-title-row">
+                  <mat-icon>psychology</mat-icon>
+                  <span class="card-title">Instructions</span>
                 </div>
-                <div class="skill-desc">{{ skill.description }}</div>
-                <div class="skill-meta" *ngIf="skill.recommended_tools.length > 0">
-                  Recommends: {{ skill.recommended_tools.join(', ') }}
-                </div>
+                <span class="status-pill" [attr.data-status]="getSlotStatus(at)">
+                  {{ getSlotStatus(at) }}
+                </span>
               </div>
-              <div class="skill-actions">
-                <button mat-stroked-button type="button" (click)="toggleSkillEnabled(at, skill.skill_id)">
-                  {{ isSkillEnabled(at, skill.skill_id) ? 'Disable' : 'Enable' }}
-                </button>
-                <button mat-button type="button" color="warn" (click)="removeSkill(at, skill.skill_id)">Remove</button>
-              </div>
-            </div>
-          </div>
-
-          <ng-template #noSkillsAttached>
-            <div class="empty-state-copy">No skills attached to this agent yet.</div>
-          </ng-template>
-
-          <div class="skill-catalog" *ngIf="getAvailableSkills(at).length > 0">
-            <div class="subsection-label">Available catalog skills</div>
-            <div class="skill-catalog-list">
-              <button
-                mat-stroked-button
-                type="button"
-                *ngFor="let skill of getAvailableSkills(at)"
-                [disabled]="!canAddSkill(at, skill.skill_id)"
-                (click)="addSkill(at, skill)"
+              <div class="card-description">Define this agent’s role, constraints, and strategy-specific guidance.</div>
+              <app-agent-instructions
+                [agentType]="at"
+                [initialInstructions]="editingConfig['instructions'] || ''"
+                [attachedSkillIds]="getEnabledSkillIds(at)"
+                [autoDetect]="false"
+                [showDetectButton]="true"
+                [selectedModel]="getSelectedModelForAgent(at)"
+                [staticAgentCost]="getStaticAgentCost(at)"
+                (instructionsChange)="onInstructionsChange($event)"
               >
-                {{ skill.name }}
-              </button>
+              </app-agent-instructions>
+            </div>
+
+            <div class="settings-card" *ngIf="getAgentAdditionalSchema(at) as addSchema">
+              <div class="card-header">
+                <div class="card-title-row">
+                  <mat-icon>tune</mat-icon>
+                  <span class="card-title">Advanced settings</span>
+                </div>
+              </div>
+              <div class="card-description">Configure thresholds, model selection, and agent-specific controls.</div>
+              <app-json-schema-form
+                [schema]="addSchema"
+                [data]="editingConfig"
+                [rebuildKey]="selectedItemKey"
+                (dataChange)="onConfigChange($event)"
+                (modelChange)="onModelChange($event)"
+              >
+              </app-json-schema-form>
+            </div>
+
+            <div class="settings-card" *ngIf="agentSupportsSkills(at)">
+              <div class="card-header">
+                <div class="card-title-row">
+                  <mat-icon>auto_awesome</mat-icon>
+                  <span class="card-title">Skills</span>
+                </div>
+              </div>
+              <div class="card-description">Attach reusable skill packs that shape prompt behavior and preferred tools.</div>
+
+              <div class="skills-list" *ngIf="getAttachedSkillDetails(at).length > 0; else noSkillsAttached">
+                <div class="skill-card" *ngFor="let skill of getAttachedSkillDetails(at)">
+                  <div class="skill-copy">
+                    <div class="skill-name-row">
+                      <span class="skill-name">{{ skill.name }}</span>
+                      <span class="status-pill" [attr.data-status]="isSkillEnabled(at, skill.skill_id) ? 'READY' : 'TODO'">
+                        {{ isSkillEnabled(at, skill.skill_id) ? 'ENABLED' : 'DISABLED' }}
+                      </span>
+                    </div>
+                    <div class="skill-desc">{{ skill.description }}</div>
+                    <div class="skill-meta" *ngIf="skill.recommended_tools.length > 0">
+                      Recommends: {{ skill.recommended_tools.join(', ') }}
+                    </div>
+                  </div>
+                  <div class="skill-actions">
+                    <button mat-stroked-button type="button" (click)="toggleSkillEnabled(at, skill.skill_id)">
+                      {{ isSkillEnabled(at, skill.skill_id) ? 'Disable' : 'Enable' }}
+                    </button>
+                    <button mat-button type="button" color="warn" (click)="removeSkill(at, skill.skill_id)">Remove</button>
+                  </div>
+                </div>
+              </div>
+
+              <ng-template #noSkillsAttached>
+                <div class="empty-state-copy">No skills attached to this agent yet.</div>
+              </ng-template>
+
+              <div class="skill-catalog" *ngIf="getAvailableSkills(at).length > 0">
+                <div class="subsection-label">Available catalog skills</div>
+                <div class="skill-catalog-list">
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    *ngFor="let skill of getAvailableSkills(at)"
+                    [disabled]="!canAddSkill(at, skill.skill_id)"
+                    (click)="addSkill(at, skill)"
+                  >
+                    {{ skill.name }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card" *ngIf="getSupportedTools(at).length > 0">
+              <div class="card-header">
+                <div class="card-title-row">
+                  <mat-icon>extension</mat-icon>
+                  <span class="card-title">Tools</span>
+                </div>
+              </div>
+              <div class="card-description">Attach the technical tools available to this agent.</div>
+              <app-tool-selector
+                [supportedTools]="getSupportedTools(at)"
+                [attachedTools]="editingConfig['tools'] || []"
+                (toolsChange)="onToolsChange($event)"
+              >
+              </app-tool-selector>
             </div>
           </div>
-        </div>
-
-        <mat-divider *ngIf="getSupportedTools(at).length > 0"></mat-divider>
-
-        <!-- Tools -->
-        <div class="section" *ngIf="getSupportedTools(at).length > 0">
-          <div class="section-title">
-            <mat-icon>extension</mat-icon>
-            Tools
-          </div>
-          <app-tool-selector
-            [supportedTools]="getSupportedTools(at)"
-            [attachedTools]="editingConfig['tools'] || []"
-            (toolsChange)="onToolsChange($event)"
-          >
-          </app-tool-selector>
-        </div>
         </ng-container>
+          </div>
+
+          <aside class="details-help-panel" [class.align-with-cards]="selectedItemKey === 'pipeline_settings'">
+            <div class="help-panel-card">
+              <div class="help-panel-header">
+                <div class="help-panel-icon">
+                  <mat-icon>lightbulb</mat-icon>
+                </div>
+                <div class="help-panel-copy">
+                  <div class="help-panel-title">{{ getDetailsHelpTitle() }}</div>
+                  <div class="help-panel-subtitle">Guidance for the currently selected pipeline section.</div>
+                </div>
+              </div>
+
+              <div class="help-panel-list">
+                <div class="help-item" *ngFor="let item of getDetailsHelpItems()">
+                  <div class="help-item-icon">
+                    <mat-icon>{{ item.icon }}</mat-icon>
+                  </div>
+                  <div class="help-item-copy">
+                    <div class="help-item-title">{{ item.title }}</div>
+                    <div class="help-item-body">{{ item.body }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   </div>
