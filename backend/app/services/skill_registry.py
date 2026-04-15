@@ -11,6 +11,8 @@ from app.services.kb_loader import kb_loader
 
 _RUNTIME_TOOL_MAP: Dict[str, str] = {
     "fvg_detector": "fvg_detector",
+    "order_block_detector": "order_block_detector",
+    "session_context_analyzer": "session_context_analyzer",
     "liquidity_analyzer": "liquidity_analyzer",
     "market_structure": "market_structure_analyzer",
     "premium_discount": "premium_discount_analyzer",

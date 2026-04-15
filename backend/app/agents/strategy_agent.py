@@ -62,7 +62,8 @@ class StrategyAgent(BaseAgent):
             supported_tools=[
                 # Analysis tools - Strategy Agent can use any technical indicator
                 "rsi", "macd", "sma_crossover", "bollinger_bands",
-                "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+                "fvg_detector", "order_block_detector", "session_context_analyzer",
+                "liquidity_analyzer", "market_structure", "premium_discount"
             ],
             default_tools=[
                 "fvg_detector", "liquidity_analyzer", "market_structure_analyzer",
@@ -243,10 +244,21 @@ class StrategyAgent(BaseAgent):
                 for c in candles
             ] if candles else []
 
+            manual_tool_map = {
+                "rsi": "rsi_calculator",
+                "macd": "macd_calculator",
+                "market_structure": "market_structure_analyzer",
+                "premium_discount": "premium_discount_analyzer",
+            }
+            manual_runtime_tools = [
+                manual_tool_map.get(tool.get("tool_type"), tool.get("tool_type"))
+                for tool in self.config.get("tools", [])
+                if tool.get("enabled", True) and tool.get("tool_type")
+            ]
             resolved_skills = skill_registry.resolve_for_agent(
                 agent_type=self.metadata.agent_type,
                 attachments=self.config.get("skills", []),
-                base_runtime_tools=self.get_metadata().default_tools,
+                base_runtime_tools=list(dict.fromkeys(self.get_metadata().default_tools + manual_runtime_tools)),
             )
             if resolved_skills["skills"]:
                 self.log(
@@ -530,6 +542,8 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
         # Registry keys differ from CrewAI tool names for two ICT tools — map them here.
         REGISTRY_TO_CREWAI: Dict[str, str] = {
             "fvg_detector": "fvg_detector",
+            "order_block_detector": "order_block_detector",
+            "session_context_analyzer": "session_context_analyzer",
             "liquidity_analyzer": "liquidity_analyzer",
             "market_structure": "market_structure_analyzer",
             "premium_discount": "premium_discount_analyzer",
@@ -565,7 +579,9 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
         from app.tools.strategy_tools.fvg_detector import FVGDetector
         from app.tools.strategy_tools.liquidity_analyzer import LiquidityAnalyzer
         from app.tools.strategy_tools.market_structure import MarketStructureAnalyzer
+        from app.tools.strategy_tools.order_block_detector import OrderBlockDetector
         from app.tools.strategy_tools.premium_discount import PremiumDiscountAnalyzer
+        from app.tools.strategy_tools.session_context_analyzer import SessionContextAnalyzer
 
         collected_results: Dict[str, Any] = {}
 
@@ -607,10 +623,12 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                     results_lines.append(f"\n**FVG ANALYSIS:**")
                     if bullish_fvgs:
                         for fvg in bullish_fvgs[:3]:
-                            results_lines.append(f"  • Bullish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                            status = "filled" if fvg.get("is_filled") else "tapped" if fvg.get("is_tapped") else "untapped"
+                            results_lines.append(f"  • Bullish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({status})")
                     if bearish_fvgs:
                         for fvg in bearish_fvgs[:3]:
-                            results_lines.append(f"  • Bearish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({'filled' if fvg.get('is_filled') else 'unfilled'})")
+                            status = "filled" if fvg.get("is_filled") else "tapped" if fvg.get("is_tapped") else "untapped"
+                            results_lines.append(f"  • Bearish FVG: ${fvg['low']:.{price_precision}f} - ${fvg['high']:.{price_precision}f} ({status})")
                     if not bullish_fvgs and not bearish_fvgs:
                         results_lines.append(f"  • No significant FVGs detected")
 
@@ -618,6 +636,36 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                     self.log(state, f"FVG detector found {len(fvgs)} FVGs ({len(bullish_fvgs)} bullish, {len(bearish_fvgs)} bearish)")
             except Exception as e:
                 self.log(state, f"Tool fvg_detector failed: {str(e)}")
+
+        if "order_block_detector" in relevant_tool_names:
+            try:
+                self.log(state, "Calling tool: order_block_detector")
+                detector = OrderBlockDetector(timeframe="5m", min_move_pips=10)
+                result = _run_async(detector.detect(candles))
+                if result and isinstance(result, dict):
+                    blocks = result.get("order_blocks", [])
+                    bullish_blocks = [b for b in blocks if b.get("type") == "bullish"]
+                    bearish_blocks = [b for b in blocks if b.get("type") == "bearish"]
+
+                    results_lines.append("\n**ORDER BLOCK ANALYSIS:**")
+                    if bullish_blocks:
+                        for block in bullish_blocks[:3]:
+                            results_lines.append(
+                                f"  • Bullish OB: ${block['low']:.{price_precision}f} - ${block['high']:.{price_precision}f} "
+                                f"({'retested' if block.get('is_retested') else 'fresh'})"
+                            )
+                    if bearish_blocks:
+                        for block in bearish_blocks[:3]:
+                            results_lines.append(
+                                f"  • Bearish OB: ${block['low']:.{price_precision}f} - ${block['high']:.{price_precision}f} "
+                                f"({'retested' if block.get('is_retested') else 'fresh'})"
+                            )
+                    if not bullish_blocks and not bearish_blocks:
+                        results_lines.append("  • No significant order blocks detected")
+
+                    collected_results["order_block_detector"] = result
+            except Exception as e:
+                self.log(state, f"Tool order_block_detector failed: {str(e)}")
 
         if "premium_discount_analyzer" in relevant_tool_names:
             try:
@@ -636,6 +684,23 @@ Remember: Follow the user's instructions literally. Keep reasoning brief unless 
                     collected_results["premium_discount"] = result
             except Exception as e:
                 self.log(state, f"Tool premium_discount_analyzer failed: {str(e)}")
+
+        if "session_context_analyzer" in relevant_tool_names:
+            try:
+                self.log(state, "Calling tool: session_context_analyzer")
+                analyzer = SessionContextAnalyzer(timeframe="5m")
+                result = _run_async(analyzer.analyze(candles))
+                if result and isinstance(result, dict):
+                    results_lines.append("\n**SESSION CONTEXT:**")
+                    results_lines.append(f"  • Session: {result.get('current_session', 'unknown')}")
+                    results_lines.append(f"  • Killzone: {result.get('current_killzone') or 'none'}")
+                    if result.get("true_session_open") is not None:
+                        results_lines.append(f"  • True Session Open: ${result['true_session_open']:.{price_precision}f}")
+                    if result.get("midnight_open") is not None:
+                        results_lines.append(f"  • Midnight Open: ${result['midnight_open']:.{price_precision}f}")
+                    collected_results["session_context_analyzer"] = result
+            except Exception as e:
+                self.log(state, f"Tool session_context_analyzer failed: {str(e)}")
 
         if "liquidity_analyzer" in relevant_tool_names:
             try:

@@ -3,7 +3,7 @@ skill_id: kb_skill_order_blocks
 name: Order Blocks
 category: ict
 agent_types: [strategy_agent, bias_agent]
-recommended_tools: [liquidity_analyzer, market_structure, premium_discount]
+recommended_tools: [order_block_detector, liquidity_analyzer, market_structure, premium_discount]
 tags: [ict, order-block, displacement, liquidity]
 ---
 

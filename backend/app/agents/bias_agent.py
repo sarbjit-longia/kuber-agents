@@ -62,7 +62,8 @@ class BiasAgent(BaseAgent):
             supported_tools=[
                 # Analysis tools - Bias Agent can use any technical indicator
                 "rsi", "macd", "sma_crossover", "bollinger_bands",
-                "fvg_detector", "liquidity_analyzer", "market_structure", "premium_discount"
+                "fvg_detector", "order_block_detector", "session_context_analyzer",
+                "liquidity_analyzer", "market_structure", "premium_discount"
             ],
             default_tools=[
                 "rsi_calculator", "macd_calculator", "sma_crossover",
@@ -144,10 +145,21 @@ class BiasAgent(BaseAgent):
             # Prepare market context
             market_context = self._prepare_market_context(state)
 
+            manual_tool_map = {
+                "rsi": "rsi_calculator",
+                "macd": "macd_calculator",
+                "market_structure": "market_structure_analyzer",
+                "premium_discount": "premium_discount_analyzer",
+            }
+            manual_runtime_tools = [
+                manual_tool_map.get(tool.get("tool_type"), tool.get("tool_type"))
+                for tool in self.config.get("tools", [])
+                if tool.get("enabled", True) and tool.get("tool_type")
+            ]
             resolved_skills = skill_registry.resolve_for_agent(
                 agent_type=self.metadata.agent_type,
                 attachments=self.config.get("skills", []),
-                base_runtime_tools=self.get_metadata().default_tools,
+                base_runtime_tools=list(dict.fromkeys(self.get_metadata().default_tools + manual_runtime_tools)),
             )
             if resolved_skills["skills"]:
                 self.log(

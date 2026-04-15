@@ -11,7 +11,9 @@ import httpx
 from app.tools.strategy_tools.fvg_detector import FVGDetector
 from app.tools.strategy_tools.liquidity_analyzer import LiquidityAnalyzer
 from app.tools.strategy_tools.market_structure import MarketStructureAnalyzer
+from app.tools.strategy_tools.order_block_detector import OrderBlockDetector
 from app.tools.strategy_tools.premium_discount import PremiumDiscountAnalyzer
+from app.tools.strategy_tools.session_context_analyzer import SessionContextAnalyzer
 from app.tools.strategy_tools.indicator_tools import IndicatorTools
 from app.config import settings
 
@@ -74,6 +76,10 @@ class StrategyToolExecutor:
                     result = await self._execute_market_structure(params, candles)
                 elif tool_name == "premium_discount":
                     result = await self._execute_premium_discount(params, candles)
+                elif tool_name == "order_block_detector":
+                    result = await self._execute_order_block_detector(params, candles)
+                elif tool_name == "session_context_analyzer":
+                    result = await self._execute_session_context(params, candles)
                 elif tool_name == "rsi":
                     result = await self.indicator_tools.get_rsi(**params)
                 elif tool_name == "sma_crossover":
@@ -198,3 +204,22 @@ class StrategyToolExecutor:
         )
         return await analyzer.analyze(candles)
 
+    async def _execute_order_block_detector(
+        self,
+        params: Dict[str, Any],
+        candles: List[Dict]
+    ) -> Dict[str, Any]:
+        detector = OrderBlockDetector(
+            timeframe=params.get("timeframe", "1h"),
+            min_move_pips=params.get("min_move_pips", 10),
+            lookback_periods=params.get("lookback_periods", 100),
+        )
+        return await detector.detect(candles)
+
+    async def _execute_session_context(
+        self,
+        params: Dict[str, Any],
+        candles: List[Dict]
+    ) -> Dict[str, Any]:
+        analyzer = SessionContextAnalyzer(timeframe=params.get("timeframe", "5m"))
+        return await analyzer.analyze(candles)

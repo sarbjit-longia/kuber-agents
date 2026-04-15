@@ -16,7 +16,7 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "fvg_detector",
-            "description": "Detects Fair Value Gaps (FVG) in price action. A Fair Value Gap is a 3-candle pattern where the current candle's low is higher than the previous candle's high (bullish FVG) or vice versa (bearish FVG). Returns gap location, size, and filled/unfilled status.",
+            "description": "Detects Fair Value Gaps (FVG) in price action using ICT wick-to-wick logic. Bullish FVG = candle 3 low above candle 1 high. Bearish FVG = candle 3 high below candle 1 low. Returns gap location, displacement confirmation, and tap/fill status.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -46,6 +46,70 @@ STRATEGY_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
             "displacement", "mitigation", "inefficiency", "order flow"
         ],
         "when_to_use": "Use for ICT/SMC strategies. Call when instructions mention FVGs, imbalances, or ICT entry techniques.",
+        "strategy_types": ["ict"],
+    },
+
+    "order_block_detector": {
+        "type": "function",
+        "function": {
+            "name": "order_block_detector",
+            "description": "Detects bullish and bearish order blocks as the last opposing candle before a displacement move. Returns the order block zone, displacement confirmation, move size, and whether price has already retested the block.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timeframe": {
+                        "type": "string",
+                        "enum": ["5m", "15m", "1h", "4h", "D"],
+                        "description": "Timeframe to analyze for order blocks"
+                    },
+                    "min_move_pips": {
+                        "type": "number",
+                        "description": "Minimum displacement after the candidate candle (default: 10)",
+                        "default": 10
+                    },
+                    "lookback_periods": {
+                        "type": "integer",
+                        "description": "Number of candles to scan (default: 100)",
+                        "default": 100
+                    }
+                },
+                "required": ["timeframe"]
+            }
+        },
+        "pricing": 0.02,
+        "category": "ict",
+        "strategy_keywords": [
+            "order block", "ob", "breaker", "mitigation block", "demand zone",
+            "supply zone", "institutional candle", "last down candle", "last up candle"
+        ],
+        "when_to_use": "Use when the strategy references order blocks, breaker-style retests, or institutional supply/demand zones.",
+        "strategy_types": ["ict"],
+    },
+
+    "session_context_analyzer": {
+        "type": "function",
+        "function": {
+            "name": "session_context_analyzer",
+            "description": "Analyzes ICT session timing and killzone context. Returns the current New York session, killzone window, midnight open, true session open, and available session ranges for Asia, London, and pre-market.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timeframe": {
+                        "type": "string",
+                        "enum": ["1m", "5m", "15m", "1h", "4h", "D"],
+                        "description": "Timeframe whose candle timestamps should be used for session context"
+                    }
+                },
+                "required": ["timeframe"]
+            }
+        },
+        "pricing": 0.01,
+        "category": "ict",
+        "strategy_keywords": [
+            "killzone", "session", "london", "new york", "ny session", "time and price",
+            "true session open", "midnight open", "silver bullet", "premarket"
+        ],
+        "when_to_use": "Use when timing, killzones, session highs/lows, or time-of-day confluence matters to the setup.",
         "strategy_types": ["ict"],
     },
     
@@ -368,4 +432,3 @@ def format_strategy_tools_for_openai() -> list:
         }
         for tool in STRATEGY_TOOL_REGISTRY.values()
     ]
-

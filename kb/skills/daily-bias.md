@@ -3,7 +3,7 @@ skill_id: kb_skill_daily_bias
 name: Daily Bias
 category: bias
 agent_types: [bias_agent, strategy_agent]
-recommended_tools: [market_structure, premium_discount, liquidity_analyzer, fvg_detector, rsi, macd]
+recommended_tools: [market_structure, premium_discount, liquidity_analyzer, fvg_detector, session_context_analyzer, rsi, macd]
 tags: [bias, daily, htf, ict]
 ---
 

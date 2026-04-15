@@ -1,9 +1,9 @@
 """
 FVG Detector Tool - Detects Fair Value Gaps in price action
 
-A Fair Value Gap (FVG) is treated here as a 3-candle body imbalance:
-- Bullish FVG: candle 2 body low > candle 0 body high
-- Bearish FVG: candle 2 body high < candle 0 body low
+A Fair Value Gap (FVG) is a 3-candle wick imbalance:
+- Bullish FVG: candle 2 low > candle 0 high
+- Bearish FVG: candle 2 high < candle 0 low
 
 The middle candle is the displacement candle, while the outer candles define the
 actual gap that the strategy and chart should reference.
@@ -76,36 +76,48 @@ class FVGDetector:
             candle_1 = candles_to_analyze[i - 1]  # Middle candle
             candle_2 = candles_to_analyze[i]      # Current candle
             
-            candle_0_body_low, candle_0_body_high = self._body_bounds(candle_0)
-            candle_2_body_low, candle_2_body_high = self._body_bounds(candle_2)
+            # ICT FVGs are defined by the wick gap between candle 1 and candle 3.
+            # We still require the middle candle to show displacement so tiny noise
+            # candles do not produce low-quality gaps.
+            candle_0_high = float(candle_0["high"])
+            candle_0_low = float(candle_0["low"])
+            candle_2_high = float(candle_2["high"])
+            candle_2_low = float(candle_2["low"])
 
-            # Check for Bullish FVG using outer candle bodies.
-            if candle_2_body_low > candle_0_body_high:
-                gap_size = candle_2_body_low - candle_0_body_high
+            middle_body = abs(float(candle_1["close"]) - float(candle_1["open"]))
+            outer_body_0 = abs(float(candle_0["close"]) - float(candle_0["open"]))
+            outer_body_2 = abs(float(candle_2["close"]) - float(candle_2["open"]))
+            displacement_confirmed = middle_body >= max(outer_body_0, outer_body_2)
+
+            # Check for Bullish FVG using outer candle wicks.
+            if displacement_confirmed and candle_2_low > candle_0_high:
+                gap_size = candle_2_low - candle_0_high
                 gap_size_pips = gap_size * 100  # Approximate pip conversion
                 
                 if gap_size_pips >= self.min_gap_pips:
-                    # Check if FVG is filled (price came back into the gap)
-                    is_filled = current_price <= candle_2_body_low
-                    fill_percentage = 0.0
-                    
-                    if is_filled:
-                        # Calculate how much of gap is filled
-                        gap_range = candle_2_body_low - candle_0_body_high
-                        filled_amount = candle_2_body_low - current_price
-                        fill_percentage = min((filled_amount / gap_range) * 100, 100.0) if gap_range > 0 else 0.0
+                    future_candles = candles_to_analyze[i + 1:]
+                    future_low = min((float(c["low"]) for c in future_candles), default=current_price)
+                    fill_percentage = self._bullish_fill_percentage(
+                        lower_edge=candle_0_high,
+                        upper_edge=candle_2_low,
+                        revisited_low=future_low,
+                    )
+                    is_tapped = fill_percentage > 0
+                    is_filled = fill_percentage >= 100.0
                     
                     fvg = {
                         "type": "bullish",
-                        "high": candle_2_body_low,
-                        "low": candle_0_body_high,
+                        "high": candle_2_low,
+                        "low": candle_0_high,
                         "gap_size_pips": round(gap_size_pips, 2),
                         "formed_at": candle_2.get("timestamp", ""),
                         "formed_at_index": i,
                         "middle_candle_at": candle_1.get("timestamp", ""),
+                        "is_tapped": is_tapped,
                         "is_filled": is_filled,
                         "fill_percentage": round(fill_percentage, 2),
-                        "gap_basis": "body",
+                        "gap_basis": "wick",
+                        "displacement_confirmed": displacement_confirmed,
                     }
                     
                     fvgs.append(fvg)
@@ -116,32 +128,35 @@ class FVGDetector:
                         is_filled=is_filled
                     )
             
-            # Check for Bearish FVG using outer candle bodies.
-            elif candle_2_body_high < candle_0_body_low:
-                gap_size = candle_0_body_low - candle_2_body_high
+            # Check for Bearish FVG using outer candle wicks.
+            elif displacement_confirmed and candle_2_high < candle_0_low:
+                gap_size = candle_0_low - candle_2_high
                 gap_size_pips = gap_size * 100
                 
                 if gap_size_pips >= self.min_gap_pips:
-                    # Check if FVG is filled
-                    is_filled = current_price >= candle_2_body_high
-                    fill_percentage = 0.0
-                    
-                    if is_filled:
-                        gap_range = candle_0_body_low - candle_2_body_high
-                        filled_amount = current_price - candle_2_body_high
-                        fill_percentage = min((filled_amount / gap_range) * 100, 100.0) if gap_range > 0 else 0.0
+                    future_candles = candles_to_analyze[i + 1:]
+                    future_high = max((float(c["high"]) for c in future_candles), default=current_price)
+                    fill_percentage = self._bearish_fill_percentage(
+                        lower_edge=candle_2_high,
+                        upper_edge=candle_0_low,
+                        revisited_high=future_high,
+                    )
+                    is_tapped = fill_percentage > 0
+                    is_filled = fill_percentage >= 100.0
                     
                     fvg = {
                         "type": "bearish",
-                        "high": candle_0_body_low,
-                        "low": candle_2_body_high,
+                        "high": candle_0_low,
+                        "low": candle_2_high,
                         "gap_size_pips": round(gap_size_pips, 2),
                         "formed_at": candle_2.get("timestamp", ""),
                         "formed_at_index": i,
                         "middle_candle_at": candle_1.get("timestamp", ""),
+                        "is_tapped": is_tapped,
                         "is_filled": is_filled,
                         "fill_percentage": round(fill_percentage, 2),
-                        "gap_basis": "body",
+                        "gap_basis": "wick",
+                        "displacement_confirmed": displacement_confirmed,
                     }
                     
                     fvgs.append(fvg)
@@ -180,11 +195,35 @@ class FVGDetector:
         matching = [f for f in fvgs if f["type"] == fvg_type and not f["is_filled"]]
         return matching[-1] if matching else None
 
-    def _body_bounds(self, candle: Dict[str, Any]) -> tuple[float, float]:
-        """Return the lower and upper bounds of the candle body."""
-        open_price = float(candle["open"])
-        close_price = float(candle["close"])
-        return min(open_price, close_price), max(open_price, close_price)
+    def _bullish_fill_percentage(
+        self,
+        *,
+        lower_edge: float,
+        upper_edge: float,
+        revisited_low: float,
+    ) -> float:
+        gap_range = upper_edge - lower_edge
+        if gap_range <= 0 or revisited_low >= upper_edge:
+            return 0.0
+        filled_amount = upper_edge - max(revisited_low, lower_edge)
+        if revisited_low <= lower_edge:
+            return 100.0
+        return min((filled_amount / gap_range) * 100, 100.0)
+
+    def _bearish_fill_percentage(
+        self,
+        *,
+        lower_edge: float,
+        upper_edge: float,
+        revisited_high: float,
+    ) -> float:
+        gap_range = upper_edge - lower_edge
+        if gap_range <= 0 or revisited_high <= lower_edge:
+            return 0.0
+        filled_amount = min(revisited_high, upper_edge) - lower_edge
+        if revisited_high >= upper_edge:
+            return 100.0
+        return min((filled_amount / gap_range) * 100, 100.0)
     
     def _empty_result(self) -> Dict[str, Any]:
         """Return empty result structure."""

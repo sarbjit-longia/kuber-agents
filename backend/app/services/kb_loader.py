@@ -60,7 +60,16 @@ class KBLoader:
     _CONCEPT_AGENT_TYPES = {"bias_agent", "strategy_agent"}
 
     def __init__(self, kb_root: Path | None = None):
-        self.kb_root = kb_root or Path(__file__).resolve().parents[2] / "kb"
+        if kb_root is not None:
+            resolved_root = kb_root
+        else:
+            file_path = Path(__file__).resolve()
+            candidates = [
+                file_path.parents[3] / "kb",  # local repo layout: repo/backend/app/services
+                file_path.parents[2] / "kb",  # container layout: /app/services
+            ]
+            resolved_root = next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+        self.kb_root = resolved_root
         self._concept_bundle_cache: Dict[str, str] = {}
         self._skill_cache: List[SkillDetail] | None = None
 

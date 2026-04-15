@@ -16,7 +16,9 @@ from app.tools.strategy_tools.fvg_detector import FVGDetector
 from app.tools.strategy_tools.indicator_tools import IndicatorTools
 from app.tools.strategy_tools.liquidity_analyzer import LiquidityAnalyzer
 from app.tools.strategy_tools.market_structure import MarketStructureAnalyzer
+from app.tools.strategy_tools.order_block_detector import OrderBlockDetector
 from app.tools.strategy_tools.premium_discount import PremiumDiscountAnalyzer
+from app.tools.strategy_tools.session_context_analyzer import SessionContextAnalyzer
 
 logger = structlog.get_logger()
 
@@ -142,9 +144,14 @@ def _fvg_handler(ticker: str, candles: List[Dict[str, Any]]) -> Callable[[Dict[s
     def handler(arguments: Dict[str, Any]) -> str:
         timeframe = arguments.get("timeframe", "5m")
         lookback_candles = int(arguments.get("lookback_candles", 50))
+        min_gap_pips = float(arguments.get("min_gap_pips", 10))
 
-        detector = FVGDetector(ticker=ticker, candles=candles)
-        result = detector.detect_fvgs(timeframe=timeframe, lookback_candles=lookback_candles)
+        detector = FVGDetector(
+            timeframe=timeframe,
+            min_gap_pips=min_gap_pips,
+            lookback_periods=lookback_candles,
+        )
+        result = _run_async(detector.detect(candles))
 
         bullish_fvgs = [fvg for fvg in result.get("fvgs", []) if fvg["type"] == "bullish"]
         bearish_fvgs = [fvg for fvg in result.get("fvgs", []) if fvg["type"] == "bearish"]
@@ -159,16 +166,16 @@ def _fvg_handler(ticker: str, candles: List[Dict[str, Any]]) -> Callable[[Dict[s
         if latest_bullish:
             output += "Latest Bullish FVG:\n"
             output += f"  Range: ${latest_bullish['low']:.2f} - ${latest_bullish['high']:.2f}\n"
-            output += f"  Status: {'Filled' if latest_bullish['is_filled'] else 'Unfilled'}\n"
+            output += f"  Status: {'Filled' if latest_bullish['is_filled'] else 'Tapped' if latest_bullish.get('is_tapped') else 'Untapped'}\n"
             output += f"  Gap Size: {latest_bullish['gap_size_pips']:.1f} pips\n\n"
 
         if latest_bearish:
             output += "Latest Bearish FVG:\n"
             output += f"  Range: ${latest_bearish['low']:.2f} - ${latest_bearish['high']:.2f}\n"
-            output += f"  Status: {'Filled' if latest_bearish['is_filled'] else 'Unfilled'}\n"
+            output += f"  Status: {'Filled' if latest_bearish['is_filled'] else 'Tapped' if latest_bearish.get('is_tapped') else 'Untapped'}\n"
             output += f"  Gap Size: {latest_bearish['gap_size_pips']:.1f} pips\n\n"
 
-        return output + "Interpretation: Unfilled FVGs are potential reversal zones."
+        return output + "Interpretation: Untapped or partially mitigated FVGs aligned with structure are potential retracement zones."
 
     return handler
 
@@ -177,8 +184,8 @@ def _liquidity_handler(ticker: str, candles: List[Dict[str, Any]]) -> Callable[[
     def handler(arguments: Dict[str, Any]) -> str:
         timeframe = arguments.get("timeframe", "5m")
         lookback_candles = int(arguments.get("lookback_candles", 100))
-        analyzer = LiquidityAnalyzer(ticker=ticker, candles=candles)
-        result = analyzer.analyze_liquidity(timeframe=timeframe, lookback_candles=lookback_candles)
+        analyzer = LiquidityAnalyzer(timeframe=timeframe, lookback_periods=lookback_candles)
+        result = _run_async(analyzer.analyze(candles))
 
         pools = result.get("active_liquidity_pools", {})
         grabs = result.get("liquidity_grabs", [])
@@ -204,8 +211,8 @@ def _market_structure_handler(ticker: str, candles: List[Dict[str, Any]]) -> Cal
     def handler(arguments: Dict[str, Any]) -> str:
         timeframe = arguments.get("timeframe", "1h")
         lookback_candles = int(arguments.get("lookback_candles", 100))
-        analyzer = MarketStructureAnalyzer(ticker=ticker, candles=candles)
-        result = analyzer.analyze_structure(timeframe=timeframe, lookback_candles=lookback_candles)
+        analyzer = MarketStructureAnalyzer(timeframe=timeframe, lookback_periods=lookback_candles)
+        result = _run_async(analyzer.analyze(candles))
 
         trend = result.get("trend", "ranging")
         events = result.get("structure_events", [])
@@ -229,8 +236,8 @@ def _premium_discount_handler(ticker: str, candles: List[Dict[str, Any]]) -> Cal
     def handler(arguments: Dict[str, Any]) -> str:
         timeframe = arguments.get("timeframe", "4h")
         lookback_candles = int(arguments.get("lookback_candles", 50))
-        analyzer = PremiumDiscountAnalyzer(ticker=ticker, candles=candles)
-        result = analyzer.analyze_zones(timeframe=timeframe, lookback_candles=lookback_candles)
+        analyzer = PremiumDiscountAnalyzer(timeframe=timeframe, lookback_periods=lookback_candles)
+        result = _run_async(analyzer.analyze(candles))
 
         zone = result.get("zone", "equilibrium")
         price_level = result.get("price_level_percent", 50)
@@ -251,6 +258,69 @@ def _premium_discount_handler(ticker: str, candles: List[Dict[str, Any]]) -> Cal
     return handler
 
 
+def _order_block_handler(ticker: str, candles: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], str]:
+    def handler(arguments: Dict[str, Any]) -> str:
+        timeframe = arguments.get("timeframe", "5m")
+        lookback_candles = int(arguments.get("lookback_candles", 100))
+        min_move_pips = float(arguments.get("min_move_pips", 10))
+        detector = OrderBlockDetector(
+            timeframe=timeframe,
+            min_move_pips=min_move_pips,
+            lookback_periods=lookback_candles,
+        )
+        result = _run_async(detector.detect(candles))
+        blocks = result.get("order_blocks", [])
+        bullish = [block for block in blocks if block["type"] == "bullish"]
+        bearish = [block for block in blocks if block["type"] == "bearish"]
+        latest_bullish = bullish[-1] if bullish else None
+        latest_bearish = bearish[-1] if bearish else None
+
+        output = f"Order Block Detection for {ticker} on {timeframe}:\n"
+        output += f"  Total Order Blocks found: {len(blocks)}\n"
+        output += f"  Bullish Order Blocks: {len(bullish)}\n"
+        output += f"  Bearish Order Blocks: {len(bearish)}\n\n"
+
+        if latest_bullish:
+            output += "Latest Bullish Order Block:\n"
+            output += f"  Body Zone: ${latest_bullish['low']:.2f} - ${latest_bullish['high']:.2f}\n"
+            output += f"  Retested: {latest_bullish['is_retested']}\n"
+            output += f"  Move Size: {latest_bullish['move_size_pips']:.1f} pips\n\n"
+
+        if latest_bearish:
+            output += "Latest Bearish Order Block:\n"
+            output += f"  Body Zone: ${latest_bearish['low']:.2f} - ${latest_bearish['high']:.2f}\n"
+            output += f"  Retested: {latest_bearish['is_retested']}\n"
+            output += f"  Move Size: {latest_bearish['move_size_pips']:.1f} pips\n\n"
+
+        return output + "Interpretation: Fresh order blocks with confirmed displacement are stronger reference zones."
+
+    return handler
+
+
+def _session_context_handler(ticker: str, candles: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], str]:
+    def handler(arguments: Dict[str, Any]) -> str:
+        timeframe = arguments.get("timeframe", "5m")
+        analyzer = SessionContextAnalyzer(timeframe=timeframe)
+        result = _run_async(analyzer.analyze(candles))
+
+        output = f"Session Context for {ticker} on {timeframe}:\n"
+        output += f"  Current Session: {result.get('current_session') or 'unknown'}\n"
+        output += f"  Current Killzone: {result.get('current_killzone') or 'none'}\n"
+        output += f"  Midnight Open: {result.get('midnight_open') if result.get('midnight_open') is not None else 'n/a'}\n"
+        output += f"  True Session Open: {result.get('true_session_open') if result.get('true_session_open') is not None else 'n/a'}\n"
+
+        asia = result.get("asia_session", {})
+        london = result.get("london_session", {})
+        premarket = result.get("premarket_session", {})
+        output += f"  Asia Range: {asia.get('low')} - {asia.get('high')}\n"
+        output += f"  London Range: {london.get('low')} - {london.get('high')}\n"
+        output += f"  Pre-market Range: {premarket.get('low')} - {premarket.get('high')}\n"
+
+        return output + "\nInterpretation: Use session ranges and killzones as time-based confluence, not standalone entry triggers."
+
+    return handler
+
+
 def _tool_schema(name: str, description: str, properties: Dict[str, Any], required: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "type": "function",
@@ -267,7 +337,14 @@ def _tool_schema(name: str, description: str, properties: Dict[str, Any], requir
 
 
 def build_openai_tools(tool_names: List[str], *, ticker: str, candles: Optional[List[Dict[str, Any]]] = None) -> List[OpenAIToolDefinition]:
-    candle_tools = {"fvg_detector", "liquidity_analyzer", "market_structure_analyzer", "premium_discount_analyzer"}
+    candle_tools = {
+        "fvg_detector",
+        "liquidity_analyzer",
+        "market_structure_analyzer",
+        "premium_discount_analyzer",
+        "order_block_detector",
+        "session_context_analyzer",
+    }
     tools: List[OpenAIToolDefinition] = []
 
     for name in tool_names:
@@ -332,6 +409,7 @@ def build_openai_tools(tool_names: List[str], *, ticker: str, candles: Optional[
                             {
                                 "timeframe": {"type": "string", "default": "5m"},
                                 "lookback_candles": {"type": "integer", "default": 50},
+                                "min_gap_pips": {"type": "number", "default": 10},
                             },
                         ),
                         handler=_fvg_handler(ticker, candles),
@@ -380,6 +458,36 @@ def build_openai_tools(tool_names: List[str], *, ticker: str, candles: Optional[
                             },
                         ),
                         handler=_premium_discount_handler(ticker, candles),
+                    )
+                )
+            elif name == "order_block_detector":
+                tools.append(
+                    OpenAIToolDefinition(
+                        name=name,
+                        schema=_tool_schema(
+                            name,
+                            "Detects order blocks as the last opposing candle before displacement.",
+                            {
+                                "timeframe": {"type": "string", "default": "5m"},
+                                "lookback_candles": {"type": "integer", "default": 100},
+                                "min_move_pips": {"type": "number", "default": 10},
+                            },
+                        ),
+                        handler=_order_block_handler(ticker, candles),
+                    )
+                )
+            elif name == "session_context_analyzer":
+                tools.append(
+                    OpenAIToolDefinition(
+                        name=name,
+                        schema=_tool_schema(
+                            name,
+                            "Analyzes session timing, killzones, and time-based reference levels.",
+                            {
+                                "timeframe": {"type": "string", "default": "5m"},
+                            },
+                        ),
+                        handler=_session_context_handler(ticker, candles),
                     )
                 )
 

@@ -214,9 +214,11 @@ YOU MUST call the appropriate tool functions to gather the information needed fo
 
 **Tool Selection Guidelines**:
 - "FVG" or "fair value gap" or "gap" → CALL fvg_detector(timeframe)
+- "order block" or "supply zone" or "demand zone" or "breaker" → CALL order_block_detector(timeframe)
 - "discount zone" or "premium zone" or "50%" → CALL premium_discount(range_period)
 - "liquidity" or "liquidity grab" or "order blocks" → CALL liquidity_analyzer(timeframe)
 - "market structure" or "BOS" or "CHoCH" → CALL market_structure(timeframe)
+- "killzone" or "session" or "true session open" or "midnight open" → CALL session_context_analyzer(timeframe)
 - "RSI" → CALL rsi(timeframe, period)
 - "SMA" or "moving average" → CALL sma_crossover(timeframe, fast_period, slow_period)
 - "MACD" → CALL macd(timeframe)

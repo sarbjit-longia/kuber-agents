@@ -108,6 +108,8 @@ export class ToolSelectorComponent implements OnInit, OnChanges {
   private buildFallbackMetadata(toolType: string): ToolMetadata {
     const iconMap: Record<string, string> = {
       fvg_detector: 'show_chart',
+      order_block_detector: 'view_quilt',
+      session_context_analyzer: 'schedule',
       liquidity_analyzer: 'waterfall_chart',
       market_structure_analyzer: 'schema',
       market_structure: 'schema',
