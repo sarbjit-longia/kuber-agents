@@ -58,3 +58,10 @@ def load_prompt(agent_name: str) -> str:
         logger.warning("prompt_file_not_found", agent_name=agent_name, path=file_path)
         _cache[agent_name] = ""
         return ""
+
+
+def load_kb_context(agent_type: str) -> str:
+    """Load foundational KB concepts for the given agent type."""
+    from app.services.kb_loader import kb_loader
+
+    return kb_loader.load_concepts_bundle(agent_type)

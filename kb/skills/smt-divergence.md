@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_smt_divergence
+name: SMT Divergence
+category: confluence
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [market_structure, liquidity_analyzer]
+tags: [ict, smt, correlation, confluence]
+---
+
 # SMT Divergence (Smart Money Tool)
 
 ## Definition

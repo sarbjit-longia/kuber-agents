@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_market_structure_shift
+name: Market Structure Shift
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [market_structure, fvg_detector, liquidity_analyzer]
+tags: [ict, mss, cisd, structure]
+---
+
 # Market Structure Shift (MSS)
 
 ## Definition

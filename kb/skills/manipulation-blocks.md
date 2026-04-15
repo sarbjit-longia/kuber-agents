@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_manipulation_blocks
+name: Manipulation Blocks
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [liquidity_analyzer, market_structure, fvg_detector, premium_discount]
+tags: [ict, manipulation, liquidity, reversal]
+---
+
 # Manipulation Blocks
 
 ## Definition

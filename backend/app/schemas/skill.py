@@ -29,6 +29,7 @@ class SkillSummary(BaseModel):
     tags: List[str] = Field(default_factory=list)
     category: str = "general"
     recommended_tools: List[str] = Field(default_factory=list)
+    kb_source: Optional[str] = None
 
 
 class SkillDetail(SkillSummary):
@@ -39,4 +40,3 @@ class SkillDetail(SkillSummary):
     tool_overrides: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     publisher: str = "CloverCharts"
     visibility: Literal["private", "curated", "public"] = "curated"
-

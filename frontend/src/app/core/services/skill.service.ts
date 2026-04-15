@@ -22,6 +22,7 @@ export interface SkillSummary {
   tags: string[];
   category: string;
   recommended_tools: string[];
+  kb_source?: string | null;
 }
 
 export interface SkillDetail extends SkillSummary {

@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_killzones
+name: Killzones
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [liquidity_analyzer, market_structure]
+tags: [ict, time, session, killzone]
+---
+
 # Killzones
 
 ## Definition

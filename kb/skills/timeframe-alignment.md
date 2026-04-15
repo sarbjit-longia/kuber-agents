@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_timeframe_alignment
+name: Timeframe Alignment
+category: confluence
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [market_structure, premium_discount, rsi, macd]
+tags: [ict, timeframe, alignment, bias]
+---
+
 # Timeframe Alignment
 
 ## Definition

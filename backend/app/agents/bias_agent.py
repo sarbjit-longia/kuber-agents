@@ -9,7 +9,7 @@ import re
 from typing import Dict, Any
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
-from app.agents.prompts import load_prompt
+from app.agents.prompts import load_kb_context, load_prompt
 from app.schemas.pipeline_state import AgentMetadata, AgentConfigSchema
 from app.schemas.pipeline_state import PipelineState, BiasResult
 from app.services.langfuse_service import trace_agent_execution
@@ -167,7 +167,10 @@ class BiasAgent(BaseAgent):
             if resolved_skills["instruction_fragments"]:
                 skill_prompt = "\n\nACTIVE SKILLS:\n- " + "\n- ".join(resolved_skills["instruction_fragments"])
 
-            system_prompt = load_prompt("bias_agent_system") + skill_prompt + (
+            kb_context = load_kb_context(self.metadata.agent_type)
+            kb_prompt = f"{kb_context}\n\n" if kb_context else ""
+
+            system_prompt = kb_prompt + load_prompt("bias_agent_system") + skill_prompt + (
                 f"\n\nYou are analyzing {state.symbol}. Use the available tools to gather data and apply the framework above to determine bias."
             )
             user_prompt = f"""Analyze {state.symbol} and determine the market bias.

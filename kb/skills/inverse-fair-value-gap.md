@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_inverse_fair_value_gap
+name: Inverse Fair Value Gap
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [fvg_detector, market_structure, liquidity_analyzer]
+tags: [ict, ifvg, inversion, continuation]
+---
+
 # Inverse Fair Value Gap (iFVG)
 
 ## Definition

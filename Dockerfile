@@ -36,6 +36,7 @@ RUN pip install --no-cache-dir -r /tmp/signal-generator-requirements.txt
 
 # Copy application code (will be mounted as volume for hot-reload)
 COPY backend/ .
+COPY kb/ /app/kb
 COPY signal-generator/app /opt/signal-generator/app
 COPY signal-generator/config /opt/signal-generator/config
 

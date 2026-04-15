@@ -10,7 +10,7 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 
 from app.agents.base import BaseAgent, InsufficientDataError, AgentProcessingError
-from app.agents.prompts import load_prompt
+from app.agents.prompts import load_kb_context, load_prompt
 from app.schemas.pipeline_state import PipelineState, StrategyResult, AgentMetadata, AgentConfigSchema
 from app.services.langfuse_service import trace_agent_execution
 from app.tools.openai_tools import build_openai_tools
@@ -271,7 +271,10 @@ class StrategyAgent(BaseAgent):
             if resolved_skills["instruction_fragments"]:
                 skill_prompt = "\n\nACTIVE SKILLS:\n- " + "\n- ".join(resolved_skills["instruction_fragments"])
 
-            system_prompt = load_prompt("strategy_agent_system") + skill_prompt + f"""
+            kb_context = load_kb_context(self.metadata.agent_type)
+            kb_prompt = f"{kb_context}\n\n" if kb_context else ""
+
+            system_prompt = kb_prompt + load_prompt("strategy_agent_system") + skill_prompt + f"""
 
 You are executing a trade strategy for {state.symbol}.
 

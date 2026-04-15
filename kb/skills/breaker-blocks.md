@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_breaker_blocks
+name: Breaker Blocks
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [market_structure, liquidity_analyzer, fvg_detector]
+tags: [ict, breaker, liquidity, reversal]
+---
+
 # Breaker Blocks
 
 ## Definition

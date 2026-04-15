@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.schemas.skill import AgentSkillAttachment, SkillDetail, SkillSummary
+from app.services.kb_loader import kb_loader
 
 
 _RUNTIME_TOOL_MAP: Dict[str, str] = {
@@ -20,7 +21,7 @@ _RUNTIME_TOOL_MAP: Dict[str, str] = {
 }
 
 
-SKILL_REGISTRY: Dict[str, SkillDetail] = {
+_HARDCODED_SKILLS: Dict[str, SkillDetail] = {
     "ict_fvg_retracement": SkillDetail(
         skill_id="ict_fvg_retracement",
         name="ICT FVG Retracement",
@@ -84,6 +85,16 @@ SKILL_REGISTRY: Dict[str, SkillDetail] = {
         },
     ),
 }
+
+
+def _build_skill_registry() -> Dict[str, SkillDetail]:
+    registry = dict(_HARDCODED_SKILLS)
+    for kb_skill in kb_loader.load_kb_skill_definitions():
+        registry.setdefault(kb_skill.skill_id, kb_skill)
+    return registry
+
+
+SKILL_REGISTRY: Dict[str, SkillDetail] = _build_skill_registry()
 
 
 class SkillRegistryService:
@@ -186,4 +197,3 @@ class SkillRegistryService:
 
 
 skill_registry = SkillRegistryService()
-

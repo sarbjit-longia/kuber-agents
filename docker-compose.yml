@@ -111,6 +111,7 @@ services:
       - LOCAL_STORAGE_PATH=${LOCAL_STORAGE_PATH:-/app/storage/uploads}
     volumes:
       - ./backend:/app
+      - ./kb:/app/kb
       - /app/__pycache__
       - file_storage:/app/storage  # Local file storage volume
     depends_on:
@@ -170,6 +171,7 @@ services:
       - LOG_LEVEL=INFO
     volumes:
       - ./backend:/app
+      - ./kb:/app/kb
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -590,7 +592,7 @@ services:
       TELEMETRY_ENABLED: "false"
       TZ: UTC
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
       interval: 30s
       timeout: 10s
       retries: 8

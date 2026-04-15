@@ -47,6 +47,7 @@ ENV PATH=/usr/local/bin:$PATH
 
 # Copy application code
 COPY backend/ .
+COPY kb/ /app/kb
 COPY signal-generator/app /opt/signal-generator/app
 COPY signal-generator/config /opt/signal-generator/config
 

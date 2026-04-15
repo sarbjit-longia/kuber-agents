@@ -1,3 +1,12 @@
+---
+skill_id: kb_skill_fair_value_gap
+name: Fair Value Gap
+category: ict
+agent_types: [strategy_agent, bias_agent]
+recommended_tools: [fvg_detector, market_structure, premium_discount, liquidity_analyzer]
+tags: [ict, fvg, imbalance, displacement]
+---
+
 # Fair Value Gap (FVG)
 
 ## Definition
