@@ -1007,6 +1007,19 @@ class SignalGeneratorService:
                     "source": signal.source,
                     "generator": generator_name or signal.source
                 })
+
+            tickers_payload = [
+                {
+                    "ticker": ts.ticker,
+                    "signal": ts.signal.value,
+                    "confidence": ts.confidence
+                }
+                for ts in signal.tickers
+            ]
+
+            publish_succeeded = False
+            publish_error = None
+            record_metadata = None
             
             # Phase 2: Publish to Kafka
             if self.kafka_producer:
@@ -1023,6 +1036,7 @@ class SignalGeneratorService:
                     
                     # Wait for acknowledgment (with timeout)
                     record_metadata = future.get(timeout=10)
+                    publish_succeeded = True
                     
                     # Record successful publish
                     if self.meter:
@@ -1048,6 +1062,7 @@ class SignalGeneratorService:
                             "signal_type": signal.signal_type.value,
                             "error_type": type(e).__name__
                         })
+                    publish_error = str(e)
                     
                     logger.error(
                         "kafka_publish_failed",
@@ -1062,6 +1077,7 @@ class SignalGeneratorService:
                             "signal_type": signal.signal_type.value,
                             "error_type": type(e).__name__
                         })
+                    publish_error = str(e)
                     
                     logger.error(
                         "unexpected_kafka_error",
@@ -1070,22 +1086,32 @@ class SignalGeneratorService:
                         exc_info=True
                     )
             
-            # Also log the signal (structured logging)
+            # Log generation separately from successful emission so operators can
+            # distinguish local generation from broker-acknowledged delivery.
             logger.info(
-                "signal_emitted",
+                "signal_generated",
                 signal_id=str(signal.signal_id),
                 signal_type=signal.signal_type.value,
                 source=signal.source,
                 timestamp=int(signal.timestamp.timestamp()),
-                tickers=[
-                    {
-                        "ticker": ts.ticker,
-                        "signal": ts.signal.value,
-                        "confidence": ts.confidence
-                    }
-                    for ts in signal.tickers
-                ]
+                tickers=tickers_payload,
+                kafka_enabled=bool(self.kafka_producer),
+                kafka_published=publish_succeeded,
+                publish_error=publish_error
             )
+
+            if publish_succeeded and record_metadata is not None:
+                logger.info(
+                    "signal_emitted",
+                    signal_id=str(signal.signal_id),
+                    signal_type=signal.signal_type.value,
+                    source=signal.source,
+                    timestamp=int(signal.timestamp.timestamp()),
+                    tickers=tickers_payload,
+                    topic=record_metadata.topic,
+                    partition=record_metadata.partition,
+                    offset=record_metadata.offset
+                )
             
             # Also print to stdout in a nice format for visibility
             print("\n" + "="*80)
@@ -1094,8 +1120,10 @@ class SignalGeneratorService:
             print(f"   Source: {signal.source}")
             print(f"   Timestamp: {signal.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
             
-            if self.kafka_producer:
+            if self.kafka_producer and publish_succeeded:
                 print(f"   📤 Published to Kafka: {settings.KAFKA_SIGNAL_TOPIC}")
+            elif self.kafka_producer and publish_error:
+                print(f"   ⚠ Kafka publish failed: {publish_error}")
             
             print(f"   Tickers:")
             
