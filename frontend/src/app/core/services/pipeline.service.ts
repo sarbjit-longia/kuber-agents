@@ -9,6 +9,7 @@ import { Observable, BehaviorSubject } from 'rxjs';
 import { tap, map } from 'rxjs/operators';
 import { ApiService } from './api.service';
 import { Pipeline, PipelineCloneRequest, PipelineCreate, PipelineUpdate } from '../models/pipeline.model';
+import { Strategy } from '../models/strategy.model';
 
 @Injectable({
   providedIn: 'root'
@@ -93,6 +94,10 @@ export class PipelineService {
         this.currentPipelineSubject.next(cloned);
       })
     );
+  }
+
+  exportAsStrategy(id: string): Observable<Strategy> {
+    return this.apiService.post<Strategy>(`/api/v1/pipelines/${id}/export-strategy`, {});
   }
 
   /**

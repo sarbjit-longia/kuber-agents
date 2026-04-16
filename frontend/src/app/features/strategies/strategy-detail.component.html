@@ -1,0 +1,316 @@
+<div class="strategy-page">
+  <app-navbar></app-navbar>
+
+  <div class="strategy-container" *ngIf="!loading && strategy">
+    <section class="strategy-head">
+      <div class="strategy-head-copy">
+        <div class="eyebrow">
+          <mat-icon>description</mat-icon>
+          Strategy Snapshot
+        </div>
+        <ng-container *ngIf="!editingMetadata; else metadataEditor">
+          <h1>{{ strategy.title }}</h1>
+          <p>{{ strategy.summary || 'No summary provided.' }}</p>
+        </ng-container>
+        <ng-template #metadataEditor>
+          <div class="metadata-editor">
+            <mat-form-field appearance="outline" class="metadata-field title-field">
+              <mat-label>Strategy name</mat-label>
+              <input matInput [(ngModel)]="editedTitle" maxlength="255" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="metadata-field">
+              <mat-label>Summary</mat-label>
+              <textarea matInput [(ngModel)]="editedSummary" rows="3"></textarea>
+            </mat-form-field>
+          </div>
+        </ng-template>
+      </div>
+
+      <div class="actions">
+        <button mat-stroked-button (click)="toggleVote()" *ngIf="strategy.publication_status === 'published'">
+          <mat-icon>{{ strategy.has_voted ? 'favorite' : 'favorite_border' }}</mat-icon>
+          {{ strategy.vote_count }}
+        </button>
+        <button mat-stroked-button *ngIf="isOwner && !editingMetadata" (click)="startMetadataEdit()">
+          <mat-icon>edit</mat-icon>
+          Edit Details
+        </button>
+        <button mat-stroked-button *ngIf="editingMetadata" (click)="cancelMetadataEdit()" [disabled]="savingMetadata">
+          <mat-icon>close</mat-icon>
+          Cancel
+        </button>
+        <button mat-raised-button color="primary" *ngIf="editingMetadata" (click)="saveMetadata()" [disabled]="savingMetadata">
+          <mat-icon>save</mat-icon>
+          {{ savingMetadata ? 'Saving…' : 'Save Details' }}
+        </button>
+        <button mat-raised-button color="primary" (click)="useStrategy()" [disabled]="!strategy.is_runnable">
+          <mat-icon>account_tree</mat-icon>
+          Use Strategy
+        </button>
+        <button mat-stroked-button *ngIf="canReviewStrategy" (click)="reviewStrategy(true)" [disabled]="reviewing">
+          <mat-icon>check_circle</mat-icon>
+          Approve
+        </button>
+        <button mat-stroked-button *ngIf="canReviewStrategy" (click)="reviewStrategy(false)" [disabled]="reviewing">
+          <mat-icon>cancel</mat-icon>
+          Reject
+        </button>
+        <button mat-stroked-button *ngIf="isOwner && strategy.publication_status === 'draft'" (click)="submitForReview()">
+          <mat-icon>publish</mat-icon>
+          Submit
+        </button>
+        <button mat-stroked-button *ngIf="isOwner" (click)="deleteStrategy()">
+          <mat-icon>delete</mat-icon>
+          Delete
+        </button>
+      </div>
+    </section>
+
+    <section class="strategy-layout">
+      <div class="main-column">
+        <mat-card class="brief-card" *ngIf="hasNarrativeBrief">
+          <div class="card-title">Strategy Brief</div>
+          <div class="markdown-body" [innerHTML]="strategyBrief | markdownToHtml"></div>
+        </mat-card>
+
+        <mat-card class="overview-card" *ngIf="pipelineSnapshot">
+          <div class="viewer-head">
+            <div>
+              <div class="card-title">Strategy Overview</div>
+              <div class="viewer-copy">A read-only strategy dashboard rendered from the exported pipeline snapshot.</div>
+            </div>
+          </div>
+          <div class="overview-grid">
+            <div class="overview-item">
+              <span class="snapshot-label">Trigger Mode</span>
+              <strong>{{ triggerModeLabel }}</strong>
+            </div>
+            <div class="overview-item">
+              <span class="snapshot-label">Runtime Mode</span>
+              <strong>{{ runtimeModeLabel }}</strong>
+            </div>
+            <div class="overview-item">
+              <span class="snapshot-label">Scanner</span>
+              <strong>{{ scannerLabel }}</strong>
+            </div>
+            <div class="overview-item">
+              <span class="snapshot-label">Approval</span>
+              <strong>{{ approvalLabel }}</strong>
+            </div>
+            <div class="overview-item">
+              <span class="snapshot-label">Notifications</span>
+              <strong>{{ notificationsLabel }}</strong>
+            </div>
+            <div class="overview-item">
+              <span class="snapshot-label">Active Hours</span>
+              <strong>{{ activeHoursLabel }}</strong>
+            </div>
+          </div>
+        </mat-card>
+
+        <mat-card class="flow-card" *ngIf="pipelineNodes.length > 0">
+          <div class="card-title">Execution Flow</div>
+          <div class="flow-strip">
+            <div class="flow-node" *ngFor="let node of pipelineNodes; let i = index">
+              <div class="flow-node-card">
+                <div class="flow-node-icon">
+                  <mat-icon>{{ getAgentIcon(node.agent_type) }}</mat-icon>
+                </div>
+                <div class="flow-node-copy">
+                  <span class="flow-step">Step {{ i + 1 }}</span>
+                  <strong>{{ getAgentLabel(node.agent_type) }}</strong>
+                  <span>{{ getNodeTools(node).length }} tools · {{ getNodeSkills(node).length }} skills</span>
+                </div>
+              </div>
+              <div class="flow-arrow" *ngIf="i < pipelineNodes.length - 1">
+                <mat-icon>east</mat-icon>
+              </div>
+            </div>
+          </div>
+        </mat-card>
+
+        <mat-card class="filters-card" *ngIf="signalFilters.length > 0">
+          <div class="card-title">Signal Filters</div>
+          <div class="chip-row compact">
+            <span class="chip" *ngFor="let filter of signalFilters">
+              {{ filter.signal_type }}<ng-container *ngIf="filter.timeframe"> · {{ filter.timeframe }}</ng-container>
+              <ng-container *ngIf="filter.min_confidence !== undefined"> · {{ filter.min_confidence }}%</ng-container>
+            </span>
+          </div>
+        </mat-card>
+
+        <section class="agents-list" *ngIf="pipelineNodes.length > 0">
+          <div class="agent-viewer-card" *ngFor="let node of pipelineNodes; let i = index">
+            <div class="agent-card-head">
+              <div class="agent-title-block">
+                <div class="agent-title-row">
+                  <div class="agent-icon">
+                    <mat-icon>{{ getAgentIcon(node.agent_type) }}</mat-icon>
+                  </div>
+                  <div>
+                    <div class="agent-step">Step {{ i + 1 }}</div>
+                    <div class="agent-name">{{ getAgentLabel(node.agent_type) }}</div>
+                  </div>
+                </div>
+                <div class="agent-pill-row">
+                  <span class="metric-pill">{{ getNodeTools(node).length }} tools</span>
+                  <span class="metric-pill">{{ getNodeSkills(node).length }} skills</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="agent-section" *ngIf="node.config?.instructions">
+              <span class="section-label">Instructions</span>
+              <p class="agent-instructions">{{ node.config.instructions }}</p>
+            </div>
+
+            <div class="agent-section" *ngIf="getNodeSkills(node).length > 0">
+              <span class="section-label">Skills</span>
+              <div class="chip-row compact">
+                <span class="chip" *ngFor="let skill of getNodeSkills(node)">
+                  {{ getSkillChipLabel(skill) }}
+                </span>
+              </div>
+            </div>
+
+            <div class="agent-section" *ngIf="getNodeTools(node).length > 0">
+              <span class="section-label">Tools</span>
+              <div class="chip-row compact">
+                <span class="chip" *ngFor="let tool of getNodeTools(node)">
+                  {{ getToolChipLabel(tool) }}
+                </span>
+              </div>
+            </div>
+
+            <div class="agent-section" *ngIf="getNodeAdvancedEntries(node).length > 0">
+              <span class="section-label">Advanced Config</span>
+              <div class="advanced-grid">
+                <div class="advanced-item" *ngFor="let entry of getNodeAdvancedEntries(node)">
+                  <span>{{ entry.key }}</span>
+                  <strong>{{ entry.value }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="sidebar">
+        <mat-card class="meta-card readiness-card">
+          <div class="card-title">Pipeline Readiness</div>
+          <div class="readiness-banner" [class.is-ready]="strategy.is_runnable">
+            <mat-icon>{{ strategy.is_runnable ? 'verified' : 'pending' }}</mat-icon>
+            <div>
+              <strong>{{ strategy.is_runnable ? 'Ready to Use' : 'Needs Snapshot' }}</strong>
+              <p>{{ strategy.is_runnable ? 'This snapshot can generate a fully configured pipeline immediately.' : 'This strategy still needs a pipeline snapshot before it can create a pipeline.' }}</p>
+            </div>
+          </div>
+          <div class="metric-band">
+            <div class="metric-band-item">
+              <span>Flow Steps</span>
+              <strong>{{ pipelineNodes.length }}</strong>
+            </div>
+            <div class="metric-band-item">
+              <span>Broker</span>
+              <strong>{{ brokerTool ? 'Attached' : 'Missing' }}</strong>
+            </div>
+          </div>
+        </mat-card>
+
+        <mat-card class="meta-card">
+          <div class="card-title">Metadata</div>
+          <div class="meta-stat-grid">
+            <div class="meta-stat">
+              <span>Status</span>
+              <strong>{{ strategy.publication_status }}</strong>
+            </div>
+            <div class="meta-stat">
+              <span>Visibility</span>
+              <strong>{{ strategy.visibility }}</strong>
+            </div>
+            <div class="meta-stat">
+              <span>Uses</span>
+              <strong>{{ strategy.use_count }}</strong>
+            </div>
+            <div class="meta-stat">
+              <span>Votes</span>
+              <strong>{{ strategy.vote_count }}</strong>
+            </div>
+          </div>
+          <div class="meta-section">
+            <div class="meta-section-label">Snapshot Scope</div>
+            <div class="metric-band">
+              <div class="metric-band-item">
+                <span>Agents</span>
+                <strong>{{ pipelineNodes.length }}</strong>
+              </div>
+              <div class="metric-band-item">
+                <span>Signals</span>
+                <strong>{{ signalFilters.length }}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="meta-section" *ngIf="strategy.timeframes?.length">
+            <div class="meta-section-label">Timeframes</div>
+            <div class="chip-row">
+              <span class="chip" *ngFor="let timeframe of strategy.timeframes">{{ timeframe }}</span>
+            </div>
+          </div>
+          <div class="meta-section" *ngIf="strategy.tags?.length">
+            <div class="meta-section-label">Tags</div>
+            <div class="chip-row">
+              <span class="chip" *ngFor="let tag of strategy.tags">{{ tag }}</span>
+            </div>
+          </div>
+          <div class="chip-row">
+            <span class="chip muted-chip">Exported Snapshot</span>
+            <span class="chip muted-chip" *ngIf="strategy.is_runnable">Pipeline Ready</span>
+          </div>
+        </mat-card>
+
+        <mat-card class="meta-card" *ngIf="brokerTool">
+          <div class="card-title">Broker & Execution</div>
+          <div class="metric-band">
+            <div class="metric-band-item">
+              <span>Broker</span>
+              <strong>{{ getToolChipLabel(brokerTool) }}</strong>
+            </div>
+            <div class="metric-band-item">
+              <span>Runtime</span>
+              <strong>{{ runtimeModeLabel }}</strong>
+            </div>
+          </div>
+          <div class="meta-stack">
+            <div class="meta-row"><span>Account Type</span><strong>{{ brokerTool.config?.account_type || 'Not set' }}</strong></div>
+            <div class="meta-row"><span>Account ID</span><strong>{{ brokerTool.config?.account_id || 'Configured' }}</strong></div>
+          </div>
+          <div class="chip-row">
+            <span class="chip muted-chip">{{ triggerModeLabel }}</span>
+            <span class="chip muted-chip">{{ activeHoursLabel }}</span>
+          </div>
+        </mat-card>
+
+        <mat-card class="meta-card">
+          <div class="card-title">Trade Controls</div>
+          <div class="control-pill-row">
+            <span class="control-pill">{{ approvalLabel }}</span>
+            <span class="control-pill">{{ notificationsLabel }}</span>
+            <span class="control-pill">{{ activeHoursLabel }}</span>
+          </div>
+          <div class="meta-stack">
+            <div class="meta-row"><span>Approval Modes</span><strong>{{ approvalModes.length ? approvalModes.join(', ') : 'None' }}</strong></div>
+            <div class="meta-row"><span>Events</span><strong>{{ notificationEvents.length ? notificationEvents.join(', ') : 'None' }}</strong></div>
+            <div class="meta-row"><span>Blocked Sessions</span><strong>{{ blockedSessions.length ? blockedSessions.join(', ') : 'None' }}</strong></div>
+            <div class="meta-row"><span>No New Entries After</span><strong>{{ noEntryAfter || 'No cutoff' }}</strong></div>
+          </div>
+        </mat-card>
+      </div>
+    </section>
+  </div>
+
+  <div *ngIf="loading" class="loading-state">
+    <mat-spinner></mat-spinner>
+  </div>
+
+  <app-footer></app-footer>
+</div>

@@ -15,6 +15,19 @@ from app.services.brokers.tradier_service import TradierBrokerService
 logger = structlog.get_logger()
 
 
+def _account_type_to_paper(account_type: Any, default: bool = True) -> bool:
+    """Normalize UI/runtime account type values to a paper/live bool."""
+    if account_type is None:
+        return default
+
+    normalized = str(account_type).strip().lower()
+    if normalized in {"sandbox", "paper", "demo"}:
+        return True
+    if normalized in {"live", "production"}:
+        return False
+    return default
+
+
 class BrokerFactory:
     """
     Factory for creating broker service instances.
@@ -157,8 +170,8 @@ class BrokerFactory:
         )
         
         # Determine if paper trading
-        account_type = config.get("account_type", "paper")
-        paper = account_type == "paper" or config.get("use_paper", True)
+        account_type = config.get("account_type")
+        paper = _account_type_to_paper(account_type, default=config.get("use_paper", True))
         
         if not api_key:
             raise ValueError(
@@ -210,4 +223,3 @@ class BrokerFactory:
 
 # Singleton instance for easy access
 broker_factory = BrokerFactory()
-

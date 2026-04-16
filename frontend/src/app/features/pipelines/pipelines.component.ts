@@ -28,7 +28,9 @@ import {
   LiquidationConfirmDialogComponent,
   LiquidationDialogResult
 } from '../../shared/components/liquidation-confirm-dialog/liquidation-confirm-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog/confirm-dialog.component';
 import { ClonePipelineDialogComponent } from './clone-pipeline-dialog/clone-pipeline-dialog.component';
+import { StrategyService } from '../../core/services/strategy.service';
 
 @Component({
   selector: 'app-pipelines',
@@ -62,7 +64,8 @@ export class PipelinesComponent implements OnInit {
     private executionService: ExecutionService,
     private router: Router,
     private snackBar: MatSnackBar,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private strategyService: StrategyService
   ) {}
 
   ngOnInit(): void {
@@ -111,7 +114,7 @@ export class PipelinesComponent implements OnInit {
     
     const executionData = {
       pipeline_id: pipeline.id,
-      mode: 'paper' as 'paper' | 'live' | 'simulation' | 'validation', // Type assertion for mode
+      mode: (pipeline.config?.mode || 'paper') as 'paper' | 'live' | 'simulation' | 'validation',
       symbol: pipeline.config?.symbol || 'AAPL'
     };
 
@@ -128,8 +131,22 @@ export class PipelinesComponent implements OnInit {
 
   deletePipeline(pipeline: Pipeline, event: Event): void {
     event.stopPropagation();
-    
-    if (confirm(`Delete pipeline "${pipeline.name}"? This cannot be undone.`)) {
+
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '440px',
+      data: {
+        title: 'Delete Pipeline',
+        message: `Delete pipeline "${pipeline.name}"? This cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+      } as ConfirmDialogData
+    });
+
+    dialogRef.afterClosed().subscribe(confirmed => {
+      if (!confirmed) {
+        return;
+      }
+
       this.pipelineService.deletePipeline(pipeline.id).subscribe({
         next: () => {
           this.showNotification('Pipeline deleted', 'success');
@@ -139,7 +156,7 @@ export class PipelinesComponent implements OnInit {
           this.showNotification('Failed to delete pipeline', 'error');
         }
       });
-    }
+    });
   }
 
   clonePipeline(pipeline: Pipeline, event: Event): void {
@@ -171,6 +188,19 @@ export class PipelinesComponent implements OnInit {
   openBacktest(pipeline: Pipeline, event: Event): void {
     event.stopPropagation();
     this.router.navigate(['/backtests/workspace'], { queryParams: { pipelineId: pipeline.id } });
+  }
+
+  exportStrategy(pipeline: Pipeline, event: Event): void {
+    event.stopPropagation();
+    this.strategyService.exportPipelineAsStrategy(pipeline.id).subscribe({
+      next: (strategy) => {
+        this.showNotification('Pipeline exported as strategy draft', 'success');
+        this.router.navigate(['/strategies', strategy.id]);
+      },
+      error: () => {
+        this.showNotification('Failed to export strategy', 'error');
+      }
+    });
   }
 
   toggleActive(pipeline: Pipeline, event: Event): void {

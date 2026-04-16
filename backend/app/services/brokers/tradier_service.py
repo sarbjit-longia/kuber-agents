@@ -123,23 +123,34 @@ class TradierBrokerService(BrokerService):
             return {"error": "No account ID provided"}
         
         try:
-            result = self._make_request('GET', f'/v1/accounts/{account}')
-            if "error" in result:
-                return result
-            
-            account_data = result.get("account", {})
-            balance_data = account_data.get("balance", {})
+            balances_result = self._make_request('GET', f'/v1/accounts/{account}/balances')
+            if "error" in balances_result:
+                return balances_result
+
+            positions: List[Dict[str, Any]] = []
+            positions_result = self._make_request('GET', f'/v1/accounts/{account}/positions')
+            if "error" not in positions_result:
+                positions_payload = positions_result.get("positions")
+                if isinstance(positions_payload, dict):
+                    raw_positions = positions_payload.get("position")
+                    if isinstance(raw_positions, list):
+                        positions = raw_positions
+                    elif isinstance(raw_positions, dict):
+                        positions = [raw_positions]
+
+            balance_data = balances_result.get("balances", {})
             
             # Tradier balance fields:
             #   total_equity    – total account value
-            #   cash_available  – settled cash
+            #   total_cash      – settled cash
             #   stock_buying_power – buying power for stock purchases
             #   option_buying_power – buying power for option purchases (often different)
             total_equity = float(balance_data.get("total_equity", 0))
-            cash_available = float(balance_data.get("cash_available", 0))
+            cash_available = float(balance_data.get("total_cash", 0))
+            pdt_data = balance_data.get("pdt") or {}
             # Use stock_buying_power for stocks; fall back to option_buying_power, then total_equity
-            stock_bp = balance_data.get("stock_buying_power")
-            option_bp = balance_data.get("option_buying_power")
+            stock_bp = pdt_data.get("stock_buying_power") or balance_data.get("stock_buying_power")
+            option_bp = pdt_data.get("option_buying_power") or balance_data.get("option_buying_power")
             buying_power = float(stock_bp or option_bp or total_equity or 0)
             
             self.logger.info(
@@ -152,14 +163,15 @@ class TradierBrokerService(BrokerService):
             )
             
             return {
-                "account_id": account_data.get("account_number"),
-                "status": account_data.get("status"),
-                "type": account_data.get("type"),
+                "account_id": balance_data.get("account_number") or account,
+                "status": "active",
+                "type": balance_data.get("account_type"),
                 "balance": total_equity,
                 "equity": total_equity,
                 "cash": cash_available,
                 "buying_power": buying_power,
                 "portfolio_value": total_equity,
+                "positions": positions,
                 "paper_trading": self.paper
             }
         except Exception as e:

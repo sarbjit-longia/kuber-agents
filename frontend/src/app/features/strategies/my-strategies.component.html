@@ -1,0 +1,163 @@
+<div class="strategies-page">
+  <app-navbar></app-navbar>
+
+  <div class="strategies-container">
+    <section class="page-hero">
+      <div class="hero-main">
+        <div class="eyebrow">
+          <mat-icon>folder</mat-icon>
+          Strategy Workspace
+        </div>
+        <div class="hero-copy">
+          <h1>My Strategies</h1>
+          <p>Manage exported pipeline snapshots, private strategy blobs, and marketplace submissions.</p>
+        </div>
+      </div>
+
+      <div class="hero-actions">
+        <a mat-raised-button color="primary" routerLink="/pipelines">
+          <mat-icon>ios_share</mat-icon>
+          Export From Pipelines
+        </a>
+      </div>
+    </section>
+
+    <section class="overview-strip" *ngIf="!loading">
+      <div class="overview-card">
+        <span class="overview-label">Total</span>
+        <span class="overview-value">{{ strategies.length }}</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Published</span>
+        <span class="overview-value">{{ byStatus('published').length }}</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Private</span>
+        <span class="overview-value">{{ byStatus('private').length }}</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Pending</span>
+        <span class="overview-value">{{ byStatus('pending_review').length }}</span>
+      </div>
+    </section>
+
+    <div *ngIf="loading" class="loading-state">
+      <mat-spinner></mat-spinner>
+    </div>
+
+    <section class="workspace-grid" *ngIf="!loading">
+      <mat-card class="workspace-column">
+        <div class="column-head">
+          <div>
+            <div class="column-title">Private Snapshots</div>
+            <div class="column-copy">Saved exported strategies visible only to you.</div>
+          </div>
+          <span class="column-count">{{ byStatus('private').length }}</span>
+        </div>
+        <div class="column-list">
+          <a class="strategy-card" *ngFor="let strategy of byStatus('private')" [routerLink]="['/strategies', strategy.id]">
+            <div class="card-meta">
+              <div class="card-meta-left">
+                <span class="status-chip">{{ strategy.visibility }}</span>
+                <span class="meta-copy">v{{ strategy.current_version }}</span>
+              </div>
+              <button mat-icon-button class="delete-button" (click)="deleteStrategy(strategy, $event)" aria-label="Delete strategy">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+            <h3>{{ strategy.title }}</h3>
+            <p>{{ strategy.summary || 'Private strategy snapshot' }}</p>
+          </a>
+          <div class="empty-copy" *ngIf="byStatus('private').length === 0">No private snapshots yet.</div>
+        </div>
+      </mat-card>
+
+      <mat-card class="workspace-column">
+        <div class="column-head">
+          <div>
+            <div class="column-title">Pending Review</div>
+            <div class="column-copy">Strategies waiting for marketplace approval.</div>
+          </div>
+          <span class="column-count">{{ byStatus('pending_review').length }}</span>
+        </div>
+        <div class="column-list">
+          <a class="strategy-card" *ngFor="let strategy of byStatus('pending_review')" [routerLink]="['/strategies', strategy.id]">
+            <div class="card-meta">
+              <div class="card-meta-left">
+                <span class="status-chip">{{ strategy.publication_status }}</span>
+                <span class="meta-copy">{{ strategy.updated_at | date:'short' }}</span>
+              </div>
+              <button mat-icon-button class="delete-button" (click)="deleteStrategy(strategy, $event)" aria-label="Delete strategy">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+            <h3>{{ strategy.title }}</h3>
+            <p>{{ strategy.summary || 'Awaiting review' }}</p>
+          </a>
+          <div class="empty-copy" *ngIf="byStatus('pending_review').length === 0">Nothing pending review.</div>
+        </div>
+      </mat-card>
+
+      <mat-card class="workspace-column">
+        <div class="column-head">
+          <div>
+            <div class="column-title">Published</div>
+            <div class="column-copy">Approved marketplace strategies.</div>
+          </div>
+          <span class="column-count">{{ byStatus('published').length }}</span>
+        </div>
+        <div class="column-list">
+          <a class="strategy-card" *ngFor="let strategy of byStatus('published')" [routerLink]="['/strategies', strategy.id]">
+            <div class="card-meta">
+              <div class="card-meta-left">
+                <span class="status-chip">{{ strategy.publication_status }}</span>
+                <span class="meta-copy">{{ strategy.use_count }} uses</span>
+              </div>
+              <button mat-icon-button class="delete-button" (click)="deleteStrategy(strategy, $event)" aria-label="Delete strategy">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+            <h3>{{ strategy.title }}</h3>
+            <p>{{ strategy.summary || 'Published strategy' }}</p>
+          </a>
+          <div class="empty-copy" *ngIf="byStatus('published').length === 0">No published strategies yet.</div>
+        </div>
+      </mat-card>
+    </section>
+
+    <section class="admin-queue-row" *ngIf="!loading && isAdmin">
+      <mat-card class="workspace-column admin-column admin-row-card">
+        <div class="column-head">
+          <div>
+            <div class="column-title">Admin Approval Queue</div>
+            <div class="column-copy">All marketplace submissions currently waiting for approval.</div>
+          </div>
+          <span class="column-count">{{ adminPendingStrategies.length }}</span>
+        </div>
+        <div class="admin-row-list">
+          <a class="strategy-card admin-card" *ngFor="let strategy of adminPendingStrategies" [routerLink]="['/strategies', strategy.id]">
+            <div class="card-meta">
+              <div class="card-meta-left">
+                <span class="status-chip">{{ strategy.publication_status }}</span>
+                <span class="meta-copy">{{ strategy.updated_at | date:'short' }}</span>
+              </div>
+              <div class="admin-actions">
+                <button mat-icon-button class="approve-button" (click)="reviewStrategy(strategy, true, $event)" aria-label="Approve strategy">
+                  <mat-icon>check_circle</mat-icon>
+                </button>
+                <button mat-icon-button class="reject-button" (click)="reviewStrategy(strategy, false, $event)" aria-label="Reject strategy">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </div>
+            </div>
+            <h3>{{ strategy.title }}</h3>
+            <p>{{ strategy.summary || 'Awaiting admin review' }}</p>
+          </a>
+          <div class="empty-copy" *ngIf="adminPendingStrategies.length === 0">No strategies currently waiting for approval.</div>
+        </div>
+      </mat-card>
+    </section>
+  </div>
+
+  <app-footer></app-footer>
+</div>

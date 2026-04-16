@@ -4,7 +4,7 @@
  * A simpler, more reliable builder with a fixed agent chain and a details pane
  * for configuring instructions + tools per agent.
  */
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -83,6 +83,8 @@ interface DetailHelpItem {
   styleUrls: ['./pipeline-builder-guided.component.scss']
 })
 export class PipelineBuilderGuidedComponent implements OnInit {
+  @ViewChild('pipelineNameInput') private pipelineNameInput?: ElementRef<HTMLInputElement>;
+
   loading = false;
   saving = false;
   executing = false;
@@ -169,6 +171,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   setupLoading = false;
 
   estimatedPipelineCost = 0; // $/run estimate (tools + llm detection)
+  private shouldPromptForPipelineName = false;
 
   /** Currently selected LLM model per agent (tracked for cost estimation) */
   agentSelectedModel: Record<string, string> = {};
@@ -263,6 +266,7 @@ export class PipelineBuilderGuidedComponent implements OnInit {
   ngOnInit(): void {
     this.loading = true;
     this.costEstimationService.loadPricing();
+    this.shouldPromptForPipelineName = this.route.snapshot.queryParamMap.get('namePrompt') === '1';
 
     this.agentService.loadAgents().subscribe({
       next: (agents) => {
@@ -424,12 +428,30 @@ export class PipelineBuilderGuidedComponent implements OnInit {
         this.selectItem(this.selectedItemKey);
         this.recomputeEstimatedPipelineCost();
         this.loading = false;
+
+        if (this.shouldPromptForPipelineName) {
+          this.pipelineName = '';
+          this.focusPipelineNameField();
+          this.shouldPromptForPipelineName = false;
+        }
       },
       error: (err) => {
         console.error('Failed to load pipeline', err);
         this.loading = false;
         this.showNotification('Failed to load pipeline', 'error');
       }
+    });
+  }
+
+  private focusPipelineNameField(): void {
+    setTimeout(() => {
+      const input = this.pipelineNameInput?.nativeElement;
+      if (!input) {
+        return;
+      }
+
+      input.focus();
+      input.select();
     });
   }
 

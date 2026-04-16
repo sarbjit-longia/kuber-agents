@@ -24,6 +24,12 @@ from app.schemas.execution import (
     ExecutionUpdate,
     ExecutionList,
 )
+from app.schemas.strategy import (
+    StrategyRead,
+    StrategyCreate,
+    StrategyUpdate,
+    StrategyListResponse,
+)
 
 __all__ = [
     # User schemas
@@ -43,4 +49,8 @@ __all__ = [
     "ExecutionCreate",
     "ExecutionUpdate",
     "ExecutionList",
+    "StrategyRead",
+    "StrategyCreate",
+    "StrategyUpdate",
+    "StrategyListResponse",
 ]

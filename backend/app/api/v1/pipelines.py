@@ -23,6 +23,9 @@ from app.services.pipeline_service import (
     update_pipeline,
     delete_pipeline,
 )
+from app.services.strategy_service import export_pipeline_as_strategy
+from app.services.strategy_documents import remove_pipeline_brokers
+from app.schemas.strategy import StrategyRead
 from app.core.deps import get_current_active_user
 from app.orchestration.validator import PipelineValidator
 
@@ -94,6 +97,31 @@ async def clone_existing_pipeline(
             detail="Pipeline not found",
         )
     return pipeline
+
+
+@router.post("/{pipeline_id}/export-strategy", response_model=StrategyRead, status_code=status.HTTP_201_CREATED)
+async def export_pipeline_to_strategy(
+    pipeline_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    pipeline = await get_pipeline_by_id(db, pipeline_id, current_user.id)
+    if not pipeline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pipeline not found",
+        )
+    strategy = await export_pipeline_as_strategy(db, pipeline=pipeline, user_id=current_user.id)
+    sanitized_spec = dict(strategy.normalized_spec or {})
+    sanitized_spec.pop("private_pipeline", None)
+    if isinstance(sanitized_spec.get("pipeline"), dict):
+        sanitized_spec["pipeline"] = remove_pipeline_brokers(sanitized_spec["pipeline"])
+    return StrategyRead.model_validate({
+        **strategy.__dict__,
+        "normalized_spec": sanitized_spec,
+        "has_voted": False,
+        "is_runnable": bool(sanitized_spec.get("is_runnable")),
+    })
 
 
 @router.get("/{pipeline_id}", response_model=Pipeline)

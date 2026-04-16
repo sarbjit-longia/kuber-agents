@@ -57,11 +57,37 @@ class TradierBrokerTool(BaseTool):
                 required=["account_type", "api_token", "account_id"]
             )
         )
+
+    def _normalized_account_type(self) -> str:
+        """Normalize UI account type labels to a stable runtime value."""
+        account_type = str(self.config.get("account_type", "Sandbox")).strip().lower()
+        return "live" if account_type == "live" else "sandbox"
+
+    def _resolve_credentials(self) -> tuple[Optional[str], Optional[str]]:
+        """
+        Prefer explicit tool config credentials.
+
+        Older configs may set `use_env_credentials`, but pipeline-attached broker
+        credentials should win whenever they are present so live runs do not
+        accidentally query a different environment/account from process env vars.
+        """
+        api_token = self.config.get("api_token")
+        account_id = self.config.get("account_id")
+        if api_token and account_id:
+            return api_token, account_id
+
+        if self.config.get("use_env_credentials", True):
+            return (
+                getattr(settings, "TRADIER_API_TOKEN", None),
+                getattr(settings, "TRADIER_ACCOUNT_ID", None),
+            )
+
+        return api_token, account_id
     
     def _validate_config(self):
         """Validate Tradier configuration."""
-        account_type = self.config.get("account_type", "Sandbox")
-        if account_type not in ["Sandbox", "Live"]:
+        account_type = self._normalized_account_type()
+        if account_type not in ["sandbox", "live"]:
             raise ValueError("account_type must be 'Sandbox' or 'Live'")
         
         if not self.config.get("api_token"):
@@ -91,18 +117,13 @@ class TradierBrokerTool(BaseTool):
             from app.services.brokers.base import OrderSide, OrderType
             
             # Get credentials
-            if self.config.get("use_env_credentials", True):
-                api_token = getattr(settings, "TRADIER_API_TOKEN", None)
-                account_id = getattr(settings, "TRADIER_ACCOUNT_ID", None)
-            else:
-                api_token = self.config.get("api_token")
-                account_id = self.config.get("account_id")
+            api_token, account_id = self._resolve_credentials()
             
             if not api_token:
                 raise ToolError("Tradier API token not configured")
             
             # Create broker service
-            account_type = self.config.get("account_type", "sandbox")
+            account_type = self._normalized_account_type()
             paper = account_type == "sandbox"
             
             broker = broker_factory.create(
@@ -171,18 +192,13 @@ class TradierBrokerTool(BaseTool):
             from app.services.brokers.factory import broker_factory
             
             # Get credentials
-            if self.config.get("use_env_credentials", True):
-                api_token = getattr(settings, "TRADIER_API_TOKEN", None)
-                account_id = getattr(settings, "TRADIER_ACCOUNT_ID", None)
-            else:
-                api_token = self.config.get("api_token")
-                account_id = self.config.get("account_id")
+            api_token, account_id = self._resolve_credentials()
             
             if not api_token:
                 return {"error": "Tradier API token not configured"}
             
             # Create broker service
-            account_type = self.config.get("account_type", "sandbox")
+            account_type = self._normalized_account_type()
             paper = account_type == "sandbox"
             
             broker = broker_factory.create(
@@ -197,4 +213,3 @@ class TradierBrokerTool(BaseTool):
         except Exception as e:
             logger.error("tradier_account_info_failed", error=str(e))
             return {"error": str(e)}
-

@@ -70,6 +70,21 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'marketplace',
+    loadComponent: () => import('./features/strategies/strategies-marketplace.component').then(m => m.StrategiesMarketplaceComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'strategies',
+    loadComponent: () => import('./features/strategies/my-strategies.component').then(m => m.MyStrategiesComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'strategies/:id',
+    loadComponent: () => import('./features/strategies/strategy-detail.component').then(m => m.StrategyDetailComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'monitoring',
     loadComponent: () => import('./features/monitoring/monitoring.component').then(m => m.MonitoringComponent),
     canActivate: [authGuard]

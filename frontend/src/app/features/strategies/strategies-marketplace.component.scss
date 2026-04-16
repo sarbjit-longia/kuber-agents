@@ -1,0 +1,206 @@
+.strategies-page {
+  min-height: 100vh;
+  background: var(--bg-primary, #10151f);
+  color: var(--text-primary, #f3f4f6);
+}
+
+.strategies-container {
+  width: 100%;
+  padding: 32px 48px 56px;
+}
+
+.hero,
+.overview-strip,
+.how-to-grid,
+.search-shell,
+.market-section {
+  margin-bottom: 24px;
+}
+
+.hero,
+.how-to-grid,
+.search-shell,
+.card-grid,
+.overview-strip {
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.eyebrow,
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eyebrow {
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero h1,
+.section-header h2 {
+  margin: 0;
+}
+
+.hero p,
+.how-card p,
+.strategy-card p {
+  color: var(--text-secondary, #9ca3af);
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.overview-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.overview-card,
+.how-card,
+.strategy-card,
+.search-shell {
+  background: linear-gradient(180deg, rgba(28, 35, 48, 0.98), rgba(22, 28, 40, 0.96));
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 20px;
+}
+
+.overview-card {
+  padding: 18px 20px;
+}
+
+.overview-label {
+  display: block;
+  color: var(--text-secondary, #9ca3af);
+  font-size: 0.82rem;
+  margin-bottom: 6px;
+}
+
+.overview-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.how-to-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.how-card {
+  padding: 22px;
+}
+
+.how-card ol {
+  margin: 16px 0 0;
+  padding-left: 20px;
+  color: var(--text-secondary, #d1d5db);
+}
+
+.search-shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 16px;
+  align-items: center;
+}
+
+.search-shell mat-form-field {
+  width: 100%;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-header a {
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compact-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.strategy-card {
+  padding: 20px;
+  text-decoration: none;
+  color: inherit;
+  min-height: 210px;
+}
+
+.strategy-top,
+.chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.strategy-top {
+  justify-content: space-between;
+}
+
+.status,
+.metric,
+.chip {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.status {
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+}
+
+.metric,
+.chip {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+}
+
+@media (max-width: 1100px) {
+  .card-grid,
+  .compact-grid,
+  .overview-strip,
+  .how-to-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .hero,
+  .search-shell,
+  .card-grid,
+  .compact-grid,
+  .overview-strip,
+  .how-to-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .strategies-container {
+    padding: 24px 16px 40px;
+  }
+}

@@ -76,6 +76,22 @@ async def create_pipeline(
         name=pipeline_in.name,
         description=pipeline_in.description,
         config=pipeline_in.config,
+        trigger_mode=pipeline_in.trigger_mode,
+        scanner_id=pipeline_in.scanner_id,
+        signal_subscriptions=deepcopy(pipeline_in.signal_subscriptions or []),
+        scanner_tickers=deepcopy(pipeline_in.scanner_tickers or []),
+        notification_enabled=pipeline_in.notification_enabled,
+        notification_events=deepcopy(pipeline_in.notification_events or []),
+        require_approval=pipeline_in.require_approval,
+        approval_modes=deepcopy(pipeline_in.approval_modes or []),
+        approval_timeout_minutes=pipeline_in.approval_timeout_minutes,
+        approval_channels=deepcopy(pipeline_in.approval_channels or []),
+        approval_phone=pipeline_in.approval_phone,
+        schedule_enabled=pipeline_in.schedule_enabled,
+        schedule_start_time=pipeline_in.schedule_start_time,
+        schedule_end_time=pipeline_in.schedule_end_time,
+        schedule_days=deepcopy(pipeline_in.schedule_days or []),
+        liquidate_on_deactivation=pipeline_in.liquidate_on_deactivation,
     )
     db.add(pipeline)
     await db.commit()

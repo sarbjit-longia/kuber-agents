@@ -173,6 +173,10 @@
                 <mat-icon>insights</mat-icon>
                 <span>Backtest</span>
               </button>
+              <button mat-menu-item (click)="exportStrategy(pipeline, $event)">
+                <mat-icon>ios_share</mat-icon>
+                <span>Export as Strategy</span>
+              </button>
               <button mat-menu-item (click)="toggleActive(pipeline, $event)">
                 <mat-icon>{{ pipeline.is_active ? 'toggle_on' : 'toggle_off' }}</mat-icon>
                 <span>{{ pipeline.is_active ? 'Deactivate' : 'Activate' }}</span>

@@ -36,6 +36,32 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
 
+def _extract_broker_tool(config: Optional[dict]) -> Optional[dict]:
+    if not isinstance(config, dict):
+        return None
+
+    broker_tool = config.get("broker_tool")
+    if isinstance(broker_tool, dict):
+        return broker_tool
+
+    for node in config.get("nodes", []) or []:
+        node_config = node.get("config") or {}
+        for tool in node_config.get("tools", []) or []:
+            tool_type = str(tool.get("tool_type") or "").lower()
+            if "broker" in tool_type:
+                return tool
+    return None
+
+
+def _normalize_account_type(account_type: Optional[str]) -> str:
+    value = str(account_type or "").strip().lower()
+    if value in {"sandbox", "paper", "practice", "demo"}:
+        return "paper"
+    if value in {"live", "production"}:
+        return "live"
+    return value or "unknown"
+
+
 def _enrich_backtest_result(
     result: dict,
     execution_id: str,
@@ -170,6 +196,24 @@ async def start_execution(
     
     # Note: Manual executions can run on inactive pipelines
     # Active status only matters for scheduled/automated runs
+
+    requested_mode = execution_data.mode or (pipeline.config or {}).get("mode") or "paper"
+    broker_tool = _extract_broker_tool(pipeline.config or {})
+    if broker_tool:
+        broker_config = broker_tool.get("config") or {}
+        broker_account_type = _normalize_account_type(broker_config.get("account_type"))
+        expected_broker_mode = "live" if requested_mode == "live" else "paper"
+        if broker_account_type != "unknown" and broker_account_type != expected_broker_mode:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Execution mode does not match broker account configuration",
+                    "requested_mode": requested_mode,
+                    "broker_tool": broker_tool.get("tool_type"),
+                    "broker_account_type": broker_config.get("account_type"),
+                    "expected_broker_account_type": "Live" if expected_broker_mode == "live" else "Sandbox/Paper/Practice",
+                },
+            )
     
     # Extract symbol from pipeline config or use from execution_data
     symbol = None
@@ -183,7 +227,7 @@ async def start_execution(
         pipeline_id=execution_data.pipeline_id,
         user_id=current_user.id,
         status=ExecutionStatus.PENDING,
-        mode=execution_data.mode or "paper",
+        mode=requested_mode,
         symbol=symbol,
         started_at=datetime.utcnow()  # Mark as started immediately
     )
@@ -197,7 +241,7 @@ async def start_execution(
             kwargs={
                 "pipeline_id": str(execution.pipeline_id),
                 "user_id": str(current_user.id),
-                "mode": execution_data.mode or "paper",
+                "mode": requested_mode,
                 "execution_id": str(execution.id)
             },
             countdown=0,  # Execute immediately

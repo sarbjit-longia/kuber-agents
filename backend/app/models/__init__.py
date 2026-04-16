@@ -17,6 +17,7 @@ from app.models.user_device import UserDevice
 from app.models.sms_consent_log import SmsConsentLog
 from app.models.backtest_run import BacktestRun, BacktestRunStatus
 from app.models.backtest_event import BacktestEvent
+from app.models.strategy import Strategy, StrategyVote
 
 __all__ = [
     "Base",
@@ -34,4 +35,6 @@ __all__ = [
     "BacktestRun",
     "BacktestEvent",
     "BacktestRunStatus",
+    "Strategy",
+    "StrategyVote",
 ]

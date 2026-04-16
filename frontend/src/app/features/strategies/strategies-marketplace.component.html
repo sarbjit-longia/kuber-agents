@@ -1,0 +1,165 @@
+<div class="strategies-page">
+  <app-navbar></app-navbar>
+
+  <div class="strategies-container">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">
+          <mat-icon>storefront</mat-icon>
+          Strategy Marketplace
+        </div>
+        <h1>Discover strategies that become trading pipelines in one click</h1>
+        <p>
+          Browse community-authored strategies, inspect the document behind each setup, and turn approved ideas into
+          fully configured pipelines without rebuilding the workflow from scratch.
+        </p>
+      </div>
+
+      <div class="hero-actions">
+        <a mat-raised-button color="primary" routerLink="/pipelines">
+          <mat-icon>ios_share</mat-icon>
+          Export From Pipelines
+        </a>
+        <a mat-stroked-button routerLink="/strategies">
+          <mat-icon>folder</mat-icon>
+          Manage My Strategies
+        </a>
+      </div>
+    </section>
+
+    <section class="overview-strip" *ngIf="!loading">
+      <div class="overview-card">
+        <span class="overview-label">Featured strategies</span>
+        <span class="overview-value">{{ featuredCount }}</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Most voted</span>
+        <span class="overview-value">{{ mostVoted.length }}</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Private drafts</span>
+        <span class="overview-value">{{ privateDraftCount }}</span>
+      </div>
+    </section>
+
+    <section class="how-to-grid">
+      <mat-card class="how-card">
+        <div class="card-header">
+          <mat-icon>edit_note</mat-icon>
+          <div>
+            <div class="card-title">How to create a strategy</div>
+            <div class="card-copy">Strategies are exported pipeline snapshots, not editable documents.</div>
+          </div>
+        </div>
+        <ol>
+          <li>Build and verify the pipeline you want to share.</li>
+          <li>Export it as a strategy from the Pipelines workspace.</li>
+          <li>Keep it private or submit the saved snapshot for marketplace review.</li>
+        </ol>
+      </mat-card>
+
+      <mat-card class="how-card">
+        <div class="card-header">
+          <mat-icon>account_tree</mat-icon>
+          <div>
+            <div class="card-title">Snapshot fidelity</div>
+            <div class="card-copy">Using a strategy recreates the exported pipeline snapshot instead of translating from prose.</div>
+          </div>
+        </div>
+        <p>
+          Marketplace viewers see a rendered strategy presentation, but the saved source of truth is still the pipeline
+          blob. That keeps exported and recreated pipelines aligned.
+        </p>
+      </mat-card>
+    </section>
+
+    <section class="search-shell">
+      <mat-form-field appearance="outline">
+        <mat-label>Search strategies</mat-label>
+        <input matInput [(ngModel)]="query" (keyup.enter)="search()" placeholder="Search by title or summary" />
+      </mat-form-field>
+      <button mat-stroked-button (click)="search()">
+        <mat-icon>search</mat-icon>
+        Search
+      </button>
+    </section>
+
+    <div *ngIf="loading" class="loading-state">
+      <mat-spinner></mat-spinner>
+    </div>
+
+    <section class="market-section" *ngIf="!loading">
+      <div class="section-header">
+        <h2>Most Voted</h2>
+        <a routerLink="/strategies">My strategies</a>
+      </div>
+      <div class="card-grid">
+        <a class="strategy-card" *ngFor="let strategy of mostVoted" [routerLink]="['/strategies', strategy.id]">
+          <div class="strategy-top">
+            <span class="status">{{ strategy.publication_status }}</span>
+            <span class="metric">{{ strategy.vote_count }} votes</span>
+          </div>
+          <h3>{{ strategy.title }}</h3>
+          <p>{{ strategy.summary || 'No summary provided.' }}</p>
+          <div class="chip-row">
+            <span class="chip" *ngFor="let timeframe of strategy.timeframes.slice(0, 3)">{{ timeframe }}</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="market-section" *ngIf="!loading">
+      <div class="section-header">
+        <h2>Most Used</h2>
+      </div>
+      <div class="card-grid">
+        <a class="strategy-card" *ngFor="let strategy of mostUsed" [routerLink]="['/strategies', strategy.id]">
+          <div class="strategy-top">
+            <span class="status">{{ strategy.visibility }}</span>
+            <span class="metric">{{ strategy.use_count }} uses</span>
+          </div>
+          <h3>{{ strategy.title }}</h3>
+          <p>{{ strategy.summary || 'No summary provided.' }}</p>
+          <div class="chip-row">
+            <span class="chip" *ngFor="let tag of strategy.tags.slice(0, 3)">{{ tag }}</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="market-section" *ngIf="!loading">
+      <div class="section-header">
+        <h2>Newest Strategies</h2>
+      </div>
+      <div class="card-grid">
+        <a class="strategy-card" *ngFor="let strategy of newest" [routerLink]="['/strategies', strategy.id]">
+          <div class="strategy-top">
+            <span class="status">{{ strategy.category || 'general' }}</span>
+            <span class="metric">v{{ strategy.current_version }}</span>
+          </div>
+          <h3>{{ strategy.title }}</h3>
+          <p>{{ strategy.summary || 'No summary provided.' }}</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="market-section" *ngIf="!loading && myStrategies.length > 0">
+      <div class="section-header">
+        <h2>My Recent Strategies</h2>
+        <a routerLink="/strategies">View all</a>
+      </div>
+      <div class="card-grid compact-grid">
+        <a class="strategy-card" *ngFor="let strategy of myStrategies" [routerLink]="['/strategies', strategy.id]">
+          <div class="strategy-top">
+            <span class="status">{{ strategy.publication_status }}</span>
+            <span class="metric">{{ strategy.visibility }}</span>
+          </div>
+          <h3>{{ strategy.title }}</h3>
+          <p>{{ strategy.summary || 'Draft strategy' }}</p>
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <app-footer></app-footer>
+</div>

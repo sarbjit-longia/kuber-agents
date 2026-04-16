@@ -592,11 +592,11 @@ services:
       TELEMETRY_ENABLED: "false"
       TZ: UTC
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://$$(hostname):3000/api/public/health"]
+      interval: 15s
       timeout: 10s
-      retries: 8
-      start_period: 40s
+      retries: 15
+      start_period: 90s
     restart: unless-stopped
 
   langfuse-worker:
