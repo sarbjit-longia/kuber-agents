@@ -66,7 +66,14 @@ class ExecutiveReportGenerator:
                 max_tokens=800
             )
             
-            summary_text = response.choices[0].message.content
+            summary_text = self._extract_response_text(response)
+            if not summary_text:
+                logger.warning(
+                    "executive_summary_empty_response",
+                    execution_id=execution_data.get("id"),
+                    model=self.model,
+                )
+                summary_text = self._build_fallback_summary(context)
             
             # Track in Langfuse if available (fully optional, won't affect functionality)
             if langfuse_trace:
@@ -98,7 +105,7 @@ class ExecutiveReportGenerator:
                        tokens=response.usage.total_tokens)
             
             return {
-                "executive_summary": summary_sections.get("summary", summary_text),
+                "executive_summary": summary_sections.get("summary") or summary_text,
                 "key_takeaways": summary_sections.get("takeaways", []),
                 "final_recommendation": summary_sections.get("recommendation", ""),
                 "risk_notes": summary_sections.get("risk_notes", ""),
@@ -256,6 +263,55 @@ RISK_NOTES:
                         sections[current_section] = line
         
         return sections
+
+    def _extract_response_text(self, response: Any) -> str:
+        """Extract text from provider responses that may not return a plain string."""
+        try:
+            content = response.choices[0].message.content
+        except Exception:
+            return ""
+
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text")
+                    if text:
+                        parts.append(str(text))
+                else:
+                    text = getattr(item, "text", None)
+                    if text:
+                        parts.append(str(text))
+            return "\n".join(part.strip() for part in parts if str(part).strip()).strip()
+
+        return ""
+
+    def _build_fallback_summary(self, context: Dict[str, Any]) -> str:
+        """Return a deterministic fallback if the LLM provider returns no text."""
+        strategy = context.get("strategy") or {}
+        risk = context.get("risk_assessment") or {}
+        trade = context.get("trade_execution") or {}
+
+        action = strategy.get("action") or "No action"
+        confidence = strategy.get("confidence")
+        confidence_text = (
+            f"{confidence * 100:.0f}% confidence"
+            if isinstance(confidence, (int, float))
+            else "confidence unavailable"
+        )
+        risk_level = risk.get("risk_level") or "unknown risk"
+        trade_status = trade.get("status") or "not executed"
+
+        return (
+            f"{context.get('pipeline', 'Pipeline')} processed {context.get('symbol', 'the symbol')} in "
+            f"{context.get('mode', 'paper')} mode. Strategy outcome was {action} with {confidence_text}, "
+            f"risk assessment reported {risk_level}, and trade execution status was {trade_status}."
+        )
     
     def _calculate_cost(self, usage: Any) -> float:
         """Calculate cost based on token usage."""

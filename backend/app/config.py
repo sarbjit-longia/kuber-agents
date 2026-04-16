@@ -88,8 +88,12 @@ class Settings(BaseSettings):
     LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, description="Langfuse secret key")
     LANGFUSE_PUBLIC_KEY: Optional[str] = Field(default=None, description="Langfuse public key")
     LANGFUSE_BASE_URL: Optional[str] = Field(
-        default="https://cloud.langfuse.com",
-        description="Langfuse API base URL"
+        default=None,
+        description="Langfuse API base URL (v2 compat)"
+    )
+    LANGFUSE_HOST: Optional[str] = Field(
+        default=None,
+        description="Langfuse host URL (v4 SDK reads this from env automatically)"
     )
     LANGFUSE_ENABLED: bool = Field(default=False, description="Enable Langfuse tracing")
     
