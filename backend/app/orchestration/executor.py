@@ -20,6 +20,12 @@ from app.models.execution import Execution, ExecutionStatus
 from app.models.scanner import Scanner
 from app.agents import get_registry
 from app.agents.base import AgentError, TriggerNotMetException
+from app.services.langfuse_service import (
+    activate_observation,
+    flush_langfuse,
+    span_context,
+    start_or_resume_trace,
+)
 
 logger = structlog.get_logger()
 
@@ -805,188 +811,224 @@ class PipelineExecutor:
             signal_data=signal_data
         )
         
-        # Fetch market data before running agents (synchronous version)
-        self._fetch_market_data_sync(state)
-        
-        # Get execution order
-        execution_order = self._build_execution_order()
-        
-        # Initialize agent states tracking
-        agent_states = []
-        for node in execution_order:
-            agent_states.append({
-                "agent_id": node["id"],
-                "agent_type": node["agent_type"],
-                "status": "pending",
-                "started_at": None,
-                "completed_at": None,
-                "error": None,
-                "cost": 0.0
-            })
-        
-        # Update execution with initial agent states
-        execution.agent_states = agent_states
-        db_session.commit()
-        
-        # Execute each agent in sequence
-        for i, node in enumerate(execution_order):
-            agent_type = node["agent_type"]
-            agent_id = node["id"]
-            agent_config = node.get("config", {})
+        trace_metadata = {
+            "execution_id": str(execution.id),
+            "pipeline_id": str(self.pipeline.id),
+            "pipeline_name": getattr(self.pipeline, "name", None),
+            "user_id": str(self.user_id),
+            "symbol": execution_symbol,
+            "mode": self.mode,
+            "trigger_source": getattr(self, "trigger_source", None),
+        }
+        pipeline_trace = start_or_resume_trace(
+            name="pipeline_execution",
+            trace_id=execution.langfuse_trace_id,
+            session_id=str(execution.id),
+            user_id=str(self.user_id),
+            metadata=trace_metadata,
+        )
+        if pipeline_trace and pipeline_trace.trace_id and execution.langfuse_trace_id != pipeline_trace.trace_id:
+            execution.langfuse_trace_id = pipeline_trace.trace_id
+
+        with activate_observation(pipeline_trace, as_trace=True):
+            with span_context(
+                name="market_data_fetch",
+                parent=pipeline_trace,
+                metadata={"symbol": execution_symbol},
+            ):
+                self._fetch_market_data_sync(state)
             
-            # ── Approval gate: pause before Trade Manager if approval is required ──
-            if agent_type == "trade_manager_agent":
-                from app.services.approval_service import ApprovalService
-                if ApprovalService.should_require_approval(self.pipeline, self.mode):
-                    # Only pause if risk approved and action is not HOLD
-                    should_pause = (
-                        state.risk_assessment
-                        and getattr(state.risk_assessment, "approved", False)
-                        and state.strategy
-                        and getattr(state.strategy, "action", "HOLD") != "HOLD"
-                    )
-                    if should_pause:
-                        agent_states[i]["status"] = "awaiting_approval"
-                        execution.agent_states = agent_states
-                        flag_modified(execution, "agent_states")
-
-                        # Persist current results so approval UI can show them
-                        result = {}
-                        if state.strategy:
-                            result["strategy"] = state.strategy.dict() if hasattr(state.strategy, "dict") else state.strategy
-                        if state.risk_assessment:
-                            result["risk_assessment"] = state.risk_assessment.dict() if hasattr(state.risk_assessment, "dict") else state.risk_assessment
-                        if state.market_bias:
-                            result["market_bias"] = state.market_bias.dict() if hasattr(state.market_bias, "dict") else state.market_bias
-                        execution.result = result
-                        flag_modified(execution, "result")
-                        execution.reports = self._serialize_reports(state.agent_reports)
-                        flag_modified(execution, "reports")
-
-                        ApprovalService.initiate_approval(execution, self.pipeline, state, db_session)
-                        self.logger.info(
-                            "approval_gate_activated",
-                            execution_id=str(execution.id),
-                            pipeline_id=str(self.pipeline.id),
-                        )
-                        return execution  # Exit executor — Celery task ends here
-
-            # Update agent state to running
-            agent_states[i]["status"] = "running"
-            agent_states[i]["started_at"] = datetime.utcnow().isoformat()
-
-            # Update DB with current progress
+            # Get execution order
+            execution_order = self._build_execution_order()
+            
+            # Initialize agent states tracking
+            agent_states = []
+            for node in execution_order:
+                agent_states.append({
+                    "agent_id": node["id"],
+                    "agent_type": node["agent_type"],
+                    "status": "pending",
+                    "started_at": None,
+                    "completed_at": None,
+                    "error": None,
+                    "cost": 0.0
+                })
+            
+            # Update execution with initial agent states
             execution.agent_states = agent_states
-            execution.logs = self._serialize_logs(state.execution_log)
-            # JSONB mutation: mark modified so "running" status is persisted even if agent hangs
-            flag_modified(execution, "agent_states")
-            flag_modified(execution, "logs")
             db_session.commit()
-
-            self.logger.info(
-                "executing_agent",
-                step=f"{i+1}/{len(execution_order)}",
-                agent_type=agent_type,
-                agent_id=agent_id
-            )
             
-            try:
-                # Create agent instance
-                agent = self.registry.create_agent(
-                    agent_type=agent_type,
-                    agent_id=agent_id,
-                    config=agent_config
-                )
+            # Execute each agent in sequence
+            for i, node in enumerate(execution_order):
+                agent_type = node["agent_type"]
+                agent_id = node["id"]
+                agent_config = node.get("config", {})
                 
-                # Execute agent
-                state = agent.process(state)
-                if agent_type == "strategy_agent":
-                    self._normalize_strategy_result_if_needed(state)
-                
-                # Update agent state to completed
-                agent_states[i]["status"] = "completed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
-                
-                # Update DB with progress
+                # ── Approval gate: pause before Trade Manager if approval is required ──
+                if agent_type == "trade_manager_agent":
+                    from app.services.approval_service import ApprovalService
+                    if ApprovalService.should_require_approval(self.pipeline, self.mode):
+                        # Only pause if risk approved and action is not HOLD
+                        should_pause = (
+                            state.risk_assessment
+                            and getattr(state.risk_assessment, "approved", False)
+                            and state.strategy
+                            and getattr(state.strategy, "action", "HOLD") != "HOLD"
+                        )
+                        if should_pause:
+                            agent_states[i]["status"] = "awaiting_approval"
+                            execution.agent_states = agent_states
+                            flag_modified(execution, "agent_states")
+
+                            # Persist current results so approval UI can show them
+                            result = {}
+                            if state.strategy:
+                                result["strategy"] = state.strategy.dict() if hasattr(state.strategy, "dict") else state.strategy
+                            if state.risk_assessment:
+                                result["risk_assessment"] = state.risk_assessment.dict() if hasattr(state.risk_assessment, "dict") else state.risk_assessment
+                            if state.market_bias:
+                                result["market_bias"] = state.market_bias.dict() if hasattr(state.market_bias, "dict") else state.market_bias
+                            execution.result = result
+                            flag_modified(execution, "result")
+                            execution.reports = self._serialize_reports(state.agent_reports)
+                            flag_modified(execution, "reports")
+
+                            ApprovalService.initiate_approval(execution, self.pipeline, state, db_session)
+                            self.logger.info(
+                                "approval_gate_activated",
+                                execution_id=str(execution.id),
+                                pipeline_id=str(self.pipeline.id),
+                            )
+                            flush_langfuse()
+                            return execution  # Exit executor — Celery task ends here
+
+                # Update agent state to running
+                agent_states[i]["status"] = "running"
+                agent_states[i]["started_at"] = datetime.utcnow().isoformat()
+
+                # Update DB with current progress
                 execution.agent_states = agent_states
                 execution.logs = self._serialize_logs(state.execution_log)
-                execution.reports = self._serialize_reports(state.agent_reports)
-                execution.cost = state.total_cost
-                execution.cost_breakdown = state.agent_costs
-                
-                # Mark JSONB columns as modified so SQLAlchemy saves them
+                # JSONB mutation: mark modified so "running" status is persisted even if agent hangs
                 flag_modified(execution, "agent_states")
                 flag_modified(execution, "logs")
-                flag_modified(execution, "reports")
-                flag_modified(execution, "cost_breakdown")
-                
-                # ⚠️ FIX #1: Increment version for optimistic locking
-                execution.version += 1
-                
                 db_session.commit()
-                
+
                 self.logger.info(
-                    "agent_completed",
+                    "executing_agent",
+                    step=f"{i+1}/{len(execution_order)}",
                     agent_type=agent_type,
-                    cost=state.agent_costs.get(agent_id, 0.0)
+                    agent_id=agent_id
                 )
                 
-            except TriggerNotMetException as e:
-                # Trigger not met - mark current agent as skipped
-                self.logger.info("trigger_not_met", reason=str(e))
-                state.trigger_met = False
-                state.trigger_reason = str(e)
-                agent_states[i]["status"] = "skipped"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = "Trigger not met"
-                
-                # Mark all remaining agents as skipped too
-                for j in range(i + 1, len(agent_states)):
-                    agent_states[j]["status"] = "skipped"
-                    agent_states[j]["completed_at"] = datetime.utcnow().isoformat()
-                    agent_states[j]["error"] = "Skipped due to trigger not met"
-                
-                execution.agent_states = agent_states
-                flag_modified(execution, "agent_states")
-                execution.reports = self._serialize_reports(state.agent_reports)
-                flag_modified(execution, "reports")
-                db_session.commit()
-                raise
-                
-            except AgentError as e:
-                # Agent-specific error
-                self.logger.error("agent_error", agent_type=agent_type, error=str(e))
-                state.errors.append(f"Agent {agent_type} failed: {str(e)}")
-                agent_states[i]["status"] = "failed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = str(e)
-                execution.agent_states = agent_states
-                flag_modified(execution, "agent_states")
-                execution.reports = self._serialize_reports(state.agent_reports)
-                flag_modified(execution, "reports")
-                db_session.commit()
-                
-                # Decide whether to continue or abort
-                if self._should_abort_on_error(agent_type, str(e)):
-                    raise
-                else:
-                    # Continue to next agent
-                    continue
+                try:
+                    # Create agent instance
+                    agent = self.registry.create_agent(
+                        agent_type=agent_type,
+                        agent_id=agent_id,
+                        config=agent_config
+                    )
                     
-            except Exception as e:
-                # Unexpected error
-                self.logger.exception("unexpected_error", agent_type=agent_type)
-                state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
-                agent_states[i]["status"] = "failed"
-                agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
-                agent_states[i]["error"] = str(e)
-                execution.agent_states = agent_states
-                flag_modified(execution, "agent_states")
-                execution.reports = self._serialize_reports(state.agent_reports)
-                flag_modified(execution, "reports")
-                db_session.commit()
-                raise
+                    # Execute agent inside its trace span
+                    with span_context(
+                        name=f"agent:{agent_type}",
+                        parent=pipeline_trace,
+                        metadata={
+                            "agent_id": agent_id,
+                            "agent_type": agent_type,
+                            "execution_id": str(execution.id),
+                            "pipeline_id": str(self.pipeline.id),
+                        },
+                    ):
+                        state = agent.process(state)
+
+                    if agent_type == "strategy_agent":
+                        self._normalize_strategy_result_if_needed(state)
+                    
+                    # Update agent state to completed
+                    agent_states[i]["status"] = "completed"
+                    agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                    agent_states[i]["cost"] = state.agent_costs.get(agent_id, 0.0)
+                    
+                    # Update DB with progress
+                    execution.agent_states = agent_states
+                    execution.logs = self._serialize_logs(state.execution_log)
+                    execution.reports = self._serialize_reports(state.agent_reports)
+                    execution.cost = state.total_cost
+                    execution.cost_breakdown = state.agent_costs
+                    
+                    # Mark JSONB columns as modified so SQLAlchemy saves them
+                    flag_modified(execution, "agent_states")
+                    flag_modified(execution, "logs")
+                    flag_modified(execution, "reports")
+                    flag_modified(execution, "cost_breakdown")
+                    
+                    # ⚠️ FIX #1: Increment version for optimistic locking
+                    execution.version += 1
+                    
+                    db_session.commit()
+                    
+                    self.logger.info(
+                        "agent_completed",
+                        agent_type=agent_type,
+                        cost=state.agent_costs.get(agent_id, 0.0)
+                    )
+                    
+                except TriggerNotMetException as e:
+                    # Trigger not met - mark current agent as skipped
+                    self.logger.info("trigger_not_met", reason=str(e))
+                    state.trigger_met = False
+                    state.trigger_reason = str(e)
+                    agent_states[i]["status"] = "skipped"
+                    agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                    agent_states[i]["error"] = "Trigger not met"
+                    
+                    # Mark all remaining agents as skipped too
+                    for j in range(i + 1, len(agent_states)):
+                        agent_states[j]["status"] = "skipped"
+                        agent_states[j]["completed_at"] = datetime.utcnow().isoformat()
+                        agent_states[j]["error"] = "Skipped due to trigger not met"
+                    
+                    execution.agent_states = agent_states
+                    flag_modified(execution, "agent_states")
+                    execution.reports = self._serialize_reports(state.agent_reports)
+                    flag_modified(execution, "reports")
+                    db_session.commit()
+                    raise
+                    
+                except AgentError as e:
+                    # Agent-specific error
+                    self.logger.error("agent_error", agent_type=agent_type, error=str(e))
+                    state.errors.append(f"Agent {agent_type} failed: {str(e)}")
+                    agent_states[i]["status"] = "failed"
+                    agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                    agent_states[i]["error"] = str(e)
+                    execution.agent_states = agent_states
+                    flag_modified(execution, "agent_states")
+                    execution.reports = self._serialize_reports(state.agent_reports)
+                    flag_modified(execution, "reports")
+                    db_session.commit()
+                    
+                    # Decide whether to continue or abort
+                    if self._should_abort_on_error(agent_type, str(e)):
+                        raise
+                    else:
+                        # Continue to next agent
+                        continue
+                        
+                except Exception as e:
+                    # Unexpected error
+                    self.logger.exception("unexpected_error", agent_type=agent_type)
+                    state.errors.append(f"Unexpected error in {agent_type}: {str(e)}")
+                    agent_states[i]["status"] = "failed"
+                    agent_states[i]["completed_at"] = datetime.utcnow().isoformat()
+                    agent_states[i]["error"] = str(e)
+                    execution.agent_states = agent_states
+                    flag_modified(execution, "agent_states")
+                    execution.reports = self._serialize_reports(state.agent_reports)
+                    flag_modified(execution, "reports")
+                    db_session.commit()
+                    raise
         
         # Mark completion
         state.completed_at = datetime.utcnow()
@@ -1083,7 +1125,7 @@ class PipelineExecutor:
         
         # Generate PDF report if execution completed successfully
         if execution.status == ExecutionStatus.COMPLETED and self.mode != "backtest":
-            self._generate_pdf_report_sync(execution, db_session)
+            self._generate_pdf_report_sync(execution, db_session, trace=pipeline_trace)
         
         # Persist full PipelineState snapshot so monitoring/reconciliation
         # can round-trip state without lossy reconstruction from execution.result.
@@ -1109,6 +1151,7 @@ class PipelineExecutor:
                 next_check_at=execution.next_check_at.isoformat() if execution.next_check_at else "immediate"
             )
         
+        flush_langfuse()
         return execution
     
     def _serialize_logs(self, logs):
@@ -1140,7 +1183,7 @@ class PipelineExecutor:
             return {k: self._serialize_value(v) for k, v in value.items()}
         return value
     
-    def _generate_pdf_report_sync(self, execution: Any, db_session: Any):
+    def _generate_pdf_report_sync(self, execution: Any, db_session: Any, trace: Optional[Any] = None):
         """
         Generate PDF report for completed execution (synchronous version).
         
@@ -1173,19 +1216,29 @@ class PipelineExecutor:
             # NOTE: executive_report_generator methods are synchronous
             executive_summary = None
             try:
-                executive_summary = executive_report_generator.generate_executive_summary_sync(
-                    execution_data,
-                    langfuse_trace=None
-                )
+                with span_context(
+                    name="report:executive_summary",
+                    parent=trace,
+                    metadata={"execution_id": str(execution.id)},
+                ) as report_span:
+                    executive_summary = executive_report_generator.generate_executive_summary_sync(
+                        execution_data,
+                        langfuse_trace=report_span
+                    )
             except Exception as e:
                 self.logger.warning("executive_summary_generation_failed", error=str(e))
             
             # Generate PDF (synchronous)
-            pdf_path = pdf_generator.generate_execution_report(
-                execution_id=str(execution.id),
-                execution_data=execution_data,
-                executive_summary=executive_summary
-            )
+            with span_context(
+                name="report:pdf_generation",
+                parent=trace,
+                metadata={"execution_id": str(execution.id)},
+            ):
+                pdf_path = pdf_generator.generate_execution_report(
+                    execution_id=str(execution.id),
+                    execution_data=execution_data,
+                    executive_summary=executive_summary
+                )
             
             # Update execution record with PDF path
             execution.report_pdf_path = pdf_path

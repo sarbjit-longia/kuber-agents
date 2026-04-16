@@ -28,7 +28,7 @@ from app.orchestration.tasks import execute_pipeline, stop_execution
 from app.orchestration.validator import PipelineValidator
 from app.services.executive_report_generator import executive_report_generator
 from app.services.trade_analysis_generator import trade_analysis_generator
-from app.services.langfuse_service import get_langfuse_client
+from app.services.langfuse_service import activate_observation, resume_execution_trace, span_context
 from app.backtesting.backtest_broker import BacktestBroker
 
 logger = structlog.get_logger()
@@ -1785,30 +1785,27 @@ async def generate_executive_report(
         "agent_states": execution.agent_states or [],
     }
     
-    # Create Langfuse trace (completely optional - won't affect report generation)
-    langfuse_client = get_langfuse_client()
-    trace = None
-    if langfuse_client:
-        try:
-            trace = langfuse_client.trace(
-                name="executive_report_generation",
-                user_id=str(current_user.id),
-                session_id=str(execution_id),
-                metadata={
-                    "execution_id": str(execution_id),
-                    "pipeline_name": pipeline_name,
-                }
-            )
-        except Exception:
-            # Silently ignore Langfuse errors (quota exhaustion, rate limiting, etc.)
-            # Report generation works regardless of Langfuse availability
-            pass
-    
-    # Generate report
-    report = await executive_report_generator.generate_executive_summary(
-        execution_data,
-        langfuse_trace=trace
+    trace = resume_execution_trace(
+        trace_id=execution.langfuse_trace_id,
+        session_id=str(execution_id),
+        user_id=str(current_user.id),
+        metadata={
+            "execution_id": str(execution_id),
+            "pipeline_name": pipeline_name,
+        },
     )
+
+    # Generate report
+    with activate_observation(trace, as_trace=True):
+        with span_context(
+            name="report:executive_summary",
+            parent=trace,
+            metadata={"execution_id": str(execution_id)},
+        ) as report_span:
+            report = await executive_report_generator.generate_executive_summary(
+                execution_data,
+                langfuse_trace=report_span
+            )
     
     # Add execution context to report
     report["execution_context"] = {
@@ -1891,25 +1888,24 @@ async def get_trade_analysis(
         "result": execution.result or {},
     }
 
-    # Create Langfuse trace (optional)
-    langfuse_client = get_langfuse_client()
-    trace = None
-    if langfuse_client:
-        try:
-            trace = langfuse_client.trace(
-                name="trade_analysis_generation",
-                user_id=str(current_user.id),
-                session_id=str(execution_id),
-                metadata={
-                    "execution_id": str(execution_id),
-                },
-            )
-        except Exception:
-            pass
-
-    analysis = await trade_analysis_generator.generate_trade_analysis(
-        execution_data, langfuse_trace=trace
+    trace = resume_execution_trace(
+        trace_id=execution.langfuse_trace_id,
+        session_id=str(execution_id),
+        user_id=str(current_user.id),
+        metadata={
+            "execution_id": str(execution_id),
+        },
     )
+
+    with activate_observation(trace, as_trace=True):
+        with span_context(
+            name="report:trade_analysis",
+            parent=trace,
+            metadata={"execution_id": str(execution_id)},
+        ) as report_span:
+            analysis = await trade_analysis_generator.generate_trade_analysis(
+                execution_data, langfuse_trace=report_span
+            )
 
     # Cache the result
     execution.trade_analysis = analysis

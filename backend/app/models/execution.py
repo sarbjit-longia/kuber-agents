@@ -59,6 +59,7 @@ class Execution(Base):
     agent_states = Column(JSONB, nullable=True, default=list)  # Agent execution states
     reports = Column(JSONB, nullable=True, default=dict)  # Structured agent reports
     cost_breakdown = Column(JSONB, nullable=True, default=dict)  # Detailed cost breakdown
+    langfuse_trace_id = Column(String(255), nullable=True, index=True)  # Canonical Langfuse trace ID
     report_pdf_path = Column(String(500), nullable=True)  # Path to generated PDF report
     executive_report = Column(JSONB, nullable=True)  # Comprehensive AI-generated report
     trade_analysis = Column(JSONB, nullable=True)  # AI post-trade analysis
@@ -89,4 +90,3 @@ class Execution(Base):
 
     def __repr__(self):
         return f"<Execution(id={self.id}, pipeline_id={self.pipeline_id}, status={self.status})>"
-

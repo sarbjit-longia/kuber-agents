@@ -1,17 +1,33 @@
 """
-Langfuse Integration Service
+Langfuse Integration Service.
 
-Provides tracing and observability for LLM calls and agent executions.
-Compatible with Langfuse SDK v4 (OpenTelemetry-based).
+Provides safe tracing helpers for pipeline, agent, tool, and report execution.
+The implementation is defensive because Langfuse may be unavailable locally and
+the deployed SDK surface can vary across versions.
 """
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Optional, Dict, Any, Iterator
+from uuid import uuid4
+
 import structlog
+
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
 # Global Langfuse client
 _langfuse_client = None
+_current_trace: ContextVar[Optional["LangfuseObservation"]] = ContextVar(
+    "langfuse_current_trace",
+    default=None,
+)
+_current_observation: ContextVar[Optional["LangfuseObservation"]] = ContextVar(
+    "langfuse_current_observation",
+    default=None,
+)
 
 
 def get_langfuse_client():
@@ -59,19 +75,167 @@ def get_langfuse_client():
     return _langfuse_client
 
 
-class LangfuseTrace:
-    """
-    Wrapper that provides a v2-compatible trace interface on top of the v4 SDK.
+def _clean_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    return {key: value for key, value in (metadata or {}).items() if value is not None}
 
-    In v4, tracing is done via OpenTelemetry spans. This wrapper uses the
-    @observe decorator pattern under the hood but exposes the same API
-    that callers (agent_runner.py, agents) expect.
-    """
 
-    def __init__(self, trace_id: str, name: str, metadata: Dict[str, Any]):
+def _observation_id(raw: Any) -> Optional[str]:
+    for attr in ("id", "observation_id"):
+        value = getattr(raw, attr, None)
+        if value:
+            return str(value)
+    return None
+
+
+def _trace_id(raw: Any) -> Optional[str]:
+    for attr in ("trace_id", "id"):
+        value = getattr(raw, attr, None)
+        if value:
+            return str(value)
+    return None
+
+
+def _call_with_fallbacks(callables: list) -> Any:
+    last_error: Optional[Exception] = None
+    for candidate in callables:
+        try:
+            return candidate()
+        except TypeError as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    return None
+
+
+class LangfuseObservation:
+    """Best-effort wrapper over a Langfuse trace/span/generation parent."""
+
+    def __init__(
+        self,
+        *,
+        client: Any,
+        raw: Any,
+        context_manager: Any = None,
+        trace_id: Optional[str],
+        name: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        kind: str = "span",
+    ):
+        self.client = client
+        self.raw = raw
+        self.context_manager = context_manager
         self.trace_id = trace_id
         self.name = name
-        self.metadata = metadata
+        self.metadata = _clean_metadata(metadata)
+        self.kind = kind
+
+    def close(self) -> None:
+        if self.context_manager is not None:
+            try:
+                self.context_manager.__exit__(None, None, None)
+            except Exception:
+                logger.warning("langfuse_context_exit_failed", observation=self.name, exc_info=True)
+            finally:
+                self.context_manager = None
+                return
+
+        if self.raw is not None and hasattr(self.raw, "end"):
+            safe_langfuse_operation("observation_end", self.raw.end)
+
+    @property
+    def observation_id(self) -> Optional[str]:
+        return _observation_id(self.raw)
+
+    def span(
+        self,
+        *,
+        name: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        input: Any = None,
+    ) -> Optional["LangfuseObservation"]:
+        return create_span(name=name, parent=self, metadata=metadata, input=input)
+
+    def generation(
+        self,
+        *,
+        name: str,
+        model: str,
+        input: Any = None,
+        output: Any = None,
+        usage: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        payload = {
+            "name": name,
+            "model": model,
+            "input": input,
+            "output": output,
+            "usage": usage or {},
+            "metadata": _clean_metadata(metadata),
+        }
+
+        def create_generation():
+            if hasattr(self.client, "_start_as_current_otel_span_with_processed_media"):
+                context_manager = self.client._start_as_current_otel_span_with_processed_media(
+                    name=name,
+                    as_type="generation",
+                    input=input,
+                    output=output,
+                    metadata=_clean_metadata(metadata),
+                    model=model,
+                    usage_details=usage or {},
+                )
+                generation = context_manager.__enter__()
+                generation_id = getattr(generation, "id", None)
+                context_manager.__exit__(None, None, None)
+                return generation_id
+
+            if self.raw and hasattr(self.raw, "generation"):
+                return _call_with_fallbacks(
+                    [
+                        lambda: self.raw.generation(**payload),
+                        lambda: self.raw.generation(
+                            name=name,
+                            model=model,
+                            input=input,
+                            output=output,
+                            metadata=_clean_metadata(metadata),
+                        ),
+                    ]
+                )
+
+            parent_id = self.observation_id
+            if hasattr(self.client, "generation"):
+                return _call_with_fallbacks(
+                    [
+                        lambda: self.client.generation(
+                            trace_id=self.trace_id,
+                            parent_observation_id=parent_id,
+                            **payload,
+                        ),
+                        lambda: self.client.generation(trace_id=self.trace_id, **payload),
+                        lambda: self.client.generation(**payload),
+                    ]
+                )
+
+            if hasattr(self.client, "create_event"):
+                return self.client.create_event(
+                    name=name,
+                    metadata={
+                        **_clean_metadata(metadata),
+                        "model": model,
+                        "usage": usage or {},
+                        "trace_id": self.trace_id,
+                        "parent_observation_id": parent_id,
+                    },
+                    input=input,
+                    output=output,
+                )
+
+            return None
+
+        return safe_langfuse_operation("generation", create_generation)
 
 
 def trace_agent_execution(
@@ -80,32 +244,252 @@ def trace_agent_execution(
     agent_id: str,
     pipeline_id: str,
     user_id: str,
-) -> Optional[LangfuseTrace]:
+) -> Optional[LangfuseObservation]:
     """
-    Create a Langfuse trace for an agent execution.
+    Get the active agent span if one exists, otherwise create a trace and span.
+    """
+    active_observation = get_current_observation()
+    metadata = {
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "pipeline_id": str(pipeline_id),
+        "execution_id": str(execution_id),
+        "user_id": str(user_id),
+    }
 
-    Returns a LangfuseTrace wrapper that can be passed to trace_llm_call
-    and trace_tool_call for span creation.
-    """
+    if active_observation and active_observation.metadata.get("agent_id") == agent_id:
+        return active_observation
+
+    root_trace = get_current_trace()
+    if not root_trace:
+        root_trace = start_or_resume_trace(
+            name="pipeline_execution",
+            session_id=str(execution_id),
+            user_id=str(user_id),
+            metadata=metadata,
+        )
+
+    if not root_trace:
+        return None
+
+    return create_span(name=f"agent:{agent_type}", parent=root_trace, metadata=metadata)
+
+
+def get_current_trace() -> Optional[LangfuseObservation]:
+    return _current_trace.get()
+
+
+def get_current_observation() -> Optional[LangfuseObservation]:
+    return _current_observation.get()
+
+
+@contextmanager
+def activate_observation(
+    observation: Optional[LangfuseObservation],
+    *,
+    as_trace: bool = False,
+) -> Iterator[Optional[LangfuseObservation]]:
+    if not observation:
+        yield None
+        return
+
+    trace_token = None
+    observation_token = _current_observation.set(observation)
+    if as_trace:
+        trace_token = _current_trace.set(observation)
+
+    try:
+        yield observation
+    finally:
+        _current_observation.reset(observation_token)
+        if trace_token is not None:
+            _current_trace.reset(trace_token)
+        observation.close()
+
+
+def start_or_resume_trace(
+    *,
+    name: str,
+    session_id: str,
+    user_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[LangfuseObservation]:
     client = get_langfuse_client()
     if not client:
         return None
 
+    metadata = _clean_metadata(metadata)
+
     def create_trace():
-        trace_id = client.create_trace_id()
-        return LangfuseTrace(
-            trace_id=trace_id,
-            name=f"agent_{agent_type}",
-            metadata={
-                "agent_id": agent_id,
-                "agent_type": agent_type,
-                "pipeline_id": str(pipeline_id),
-                "execution_id": str(execution_id),
-                "user_id": str(user_id),
-            },
+        requested_trace_id = trace_id
+        raw = None
+        context_manager = None
+        if hasattr(client, "_start_as_current_otel_span_with_processed_media"):
+            if requested_trace_id:
+                remote_parent_span = client._create_remote_parent_span(
+                    trace_id=requested_trace_id,
+                    parent_span_id=None,
+                )
+                context_manager = client._create_span_with_parent_context(
+                    name=name,
+                    remote_parent_span=remote_parent_span,
+                    as_type="span",
+                    metadata=metadata,
+                )
+            else:
+                context_manager = client._start_as_current_otel_span_with_processed_media(
+                    name=name,
+                    as_type="span",
+                    metadata=metadata,
+                )
+            raw = context_manager.__enter__()
+        elif hasattr(client, "trace"):
+            trace_payload = {
+                "name": name,
+                "session_id": session_id,
+                "user_id": user_id,
+                "metadata": metadata,
+            }
+            raw = _call_with_fallbacks(
+                [
+                    lambda: client.trace(id=requested_trace_id, **trace_payload)
+                    if requested_trace_id
+                    else client.trace(**trace_payload),
+                    lambda: client.trace(**trace_payload),
+                    lambda: client.trace(name=name, metadata=metadata),
+                ]
+            )
+
+        resolved_trace_id = requested_trace_id or _trace_id(raw)
+        if not resolved_trace_id:
+            if hasattr(client, "create_trace_id"):
+                resolved_trace_id = str(client.create_trace_id())
+            else:
+                resolved_trace_id = str(uuid4())
+
+        return LangfuseObservation(
+            client=client,
+            raw=raw,
+            context_manager=context_manager,
+            trace_id=resolved_trace_id,
+            name=name,
+            metadata=metadata,
+            kind="trace",
         )
 
     return safe_langfuse_operation("trace_creation", create_trace)
+
+
+def resume_execution_trace(
+    *,
+    trace_id: Optional[str],
+    session_id: str,
+    user_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[LangfuseObservation]:
+    if not trace_id:
+        return None
+
+    return start_or_resume_trace(
+        name="pipeline_execution",
+        trace_id=trace_id,
+        session_id=session_id,
+        user_id=user_id,
+        metadata=metadata,
+    )
+
+
+def create_span(
+    *,
+    name: str,
+    parent: Optional[LangfuseObservation] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    input: Any = None,
+) -> Optional[LangfuseObservation]:
+    client = get_langfuse_client()
+    parent = parent or get_current_observation() or get_current_trace()
+    if not client or not parent:
+        return None
+
+    metadata = _clean_metadata(metadata)
+
+    def create_child():
+        raw = None
+        context_manager = None
+        if hasattr(client, "_start_as_current_otel_span_with_processed_media"):
+            if parent.raw is None and parent.trace_id and hasattr(client, "_create_remote_parent_span"):
+                remote_parent_span = client._create_remote_parent_span(
+                    trace_id=parent.trace_id,
+                    parent_span_id=parent.observation_id,
+                )
+                context_manager = client._create_span_with_parent_context(
+                    name=name,
+                    remote_parent_span=remote_parent_span,
+                    as_type="span",
+                    metadata=metadata,
+                    input=input,
+                )
+            else:
+                context_manager = client._start_as_current_otel_span_with_processed_media(
+                    name=name,
+                    as_type="span",
+                    metadata=metadata,
+                    input=input,
+                )
+            raw = context_manager.__enter__()
+        elif parent.raw and hasattr(parent.raw, "span"):
+            raw = _call_with_fallbacks(
+                [
+                    lambda: parent.raw.span(name=name, metadata=metadata, input=input),
+                    lambda: parent.raw.span(name=name, metadata=metadata),
+                    lambda: parent.raw.span(name=name),
+                ]
+            )
+        elif hasattr(client, "span"):
+            raw = _call_with_fallbacks(
+                [
+                    lambda: client.span(
+                        trace_id=parent.trace_id,
+                        parent_observation_id=parent.observation_id,
+                        name=name,
+                        metadata=metadata,
+                        input=input,
+                    ),
+                    lambda: client.span(
+                        trace_id=parent.trace_id,
+                        name=name,
+                        metadata=metadata,
+                        input=input,
+                    ),
+                    lambda: client.span(name=name, metadata=metadata),
+                ]
+            )
+
+        return LangfuseObservation(
+            client=client,
+            raw=raw,
+            context_manager=context_manager,
+            trace_id=parent.trace_id,
+            name=name,
+            metadata={**parent.metadata, **metadata},
+            kind="span",
+        )
+
+    return safe_langfuse_operation("span_creation", create_child)
+
+
+@contextmanager
+def span_context(
+    *,
+    name: str,
+    parent: Optional[LangfuseObservation] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    input: Any = None,
+) -> Iterator[Optional[LangfuseObservation]]:
+    observation = create_span(name=name, parent=parent, metadata=metadata, input=input)
+    with activate_observation(observation, as_trace=False):
+        yield observation
 
 
 def trace_llm_call(
@@ -128,28 +512,40 @@ def trace_llm_call(
     if not client:
         return
 
-    def create_event():
-        client.create_event(
+    if isinstance(trace, LangfuseObservation):
+        trace.generation(
             name="llm_call",
-            metadata={
-                "model": model,
-                "cost": cost,
-                "tokens": tokens_used or {},
-                "trace_id": trace.trace_id if hasattr(trace, "trace_id") else None,
-                "agent": trace.name if hasattr(trace, "name") else None,
-            },
+            model=model,
             input=prompt[:2000] if prompt else None,
             output=response[:2000] if response else None,
+            usage=tokens_used or {},
+            metadata={"cost": cost, "agent": trace.name},
         )
-        # Also record cost as a score for dashboards
-        if cost and hasattr(trace, "trace_id"):
-            client.create_score(
+    elif hasattr(client, "create_event"):
+        safe_langfuse_operation(
+            "llm_generation",
+            lambda: client.create_event(
+                name="llm_call",
+                metadata={
+                    "model": model,
+                    "cost": cost,
+                    "tokens": tokens_used or {},
+                    "trace_id": getattr(trace, "trace_id", None),
+                },
+                input=prompt[:2000] if prompt else None,
+                output=response[:2000] if response else None,
+            ),
+        )
+
+    if cost and getattr(trace, "trace_id", None) and hasattr(client, "create_score"):
+        safe_langfuse_operation(
+            "llm_cost_score",
+            lambda: client.create_score(
                 trace_id=trace.trace_id,
                 name="cost",
                 value=cost,
-            )
-
-    safe_langfuse_operation("llm_generation", create_event)
+            ),
+        )
 
 
 def trace_tool_call(
@@ -168,18 +564,36 @@ def trace_tool_call(
     if not client:
         return
 
-    def create_event():
-        client.create_event(
-            name=f"tool_{tool_name}",
-            metadata={
-                "tool_name": tool_name,
-                "trace_id": trace.trace_id if hasattr(trace, "trace_id") else None,
-            },
+    if isinstance(trace, LangfuseObservation):
+        with span_context(
+            name=f"tool:{tool_name}",
+            parent=trace,
+            metadata={"tool_name": tool_name},
             input=arguments,
-            output=str(output)[:2000] if output else None,
-        )
+        ) as tool_span:
+            if tool_span:
+                tool_span.generation(
+                    name=f"tool_{tool_name}",
+                    model="tool",
+                    input=arguments,
+                    output=str(output)[:2000] if output else None,
+                    metadata={"tool_name": tool_name},
+                )
+        return
 
-    safe_langfuse_operation("tool_span", create_event)
+    if hasattr(client, "create_event"):
+        safe_langfuse_operation(
+            "tool_span",
+            lambda: client.create_event(
+                name=f"tool_{tool_name}",
+                metadata={
+                    "tool_name": tool_name,
+                    "trace_id": getattr(trace, "trace_id", None),
+                },
+                input=arguments,
+                output=str(output)[:2000] if output else None,
+            ),
+        )
 
 
 def safe_langfuse_operation(operation_name: str, func, *args, **kwargs) -> Optional[Any]:

@@ -3,11 +3,11 @@ Executive Report Generator
 
 Generates comprehensive, LLM-powered executive summaries of pipeline executions.
 """
+import asyncio
 from typing import Dict, Any, Optional
 import structlog
 
 from app.config import settings
-from app.services.langfuse_service import get_langfuse_client
 from app.services.llm_provider import create_openai_client, resolve_chat_model
 
 logger = structlog.get_logger(__name__)
@@ -120,6 +120,19 @@ class ExecutiveReportGenerator:
                 "executive_summary": "Failed to generate executive summary",
                 "error": str(e)
             }
+
+    def generate_executive_summary_sync(
+        self,
+        execution_data: Dict[str, Any],
+        langfuse_trace: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Synchronous wrapper for Celery/executor code paths."""
+        return asyncio.run(
+            self.generate_executive_summary(
+                execution_data=execution_data,
+                langfuse_trace=langfuse_trace,
+            )
+        )
     
     def _build_context(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build context from execution data."""

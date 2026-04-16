@@ -42,6 +42,7 @@ class ExecutionInDB(ExecutionBase):
     agent_states: Optional[List[Dict[str, Any]]] = None
     reports: Optional[Dict[str, Any]] = None
     cost_breakdown: Optional[Dict[str, Any]] = None
+    langfuse_trace_id: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -98,4 +99,3 @@ class ExecutionStats(BaseModel):
     total_cost: float
     avg_duration_seconds: float
     success_rate: float
-

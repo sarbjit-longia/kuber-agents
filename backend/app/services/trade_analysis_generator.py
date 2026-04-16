@@ -8,7 +8,6 @@ from typing import Dict, Any, Optional
 import structlog
 
 from app.config import settings
-from app.services.langfuse_service import get_langfuse_client
 from app.services.llm_provider import create_openai_client, resolve_chat_model
 
 logger = structlog.get_logger(__name__)
