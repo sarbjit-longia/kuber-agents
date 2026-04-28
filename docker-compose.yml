@@ -485,7 +485,6 @@ services:
   langfuse-postgres:
     image: postgres:16-alpine
     container_name: clovercharts-langfuse-postgres
-    profiles: ['langfuse']
     environment:
       POSTGRES_DB: langfuse
       POSTGRES_USER: langfuse
@@ -503,7 +502,6 @@ services:
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: clovercharts-langfuse-clickhouse
-    profiles: ['langfuse']
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
@@ -521,7 +519,6 @@ services:
   langfuse-minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     container_name: clovercharts-langfuse-minio
-    profiles: ['langfuse']
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${LANGFUSE_S3_ACCESS_KEY_ID:-minio}
@@ -541,7 +538,6 @@ services:
   langfuse-minio-init:
     image: minio/mc:RELEASE.2025-01-17T23-25-50Z
     container_name: clovercharts-langfuse-minio-init
-    profiles: ['langfuse']
     depends_on:
       langfuse-minio:
         condition: service_healthy
@@ -557,7 +553,6 @@ services:
   langfuse-web:
     image: langfuse/langfuse:3
     container_name: clovercharts-langfuse-web
-    profiles: ['langfuse']
     depends_on:
       langfuse-postgres:
         condition: service_healthy
@@ -604,7 +599,6 @@ services:
   langfuse-worker:
     image: ghcr.io/langfuse/langfuse-worker:3
     container_name: clovercharts-langfuse-worker
-    profiles: ['langfuse']
     depends_on:
       langfuse-web:
         condition: service_healthy

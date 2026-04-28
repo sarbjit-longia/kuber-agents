@@ -116,6 +116,7 @@ docker exec -it clovercharts-backend pytest --cov=app
 | [design.md](docs/design.md) | System architecture, database schema, agent designs |
 | [roadmap.md](docs/roadmap.md) | Development roadmap with milestones (10-week MVP) |
 | [context.md](docs/context.md) | Quick start guide for developers, core concepts |
+| [production-deployment-plan.md](docs/production-deployment-plan.md) | Recommended AWS production deployment plan and keep/remove service decisions |
 | [deploy/README.md](deploy/README.md) | Deployment guide for AWS production |
 
 **Start here**: Read [context.md](docs/context.md) for an overview, then dive into specific docs as needed.
