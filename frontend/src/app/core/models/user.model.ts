@@ -25,6 +25,7 @@ export interface UserCreate {
   email: string;
   password: string;
   full_name?: string;
+  invitation_code: string;
 }
 
 export interface UserUpdate {

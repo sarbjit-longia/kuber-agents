@@ -74,6 +74,14 @@ $custom-theme: mat.define-dark-theme((
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
+
+  --beta-banner-height: 36px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --beta-banner-height: 64px;
+  }
 }
 
 * {

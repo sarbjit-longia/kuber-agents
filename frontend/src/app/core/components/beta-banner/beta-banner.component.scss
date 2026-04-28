@@ -1,0 +1,52 @@
+:host {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+}
+
+.beta-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.4rem 1rem;
+  background: var(--color-warning-bg);
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(246, 196, 83, 0.35);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: center;
+  backdrop-filter: blur(12px);
+
+  &__pill {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: var(--color-warning);
+    color: #1a1305;
+    font-weight: 800;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
+  &__message {
+    color: var(--text-primary);
+    font-weight: 500;
+    opacity: 0.92;
+  }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.74rem;
+
+    &__message {
+      text-align: center;
+    }
+  }
+}

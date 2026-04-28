@@ -4,7 +4,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
-  top: 0;
+  top: var(--beta-banner-height, 0);
   z-index: 1000;
   height: 64px;
   padding: 0;

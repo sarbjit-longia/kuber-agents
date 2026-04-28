@@ -263,6 +263,12 @@ class Settings(BaseSettings):
         default="enterprise",
         description="Default subscription tier for all users in dev mode"
     )
+
+    # Beta access
+    BETA_INVITATION_CODE: str = Field(
+        default="KUBER-2026-BETA",
+        description="Invitation code required at signup during beta. Override via env to rotate."
+    )
     
     @validator("ALLOWED_ORIGINS", pre=True)
     def parse_cors_origins(cls, v):

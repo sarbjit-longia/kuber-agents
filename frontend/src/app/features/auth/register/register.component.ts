@@ -49,6 +49,7 @@ export class RegisterComponent implements OnInit {
     this.registerForm = this.formBuilder.group({
       email: ['', [Validators.required, Validators.email]],
       full_name: ['', [Validators.required]],
+      invitation_code: ['', [Validators.required]],
       password: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(72)]],
       confirmPassword: ['', [Validators.required]]
     }, {
@@ -70,9 +71,9 @@ export class RegisterComponent implements OnInit {
     this.loading = true;
     this.error = null;
 
-    const { email, password, full_name } = this.registerForm.value;
+    const { email, password, full_name, invitation_code } = this.registerForm.value;
 
-    this.authService.register({ email, password, full_name }).subscribe({
+    this.authService.register({ email, password, full_name, invitation_code }).subscribe({
       next: () => {
         // Registration successful, now login automatically
         this.authService.login({ email, password }).subscribe({

@@ -1,10 +1,12 @@
 """
 Authentication API endpoints.
 """
+import hmac
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.schemas.user import UserCreate, User, UserLogin, Token
 from app.services.user_service import create_user, authenticate_user, get_user_by_email
@@ -21,17 +23,24 @@ async def register(
 ):
     """
     Register a new user.
-    
+
     Args:
         user_in: User registration data
         db: Database session
-        
+
     Returns:
         Created user object
-        
+
     Raises:
-        HTTPException: If user already exists
+        HTTPException: If the invitation code is invalid or the user already exists.
     """
+    # Beta gate: validate invitation code with constant-time compare to avoid timing leaks.
+    if not hmac.compare_digest(user_in.invitation_code, settings.BETA_INVITATION_CODE):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid invitation code",
+        )
+
     # Check if user already exists
     existing_user = await get_user_by_email(db, user_in.email)
     if existing_user:
@@ -39,7 +48,7 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
-    
+
     # Create user
     user = await create_user(db, user_in)
     return user

@@ -16,6 +16,11 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating a new user."""
     password: str = Field(..., min_length=8, max_length=72)
+    invitation_code: str = Field(
+        ...,
+        min_length=1,
+        description="Beta invitation code, validated server-side against settings.BETA_INVITATION_CODE.",
+    )
 
 
 class UserUpdate(BaseModel):

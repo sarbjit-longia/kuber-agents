@@ -66,6 +66,15 @@
             </mat-form-field>
 
             <mat-form-field appearance="fill" class="full-width">
+              <mat-label>Beta invitation code</mat-label>
+              <input matInput type="text" formControlName="invitation_code" required autocomplete="off">
+              <mat-hint>Required during beta. Contact us if you don't have one.</mat-hint>
+              <mat-error *ngIf="registerForm.get('invitation_code')?.hasError('required')">
+                Invitation code is required
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill" class="full-width">
               <mat-label>Password</mat-label>
               <input matInput type="password" formControlName="password" required>
               <mat-error *ngIf="registerForm.get('password')?.hasError('required')">
