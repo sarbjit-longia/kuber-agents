@@ -171,9 +171,14 @@ Key points:
 
 Read docs in `docs/` folder before implementing features:
 - `docs/requirements.md` — product requirements
-- `docs/design.md` — system architecture and database schema
+- `docs/architecture.md` — system architecture and database schema
 - `docs/context.md` — core concepts and quick-start for developers
 - `docs/roadmap.md` — development phases and priorities
+- `docs/TODOS.md` — deferred work captured during reviews
+
+## Design System
+
+Always read `docs/DESIGN.md` before making any visual or UI decisions. All font choices, colors, spacing, motion, and aesthetic direction are defined there. Do not deviate without explicit user approval. In QA mode, flag any code that doesn't match `docs/DESIGN.md`. The system was created by `/design-consultation` on 2026-04-27 and departs from the prior Inter + cyan/teal baseline toward an Industrial-Editorial direction with a warm gold accent (`#C9A96E`).
 
 ## Access Points (local dev)
 

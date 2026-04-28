@@ -1,24 +1,35 @@
 apiVersion: 1
 
-policies:
-  - orgId: 1
-    receiver: telegram
-    group_by:
-      - grafana_folder
-      - alertname
-    group_wait: 30s
-    group_interval: 5m
-    repeat_interval: 4h
-    routes:
-      - receiver: telegram
-        matchers:
-          - severity = critical
-        group_wait: 10s
-        group_interval: 1m
-        repeat_interval: 1h
-      - receiver: telegram
-        matchers:
-          - severity = warning
-        group_wait: 1m
-        group_interval: 5m
-        repeat_interval: 4h
+# Empty notification-policies provisioning. Pre-2026-04-28 this referenced a
+# `telegram` receiver from contact-points.yml. When telegram was removed (because
+# TELEGRAM_BOT_TOKEN wasn't set), Grafana refused to start with:
+# "notification policies: invalid object specification: receiver 'telegram' does not exist".
+#
+# Re-enable by populating contact-points.yml first (with telegram or another receiver),
+# THEN populate this file pointing at that receiver.
+#
+# Template (re-enable when contact-points.yml has a `telegram` receiver):
+# policies:
+#   - orgId: 1
+#     receiver: telegram
+#     group_by:
+#       - grafana_folder
+#       - alertname
+#     group_wait: 30s
+#     group_interval: 5m
+#     repeat_interval: 4h
+#     routes:
+#       - receiver: telegram
+#         matchers:
+#           - severity = critical
+#         group_wait: 10s
+#         group_interval: 1m
+#         repeat_interval: 1h
+#       - receiver: telegram
+#         matchers:
+#           - severity = warning
+#         group_wait: 1m
+#         group_interval: 5m
+#         repeat_interval: 4h
+
+policies: []

@@ -1,20 +1,31 @@
 apiVersion: 1
 
-contactPoints:
-  - orgId: 1
-    name: telegram
-    receivers:
-      - uid: telegram-default
-        type: telegram
-        settings:
-          bottoken: ${TELEGRAM_BOT_TOKEN}
-          chatid: ${TELEGRAM_CHAT_ID}
-          parse_mode: HTML
-          message: |
-            <b>{{ .Status | toUpper }}</b>
-            <b>Alert:</b> {{ .CommonLabels.alertname }}
-            <b>Severity:</b> {{ .CommonLabels.severity }}
-            {{ range .Alerts }}
-            {{ .Annotations.summary }}
-            {{ .Annotations.description }}
-            {{ end }}
+# Empty contact-points provisioning. Pre-2026-04-28 this had a telegram contact
+# point that referenced ${TELEGRAM_BOT_TOKEN} unconditionally. When the env var
+# was unset, Grafana refused to start with: "failure to map file contact-points.yml:
+# telegram: failed to validate integration: could not find Bot Token in settings".
+#
+# Re-enable telegram by populating this file (template below) AND setting both
+# TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in deploy/local/.env.prod section 15.
+#
+# Template:
+# contactPoints:
+#   - orgId: 1
+#     name: telegram
+#     receivers:
+#       - uid: telegram-default
+#         type: telegram
+#         settings:
+#           bottoken: ${TELEGRAM_BOT_TOKEN}
+#           chatid: ${TELEGRAM_CHAT_ID}
+#           parse_mode: HTML
+#           message: |
+#             <b>{{ .Status | toUpper }}</b>
+#             <b>Alert:</b> {{ .CommonLabels.alertname }}
+#             <b>Severity:</b> {{ .CommonLabels.severity }}
+#             {{ range .Alerts }}
+#             {{ .Annotations.summary }}
+#             {{ .Annotations.description }}
+#             {{ end }}
+
+contactPoints: []

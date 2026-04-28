@@ -26,7 +26,7 @@ Recent history mixes concise imperative commits and Conventional Commit prefixes
 
 ## Configuration & Security Tips
 
-Copy `docs/env.development.template` to `.env` for local work and never commit real API keys. Review Docker Compose ports before exposing services. Read `docs/context.md` and `docs/design.md` before changing execution flow, signal matching, or service boundaries.
+Copy `docs/env.development.template` to `.env` for local work and never commit real API keys. Review Docker Compose ports before exposing services. Read `docs/context.md` and `docs/architecture.md` before changing execution flow, signal matching, or service boundaries. Read `docs/DESIGN.md` before any visual or UI work.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

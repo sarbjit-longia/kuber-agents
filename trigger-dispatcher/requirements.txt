@@ -1,5 +1,5 @@
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic>=2.5.0,<3
+pydantic-settings>=2.0.3,<2.14  # 2.14.0 has internal import bug; pin must match backend/requirements.txt because Dockerfile.prod layers both — divergent pins create frankenstein installs (verified 2026-04-28)
 structlog==23.2.0
 kafka-python==2.0.2
 sqlalchemy==2.0.23

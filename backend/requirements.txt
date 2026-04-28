@@ -2,7 +2,7 @@
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 pydantic>=2.4.2
-pydantic-settings>=2.0.3
+pydantic-settings>=2.0.3,<2.14  # 2.14.0 has internal import bug (_lenient_issubclass missing from utils.py); cap until upstream fixes — verified 2026-04-28
 email-validator>=2.1.0
 
 # Database

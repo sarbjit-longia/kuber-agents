@@ -9,8 +9,8 @@ celery==5.3.6
 finnhub-python==2.4.19
 httpx==0.26.0
 structlog==24.1.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.5.3,<3
+pydantic-settings>=2.0.3,<2.14  # 2.14.0 has internal import bug; pin must match backend/requirements.txt because Dockerfile.prod layers both — divergent pins create frankenstein installs (verified 2026-04-28)
 
 # Technical Analysis (Local Indicator Calculation)
 pandas==2.1.4

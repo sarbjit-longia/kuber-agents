@@ -71,7 +71,13 @@ services:
     image: clovercharts/backend:latest
     container_name: clovercharts-backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    # --proxy-headers + --forwarded-allow-ips='*' tell uvicorn to trust X-Forwarded-Proto
+    # and X-Forwarded-For from the upstream nginx proxy. Without these, FastAPI's
+    # redirect-on-missing-trailing-slash builds redirects with http:// (the local
+    # scheme), which browsers on https://clovercharts.com block as mixed-content
+    # (verified 2026-04-28). Trusting all IPs is fine since uvicorn is bound to
+    # 127.0.0.1 on quantum and only reachable via the docker network.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=*
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8001:8001"
@@ -456,16 +462,29 @@ services:
       LANGFUSE_DISABLE_SIGNUP: ${LANGFUSE_DISABLE_SIGNUP:-false}
       TELEMETRY_ENABLED: "false"
       TZ: UTC
+      # Cap V8 old-space at 1280MB (~83% of container's 1536MB limit). Without this,
+      # Node's default heap heuristic + small container caused OOM crashes during
+      # init-script load (verified 2026-04-28).
+      NODE_OPTIONS: "--max-old-space-size=1280"
+      # Bind Next.js to all interfaces. Without this, the langfuse entrypoint binds
+      # only to the container's eth0 IP — loopback fails, so any healthcheck using
+      # localhost/127.0.0.1 returns "connection refused" (verified 2026-04-28).
+      HOSTNAME: "0.0.0.0"
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1536M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      # Image is built on slim Node base — has wget + node, no curl. wget --spider
+      # is the right idiom for healthchecks on this image.
+      # Using 127.0.0.1 instead of `localhost` because `getent hosts localhost`
+      # resolves to ::1 (IPv6) inside this image, but Node binds only to IPv4
+      # 0.0.0.0:3000 — wget to localhost gets "connection refused" (verified 2026-04-28).
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/public/health"]
       interval: 30s
       timeout: 10s
-      retries: 8
-      start_period: 40s
+      retries: 12
+      start_period: 60s
 
   langfuse-worker:
     image: ghcr.io/langfuse/langfuse-worker:3
@@ -497,10 +516,12 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
       TELEMETRY_ENABLED: "false"
       TZ: UTC
+      # Same Node.js heap fix as langfuse-web — worker is also a Node app.
+      NODE_OPTIONS: "--max-old-space-size=1024"
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
 
   # --- Frontend ---
 
@@ -551,8 +572,12 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s/grafana/
-      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      # Grafana is accessed via the grafana.clovercharts.com subdomain (not subpath).
+      # Pre-2026-04-28 config used SERVE_FROM_SUB_PATH=true which generated
+      # `http://localhost/grafana/` redirects when domain wasn't explicitly set.
+      - GF_SERVER_DOMAIN=grafana.clovercharts.com
+      - GF_SERVER_ROOT_URL=https://grafana.clovercharts.com/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
       - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}

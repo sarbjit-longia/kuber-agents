@@ -134,7 +134,19 @@ Founder pushed back on Approach C with "I need something to show" — legitimate
 
   The prospect's experience: "Browse a real marketplace → find a strategy → import → watch agents reason on real EUR/USD market data → see why each trade decision was made." This is fundamentally more compelling than a hardcoded toy because every surface they touch is the production product.
 
-- **Deploy target: Hetzner Cloud CCX23** (16 GB / 4 vCPU dedicated, ~$32/mo, Ubuntu 24.04). DigitalOcean is the fallback only if Hetzner has a region or compliance blocker. Run the stripped `docker-compose.prod.yml` directly on the VM. Public HTTPS via Caddy reverse proxy or your existing nginx setup.
+- **Deploy target: Fly.io** (revised 2026-04-27 from Hetzner per founder preference for managed-PaaS UX over self-managed VM). Use Fly Machines to run the stripped `docker-compose.prod.yml` (12 services, ~5 GB after Redis Streams swap) on a single Fly Machine sized at performance-2x or performance-4x. Cost target: $110-150/mo (vs Hetzner's $32/mo — managed-platform premium accepted). HTTPS handled by Fly's automatic certificate management; no separate nginx/Let's Encrypt setup. Railway considered and rejected: per-service pricing model would push to ~$175/mo for this 12-service stack.
+
+  Fly.io specifics:
+  - `fly launch` from the repo root with `--from .` reads docker-compose
+  - `fly.toml` per app or one machine with all services (recommend single-machine to start)
+  - Postgres + TimescaleDB: use Fly Postgres managed service OR self-host on the same Fly Machine. Decide based on whether managed Postgres on Fly supports TimescaleDB extension (verify before commit; if not, self-host)
+  - Volumes for persistent data (Redis AOF, Postgres data, TimescaleDB chunks)
+  - Build artifacts: Fly auto-builds Dockerfiles from the repo; multi-service apps need explicit Dockerfile per service or a single image with multiple processes
+
+  Operational changes from existing `deploy/local/deploy.sh`:
+  - Replace `ssh quantum docker compose ...` pattern with `fly deploy` workflow
+  - Replace local nginx + certbot setup with `fly certs add <domain>`
+  - Backups: `fly postgres backups` instead of pg_dump cron (if using Fly Postgres) or scheduled `flyctl ssh console` + `pg_dump` to S3-compatible storage (if self-hosted)
 
 - **Auth model:** signals are generated internally by `signal-generator` against live market data; there is no external webhook input. Standard JWT-based auth on the FastAPI backend protects strategy CRUD and execution endpoints. Broker tokens are stored encrypted per-user. **No HMAC webhook auth needed for V1** — that was a holdover from a TradingView-import framing that does not apply to this product.
 
@@ -192,7 +204,7 @@ Must be in place before paid users:
 **Phase 1 (Demo Sprint, 10 working days):**
 - Demo URL shareable on Hetzner CCX23 by end of working-day 10
 - 90-second video records the full killer flow without edits (drop if behind on day 4)
-- Stripped infra runs ≤$35/mo in cloud cost (Hetzner CCX23 ~$32 + storage)
+- Stripped infra runs ≤$150/mo in cloud cost (Fly.io: performance-2x machine ~$45 + Fly Postgres $25-40 + volumes $5 + bandwidth)
 - AI explainer p95 cost <$0.01 per signal in test runs
 
 **Phase 2 (Discovery):**
@@ -207,13 +219,13 @@ Must be in place before paid users:
 
 ## Distribution Plan
 
-**For demo sprint (Working days 1-10):** Single-VM Hetzner Cloud CCX23 (16 GB / 4 vCPU, Ubuntu 24.04, ~$32/mo). Run stripped `docker-compose.prod.yml` (12 services, ~5 GB) directly on the VM. DigitalOcean (~$96/mo single droplet) is the fallback only if Hetzner has a region or compliance blocker.
+**For demo sprint (Working days 1-10):** Fly.io with a single Fly Machine running the stripped `docker-compose.prod.yml` (12 services, ~5 GB after Redis Streams swap). Performance-2x machine (~$45/mo for compute) + Fly Postgres ($25-40/mo) + Fly volumes for Redis AOF persistence (~$5/mo) + bandwidth = **~$110-150/mo total**.
 
-**For discovery (Weeks 3-6):** No additional infra. Demo URL + Zoom + screen share is sufficient.
+**For discovery (Weeks 3-6):** No additional infra. Demo URL + Zoom + screen share is sufficient. Domain: use Fly's `*.fly.dev` subdomain initially; add custom domain via `fly certs add` once a brand domain is locked.
 
-**For build phase (Weeks 7-12, conditional):** Same Hetzner VM, possibly upgrade to CCX33 (32 GB / 8 vCPU, ~$60/mo) if memory/CPU pressure surfaces. AWS migration is a post-Phase-3 problem.
+**For build phase (Weeks 7-12, conditional):** Same Fly Machine, scale up to performance-4x or performance-8x if memory/CPU pressure surfaces (single-machine vertical scaling stays simple). AWS managed-services migration is a post-Phase-3 problem.
 
-**For production launch (Week 13+, if Phase 3 succeeds with ≥3 design partners actively running strategies):** Reconsider AWS managed services if scale justifies it. Until then, single-VM docker-compose is the operational model that already works on your existing quantum server.
+**For production launch (Week 13+, if Phase 3 succeeds with ≥3 design partners actively running strategies):** Reconsider AWS managed services or stay on Fly.io scaled horizontally (multiple Machines + load balancer) — Fly handles this natively. Until then, single-Machine deploy is the operational model.
 
 ## Dependencies
 

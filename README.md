@@ -113,9 +113,11 @@ docker exec -it clovercharts-backend pytest --cov=app
 | Document | Description |
 |----------|-------------|
 | [requirements.md](docs/requirements.md) | Complete product requirements (business, functional, technical) |
-| [design.md](docs/design.md) | System architecture, database schema, agent designs |
+| [architecture.md](docs/architecture.md) | System architecture, database schema, agent designs |
+| [DESIGN.md](docs/DESIGN.md) | Design system: typography, color, spacing, motion, component vocabulary |
 | [roadmap.md](docs/roadmap.md) | Development roadmap with milestones (10-week MVP) |
 | [context.md](docs/context.md) | Quick start guide for developers, core concepts |
+| [TODOS.md](docs/TODOS.md) | Deferred work captured during reviews |
 | [production-deployment-plan.md](docs/production-deployment-plan.md) | Recommended AWS production deployment plan and keep/remove service decisions |
 | [deploy/README.md](deploy/README.md) | Deployment guide for AWS production |
 

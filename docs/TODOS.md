@@ -83,25 +83,15 @@ Format: each TODO has What, Why, Pros, Cons, Context, Depends on. Keep that stru
 
 ---
 
-## TODO-4 — Run `/design-consultation` to produce `DESIGN.md`
+## TODO-4 — Run `/design-consultation` to produce `DESIGN.md` (DONE 2026-04-27)
 
-**What:** Run the `/design-consultation` skill post-Phase-1 (after the demo is live but before Phase 3 build begins). Produce a `DESIGN.md` covering color tokens, typography scale, spacing scale, component vocabulary, motion principles, and brand identity. Canonize the existing reference patterns (marketplace eyebrow+hero, execution-report-modal section structure, mat-icon vocabulary).
+**Status:** Shipped. File at `docs/DESIGN.md`.
 
-**Why:** Current visual identity is "Material default + custom SCSS where needed." Phase 3 build will ship new UI surfaces. Without a system to anchor against, those surfaces drift further from a coherent identity.
+**What shipped:** Full design system covering aesthetic direction (Industrial-Editorial hybrid), typography (Instrument Serif / Cabinet Grotesk / Instrument Sans / JetBrains Mono — replaces Inter), color (single warm-gold accent `#C9A96E` replacing cyan/teal gradient, dark-mode primary), spacing (8px base scale), layout (12-column grid + editorial breakouts), motion (intentional, restrained, reduced-motion-aware), and SCSS migration plan from existing `styles.scss`.
 
-**Pros:**
-- Consistent visuals as build accelerates
-- Easier to onboard a designer if hired
-- Concrete reference for evaluating new UI before merge
+**Note:** Originally scoped as "post-Phase-1" but ran inline at the end of the planning session. The system reflects existing reference patterns (marketplace eyebrow+hero, execution-report-modal section structure, mat-icon vocabulary) plus deliberate departures (drop Inter, drop cyan/teal gradient).
 
-**Cons:**
-- 1-2 hour consultation + maintenance
-
-**Context:**
-- Identified during `/plan-design-review` on 2026-04-27
-- Existing reference patterns to canonize: marketplace `eyebrow + h1 + body + CTA` hero, execution-report-modal `loading + error + content` state pattern, `summarize/lightbulb/flag/show_chart/psychology/warning` mat-icon vocabulary
-
-**Depends on:** Phase 1 demo deployed (so the system reflects what actually shipped, not what we planned).
+**SCSS migration is still pending** — listed as Phase 1 build work in the design doc, ~1 day of careful CSS work + visual QA across all existing screens. Track migration progress against the "SCSS migration plan" section in `docs/DESIGN.md`.
 
 ---
 
@@ -132,3 +122,22 @@ Specifically: mobile-first viewport breakpoints, keyboard navigation patterns, A
 - Material components are responsive and a11y-aware by default, but custom CSS often breaks both — must verify per surface
 
 **Depends on:** Phase 1 demo shipped.
+
+---
+
+## TODO-6 — Project-level `/quantum` slash command for one-shot home-server deploys (DONE 2026-04-27)
+
+**Status:** Shipped. File at `.claude/commands/quantum.md`.
+
+**What shipped:** Slash command exposing 6 subcommands that map to `deploy/local/deploy.sh` CLI: `status`, `health`, `migrate`, `rollback`, `sync`, `logs <service>`. Plus `full` (tells user to run interactive script directly — interactive deploy steps require human confirmation and aren't safe to automate from chat) and `help` (lists subcommands).
+
+**Behavior rules baked in:**
+- Subcommand whitelist (no inventing new subcommands)
+- Destructive ops (`rollback`) require confirmation before running
+- `migrate` flags that it runs against production DB
+- `logs` without service name returns help instead of dropping into interactive mode
+- After-action summary on success; verbatim error + suggested next step on failure
+
+**Future work if needed (not blocking anything today):**
+- A `.claude/skills/quantum-deploy/SKILL.md` if multi-step interactive flows ever need to embed in other skills (e.g., a "deploy + run smoke test + report" pipeline). For now the slash command is sufficient.
+- Add to CLAUDE.md skill-routing rules so suggestions like "deploy to quantum" auto-route to `/quantum` (low priority — solo-founder workflow).

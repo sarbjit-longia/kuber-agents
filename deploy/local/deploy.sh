@@ -33,7 +33,12 @@ CONTEXTS=("." "signal-generator" "trigger-dispatcher" "data-plane" "frontend")
 IMAGE_SERVICES=("backend celery-worker celery-beat flower" "signal-generator" "trigger-dispatcher" "data-plane data-plane-worker data-plane-beat" "frontend")
 
 # All compose service names (for restart sub-menu)
-ALL_SERVICES=(backend celery-worker celery-beat flower signal-generator trigger-dispatcher data-plane data-plane-worker data-plane-beat frontend)
+ALL_SERVICES=(backend celery-worker celery-beat flower signal-generator trigger-dispatcher data-plane data-plane-worker data-plane-beat frontend redis kafka zookeeper grafana prometheus langfuse-postgres langfuse-clickhouse langfuse-minio langfuse-web langfuse-worker)
+
+# Observability stack (Langfuse + Grafana + Prometheus + supporting infra)
+# Used by start_observability_stack to bring up all observability services in one command.
+# langfuse-minio-init is a one-shot init container that creates the S3 bucket; included so it runs.
+OBSERVABILITY_SERVICES="langfuse-postgres langfuse-clickhouse langfuse-minio langfuse-minio-init langfuse-web langfuse-worker grafana prometheus"
 
 # ============================================================
 # COLORS & HELPERS
@@ -326,6 +331,23 @@ sync_config() {
     info "Syncing docker-compose.prod.yml..."
     scp -q "$SCRIPT_DIR/docker-compose.prod.yml" "$USER@$SERVER:$REMOTE/docker-compose.prod.yml"
 
+    # .env.prod is the golden copy maintained in deploy/local/.env.prod on the dev machine.
+    # Sync it on every config push so quantum's env stays in sync with the local source of truth.
+    # Uses --backup-dir to keep a timestamped backup of the previous .env.prod on quantum
+    # in case a sync needs to be reversed.
+    if [[ -f "$SCRIPT_DIR/.env.prod" ]]; then
+        info "Syncing .env.prod (golden copy → quantum)..."
+        local backup_ts
+        backup_ts=$(date +%Y%m%d-%H%M%S)
+        remote "[ -f $REMOTE/.env.prod ] && cp $REMOTE/.env.prod $REMOTE/.env.prod.bak-$backup_ts || true"
+        scp -q "$SCRIPT_DIR/.env.prod" "$USER@$SERVER:$REMOTE/.env.prod"
+        remote "chmod 600 $REMOTE/.env.prod"
+        info "  Backup of previous .env.prod kept at: $REMOTE/.env.prod.bak-$backup_ts"
+        info "  Note: already-running containers keep their current env until restarted."
+    else
+        warn "No deploy/local/.env.prod found — skipped (existing quantum env unchanged)."
+    fi
+
     info "Syncing Nginx config..."
     remote "mkdir -p $REMOTE/nginx"
     sed "s/__DOMAIN__/$DOMAIN/g" "$SCRIPT_DIR/nginx/clovercharts.conf" 2>/dev/null \
@@ -418,6 +440,175 @@ restart_containers() {
     info "Restarting: $selected_services"
     remote "cd $REMOTE && $COMPOSE restart $selected_services"
     success "Restarted: $selected_services"
+}
+
+# ============================================================
+# 5b) START OBSERVABILITY STACK (Langfuse + Grafana + Prometheus)
+# ============================================================
+start_observability_stack() {
+    header "Start Observability Stack"
+    info "Brings up: $OBSERVABILITY_SERVICES"
+    info "Idempotent: re-running is safe. Uses 'docker compose up -d --no-recreate' so already-running services aren't restarted."
+    echo ""
+    info "First-time setup requires LANGFUSE_* env vars in .env.prod on the server."
+    info "See deploy/local/.env.prod.template for the variables to populate:"
+    echo "  - LANGFUSE_DB_PASSWORD"
+    echo "  - LANGFUSE_CLICKHOUSE_PASSWORD"
+    echo "  - LANGFUSE_NEXTAUTH_SECRET"
+    echo "  - LANGFUSE_SALT"
+    echo "  - LANGFUSE_ENCRYPTION_KEY"
+    echo "  - LANGFUSE_S3_ACCESS_KEY_ID / LANGFUSE_S3_SECRET_ACCESS_KEY"
+    echo ""
+
+    if ! confirm "Bring up observability stack on $SERVER?"; then
+        return 0
+    fi
+
+    info "Running 'docker compose up -d --no-recreate' for observability services..."
+    remote "cd $REMOTE && $COMPOSE up -d --no-recreate $OBSERVABILITY_SERVICES"
+
+    info "Waiting 10 seconds for langfuse-minio-init to complete..."
+    sleep 10
+
+    info "Checking observability service status..."
+    remote "cd $REMOTE && $COMPOSE ps $OBSERVABILITY_SERVICES" || true
+
+    success "Observability stack started."
+    echo ""
+    info "Verify Langfuse is reachable:"
+    echo "  - Direct (LAN/SSH-tunnel):  http://127.0.0.1:3300/api/public/health"
+    echo "  - Via nginx subdomain:      https://langfuse.<DOMAIN>/ (requires nginx reload after deploy_nginx)"
+    echo ""
+    info "Verify Grafana is reachable:"
+    echo "  - Direct:  http://127.0.0.1:3000/api/health"
+    echo "  - Via nginx subpath:  https://<DOMAIN>/grafana/  OR  https://grafana.<DOMAIN>/"
+}
+
+# ============================================================
+# 5c) SHIP EVERYTHING (build + transfer + sync + restart + migrate + health)
+# ============================================================
+# One-shot dev-to-quantum deploy. Use for "I made changes, push everything."
+# Builds all 5 image groups, transfers via docker save | docker load over SSH,
+# syncs config files (incl. .env.prod golden copy), restarts all app services,
+# runs migrations, and waits for backend health.
+#
+# Aborts on any image build/transfer failure to avoid partial deploys.
+# Migration failures are warnings (backend may still come up), not aborts.
+ship_all() {
+    header "Ship Everything (Build + Sync + Restart)"
+    info "This will:"
+    echo "  1. Build all 5 image groups: ${IMAGES[*]}"
+    echo "  2. Transfer images to $SERVER (docker save | ssh docker load)"
+    echo "  3. Sync config files (compose, .env.prod, nginx, monitoring)"
+    echo "  4. Restart all affected app services (compose up -d)"
+    echo "  5. Run alembic migrations + seed_database.py"
+    echo "  6. Health-check backend"
+    echo ""
+    info "Estimated: 5-15 minutes depending on image-layer cache and network."
+    echo ""
+
+    if ! confirm "Proceed with full deploy to $SERVER?"; then
+        return 0
+    fi
+
+    local ship_start
+    ship_start=$(date +%s)
+    local succeeded=()
+    local all_services=""
+
+    # --- Build + transfer all 5 image groups ---
+    for idx in 0 1 2 3 4; do
+        local img="${IMAGES[$idx]}"
+        local dockerfile="${DOCKERFILES[$idx]}"
+        local context="${CONTEXTS[$idx]}"
+        local services="${IMAGE_SERVICES[$idx]}"
+        local step_start
+
+        echo ""
+        info "[$img] === Building ==="
+        step_start=$(date +%s)
+        if ! docker build --platform "$BUILD_PLATFORM" \
+            -t "clovercharts/$img:latest" -t "clovercharts/$img:$GIT_SHA" \
+            -f "$PROJECT_ROOT/$dockerfile" "$PROJECT_ROOT/$context"; then
+            err "[$img] Build failed — aborting ship."
+            return 1
+        fi
+        success "[$img] Built in $(elapsed "$step_start")."
+
+        info "[$img] Tagging current :latest as :previous on $SERVER for rollback safety..."
+        remote "docker tag clovercharts/$img:latest clovercharts/$img:previous 2>/dev/null || true"
+
+        info "[$img] Transferring image..."
+        step_start=$(date +%s)
+        if ! docker save "clovercharts/$img:latest" | ssh "$USER@$SERVER" 'docker load'; then
+            err "[$img] Transfer failed — aborting ship."
+            return 1
+        fi
+        success "[$img] Transferred in $(elapsed "$step_start")."
+
+        succeeded+=("$img")
+        all_services="$all_services $services"
+    done
+
+    # --- Sync config (includes compose, .env.prod, nginx, monitoring) ---
+    echo ""
+    info "=== Syncing Config ==="
+    if ! sync_config; then
+        err "Config sync failed — images deployed but config not synced."
+        return 1
+    fi
+
+    # --- Restart all app services ---
+    echo ""
+    info "=== Restarting Services ==="
+    all_services=$(echo "$all_services" | xargs)
+    info "Services:$all_services"
+    if ! remote "cd $REMOTE && $COMPOSE up -d $all_services"; then
+        err "Service restart failed — config synced but services may be in mixed state."
+        return 1
+    fi
+    success "Services restarted."
+
+    # --- Run migrations (best-effort, warn on failure) ---
+    echo ""
+    info "=== Running Migrations ==="
+    if remote "docker exec clovercharts-backend alembic upgrade head" 2>&1; then
+        success "Alembic migrations applied."
+    else
+        warn "Alembic migration failed — check: $0 logs backend"
+    fi
+    if remote "docker exec clovercharts-backend python seed_database.py" 2>&1; then
+        success "seed_database.py completed."
+    else
+        warn "seed_database.py failed — non-fatal, but check: $0 logs backend"
+    fi
+
+    # --- Health check (wait for backend) ---
+    echo ""
+    info "=== Health Check ==="
+    info "Waiting up to 60s for backend /health..."
+    local healthy=false
+    for i in $(seq 1 60); do
+        if remote "curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1"; then
+            success "Backend is healthy after ${i}s."
+            healthy=true
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$healthy" != "true" ]]; then
+        err "Backend not healthy after 60s. Investigate:"
+        echo "    $0 logs backend"
+        echo "    $0 status"
+        echo "    $0 rollback   # if needed"
+        return 1
+    fi
+
+    echo ""
+    success "=== SHIP COMPLETE in $(elapsed "$ship_start") ==="
+    info "Deployed: ${succeeded[*]}"
+    info "Verify all services: $0 health"
+    info "If something broke, roll back with: $0 rollback"
 }
 
 # ============================================================
@@ -601,6 +792,13 @@ health_check() {
             fail "Prometheus          (http://127.0.0.1:19090)"
         fi
 
+        # Langfuse Web (self-hosted observability)
+        if curl -sf http://127.0.0.1:3300/api/public/health -o /dev/null --max-time 5 2>/dev/null; then
+            pass "Langfuse Web        (http://127.0.0.1:3300/api/public/health)"
+        else
+            skip "Langfuse Web        (http://127.0.0.1:3300/api/public/health) — may not be deployed yet"
+        fi
+
         echo ""
         echo "--- Docker Health Status ---"
         docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | grep clovercharts || echo "  (no clovercharts containers)"
@@ -690,6 +888,8 @@ show_menu() {
     echo "  3) Deploy Nginx           8) Rollback"
     echo "  4) Sync Config            9) Get Status"
     echo "  5) Restart Containers    10) Health Check"
+    echo " 11) Start Observability Stack (Langfuse + Grafana + Prometheus)"
+    echo " 12) Ship Everything (build + sync + restart + migrate + health)"
     echo "  0) Exit"
     echo ""
 }
@@ -712,6 +912,8 @@ menu_loop() {
             8) rollback         || warn "Rollback encountered an error." ;;
             9) get_status       || warn "Status check encountered an error." ;;
             10) health_check    || warn "Health check encountered an error." ;;
+            11) start_observability_stack || warn "Observability stack start encountered an error." ;;
+            12) ship_all || warn "Ship encountered an error." ;;
             0) echo "Bye."; exit 0 ;;
             *) warn "Invalid option: $opt" ;;
         esac
@@ -735,16 +937,20 @@ if [[ $# -gt 0 ]]; then
             echo "  rollback          Roll back to :previous images"
             echo "  sync              Sync config files to server"
             echo "  logs [service]    View logs for a service"
+            echo "  observability     Start Langfuse + Grafana + Prometheus stack"
+            echo "  ship              Build + transfer + sync + restart + migrate + health (full deploy)"
             echo ""
             echo "No arguments → interactive menu"
             exit 0
             ;;
-        status)   check_ssh; get_status ;;
-        health)   check_ssh; health_check ;;
-        migrate)  check_ssh; run_migrations ;;
-        rollback) check_ssh; rollback ;;
-        sync)     check_ssh; sync_config ;;
-        logs)     check_ssh; view_logs "${1:-}" ;;
+        status)         check_ssh; get_status ;;
+        health)         check_ssh; health_check ;;
+        migrate)        check_ssh; run_migrations ;;
+        rollback)       check_ssh; rollback ;;
+        sync)           check_ssh; sync_config ;;
+        logs)           check_ssh; view_logs "${1:-}" ;;
+        observability)  check_ssh; start_observability_stack ;;
+        ship)           check_ssh; ship_all ;;
         *)
             err "Unknown command: $cmd"
             echo "Run '$0 --help' for usage."
